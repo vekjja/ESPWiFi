@@ -15,19 +15,10 @@
         "system_message": "You are a helpful assistant. On an ESP Micro Controller."
     },
     "pins": {
-        "2": {
-            "name": "D4 (GPIO2)",
-            "num": 2,
+        "8": {
+            "name": "Builtin LED",
+            "num": 8,
             "mode": "out",
-            "hz": 50,
-            "duty": 1860,
-            "cycle": 20000,
-            "state": "high"
-        },
-        "5": {
-            "name": "D1 (GPIO5)",
-            "num": 5,
-            "mode": "pwm",
             "hz": 50,
             "duty": 1860,
             "cycle": 20000,

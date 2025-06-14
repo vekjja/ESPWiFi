@@ -11,7 +11,7 @@
     },
     "pins": {
         "2": {
-            "name": "GPIO 2)",
+            "name": "GPIO 2",
             "num": 2,
             "mode": "out",
             "hz": 50,
@@ -20,7 +20,7 @@
             "state": "high"
         },
         "5": {
-            "name": "GPIO 5)",
+            "name": "GPIO 5",
             "num": 5,
             "mode": "pwm",
             "hz": 50,

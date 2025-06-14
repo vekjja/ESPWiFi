@@ -1,7 +1,0 @@
-{
-    "configuration": "PSRAM=disabled,FlashMode=qio,LoopCore=1,EventsCore=1,USBMode=hwcdc,CDCOnBoot=cdc,MSCOnBoot=default,DFUOnBoot=default,UploadMode=default,PartitionScheme=default,CPUFreq=240,UploadSpeed=921600,DebugLevel=none,EraseFlash=none",
-    "board": "esp32:esp32:waveshare_esp32_s3_zero",
-    "port": "/dev/tty.usbserial-14140",
-    "output": ".arduino",
-    "sketch": "ESPWiFi.ino"
-}

@@ -3,18 +3,29 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <ESPmDNS.h>
-#include <HTTPClient.h>
 #include <IOPin.h>
 #include <LittleFS.h>
-#include <WebServer.h>
-#include <WiFi.h>
 #include <WiFiClient.h>
 
+#ifdef ESP8266
+#include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#define WebServer ESP8266WebServer
+#define BCLK 15
+#define LRC 2
+#define DOUT 3
+#else
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+#include <WiFi.h>
 #define BCLK 26
 #define LRC 25
 #define DOUT 22
 #define LED_BUILTIN 2
+#endif
 
 class ESPWiFi {
  public:
@@ -32,9 +43,7 @@ class ESPWiFi {
 
   void init() {
     Serial.begin(115200);
-    while (!Serial) {
-      delay(10);
-    }
+    Serial.println("Serial working on ESP32-C3!");
 
     if (!LittleFS.begin()) {
       Serial.println("An Error has occurred while mounting LittleFS");
@@ -45,6 +54,7 @@ class ESPWiFi {
 
   void start() {
     init();
+    Serial.println("ESPWiFi initialized");
     readConfig();
 
     if (config["mode"] == "ap") {
@@ -55,7 +65,6 @@ class ESPWiFi {
 
     startWebServer();
     startMDNS();
-    startClientTask();
   }
 
   // Config
@@ -66,6 +75,7 @@ class ESPWiFi {
 
   // WiFi
   void connectToWifi();
+  void handleClient();
   void startAP();
   int selectBestChannel();
 
@@ -93,7 +103,6 @@ class ESPWiFi {
  private:
   void startMDNS();
   void startWebServer();
-  void startClientTask();
   void handleCorsPreflight();
   void listFilesHandler();
 };

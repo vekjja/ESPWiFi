@@ -1,0 +1,32 @@
+{
+    "mode": "client",
+    "mdns": "ESPWiFi",
+    "client": {
+        "ssid": "connectedness",
+        "password": "ReallyLongPassword123!@#"
+    },
+    "ap": {
+        "ssid": "ESPWiFi-AP",
+        "password": "abcd1234"
+    },
+    "pins": {
+        "2": {
+            "name": "GPIO 2)",
+            "num": 2,
+            "mode": "out",
+            "hz": 50,
+            "duty": 1860,
+            "cycle": 20000,
+            "state": "high"
+        },
+        "5": {
+            "name": "GPIO 5)",
+            "num": 5,
+            "mode": "pwm",
+            "hz": 50,
+            "duty": 1860,
+            "cycle": 20000,
+            "state": "low"
+        }
+    }
+}

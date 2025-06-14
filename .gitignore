@@ -1,5 +1,3 @@
 .DS_Store
-.arduino/
 .vscode/
-data/
-**/**/config.json
+.pio

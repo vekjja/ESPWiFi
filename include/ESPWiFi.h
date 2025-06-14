@@ -13,18 +13,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #define WebServer ESP8266WebServer
-#define BCLK 15
-#define LRC 2
-#define DOUT 3
 #else
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#define BCLK 26
-#define LRC 25
-#define DOUT 22
-#define LED_BUILTIN 2
 #endif
 
 class ESPWiFi {

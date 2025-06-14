@@ -5,7 +5,7 @@ ESPWiFi wifi;
 
 void setup() {
   wifi.start();
-  wifi.startGPIO();  // Initialize GPIO pins
+  wifi.startGPIO();
 }
 
 void loop() { wifi.handleClient(); }

@@ -69,6 +69,7 @@ void ESPWiFi::startAP() {
 
 void ESPWiFi::handleClient() {
   webServer.handleClient();
+  Serial.println("Handling client requests...");
 #ifdef ESP8266
   MDNS.update();
 #endif

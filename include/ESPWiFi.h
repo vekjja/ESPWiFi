@@ -3,9 +3,6 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <AudioFileSourceLittleFS.h>
-#include <AudioGeneratorMP3.h>
-#include <AudioOutputI2S.h>
 #include <IOPin.h>
 #include <LittleFS.h>
 #include <WiFiClient.h>
@@ -16,18 +13,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #define WebServer ESP8266WebServer
-#define BCLK 15
-#define LRC 2
-#define DOUT 3
 #else
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#define BCLK 26
-#define LRC 25
-#define DOUT 22
-#define LED_BUILTIN 2
 #endif
 
 class ESPWiFi {
@@ -46,9 +36,7 @@ class ESPWiFi {
 
   void init() {
     Serial.begin(115200);
-    while (!Serial) {
-      delay(10);
-    }
+    Serial.println("Serial working on ESP32-C3!");
 
     if (!LittleFS.begin()) {
       Serial.println("An Error has occurred while mounting LittleFS");
@@ -59,6 +47,7 @@ class ESPWiFi {
 
   void start() {
     init();
+    Serial.println("ESPWiFi initialized");
     readConfig();
 
     if (config["mode"] == "ap") {
@@ -95,13 +84,6 @@ class ESPWiFi {
 
   // GPIO
   void startGPIO();
-
-  // Audio
-  void startAudio();
-  void handleAudio();
-  bool pttEnabled = false;
-  void playMP3(String file);
-  std::function<void()> audioResponse = []() {};
 
   // OpenAI
   // String openAI_URL = "https://api.openai.com";

@@ -1,5 +1,9 @@
 .DS_Store
-.arduino/
 .vscode/
+.pio
+
 data/
-**/**/config.json
+config.json
+node_modules/
+
+!examples/*

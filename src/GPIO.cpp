@@ -9,7 +9,7 @@ void ESPWiFi::startGPIO() {
   webServer.on("/gpio", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
   webServer.on("/gpio", HTTP_POST, [this]() {
     String body = webServer.arg("plain");
-    StaticJsonDocument<200> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
 
     if (error) {

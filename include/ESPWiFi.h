@@ -34,22 +34,18 @@ class ESPWiFi {
 
   ESPWiFi() {}
 
-  void init() {
+  void start() {
     Serial.begin(115200);
-    Serial.println("Serial working on ESP32-C3!");
+    delay(500);  // allow time for USB to connect
 
     if (!LittleFS.begin()) {
       Serial.println("An Error has occurred while mounting LittleFS");
     }
+
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, LOW);
-  }
 
-  void start() {
-    init();
-    Serial.println("ESPWiFi initialized");
     readConfig();
-
     if (config["mode"] == "ap") {
       startAP();
     } else {
@@ -58,6 +54,7 @@ class ESPWiFi {
 
     startWebServer();
     startMDNS();
+    Serial.println("\nESPWiFi initialized");
   }
 
   // Config

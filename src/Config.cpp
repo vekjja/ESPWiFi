@@ -10,6 +10,7 @@ void ESPWiFi::saveConfig() {
 }
 
 void ESPWiFi::readConfig() {
+  Serial.println("Reading config file: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
     Serial.println("Failed to open config file");
@@ -24,6 +25,8 @@ void ESPWiFi::readConfig() {
     file.close();
     return;
   }
+
+  serializeJsonPretty(config, Serial);
 
   if (config["client"]["ssid"] == "" || config["client"]["password"] == "") {
     Serial.println("Invalid client config");

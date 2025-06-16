@@ -75,7 +75,7 @@ void ESPWiFi::startWebServer() {
   webServer.on("/restart", HTTP_GET, [this]() {
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", "{\"success\":true}");
-    Serial.println("Restarting...");
+    Serial.println("🔄 Restarting...");
     delay(1000);
     ESP.restart();
   });

@@ -45,15 +45,26 @@ class ESPWiFi {
     digitalWrite(LED_BUILTIN, LOW);
 
     readConfig();
-    if (config["mode"] == "ap") {
+
+    String mode = config["mode"];
+    mode.toLowerCase();
+    if (strcmp(mode.c_str(), "client") == 0 ||
+        strcmp(mode.c_str(), "station") == 0 ||
+        strcmp(mode.c_str(), "sta") == 0) {
+      connectToWifi();
+    } else if (strcmp(mode.c_str(), "ap") == 0 ||
+               strcmp(mode.c_str(), "accesspoint") == 0 ||
+               strcmp(mode.c_str(), "access point") == 0) {
       startAP();
     } else {
-      connectToWifi();
+      Serial.println("⚠️  Invalid Mode: " + mode);
+      config["mode"] = "ap";  // Ensure mode is set to AP
+      startAP();
     }
 
     startWebServer();
     startMDNS();
-    Serial.println("\nESPWiFi initialized");
+    Serial.println("\n✅ ESPWiFi Started Successfully");
   }
 
   // Config

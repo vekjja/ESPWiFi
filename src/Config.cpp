@@ -5,39 +5,42 @@
 
 void ESPWiFi::saveConfig() {
   File file = LittleFS.open(configFile, "w");
+  if (!file) {
+    Serial.println("⚠️  Failed to open config file for writing");
+    return;
+  }
   serializeJson(config, file);
   file.close();
+  Serial.println("💾 Config saved to " + configFile);
+  serializeJsonPretty(config, Serial);
+  Serial.println("\n");
 }
 
 void ESPWiFi::readConfig() {
-  Serial.println("Reading config file: " + configFile);
+  Serial.println("\n🛠️  Reading config file: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
-    Serial.println("Failed to open config file");
+    Serial.println("⚠️  Failed to open config file");
     defaultConfig();
     return;
   }
 
   DeserializationError error = deserializeJson(config, file);
   if (error) {
-    Serial.println("Failed to read config file: " + String(error.c_str()));
+    Serial.println("⚠️  Failed to read config file: " + String(error.c_str()));
     defaultConfig();
     file.close();
     return;
   }
 
   serializeJsonPretty(config, Serial);
-
-  if (config["client"]["ssid"] == "" || config["client"]["password"] == "") {
-    Serial.println("Invalid client config");
-    defaultConfig();
-  }
+  Serial.println("\n");
 
   file.close();
 }
 
 void ESPWiFi::defaultConfig() {
-  Serial.println("Using default config");
+  Serial.println("🛠️  Using Default Config:");
   config["mode"] = "ap";
 #ifdef ESP8266
   config["ap"]["ssid"] = "ESPWiFi-" + String(ESP.getChipId(), HEX);
@@ -48,13 +51,9 @@ void ESPWiFi::defaultConfig() {
   config["mdns"] = "ESPWiFi";
   config["client"]["ssid"] = "";
   config["client"]["password"] = "";
-}
 
-void ESPWiFi::resetConfig() {
-  defaultConfig();
-  saveConfig();
-  delay(1000);
-  ESP.restart();
+  serializeJsonPretty(config, Serial);
+  Serial.println("\n");
 }
 
 #endif  // ESPWIFI_CONFIG_H

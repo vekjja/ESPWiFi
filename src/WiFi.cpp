@@ -6,8 +6,16 @@
 void ESPWiFi::connectToWifi() {
   String ssid = config["client"]["ssid"];
   String password = config["client"]["password"];
+
+  if (ssid.isEmpty() || password.isEmpty()) {
+    Serial.println("⚠️  Warning: SSID or Password: Cannot be empty");
+    config["mode"] = "ap";
+    startAP();
+    return;
+  }
+
   WiFi.begin(ssid, password);
-  Serial.println("\n\nConnecting to:");
+  Serial.println("\n🛜  Connecting to Network:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
   int connectionAttempts = maxConnectAttempts;
@@ -21,9 +29,9 @@ void ESPWiFi::connectToWifi() {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(250);
     digitalWrite(LED_BUILTIN, LOW);
+    delay(250);
+    digitalWrite(LED_BUILTIN, HIGH);
     delay(250);
     Serial.print(".");
   }
@@ -58,7 +66,7 @@ void ESPWiFi::startAP() {
   String password = config["ap"]["password"];
   int bestChannel = selectBestChannel();
   WiFi.softAP(ssid, password, bestChannel);
-  Serial.println("\n\nStarting Access Point:");
+  Serial.println("\n\n📡 Starting Access Point:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
   Serial.print("\tIP Address: ");
@@ -77,7 +85,7 @@ void ESPWiFi::handleClient() {
 void ESPWiFi::startMDNS() {
   String domain = config["mdns"];
   if (!MDNS.begin(domain)) {
-    Serial.println("Error setting up MDNS responder!");
+    Serial.println("❌ Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
     Serial.println("\tDomain Name: " + domain + ".local");

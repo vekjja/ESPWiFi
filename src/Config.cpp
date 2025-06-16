@@ -11,13 +11,13 @@ void ESPWiFi::saveConfig() {
   }
   serializeJson(config, file);
   file.close();
-  Serial.println("💾 Config saved to " + configFile);
+  Serial.println("💾 Config Saved: " + configFile);
   serializeJsonPretty(config, Serial);
   Serial.println("\n");
 }
 
 void ESPWiFi::readConfig() {
-  Serial.println("\n🛠️  Reading config file: " + configFile);
+  Serial.println("\n🛠️  Reading Config: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
     Serial.println("⚠️  Failed to open config file");

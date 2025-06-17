@@ -29,10 +29,6 @@ void ESPWiFi::connectToWifi() {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(250);
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(250);
     Serial.print(".");
   }
   Serial.println("");

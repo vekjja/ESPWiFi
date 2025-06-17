@@ -41,9 +41,6 @@ class ESPWiFi {
       Serial.println("An Error has occurred while mounting LittleFS");
     }
 
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, LOW);
-
     readConfig();
 
     String mode = config["mode"];

@@ -27,7 +27,7 @@ class ESPWiFi {
 
   WebServer webServer;
 
-  int connectTimeout = 10000;  // 10 seconds
+  int connectTimeout = 9000;  // 9 seconds
 
   void (*connectSubroutine)() = nullptr;
 

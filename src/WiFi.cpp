@@ -38,7 +38,7 @@ void ESPWiFi::connectToWifi() {
     return;
   }
   Serial.println("");
-  Serial.println("\tWiFi connected");
+  Serial.println("🔗 WiFi Connected:");
   Serial.print("\tIP Address: ");
   Serial.println(WiFi.localIP());
 }

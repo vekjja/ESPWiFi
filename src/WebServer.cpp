@@ -30,35 +30,78 @@ void ESPWiFi::startWebServer() {
         "Info</title>";
     info +=
         "<style>body{font-family:sans-serif;background:#f4f4f4;margin:0;"
-        "padding:2em;}h2{color:#333;}table{background:#fff;border-radius:8px;"
-        "box-shadow:0 2px 8px "
-        "#0001;border-collapse:collapse;width:100%;max-width:500px;margin:auto;"
+        "padding:2em;}h2{color:#1976d2;}h3{margin-top:2em;color:#333;}table{"
+        "background:#fff;border-radius:8px;box-shadow:0 2px 8px "
+        "#0001;border-collapse:collapse;width:100%;max-width:600px;margin:auto;"
         "}th,td{padding:10px "
         "16px;text-align:left;}th{background:#f0f0f0;}tr:nth-child(even){"
-        "background:#fafafa;}tr:hover{background:#e0f7fa;}</style></"
-        "head><body>";
-    info += "<h2>ESPWiFi Device Info</h2><table>";
+        "background:#fafafa;}tr:hover{background:#e0f7fa;}pre{background:#222;"
+        "color:#fff;padding:1em;border-radius:8px;overflow-x:auto;max-width:"
+        "600px;margin:auto;}</style></head><body>";
+    info += "<h2>📡 ESPWiFi Device Info</h2>";
+    // Uptime
+    unsigned long seconds = millis() / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
+    unsigned long days = hours / 24;
+    seconds = seconds % 60;
+    minutes = minutes % 60;
+    hours = hours % 24;
+    String uptime = String(days) + "d " + String(hours) + "h " +
+                    String(minutes) + "m " + String(seconds) + "s";
+    // Network Info
+    info += "<h3>🌐 Network</h3><table>";
     info += "<tr><th>Property</th><th>Value</th></tr>";
-    info += "<tr><td>MAC Address</td><td>" + WiFi.macAddress() + "</td></tr>";
     info += "<tr><td>IP Address</td><td>" + WiFi.localIP().toString() +
             "</td></tr>";
-    info += "<tr><td>Chip Model</td><td>" + String(ESP.getChipModel()) +
-            "</td></tr>";
-    info += "<tr><td>Chip Revision</td><td>" + String(ESP.getChipRevision()) +
+    info += "<tr><td>MAC Address</td><td>" + WiFi.macAddress() + "</td></tr>";
+#if defined(ESP8266) || defined(ESP32)
+    if (WiFi.isConnected()) {
+      info += "<tr><td>SSID</td><td>" + WiFi.SSID() + "</td></tr>";
+      info += "<tr><td>RSSI</td><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
+    }
+    info +=
+        "<tr><td>Hostname</td><td>" + String(WiFi.getHostname()) + "</td></tr>";
+#endif
+    info += "<tr><td>mDNS Name</td><td>" + config["mdns"].as<String>() +
+            ".local</td></tr>";
+    info += "<tr><td>Uptime</td><td>" + uptime + "</td></tr>";
+    info += "</table>";
+    // Chip Info
+    info += "<h3>🔩 Chip</h3><table>";
+    info += "<tr><th>Property</th><th>Value</th></tr>";
+    info +=
+        "<tr><td>Model</td><td>" + String(ESP.getChipModel()) + "</td></tr>";
+    info += "<tr><td>Revision</td><td>" + String(ESP.getChipRevision()) +
             "</td></tr>";
     info += "<tr><td>CPU Frequency</td><td>" + String(ESP.getCpuFreqMHz()) +
             " MHz</td></tr>";
-    info += "<tr><td>Free Heap</td><td>" + String(ESP.getFreeHeap()) +
-            " bytes</td></tr>";
-    info += "<tr><td>Free PSRAM</td><td>" + String(ESP.getFreePsram()) +
-            " bytes</td></tr>";
-    info += "<tr><td>Sketch Size</td><td>" + String(ESP.getSketchSize()) +
-            " bytes</td></tr>";
+#if defined(ESP8266)
+    info += "<tr><td>SDK Version</td><td>" + String(ESP.getSdkVersion()) +
+            "</td></tr>";
+#elif defined(ESP32)
+    info += "<tr><td>SDK Version</td><td>" + String(ESP.getSdkVersion()) + "</td></tr>";
+#endif
+    info += "</table>";
+    // Memory Info
+    info += "<h3>💾 Memory</h3><table>";
+    info += "<tr><th>Type</th><th>Value</th></tr>";
+    info += "<tr><td>Free Heap</td><td>" +
+            String(ESP.getFreeHeap() / 1048576.0, 2) + " MB</td></tr>";
+#if defined(ESP32)
+    info += "<tr><td>Free PSRAM</td><td>" +
+            String(ESP.getFreePsram() / 1048576.0, 2) + " MB</td></tr>";
+#endif
+    info += "</table>";
+    // Storage Info
+    info += "<h3>🗄️ Storage</h3><table>";
+    info += "<tr><th>Type</th><th>Value</th></tr>";
+    info += "<tr><td>Sketch Size</td><td>" +
+            String(ESP.getSketchSize() / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>Free Sketch Space</td><td>" +
-            String(ESP.getFreeSketchSpace()) + " bytes</td></tr>";
-    info += "<tr><td>Sketch MD5</td><td>" + ESP.getSketchMD5() + "</td></tr>";
+            String(ESP.getFreeSketchSpace() / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>Flash Chip Size</td><td>" +
-            String(ESP.getFlashChipSize()) + " bytes</td></tr>";
+            String(ESP.getFlashChipSize() / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>Flash Chip Speed</td><td>" +
             String(ESP.getFlashChipSpeed() / 1000000) + " MHz</td></tr>";
     info += "<tr><td>Flash Chip Mode</td><td>" +
@@ -69,7 +112,31 @@ void ESPWiFi::startWebServer() {
                               : (ESP.getFlashChipMode() == FM_DIO ? "DIO"
                                                                   : "DOUT"))) +
             "</td></tr>";
-    info += "</table></body></html>";
+#if defined(ESP8266)
+    FSInfo fs_info;
+    LittleFS.info(fs_info);
+    info += "<tr><td>FS Total</td><td>" +
+            String(fs_info.totalBytes / 1048576.0, 2) + " MB</td></tr>";
+    info += "<tr><td>FS Used</td><td>" +
+            String(fs_info.usedBytes / 1048576.0, 2) + " MB</td></tr>";
+#elif defined(ESP32)
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
+    info += "<tr><td>FS Total</td><td>" + String(totalBytes / 1048576.0, 2) + " MB</td></tr>";
+    info += "<tr><td>FS Used</td><td>" + String(usedBytes / 1048576.0, 2) + " MB</td></tr>";
+#endif
+    info += "</table>";
+    // Sketch Info
+    info += "<h3>📝 Sketch</h3><table>";
+    info += "<tr><th>Property</th><th>Value</th></tr>";
+    info += "<tr><td>MD5</td><td>" + ESP.getSketchMD5() + "</td></tr>";
+    info += "</table>";
+    // Config Info
+    info += "<h3>⚙️ Config</h3>";
+    String configStr;
+    serializeJsonPretty(config, configStr);
+    info += "<pre>" + configStr + "</pre>";
+    info += "</body></html>";
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "text/html", info);
   });

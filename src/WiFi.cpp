@@ -7,7 +7,7 @@ void ESPWiFi::connectToWifi() {
   String ssid = config["client"]["ssid"];
   String password = config["client"]["password"];
 
-  if (ssid.isEmpty() || password.isEmpty()) {
+  if (ssid.isEmpty()) {
     Serial.println("⚠️  Warning: SSID or Password: Cannot be empty");
     config["mode"] = "ap";
     startAP();
@@ -66,13 +66,18 @@ int ESPWiFi::selectBestChannel() {
 void ESPWiFi::startAP() {
   String ssid = config["ap"]["ssid"];
   String password = config["ap"]["password"];
-  int bestChannel = selectBestChannel();
-  WiFi.softAP(ssid, password, bestChannel);
-  Serial.println("\n\n📡 Starting Access Point:");
-  Serial.print("\tChannel: ");
-  Serial.println(bestChannel);
+  Serial.println("\n📡 Starting Access Point:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
+  int bestChannel = selectBestChannel();
+  Serial.print("\tChannel: ");
+  Serial.println(bestChannel);
+
+  WiFi.softAP(ssid, password, bestChannel);
+  if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
+    Serial.println("❌ Failed to start Access Point");
+    return;
+  }
   Serial.print("\tIP Address: ");
   Serial.println(WiFi.softAPIP());
 }

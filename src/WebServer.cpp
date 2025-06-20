@@ -29,15 +29,19 @@ void ESPWiFi::startWebServer() {
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
         "Info</title>";
     info +=
-        "<style>body{font-family:sans-serif;background:#f4f4f4;margin:0;"
-        "padding:2em;}h2{color:#1976d2;}h3{margin-top:2em;color:#333;}table{"
-        "background:#fff;border-radius:8px;box-shadow:0 2px 8px "
-        "#0001;border-collapse:collapse;width:100%;max-width:600px;margin:auto;"
+        "<style>body{font-family:sans-serif;background:#181a1b;color:#e8eaed;"
+        "margin:0;padding:2em;}h2{color:#7FF9E9;}h3{margin-top:2em;color:#"
+        "bdbdbd;}table{background:#23272a;border-radius:8px;box-shadow:0 2px "
+        "8px "
+        "#0008;border-collapse:collapse;width:100%;max-width:600px;margin:auto;"
         "}th,td{padding:10px "
-        "16px;text-align:left;}th{background:#f0f0f0;}tr:nth-child(even){"
-        "background:#fafafa;}tr:hover{background:#e0f7fa;}pre{background:#222;"
-        "color:#fff;padding:1em;border-radius:8px;overflow-x:auto;max-width:"
-        "600px;margin:auto;}</style></head><body>";
+        "16px;text-align:left;}th{background:#222c36;color:#7FF9E9;}tr:nth-"
+        "child(even){background:#202124;}tr:hover{background:#263238;}pre{"
+        "background:#23272a;color:#e8eaed;padding:1em;border-radius:8px;"
+        "overflow-x:auto;max-width:600px;margin:auto;border:1px solid "
+        "#333;}a{color:#7FF9E9;}::-webkit-scrollbar{background:#23272a;}::-"
+        "webkit-scrollbar-thumb{background:#333;border-radius:8px;}</style></"
+        "head><body>";
     info += "<h2>📡 ESPWiFi Device Info</h2>";
     // Uptime
     unsigned long seconds = millis() / 1000;

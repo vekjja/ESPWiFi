@@ -13,23 +13,29 @@ void ESPWiFi::connectToWifi() {
     startAP();
     return;
   }
-
-  WiFi.begin(ssid, password);
   Serial.println("\n🛜  Connecting to Network:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
-  int connectionAttempts = maxConnectAttempts;
-  while (WiFi.status() != WL_CONNECTED) {
-    if (--connectionAttempts == 0) {
-      Serial.println("Failed to connect to WiFi");
-      config["mode"] = "ap";
-      startAP();
-      return;
-    }
+
+  WiFi.disconnect(true);       // Ensure clean start
+  delay(100);                  // Allow time for disconnect
+  WiFi.mode(WIFI_STA);         // Station mode only
+  WiFi.begin(ssid, password);  // Start connection
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < connectTimeout) {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
     Serial.print(".");
+    delay(30);
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n❌ Failed to connect to WiFi");
+    config["mode"] = "ap";
+    startAP();
+    return;
   }
   Serial.println("");
   Serial.println("\tWiFi connected");
@@ -63,12 +69,12 @@ void ESPWiFi::startAP() {
   int bestChannel = selectBestChannel();
   WiFi.softAP(ssid, password, bestChannel);
   Serial.println("\n\n📡 Starting Access Point:");
+  Serial.print("\tChannel: ");
+  Serial.println(bestChannel);
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
   Serial.print("\tIP Address: ");
   Serial.println(WiFi.softAPIP());
-  Serial.print("\tChannel: ");
-  Serial.println(bestChannel);
 }
 
 void ESPWiFi::handleClient() {

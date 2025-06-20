@@ -43,9 +43,11 @@ void ESPWiFi::defaultConfig() {
   Serial.println("🛠️  Using Default Config:");
   config["mode"] = "ap";
 #ifdef ESP8266
-  config["ap"]["ssid"] = "ESPWiFi-" + String(ESP.getChipId(), HEX);
+  config["ap"]["ssid"] =
+      "ESPWiFi-" + String(ESP.getChipModel()) + String(ESP.getChipId(), HEX);
 #else
-  config["ap"]["ssid"] = "ESPWiFi-" + String(ESP.getEfuseMac(), HEX);
+  config["ap"]["ssid"] =
+      "ESPWiFi-" + String(ESP.getChipModel()) + String(ESP.getEfuseMac(), HEX);
 #endif
   config["ap"]["password"] = "abcd1234";
   config["mdns"] = "ESPWiFi";

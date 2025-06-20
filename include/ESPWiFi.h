@@ -27,7 +27,7 @@ class ESPWiFi {
 
   WebServer webServer;
 
-  int maxConnectAttempts = 18;
+  int connectTimeout = 10000;  // 10 seconds
 
   void (*connectSubroutine)() = nullptr;
 

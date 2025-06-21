@@ -31,9 +31,16 @@ export default function Pins({ config, saveConfig }) {
     { label: "GPIO5", value: 5 },
     { label: "GPIO6", value: 6 },
     { label: "GPIO7", value: 7 },
-    { label: "GPIO8 (Onboard LED)", value: 8 },
+    { label: "GPIO8", value: 8 },
     { label: "GPIO9", value: 9 },
     { label: "GPIO10", value: 10 },
+    { label: "GPIO11", value: 11 },
+    { label: "GPIO12", value: 12 },
+    { label: "GPIO13", value: 13 },
+    { label: "GPIO14", value: 14 },
+    { label: "GPIO15", value: 15 },
+    { label: "GPIO16", value: 16 },
+    { label: "GPIO17", value: 17 },
     { label: "GPIO18", value: 18 },
     { label: "GPIO19", value: 19 },
     { label: "GPIO20", value: 20 },
@@ -60,16 +67,17 @@ export default function Pins({ config, saveConfig }) {
     }
   }, [pinOptions, selectedPinNum]);
 
-  const updatePins = (pinState, deletePin) => {
+  const updatePins = (pinState, deletePin, pinKey) => {
+    const key = pinKey !== undefined ? String(pinKey) : String(selectedPinNum);
     if (deletePin) {
       const updatedPins = { ...pins };
-      delete updatedPins[pinState.num];
+      delete updatedPins[key];
       setPins(updatedPins);
       saveConfig({ ...config, pins: updatedPins });
       return;
     }
     const updatedPins = { ...pins };
-    updatedPins[pinState.num] = pinState;
+    updatedPins[key] = pinState;
     setPins(updatedPins);
     saveConfig({ ...config, pins: updatedPins });
   };
@@ -87,13 +95,12 @@ export default function Pins({ config, saveConfig }) {
     const newPinState = {
       state: "low",
       name: selectedPinLabel,
-      num: parseInt(selectedPinNum, 10),
       mode: "out", // Default mode
       duty: 1860,
       cycle: 20000,
       hz: 50,
     };
-    updatePins(newPinState);
+    updatePins(newPinState, false, selectedPinNum);
     handleCloseModal(); // Close the modal after submission
   };
 
@@ -114,7 +121,9 @@ export default function Pins({ config, saveConfig }) {
         config={config}
         pinNum={key}
         props={pin}
-        updatePins={updatePins}
+        updatePins={(pinState, deletePin) =>
+          updatePins(pinState, deletePin, key)
+        }
       />
     );
   });

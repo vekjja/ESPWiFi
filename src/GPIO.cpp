@@ -9,26 +9,26 @@ void ESPWiFi::startGPIO() {
   webServer.on("/gpio", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
   webServer.on("/gpio", HTTP_POST, [this]() {
     String body = webServer.arg("plain");
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, body);
+    JsonDocument newConfig;
+    DeserializationError error = deserializeJson(newConfig, body);
 
     if (error) {
       webServer.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
-    int num = doc["num"];
-    String mode = doc["mode"];
-    String state = doc["state"];
-    int duty = doc["duty"];
+    int pinNum = newConfig["num"];
+    String mode = newConfig["mode"];
+    String state = newConfig["state"];
+    int duty = newConfig["duty"];
 
     mode.toLowerCase();
     state.toLowerCase();
 
     if (mode == "out" || mode == "output" || mode == "pwm") {
-      pinMode(num, OUTPUT);
+      pinMode(pinNum, OUTPUT);
     } else if (mode == "input" || mode == "in") {
-      pinMode(num, INPUT);
+      pinMode(pinNum, INPUT);
     } else {
       webServer.send(400, "application/json",
                      "{\"error\":\"Invalid mode\": \"" + mode + "\"}");
@@ -37,12 +37,12 @@ void ESPWiFi::startGPIO() {
 
     if (state == "high") {
       if (mode == "pwm") {
-        analogWrite(num, duty);
+        analogWrite(pinNum, duty);
       } else {
-        digitalWrite(num, HIGH);
+        digitalWrite(pinNum, HIGH);
       }
     } else if (state == "low") {
-      digitalWrite(num, LOW);
+      digitalWrite(pinNum, LOW);
     } else {
       webServer.send(400, "application/json",
                      "{\"error\":\"Invalid state\" : \"" + state + "\"}");
@@ -52,7 +52,7 @@ void ESPWiFi::startGPIO() {
 
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", "{\"status\":\"Success\"}");
-    Serial.println("GPIO " + String(num) + " " + mode + " " + state + " " +
+    Serial.println("GPIO " + String(pinNum) + " " + mode + " " + state + " " +
                    String(duty));
   });
 }

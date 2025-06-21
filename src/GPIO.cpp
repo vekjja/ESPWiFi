@@ -9,18 +9,18 @@ void ESPWiFi::startGPIO() {
   webServer.on("/gpio", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
   webServer.on("/gpio", HTTP_POST, [this]() {
     String body = webServer.arg("plain");
-    JsonDocument newConfig;
-    DeserializationError error = deserializeJson(newConfig, body);
+    JsonDocument reqJson;
+    DeserializationError error = deserializeJson(reqJson, body);
 
     if (error) {
       webServer.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
 
-    int pinNum = newConfig["num"];
-    String mode = newConfig["mode"];
-    String state = newConfig["state"];
-    int duty = newConfig["duty"];
+    int pinNum = reqJson["num"];
+    String mode = reqJson["mode"];
+    String state = reqJson["state"];
+    int duty = reqJson["duty"];
 
     mode.toLowerCase();
     state.toLowerCase();

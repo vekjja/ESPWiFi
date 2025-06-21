@@ -74,10 +74,20 @@ void ESPWiFi::startWebServer() {
     // Chip Info
     info += "<h3>🔩 Chip</h3><table>";
     info += "<tr><th>Property</th><th>Value</th></tr>";
+#if defined(ESP8266)
+    info += "<tr><td>Chip ID</td><td>" + String(ESP.getChipId()) + "</td></tr>";
+    info += "<tr><td>Boot Version</td><td>" + String(ESP.getBootVersion()) +
+            "</td></tr>";
+    info +=
+        "<tr><td>Boot Mode</td><td>" + String(ESP.getBootMode()) + "</td></tr>";
+    info += "<tr><td>Flash Chip ID</td><td>" +
+            String(ESP.getFlashChipId(), HEX) + "</td></tr>";
+#elif defined(ESP32)
     info +=
         "<tr><td>Model</td><td>" + String(ESP.getChipModel()) + "</td></tr>";
     info += "<tr><td>Revision</td><td>" + String(ESP.getChipRevision()) +
             "</td></tr>";
+#endif
     info += "<tr><td>CPU Frequency</td><td>" + String(ESP.getCpuFreqMHz()) +
             " MHz</td></tr>";
 #if defined(ESP8266)

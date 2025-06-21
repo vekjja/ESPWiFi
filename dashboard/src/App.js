@@ -53,8 +53,7 @@ function App() {
         return response.json();
       })
       .then((data) => {
-        data.apiURL = apiURL;
-        setConfig(data);
+        setConfig({ ...data, apiURL });
         setLoading(false);
       })
       .catch((error) => {
@@ -69,17 +68,19 @@ function App() {
   }
 
   const saveConfig = (newConfig) => {
+    // Remove apiURL before saving config to backend
+    const { apiURL: _apiURL, ...configToSave } = newConfig;
     fetch(apiURL + "/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newConfig),
+      body: JSON.stringify(configToSave),
     })
       .then((response) => {
         if (!response.ok) throw new Error("Failed to save configuration");
         return response.json();
       })
       .then((savedConfig) => {
-        setConfig(savedConfig);
+        setConfig({ ...savedConfig, apiURL });
         console.log("Configuration saved successfully:", savedConfig);
       })
       .catch((error) => {

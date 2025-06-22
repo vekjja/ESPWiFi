@@ -5,7 +5,7 @@
 
 #include "ESPWiFi.h"
 
-void ESPWiFi::startGPIO() {
+void ESPWiFi::initGPIO() {
   webServer.on("/gpio", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
   webServer.on("/gpio", HTTP_POST, [this]() {
     String body = webServer.arg("plain");
@@ -55,6 +55,7 @@ void ESPWiFi::startGPIO() {
     Serial.println("GPIO " + String(pinNum) + " " + mode + " " + state + " " +
                    String(duty));
   });
+  Serial.println("📍 GPIO Enabled");
 }
 
 #endif  // ESPWIFI_GPIO_H

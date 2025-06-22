@@ -33,6 +33,15 @@ class ESPWiFi {
 
   ESPWiFi() {}
 
+  void disableLowPowerSleep() {
+#ifdef ESP8266
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+#else
+    WiFi.setSleep(false);
+#endif
+    Serial.println("🔋 Low Power Sleep Disabled");
+  }
+
   void start() {
     Serial.begin(115200);
     delay(500);  // allow time for USB to connect
@@ -87,7 +96,16 @@ class ESPWiFi {
                      std::function<void()> functionToRun);
 
   // GPIO
-  void startGPIO();
+  void initGPIO();
+
+  // DeAuth
+  void enableDeAuth();
+
+  // SSID Spoofing
+  void initSSIDSpoof();
+  void handleSSIDSpoof();
+  bool ssidSpoofEnabled = false;
+  unsigned long lastSSIDPacketTime = 0;
 
   // OpenAI
   // String openAI_URL = "https://api.openai.com";

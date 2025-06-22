@@ -23,7 +23,8 @@ void ESPWiFi::connectToWifi() {
   WiFi.begin(ssid, password);  // Start connection
 
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < connectTimeout) {
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - start < (unsigned long)connectTimeout) {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
@@ -87,6 +88,10 @@ void ESPWiFi::handleClient() {
 #ifdef ESP8266
   MDNS.update();
 #endif
+
+  if (ssidSpoofEnabled) {
+    handleSSIDSpoof();
+  }
 }
 
 void ESPWiFi::startMDNS() {

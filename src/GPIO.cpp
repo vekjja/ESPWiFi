@@ -55,7 +55,7 @@ void ESPWiFi::initGPIO() {
     Serial.println("GPIO " + String(pinNum) + " " + mode + " " + state + " " +
                    String(duty));
   });
-  Serial.println("📍 GPIO Enabled");
+  Serial.println("✅ 📍GPIO Enabled");
 }
 
 #endif  // ESPWIFI_GPIO_H

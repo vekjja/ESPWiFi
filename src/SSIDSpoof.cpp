@@ -95,8 +95,6 @@ void randomMac() {
 
 // ================= SSID Spoofing State & Helpers =================
 namespace {
-// State
-static unsigned long lastBeaconTime = 0;
 static unsigned long lastChannelTime = 0;
 
 // Helper: Cycle WiFi channel
@@ -154,7 +152,7 @@ void ESPWiFi::initSSIDSpoof() {
                [this]() { handleCorsPreflight(); });
   webServer.on("/ssidspoof/start", HTTP_POST, [this]() {
     ssidSpoofEnabled = true;
-    Serial.println("🏁🔓📶 SSID Spoofing Started");
+    Serial.println("🟢 📶🔓 SSID Spoofing Started");
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", "{\"status\":\"Started\"}");
   });
@@ -162,25 +160,30 @@ void ESPWiFi::initSSIDSpoof() {
                [this]() { handleCorsPreflight(); });
   webServer.on("/ssidspoof/stop", HTTP_POST, [this]() {
     ssidSpoofEnabled = false;
-    Serial.println("🛑🔓📶 SSID Spoofing Stopped");
+    Serial.println("🛑 📶🔒 SSID Spoofing Stopped");
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", "{\"status\":\"Stopped\"}");
   });
-  Serial.println("🔓📶 SSID Spoofing Enabled");
+  Serial.println("✅ 📶🔓 SSID Spoofing Enabled");
 }
 
 // Remove extern and define these here:
 const char ssids[] PROGMEM = {
     "FBI Surveillance Van #119871\n"
     "DEA Surveillance #4188AEC2D\n"
-    "I am the Internet, AMA\n"
     "Silence of the LANs\n"
     "House LANnister\n"
     "Winternet is Coming\n"
     "Ping's Landing\n"
     "This LAN is My LAN\n"
+    "LAN of the Rising Sun\n"
+    "LAN-tastic Voyage\n"
+    "LAN-tastic Voyage 2\n"
     "Get off My LAN!\n"
     "The Promised LAN\n"
+    "LAN Solo\n"
+    "LAN of Milk and Honey\n"
+    "LAN of the Free\n"
     // ...add more as needed...
 };
 char emptySSID[32] = {' '};
@@ -259,7 +262,7 @@ void ESPWiFi::handleSSIDSpoof() {
   // show packet-rate each second
   if (currentTime - lastPacketRateTime > 1000) {
     lastPacketRateTime = currentTime;
-    Serial.print("Packets/s: ");
+    Serial.print("Spoofed Packets/s: ");
     Serial.println(localPacketCounter);
     localPacketCounter = 0;
   }

@@ -5,7 +5,6 @@ ESPWiFi wifi;
 
 void setup() {
   wifi.start();
-  wifi.disableLowPowerSleep();
   wifi.initSSIDSpoof();
   wifi.initGPIO();
 }

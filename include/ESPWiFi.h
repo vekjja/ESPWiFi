@@ -39,7 +39,7 @@ class ESPWiFi {
 #else
     WiFi.setSleep(false);
 #endif
-    Serial.println("🚫🔋 Low Power Sleep Disabled");
+    Serial.println("🚫 🔋 Low Power Sleep Disabled");
   }
 
   void start() {

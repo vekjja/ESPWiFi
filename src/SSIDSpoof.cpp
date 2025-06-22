@@ -106,37 +106,6 @@ void cycleChannel() {
 }  // namespace
 // ================= END Helpers =================
 
-void broadcastSpoofedBeacon() {
-  // Channel cycling every 200ms
-  unsigned long now = millis();
-  if (now - lastChannelTime > 200) {
-    cycleChannel();
-    lastChannelTime = now;
-  }
-  beaconPacket[82] = wifi_channel;
-
-  // Get the SSID
-  char ssidBuf[33];
-  strncpy_P(ssidBuf, spoofedSSID, 33);
-  ssidBuf[32] = 0;
-  size_t ssidLen = strlen(ssidBuf);
-  // Fill SSID field (pad with spaces)
-  for (int i = 0; i < 32; i++) {
-    if (i < (int)ssidLen) {
-      beaconPacket[38 + i] = ssidBuf[i];
-    } else {
-      beaconPacket[38 + i] = ' ';
-    }
-  }
-  // Set MAC address
-  for (int i = 0; i < 6; i++) {
-    beaconPacket[10 + i] = macAddr[i];
-    beaconPacket[16 + i] = macAddr[i];
-  }
-  // Send packet
-  wifi_send_pkt_freedom(beaconPacket, packetSize, true);
-}
-
 void ESPWiFi::initSSIDSpoof() {
   randomSeed(os_random());
   // set packetSize

@@ -217,25 +217,79 @@ void ESPWiFi::startWebServer() {
     ESP.restart();
   });
 
-  // /files endpoint
+  // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
   webServer.on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String html =
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
         "Files</title>";
     html +=
-        "<style>body{font-family:sans-serif;background:#f4f4f4;margin:0;"
-        "padding:2em;}h2{color:#333;}ul{background:#fff;border-radius:8px;box-"
-        "shadow:0 2px 8px "
-        "#0001;max-width:500px;margin:auto;padding:1em;}li{margin:0.5em "
-        "0;}a{color:#1976d2;text-decoration:none;font-weight:bold;}a:hover{"
-        "text-decoration:underline;}</style></head><body>";
-    html += "<h2>ESPWiFi Files</h2><ul>";
-    File root = LittleFS.open("/", "r");
+        "<style>body{font-family:sans-serif;background:#181a1b;color:#e8eaed;"
+        "margin:0;padding:2em;}h2{color:#7FF9E9;}ul{background:#23272a;border-"
+        "radius:8px;box-shadow:0 2px 8px "
+        "#0008;max-width:700px;margin:auto;padding:1em;}li{margin:0.5em "
+        "0;}a{color:#7FF9E9;text-decoration:none;font-weight:bold;}a:hover{"
+        "text-decoration:underline;} "
+        ".folder{color:#7FF9E9;}::-webkit-scrollbar{background:#23272a;}::-"
+        "webkit-scrollbar-thumb{background:#333;border-radius:8px;} "
+        ".folder{font-weight:bold;} .file{color:#e8eaed;}</style></head><body>";
+    html += "<h2>📁 ESPWiFi Files</h2>";
+    String path = "/";
+    if (request->hasParam("dir")) {
+      path = request->getParam("dir")->value();
+      if (!path.startsWith("/")) path = "/" + path;
+    }
+    File root = LittleFS.open(path, "r");
+    if (!root || !root.isDirectory()) {
+      html += "<p>Directory not found: " + path + "</p></body></html>";
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/html", html);
+      addCORS(response);
+      request->send(response);
+      return;
+    }
+    html += "<ul>";
+    // Add parent directory link if not root
+    if (path != "/") {
+      String parent = path;
+      if (parent.endsWith("/"))
+        parent = parent.substring(0, parent.length() - 1);
+      int lastSlash = parent.lastIndexOf('/');
+      if (lastSlash > 0) {
+        parent = parent.substring(0, lastSlash);
+      } else {
+        parent = "/";
+      }
+      html += "<li class='folder'>⬆️ <a href='/files?dir=" + parent +
+              "'>../</a></li>";
+    }
     File file = root.openNextFile();
     while (file) {
       String fname = String(file.name());
-      html +=
-          "<li><a href='" + fname + "' target='_blank'>" + fname + "</a></li>";
+      String displayName = fname;
+      if (fname.startsWith(path) && path != "/") {
+        displayName = fname.substring(path.length());
+        if (displayName.startsWith("/")) displayName = displayName.substring(1);
+      }
+      if (displayName == "") displayName = fname;
+      if (file.isDirectory()) {
+        // Build subdirectory path for query string
+        String subdirPath = path;
+        if (!subdirPath.endsWith("/")) subdirPath += "/";
+        subdirPath += displayName;
+        // Remove leading slash for query string
+        if (subdirPath.startsWith("/")) subdirPath = subdirPath.substring(1);
+        html += "<li class='folder'>📁 <a href='/files?dir=" + subdirPath +
+                "'>" + displayName + "/</a></li>";
+      } else {
+        // Build file path for link
+        String filePath = path;
+        if (!filePath.endsWith("/")) filePath += "/";
+        filePath += displayName;
+        // Ensure single leading slash
+        if (!filePath.startsWith("/")) filePath = "/" + filePath;
+        html += "<li class='file'>📄 <a href='" + filePath +
+                "' target='_blank'>" + displayName + "</a></li>";
+      }
       file = root.openNextFile();
     }
     html += "</ul></body></html>";

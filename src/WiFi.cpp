@@ -48,7 +48,7 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  Serial.println("\n🛜  Connecting to Network:");
+  Serial.println("\n🔗  Connecting to Network:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
 
@@ -74,7 +74,7 @@ void ESPWiFi::startClient() {
     return;
   }
   Serial.println("");
-  Serial.println("\n🔗 WiFi Connected:");
+  Serial.println("\n🛜  WiFi Connected:");
   Serial.print("\tIP Address: ");
   Serial.println(WiFi.localIP());
 }

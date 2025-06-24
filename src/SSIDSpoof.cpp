@@ -1,7 +1,7 @@
 // #ifdef ESP8266
 
-// #ifndef ESPWIFI_SSIDSPOOF_H
-// #define ESPWIFI_SSIDSPOOF_H
+// #ifndef ESPWIFI_SSIDSPOOF
+// #define ESPWIFI_SSIDSPOOF
 
 // #include "ESPWiFi.h"
 
@@ -242,6 +242,6 @@
 //   }
 // }
 
-// #endif  // ESPWIFI_SSIDSPOOF_H
+// #endif  // ESPWIFI_SSIDSPOOF
 
 // #endif  // ESP8266

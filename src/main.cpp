@@ -1,4 +1,5 @@
 #include <ESPWiFi.h>
+#include <IntervalTimer.h>
 
 // Web Server
 ESPWiFi device;

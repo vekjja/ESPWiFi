@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_WEBSOCKET_H
-#define ESPWIFI_WEBSOCKET_H
+#ifndef ESPWIFI_WEBSOCKET
+#define ESPWIFI_WEBSOCKET
 
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
@@ -43,4 +43,4 @@ void ESPWiFi::sendWebSocketMessage(const String &message) {
   Serial.println("🟢 [WS] Sent: " + message);
 }
 
-#endif  // ESPWIFI_WEBSOCKET_H
+#endif  // ESPWIFI_WEBSOCKET

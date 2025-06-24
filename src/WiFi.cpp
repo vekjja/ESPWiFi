@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_WIFI_H
-#define ESPWIFI_WIFI_H
+#ifndef ESPWIFI_WIFI
+#define ESPWIFI_WIFI
 
 #include <WiFiClient.h>
 
@@ -139,4 +139,4 @@ void ESPWiFi::startMDNS() {
   }
 }
 
-#endif  // ESPWIFI_WIFI_H
+#endif  // ESPWIFI_WIFI

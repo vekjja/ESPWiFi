@@ -1,5 +1,5 @@
-#ifndef ESPWiFi_h
-#define ESPWiFi_h
+#ifndef ESPWiFi_H
+#define ESPWiFi_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -76,22 +76,4 @@ class ESPWiFi {
   void handleCorsPreflight(AsyncWebServerRequest* request);
 };
 
-// Helper class for interval timing
-class IntervalTimer {
-  unsigned long lastRun = 0;
-  unsigned int interval;
-
- public:
-  IntervalTimer(unsigned int ms) : interval(ms) {}
-  void setInterval(unsigned int ms) { interval = ms; }
-  bool shouldRun() {
-    unsigned long now = millis();
-    if (now - lastRun >= interval) {
-      lastRun = now;
-      return true;
-    }
-    return false;
-  }
-  void reset() { lastRun = millis(); }
-};
-#endif  // ESPWiFi_h
+#endif  // ESPWiFi

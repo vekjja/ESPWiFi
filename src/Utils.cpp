@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_UTILS_H
-#define ESPWIFI_UTILS_H
+#ifndef ESPWIFI_UTILS
+#define ESPWIFI_UTILS
 
 #include "ESPWiFi.h"
 
@@ -50,4 +50,4 @@ String ESPWiFi::getContentType(String filename) {
   return "text/plain";
 }
 
-#endif  // ESPWIFI_UTILS_H
+#endif  // ESPWIFI_UTILS

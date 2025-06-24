@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_CONFIG_H
-#define ESPWIFI_CONFIG_H
+#ifndef ESPWIFI_CONFIG
+#define ESPWIFI_CONFIG
 
 #include "ESPWiFi.h"
 
@@ -60,4 +60,4 @@ void ESPWiFi::defaultConfig() {
   Serial.println("\n");
 }
 
-#endif  // ESPWIFI_CONFIG_H
+#endif  // ESPWIFI_CONFIG

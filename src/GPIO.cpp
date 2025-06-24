@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_GPIO_H
-#define ESPWIFI_GPIO_H
+#ifndef ESPWIFI_GPIO
+#define ESPWIFI_GPIO
 
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
@@ -69,4 +69,4 @@ void ESPWiFi::startGPIO() {
   Serial.println("📍 GPIO Enabled");
 }
 
-#endif  // ESPWIFI_GPIO_H
+#endif  // ESPWIFI_GPIO

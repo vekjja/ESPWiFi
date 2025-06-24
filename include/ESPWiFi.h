@@ -21,17 +21,12 @@
 
 class ESPWiFi {
  public:
+  WebServer webServer;
   JsonDocument config;
-
   String configFile = "/config.json";
 
-  WebServer webServer;
-
-  int connectTimeout = 12000;  // 9 seconds
-
+  int connectTimeout = 12000;  // 12 seconds
   void (*connectSubroutine)() = nullptr;
-
-  ESPWiFi() {}
 
   void disableLowPowerSleep() {
 #ifdef ESP8266
@@ -54,18 +49,14 @@ class ESPWiFi {
   void handleClient();
   int selectBestChannel();
 
+  // GPIO
+  void startGPIO();
+
   // Utils
   String getContentType(String filename);
   String getFileExtension(const String& filename);
   void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
                      std::function<void()> functionToRun);
-  // String makeHTTPSRequest(const String& method, const String& url,
-  //                         const String& token = "",
-  //                         const String& contentType = "",
-  //                         const String& payload = "");
-
-  // GPIO
-  void startGPIO();
 
   // SSID Spoofing
 #ifdef ESP8266
@@ -74,13 +65,6 @@ class ESPWiFi {
   bool ssidSpoofEnabled = false;
   unsigned long lastSSIDPacketTime = 0;
 #endif
-
-  // OpenAI
-  // String openAI_URL = "https://api.openai.com";
-  // String openAI_TTSEndpoint = "/v1/audio/speech";
-  // String openAI_ChatEndpoint = "/v1/chat/completions";
-  // String openAI_Chat(String text);
-  // void openAI_TTS(String text, String filePath);
 
   // #############################################################################################################
  private:

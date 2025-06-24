@@ -3,7 +3,7 @@
 
 #include "ESPWiFi.h"
 
-void ESPWiFi::connectToWifi() {
+void ESPWiFi::startClient() {
   String ssid = config["client"]["ssid"];
   String password = config["client"]["password"];
 

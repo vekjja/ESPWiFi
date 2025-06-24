@@ -57,7 +57,7 @@ class ESPWiFi {
     if (strcmp(mode.c_str(), "client") == 0 ||
         strcmp(mode.c_str(), "station") == 0 ||
         strcmp(mode.c_str(), "sta") == 0) {
-      connectToWifi();
+      startClient();
     } else if (strcmp(mode.c_str(), "ap") == 0 ||
                strcmp(mode.c_str(), "accesspoint") == 0 ||
                strcmp(mode.c_str(), "access point") == 0) {
@@ -81,9 +81,9 @@ class ESPWiFi {
   void resetConfig();
 
   // WiFi
-  void connectToWifi();
-  void handleClient();
   void startAP();
+  void startClient();
+  void handleClient();
   int selectBestChannel();
 
   // Utils

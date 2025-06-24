@@ -42,46 +42,14 @@ class ESPWiFi {
     Serial.println("🚫 🔋 Low Power Sleep Disabled");
   }
 
-  void start() {
-    Serial.begin(115200);
-    delay(500);  // allow time for USB to connect
-
-    if (!LittleFS.begin()) {
-      Serial.println("An Error has occurred while mounting LittleFS");
-    }
-
-    readConfig();
-
-    String mode = config["mode"];
-    mode.toLowerCase();
-    if (strcmp(mode.c_str(), "client") == 0 ||
-        strcmp(mode.c_str(), "station") == 0 ||
-        strcmp(mode.c_str(), "sta") == 0) {
-      startClient();
-    } else if (strcmp(mode.c_str(), "ap") == 0 ||
-               strcmp(mode.c_str(), "accesspoint") == 0 ||
-               strcmp(mode.c_str(), "access point") == 0) {
-      startAP();
-    } else {
-      Serial.println("⚠️  Invalid Mode: " + mode);
-      config["mode"] = "ap";  // Ensure mode is set to AP
-      startAP();
-    }
-
-    startWebServer();
-    startMDNS();
-    Serial.printf("\n✅ %s  WiFi Started Successfully\n",
-                  config["mode"] == "client" ? "🛜" : "📡");
-  }
-
   // Config
   void saveConfig();
   void readConfig();
   void defaultConfig();
-  void resetConfig();
 
   // WiFi
   void startAP();
+  void startWiFi();
   void startClient();
   void handleClient();
   int selectBestChannel();
@@ -89,24 +57,23 @@ class ESPWiFi {
   // Utils
   String getContentType(String filename);
   String getFileExtension(const String& filename);
+  void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
+                     std::function<void()> functionToRun);
   // String makeHTTPSRequest(const String& method, const String& url,
   //                         const String& token = "",
   //                         const String& contentType = "",
   //                         const String& payload = "");
-  void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
-                     std::function<void()> functionToRun);
 
   // GPIO
-  void initGPIO();
-
-  // DeAuth
-  void enableDeAuth();
+  void startGPIO();
 
   // SSID Spoofing
+#ifdef ESP8266
   void initSSIDSpoof();
   void handleSSIDSpoof();
   bool ssidSpoofEnabled = false;
   unsigned long lastSSIDPacketTime = 0;
+#endif
 
   // OpenAI
   // String openAI_URL = "https://api.openai.com";
@@ -119,7 +86,7 @@ class ESPWiFi {
  private:
   void startMDNS();
   void startWebServer();
-  void handleCorsPreflight();
   void listFilesHandler();
+  void handleCorsPreflight();
 };
 #endif  // ESPWiFi_h

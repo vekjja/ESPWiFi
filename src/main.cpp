@@ -1,11 +1,11 @@
 #include <ESPWiFi.h>
 
 // Web Server
-ESPWiFi wifi;
+ESPWiFi device;
 
 void setup() {
-  wifi.start();
-  wifi.initGPIO();
+  device.startWiFi();
+  device.startGPIO();
 }
 
-void loop() { wifi.handleClient(); }
+void loop() { device.handleClient(); }

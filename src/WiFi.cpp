@@ -3,13 +3,42 @@
 
 #include "ESPWiFi.h"
 
+void ESPWiFi::startWiFi() {
+  Serial.begin(115200);
+  delay(500);  // allow time for USB to connect
+
+  if (!LittleFS.begin()) {
+    Serial.println("An Error has occurred while mounting LittleFS");
+  }
+
+  readConfig();
+
+  String mode = config["mode"];
+  mode.toLowerCase();
+  if (strcmp(mode.c_str(), "client") == 0) {
+    startClient();
+  } else if (strcmp(mode.c_str(), "accessPoint") == 0) {
+    startAP();
+  } else {
+    Serial.println("⚠️  Invalid Mode: " + mode);
+    config["mode"] = "accessPoint";  // Ensure mode is set to accesspoint
+    startAP();
+  }
+
+  startWebServer();
+  startMDNS();
+  Serial.printf("\n✅ %s  WiFi %s Started\n",
+                config["mode"] == "client" ? "🛜" : "📡",
+                config["mode"] == "client" ? "Client" : "Access Point");
+}
+
 void ESPWiFi::startClient() {
   String ssid = config["client"]["ssid"];
   String password = config["client"]["password"];
 
   if (ssid.isEmpty()) {
     Serial.println("⚠️  Warning: SSID or Password: Cannot be empty");
-    config["mode"] = "ap";
+    config["mode"] = "accessPoint";
     startAP();
     return;
   }
@@ -34,7 +63,7 @@ void ESPWiFi::startClient() {
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("\n❌ Failed to connect to WiFi");
-    config["mode"] = "ap";
+    config["mode"] = "accessPoint";
     startAP();
     return;
   }

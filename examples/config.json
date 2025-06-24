@@ -5,19 +5,13 @@
         "ssid": "YOUR_SSID",
         "password": "YOUR_PASSWORD"
     },
-    "ap": {
+    "accessPoint": {
         "ssid": "ESPWiFi-AP",
         "password": "abcd1234"
     },
-    "openAI": {
-        "apiKey": "",
-        "voice": "onyx",
-        "system_message": "You are a helpful assistant. On an ESP Micro Controller."
-    },
     "pins": {
-        "8": {
+        "4": {
             "name": "Builtin LED",
-            "num": 8,
             "mode": "out",
             "hz": 50,
             "duty": 1860,

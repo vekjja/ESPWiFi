@@ -6,7 +6,7 @@
 void ESPWiFi::saveConfig() {
   File file = LittleFS.open(configFile, "w");
   if (!file) {
-    Serial.println("⚠️  Failed to open config file for writing");
+    Serial.println("❌  Failed to open config file for writing");
     return;
   }
   serializeJson(config, file);
@@ -41,7 +41,7 @@ void ESPWiFi::readConfig() {
 
 void ESPWiFi::defaultConfig() {
   Serial.println("🛠️  Using Default Config:");
-  config["mode"] = "ap";
+  config["mode"] = "accessPoint";
 #ifdef ESP8266
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.hostname());
 #else

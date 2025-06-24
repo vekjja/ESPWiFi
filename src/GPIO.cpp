@@ -5,7 +5,7 @@
 
 #include "ESPWiFi.h"
 
-void ESPWiFi::initGPIO() {
+void ESPWiFi::startGPIO() {
   webServer.on("/gpio", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
   webServer.on("/gpio", HTTP_POST, [this]() {
     String body = webServer.arg("plain");

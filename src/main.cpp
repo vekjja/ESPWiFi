@@ -16,5 +16,8 @@ IntervalTimer s10Timer(10000);
 void loop() {
   if (s10Timer.shouldRun()) {
     device.sendWebSocketMessage("Heart Beat: ❤️");
+#ifdef ESP8266
+    device.mDSNUpdate();
+#endif
   }
 }

@@ -5,11 +5,16 @@
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
-#include <HTTPClient.h>
 #include <LittleFS.h>
-#include <WiFi.h>
 #include <WiFiClient.h>
+
+#ifdef ESP8266
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#else
+#include <ESPmDNS.h>
+#include <WiFi.h>
+#endif
 
 class ESPWiFi {
  public:

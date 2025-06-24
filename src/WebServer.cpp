@@ -1,30 +1,38 @@
-#ifndef ESPWIFI_WEBSERVER_H
-#define ESPWIFI_WEBSERVER_H
+#include <AsyncJson.h>
 
 #include "ESPWiFi.h"
 
-// Generic CORS handler
-void ESPWiFi::handleCorsPreflight() {
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
-  webServer.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  webServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
-  webServer.send(204);  // No content
-};
+// Helper: Add CORS headers to a response
+void ESPWiFi::addCORS(AsyncWebServerResponse *response) {
+  response->addHeader("Access-Control-Allow-Origin", "*");
+  response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+void ESPWiFi::handleCorsPreflight(AsyncWebServerRequest *request) {
+  AsyncWebServerResponse *response = request->beginResponse(204);
+  addCORS(response);
+  request->send(response);
+}
 
 void ESPWiFi::startWebServer() {
   // Serve the root file
-  webServer.on("/", HTTP_GET, [this]() {
-    File file = LittleFS.open("/index.html", "r");
-    if (file) {
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.streamFile(file, "text/html");
-      file.close();
+  webServer.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/index.html")) {
+      AsyncWebServerResponse *response =
+          request->beginResponse(LittleFS, "/index.html", "text/html");
+      addCORS(response);
+      request->send(response);
     } else {
-      webServer.send(404, "text/plain", "File Not Found");
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/plain", "File Not Found");
+      addCORS(response);
+      request->send(response);
     }
   });
 
-  webServer.on("/info", HTTP_GET, [this]() {
+  // Device info endpoint
+  webServer.on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String info =
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
         "Info</title>";
@@ -43,7 +51,6 @@ void ESPWiFi::startWebServer() {
         "webkit-scrollbar-thumb{background:#333;border-radius:8px;}</style></"
         "head><body>";
     info += "<h2>📡 ESPWiFi Device Info</h2>";
-    // Uptime
     unsigned long seconds = millis() / 1000;
     unsigned long minutes = seconds / 60;
     unsigned long hours = minutes / 60;
@@ -53,9 +60,8 @@ void ESPWiFi::startWebServer() {
     hours = hours % 24;
     String uptime = String(days) + "d " + String(hours) + "h " +
                     String(minutes) + "m " + String(seconds) + "s";
-    // Network Info
-    info += "<h3>🌐 Network</h3><table>";
-    info += "<tr><th>Property</th><th>Value</th></tr>";
+    info +=
+        "<h3>🌐 Network</h3><table><tr><th>Property</th><th>Value</th></tr>";
     info += "<tr><td>IP Address</td><td>" + WiFi.localIP().toString() +
             "</td></tr>";
     info += "<tr><td>MAC Address</td><td>" + WiFi.macAddress() + "</td></tr>";
@@ -69,11 +75,8 @@ void ESPWiFi::startWebServer() {
 #endif
     info += "<tr><td>mDNS Name</td><td>" + config["mdns"].as<String>() +
             ".local</td></tr>";
-    info += "<tr><td>Uptime</td><td>" + uptime + "</td></tr>";
-    info += "</table>";
-    // Chip Info
-    info += "<h3>🔩 Chip</h3><table>";
-    info += "<tr><th>Property</th><th>Value</th></tr>";
+    info += "<tr><td>Uptime</td><td>" + uptime + "</td></tr></table>";
+    info += "<h3>🔩 Chip</h3><table><tr><th>Property</th><th>Value</th></tr>";
 #if defined(ESP8266)
     info += "<tr><td>Chip ID</td><td>" + String(ESP.getChipId()) + "</td></tr>";
     info += "<tr><td>Boot Version</td><td>" + String(ESP.getBootVersion()) +
@@ -83,10 +86,8 @@ void ESPWiFi::startWebServer() {
     info += "<tr><td>Flash Chip ID</td><td>" +
             String(ESP.getFlashChipId(), HEX) + "</td></tr>";
 #elif defined(ESP32)
-    info +=
-        "<tr><td>Model</td><td>" + String(ESP.getChipModel()) + "</td></tr>";
-    info += "<tr><td>Revision</td><td>" + String(ESP.getChipRevision()) +
-            "</td></tr>";
+    info += "<tr><td>Model</td><td>" + String(ESP.getChipModel()) + "</td></tr>";
+    info += "<tr><td>Revision</td><td>" + String(ESP.getChipRevision()) + "</td></tr>";
 #endif
     info += "<tr><td>CPU Frequency</td><td>" + String(ESP.getCpuFreqMHz()) +
             " MHz</td></tr>";
@@ -96,20 +97,17 @@ void ESPWiFi::startWebServer() {
 #elif defined(ESP32)
     info += "<tr><td>SDK Version</td><td>" + String(ESP.getSdkVersion()) + "</td></tr>";
 #endif
-    info += "</table>";
-    // Memory Info
-    info += "<h3>💾 Memory</h3><table>";
-    info += "<tr><th>Type</th><th>Value</th></tr>";
+    info +=
+        "</table><h3>💾 Memory</h3><table><tr><th>Type</th><th>Value</th></tr>";
     info += "<tr><td>Free Heap</td><td>" +
             String(ESP.getFreeHeap() / 1048576.0, 2) + " MB</td></tr>";
 #if defined(ESP32)
     info += "<tr><td>Free PSRAM</td><td>" +
             String(ESP.getFreePsram() / 1048576.0, 2) + " MB</td></tr>";
 #endif
-    info += "</table>";
-    // Storage Info
-    info += "<h3>🗄️ Storage</h3><table>";
-    info += "<tr><th>Type</th><th>Value</th></tr>";
+    info +=
+        "</table><h3>🗄️ "
+        "Storage</h3><table><tr><th>Type</th><th>Value</th></tr>";
     info += "<tr><td>Sketch Size</td><td>" +
             String(ESP.getSketchSize() / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>Free Sketch Space</td><td>" +
@@ -139,108 +137,114 @@ void ESPWiFi::startWebServer() {
     info += "<tr><td>FS Total</td><td>" + String(totalBytes / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>FS Used</td><td>" + String(usedBytes / 1048576.0, 2) + " MB</td></tr>";
 #endif
-    info += "</table>";
-    // Sketch Info
-    info += "<h3>📝 Sketch</h3><table>";
-    info += "<tr><th>Property</th><th>Value</th></tr>";
-    info += "<tr><td>MD5</td><td>" + ESP.getSketchMD5() + "</td></tr>";
-    info += "</table>";
-    // Config Info
+    info +=
+        "</table><h3>📝 "
+        "Sketch</h3><table><tr><th>Property</th><th>Value</th></tr>";
+    info += "<tr><td>MD5</td><td>" + ESP.getSketchMD5() + "</td></tr></table>";
     info += "<h3>⚙️ Config</h3>";
     String configStr;
     serializeJsonPretty(config, configStr);
-    info += "<pre>" + configStr + "</pre>";
-    info += "</body></html>";
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    webServer.send(200, "text/html", info);
+    info += "<pre>" + configStr + "</pre></body></html>";
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "text/html", info);
+    addCORS(response);
+    request->send(response);
   });
 
-  // Handle generic file requests
-  webServer.onNotFound([this]() {
-    // Handle preflight (OPTIONS) requests
-    if (webServer.method() == HTTP_OPTIONS) {
-      handleCorsPreflight();
-      return;
-    }
-
-    // Serve the requested file
-    String path = webServer.uri();
+  // Generic file requests
+  webServer.onNotFound([this](AsyncWebServerRequest *request) {
+    String path = request->url();
     if (LittleFS.exists(path)) {
-      File file = LittleFS.open(path, "r");
-      String contentType = getContentType(path);  // Determine the MIME type
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.streamFile(file, contentType);
-      file.close();
+      String contentType = getContentType(path);
+      AsyncWebServerResponse *response =
+          request->beginResponse(LittleFS, path, contentType);
+      addCORS(response);
+      request->send(response);
     } else {
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.send(404, "text/plain", "404: Not Found");
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/plain", "404: Not Found");
+      addCORS(response);
+      request->send(response);
     }
   });
 
-  // Handle /config endpoint
-  webServer.on("/config", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
-  webServer.on("/config", HTTP_GET, [this]() {
-    String response;
-    serializeJson(config, response);
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    webServer.send(200, "application/json", response);
+  // /config endpoint
+  webServer.on("/config", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
+    handleCorsPreflight(request);
   });
-  webServer.on("/config", HTTP_POST, [this]() {
-    String body = webServer.arg("plain");
-    DeserializationError error = deserializeJson(config, body);
-    if (error) {
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.send(400, "application/json",
-                     "{\"error\":\"" + String(error.c_str()) + "\"}");
-    } else {
-      saveConfig();
-      String response;
-      serializeJson(config, response);
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.send(200, "application/json", response);
-    }
+  webServer.on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String responseStr;
+    serializeJson(config, responseStr);
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", responseStr);
+    addCORS(response);
+    request->send(response);
   });
+  webServer.addHandler(new AsyncCallbackJsonWebHandler(
+      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (json.isNull()) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"EmptyInput\"}");
+          addCORS(response);
+          request->send(response);
+          Serial.println("❌ /config HTTP_POST Error parsing JSON: EmptyInput");
+          return;
+        }
+        // Merge posted JSON into config
+        for (JsonPair kv : json.as<JsonObject>()) {
+          config[kv.key()] = kv.value();
+        }
+        saveConfig();
+        String responseStr;
+        serializeJson(config, responseStr);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", responseStr);
+        addCORS(response);
+        request->send(response);
+      }));
 
-  // Handle /restart endpoint
-  webServer.on("/restart", HTTP_OPTIONS, [this]() { handleCorsPreflight(); });
-  webServer.on("/restart", HTTP_GET, [this]() {
-    webServer.sendHeader("Access-Control-Allow-Origin", "*");
-    webServer.send(200, "application/json", "{\"success\":true}");
+  // /restart endpoint
+  webServer.on(
+      "/restart", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+  webServer.on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", "{\"success\":true}");
+    addCORS(response);
+    request->send(response);
     Serial.println("🔄 Restarting...");
     delay(1000);
     ESP.restart();
   });
 
-  // Handle file listing
-  webServer.on("/files", HTTP_GET, [this]() { listFilesHandler(); });
-
-  // Start the server
-  webServer.begin();
-};
-
-void ESPWiFi::listFilesHandler() {
-  String path = "/";
-  File root = LittleFS.open(path, "r");
-  String html =
-      "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
-      "Files</title>";
-  html +=
-      "<style>body{font-family:sans-serif;background:#f4f4f4;margin:0;padding:"
-      "2em;}h2{color:#333;}ul{background:#fff;border-radius:8px;box-shadow:0 "
-      "2px 8px #0001;max-width:500px;margin:auto;padding:1em;}li{margin:0.5em "
-      "0;}a{color:#1976d2;text-decoration:none;font-weight:bold;}a:hover{text-"
-      "decoration:underline;}</style></head><body>";
-  html += "<h2>ESPWiFi Files</h2><ul>";
-  File file = root.openNextFile();
-  while (file) {
-    String fname = String(file.name());
+  // /files endpoint
+  webServer.on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String html =
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
+        "Files</title>";
     html +=
-        "<li><a href='" + fname + "' target='_blank'>" + fname + "</a></li>";
-    file = root.openNextFile();
-  }
-  html += "</ul></body></html>";
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
-  webServer.send(200, "text/html", html);
-};
+        "<style>body{font-family:sans-serif;background:#f4f4f4;margin:0;"
+        "padding:2em;}h2{color:#333;}ul{background:#fff;border-radius:8px;box-"
+        "shadow:0 2px 8px "
+        "#0001;max-width:500px;margin:auto;padding:1em;}li{margin:0.5em "
+        "0;}a{color:#1976d2;text-decoration:none;font-weight:bold;}a:hover{"
+        "text-decoration:underline;}</style></head><body>";
+    html += "<h2>ESPWiFi Files</h2><ul>";
+    File root = LittleFS.open("/", "r");
+    File file = root.openNextFile();
+    while (file) {
+      String fname = String(file.name());
+      html +=
+          "<li><a href='" + fname + "' target='_blank'>" + fname + "</a></li>";
+      file = root.openNextFile();
+    }
+    html += "</ul></body></html>";
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "text/html", html);
+    addCORS(response);
+    request->send(response);
+  });
 
-#endif  // ESPWIFI_WEBSERVER_H
+  webServer.begin();
+  Serial.println("🌐 HTTP Web Server Running");
+}

@@ -1,7 +1,19 @@
 #ifndef ESPWIFI_WIFI_H
 #define ESPWIFI_WIFI_H
 
+#include <WiFiClient.h>
+
 #include "ESPWiFi.h"
+
+#ifdef ESP8266
+#include <ESP8266HTTPClient.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#else
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <WiFi.h>
+#endif
 
 void ESPWiFi::startWiFi() {
   Serial.begin(115200);
@@ -17,19 +29,13 @@ void ESPWiFi::startWiFi() {
   mode.toLowerCase();
   if (strcmp(mode.c_str(), "client") == 0) {
     startClient();
-  } else if (strcmp(mode.c_str(), "accessPoint") == 0) {
+  } else if (strcmp(mode.c_str(), "accesspoint") == 0) {
     startAP();
   } else {
     Serial.println("⚠️  Invalid Mode: " + mode);
     config["mode"] = "accessPoint";  // Ensure mode is set to accesspoint
     startAP();
   }
-
-  startWebServer();
-  startMDNS();
-  Serial.printf("\n✅ %s  WiFi %s Started\n",
-                config["mode"] == "client" ? "🛜" : "📡",
-                config["mode"] == "client" ? "Client" : "Access Point");
 }
 
 void ESPWiFi::startClient() {
@@ -112,8 +118,7 @@ void ESPWiFi::startAP() {
   Serial.println(WiFi.softAPIP());
 }
 
-void ESPWiFi::handleClient() {
-  webServer.handleClient();
+void ESPWiFi::mDSNUpdate() {
 #ifdef ESP8266
   MDNS.update();
   // if (ssidSpoofEnabled) {
@@ -128,6 +133,8 @@ void ESPWiFi::startMDNS() {
     Serial.println("❌ Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
+    Serial.println("📛 mDNS Started:");
+    domain.toLowerCase();
     Serial.println("\tDomain Name: " + domain + ".local");
   }
 }

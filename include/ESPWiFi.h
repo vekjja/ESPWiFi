@@ -3,37 +3,26 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <LittleFS.h>
-#include <WiFiClient.h>
-
-#ifdef ESP8266
-#include <ESP8266HTTPClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#define WebServer ESP8266WebServer
-#else
+#include <AsyncWebSocket.h>
+#include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
-#include <WebServer.h>
+#include <LittleFS.h>
 #include <WiFi.h>
-#endif
+#include <WiFiClient.h>
 
 class ESPWiFi {
  public:
-  WebServer webServer;
   JsonDocument config;
+  AsyncWebSocket ws{"/ws"};
+  AsyncWebServer webServer{80};
   String configFile = "/config.json";
 
   int connectTimeout = 12000;  // 12 seconds
   void (*connectSubroutine)() = nullptr;
 
   void disableLowPowerSleep() {
-#ifdef ESP8266
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-#else
     WiFi.setSleep(false);
-#endif
     Serial.println("🚫 🔋 Low Power Sleep Disabled");
   }
 
@@ -46,8 +35,19 @@ class ESPWiFi {
   void startAP();
   void startWiFi();
   void startClient();
-  void handleClient();
   int selectBestChannel();
+
+  // mDNS
+  void startMDNS();
+  void mDSNUpdate();
+
+  // Web Server
+  void startWebServer();
+  void addCORS(AsyncWebServerResponse* response);
+
+  // WebSocket
+  void startWebSocket();
+  void sendWebSocketMessage(const String& message);
 
   // GPIO
   void startGPIO();
@@ -68,9 +68,6 @@ class ESPWiFi {
 
   // #############################################################################################################
  private:
-  void startMDNS();
-  void startWebServer();
-  void listFilesHandler();
-  void handleCorsPreflight();
+  void handleCorsPreflight(AsyncWebServerRequest* request);
 };
 #endif  // ESPWiFi_h

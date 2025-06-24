@@ -63,7 +63,7 @@ void ESPWiFi::startGPIO() {
         response = request->beginResponse(200, "application/json", okMsg);
         addCORS(response);
         request->send(response);
-        Serial.println("GPIO " + String(pinNum) + " " + mode + " " + state +
+        Serial.println("📍 GPIO " + String(pinNum) + " " + mode + " " + state +
                        " " + String(duty));
       }));
   Serial.println("📍 GPIO Enabled");

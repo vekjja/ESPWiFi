@@ -15,9 +15,8 @@ void ESPWiFi::saveConfig() {
     Serial.println("❌  Failed to write config JSON to file");
     return;
   }
-  Serial.println("\n💾 Config Saved: " + configFile);
+  Serial.println("💾 Config Saved: " + configFile);
   serializeJsonPretty(config, Serial);
-  Serial.println("\n");
 }
 
 void ESPWiFi::readConfig() {

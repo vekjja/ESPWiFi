@@ -29,7 +29,7 @@ void ESPWiFi::connectToWifi() {
       connectSubroutine();
     }
     Serial.print(".");
-    delay(30);
+    delay(30);  // Wait for connection
   }
 
   if (WiFi.status() != WL_CONNECTED) {
@@ -87,11 +87,10 @@ void ESPWiFi::handleClient() {
   webServer.handleClient();
 #ifdef ESP8266
   MDNS.update();
+  // if (ssidSpoofEnabled) {
+  //   handleSSIDSpoof();
+  // }
 #endif
-
-  if (ssidSpoofEnabled) {
-    handleSSIDSpoof();
-  }
 }
 
 void ESPWiFi::startMDNS() {

@@ -27,7 +27,7 @@ class ESPWiFi {
 
   WebServer webServer;
 
-  int connectTimeout = 9000;  // 9 seconds
+  int connectTimeout = 12000;  // 9 seconds
 
   void (*connectSubroutine)() = nullptr;
 
@@ -70,7 +70,8 @@ class ESPWiFi {
 
     startWebServer();
     startMDNS();
-    Serial.println("\n✅ ESPWiFi Started Successfully");
+    Serial.printf("\n✅ %s  WiFi Started Successfully\n",
+                  config["mode"] == "client" ? "🛜" : "📡");
   }
 
   // Config

@@ -10,7 +10,7 @@
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    Serial.printf("🔗 [WS] Client #%u connected from %s\n", client->id(),
+    Serial.printf("🔗 [WS] Client #%u Connected: %s\n", client->id(),
                   client->remoteIP().toString().c_str());
   } else if (type == WS_EVT_DISCONNECT) {
     Serial.printf("⛓️‍💥  [WS] Client #%u disconnected\n",

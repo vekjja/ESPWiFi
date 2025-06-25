@@ -232,7 +232,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!camSoc || !camSoc->socket || camSoc->socket->count() == 0)
+  if (!camSoc || camSoc->activeClientCount() == 0)
     return;  // Ensure WebSocket and clients exist
 
   static unsigned long lastFrame = 0;

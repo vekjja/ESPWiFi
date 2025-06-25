@@ -48,9 +48,10 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  Serial.println("\n🔗  Connecting to Network:");
+  Serial.println("\n🔗 Connecting to Network:");
   Serial.println("\tSSID: " + ssid);
   Serial.println("\tPassword: " + password);
+  Serial.print("\t");
 
   WiFi.disconnect(true);       // Ensure clean start
   delay(100);                  // Allow time for disconnect

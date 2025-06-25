@@ -41,12 +41,9 @@ class WebSocket {
     socket->onEvent(onWsEvent);
     espWifi->initWebServer();
     espWifi->webServer->addHandler(socket);
-    Serial.println("⛓️  WebSocket initialized:");
-    Serial.printf("\tURL: ws://%s%s\n", WiFi.localIP().toString().c_str(),
-                  path.c_str());
-    Serial.printf("\tURL: ws://%s.local%s\n",
-                  espWifi->config["mdns"].as<String>().c_str(), path.c_str());
+    Serial.printf("⛓️  WebSocket Started: %s\n", path.c_str());
   };
+
   ~WebSocket() {
     if (socket) {
       delete socket;

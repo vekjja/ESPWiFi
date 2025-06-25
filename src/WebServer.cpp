@@ -307,7 +307,7 @@ void ESPWiFi::startWebServer() {
   });
 
   webServer->begin();
-  Serial.println("🕸️  HTTP Web Server Running");
+  Serial.println("🕸️  HTTP Web Server Running:");
   Serial.print("\tURL: http://" + WiFi.localIP().toString() + "\n");
   Serial.print("\tURL: http://" + config["mdns"].as<String>() + ".local\n");
 }

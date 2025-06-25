@@ -53,6 +53,10 @@ class ESPWiFi {
   // GPIO
   void startGPIO();
 
+  // Camera
+  void startCamera();
+  void takeSnapshot(String filePath = "/snapshot.jpg");
+
   // Utils
   String getContentType(String filename);
   String getFileExtension(const String& filename);

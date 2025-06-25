@@ -121,10 +121,12 @@ void ESPWiFi::startAP() {
 
 void ESPWiFi::mDSNUpdate() {
 #ifdef ESP8266
-  MDNS.update();
-  // if (ssidSpoofEnabled) {
-  //   handleSSIDSpoof();
-  // }
+  if (s10Timer.shouldRun()) {
+    MDNS.update();
+    // if (ssidSpoofEnabled) {
+    //   handleSSIDSpoof();
+    // }
+  }
 #endif
 }
 

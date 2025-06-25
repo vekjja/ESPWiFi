@@ -152,8 +152,49 @@ void ESPWiFi::startCamera() {
         request->send(response);
       });
 
+  webServer->on(
+      "/camera/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String deviceName = config["mdns"];
+        String html =
+            "<!DOCTYPE html><html><head><title>" + deviceName +
+            " WebSocket Stream</title>"
+            "<style>body{background:#181a1b;color:#e8eaed;font-family:sans-"
+            "serif;text-align:center;}"
+            "img{max-width:100vw;max-height:90vh;border-radius:8px;box-shadow:"
+            "0 2px 8px #0008;margin-top:2em;}"
+            "#status{margin:1em;font-size:1.1em;}"
+            "</style>"
+            "</head><body>"
+            "<h2>&#128247; " +
+            deviceName +
+            " WebSocket Live Stream</h2>"
+            "<div id='status'>Connecting...</div>"
+            "<img id='stream' alt='Camera Stream'/>"
+            "<script>\n"
+            "const img = document.getElementById('stream');\n"
+            "const status = document.getElementById('status');\n"
+            "let ws = new WebSocket((location.protocol === 'https:' ? 'wss://' "
+            ": 'ws://') + location.host + '" +
+            camSoc->socket->url() +
+            "');\n"
+            "ws.binaryType = 'arraybuffer';\n"
+            "ws.onopen = () => { status.textContent = 'Connected!'; };\n"
+            "ws.onclose = () => { status.textContent = 'Disconnected'; };\n"
+            "ws.onerror = (e) => { status.textContent = 'WebSocket Error'; };\n"
+            "ws.onmessage = (event) => {\n"
+            "  if (event.data instanceof ArrayBuffer) {\n"
+            "    let blob = new Blob([event.data], {type: 'image/jpeg'});\n"
+            "    img.src = URL.createObjectURL(blob);\n"
+            "    setTimeout(() => URL.revokeObjectURL(img.src), 1000);\n"
+            "  }\n"
+            "};\n"
+            "</script>"
+            "</body></html>";
+        request->send(200, "text/html", html);
+      });
+
   Serial.print("📷 Camera Started\n\t");
-  camSoc = new WebSocket("/camera", this);
+  camSoc = new WebSocket("/ws/camera", this);
   if (!camSoc) {
     Serial.println("❌ Failed to create Camera WebSocket");
     return;
@@ -187,6 +228,30 @@ void ESPWiFi::takeSnapshot(String filePath) {
     file.close();
   }
 
+  esp_camera_fb_return(fb);
+}
+
+void ESPWiFi::streamCamera(int frameRate) {
+  if (!camSoc || !camSoc->socket || camSoc->socket->count() == 0)
+    return;  // Ensure WebSocket and clients exist
+
+  static unsigned long lastFrame = 0;
+  unsigned long now = millis();
+  unsigned long interval = frameRate > 0
+                               ? (1000 / frameRate)
+                               : 200;  // Default to 5 fps if frameRate is 0
+  if (now - lastFrame < interval) return;
+  lastFrame = now;
+
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb || fb->format != PIXFORMAT_JPEG) {
+    Serial.println(fb ? "❌ Unsupported Pixel Format"
+                      : "❌ Camera Capture Failed");
+    if (fb) esp_camera_fb_return(fb);
+    return;
+  }
+
+  camSoc->binaryAll((const char *)fb->buf, fb->len);
   esp_camera_fb_return(fb);
 }
 

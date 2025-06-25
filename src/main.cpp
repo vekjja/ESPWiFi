@@ -1,7 +1,7 @@
 #include <ESPWiFi.h>
-#include <IntervalTimer.h>
 
-// Web Server
+// ESP WiFi Capable Device:
+//     ESP8266 or ESP32 device with WiFi
 ESPWiFi device;
 
 void setup() {
@@ -15,9 +15,8 @@ void setup() {
 IntervalTimer s10Timer(10000);
 
 void loop() {
-  if (s10Timer.shouldRun()) {
+  device.streamCamera();
 #ifdef ESP8266
-    device.mDSNUpdate();
+  device.mDSNUpdate();
 #endif
-  }
 }

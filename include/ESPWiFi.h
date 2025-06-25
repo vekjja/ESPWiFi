@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
+#include <IntervalTimer.h>
 #include <LittleFS.h>
 #include <WiFiClient.h>
 
@@ -19,8 +20,9 @@
 class ESPWiFi {
  public:
   JsonDocument config;
-  AsyncWebServer* webServer = nullptr;
   String configFile = "/config.json";
+  AsyncWebServer* webServer = nullptr;
+  IntervalTimer s10Timer{10000};  // 10 seconds
 
   int connectTimeout = 12000;  // 12 seconds
   void (*connectSubroutine)() = nullptr;
@@ -55,6 +57,7 @@ class ESPWiFi {
 
   // Camera
   void startCamera();
+  void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshot.jpg");
 
   // Utils

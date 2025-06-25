@@ -56,6 +56,12 @@ class WebSocket {
       socket->textAll(message);
     }
   }
+
+  void binaryAll(const char *data, size_t len) {
+    if (socket) {
+      socket->binaryAll(data, len);
+    }
+  }
 };
 
 #endif  // ESPWIFI_WEBSOCKET

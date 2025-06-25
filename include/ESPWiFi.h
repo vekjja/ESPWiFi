@@ -19,8 +19,7 @@
 class ESPWiFi {
  public:
   JsonDocument config;
-  AsyncWebSocket ws{"/ws"};
-  AsyncWebServer webServer{80};
+  AsyncWebServer* webServer = nullptr;
   String configFile = "/config.json";
 
   int connectTimeout = 12000;  // 12 seconds
@@ -47,12 +46,9 @@ class ESPWiFi {
   void mDSNUpdate();
 
   // Web Server
+  void initWebServer();
   void startWebServer();
   void addCORS(AsyncWebServerResponse* response);
-
-  // WebSocket
-  void startWebSocket();
-  void sendWebSocketMessage(const String& message);
 
   // GPIO
   void startGPIO();

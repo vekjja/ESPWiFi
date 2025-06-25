@@ -1,0 +1,64 @@
+#ifndef ESPWIFI_WEBSOCKET
+#define ESPWIFI_WEBSOCKET
+
+#include <AsyncWebSocket.h>
+#include <ESPAsyncWebServer.h>
+
+#include "ESPWiFi.h"
+
+// WebSocket event handler
+void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
+               AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  const char *url = server->url();
+  if (type == WS_EVT_CONNECT) {
+    Serial.printf("🔗 [%s] Client #%u: %s\n", url, client->id(),
+                  client->remoteIP().toString().c_str());
+  } else if (type == WS_EVT_DISCONNECT) {
+    Serial.printf("⛓️‍💥  [%s] Client #%u Disconnected\n", url,
+                  client->id());
+  } else if (type == WS_EVT_DATA) {
+    AwsFrameInfo *info = (AwsFrameInfo *)arg;
+    if (info->final && info->index == 0 && info->len == len &&
+        info->opcode == WS_TEXT) {
+      String msg = String((char *)data).substring(0, len);
+      Serial.printf("🔵 [%s] Client #%u: %s\n", url, client->id(), msg.c_str());
+    }
+  } else if (type == WS_EVT_ERROR) {
+    Serial.printf("❗ [%s] Error: %s\n", url, (char *)arg);
+  }
+}
+
+class WebSocket {
+ private:
+ public:
+  AsyncWebSocket *socket;
+
+  WebSocket(String path, ESPWiFi *espWifi,
+            void (*onWsEvent)(AsyncWebSocket *, AsyncWebSocketClient *,
+                              AwsEventType, void *, uint8_t *,
+                              size_t) = onWsEvent) {
+    socket = new AsyncWebSocket(path.c_str());
+    socket->onEvent(onWsEvent);
+    espWifi->initWebServer();
+    espWifi->webServer->addHandler(socket);
+    Serial.println("⛓️  WebSocket initialized:");
+    Serial.printf("\tURL: ws://%s%s\n", WiFi.localIP().toString().c_str(),
+                  path.c_str());
+    Serial.printf("\tURL: ws://%s.local%s\n",
+                  espWifi->config["mdns"].as<String>().c_str(), path.c_str());
+  };
+  ~WebSocket() {
+    if (socket) {
+      delete socket;
+      socket = nullptr;
+    }
+  };
+
+  void textAll(const String &message) {
+    if (socket) {
+      socket->textAll(message);
+    }
+  }
+};
+
+#endif  // ESPWIFI_WEBSOCKET

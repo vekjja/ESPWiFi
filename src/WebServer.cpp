@@ -15,9 +15,16 @@ void ESPWiFi::handleCorsPreflight(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
+void ESPWiFi::initWebServer() {
+  if (!webServer) {
+    webServer = new AsyncWebServer(80);
+  }
+}
+
 void ESPWiFi::startWebServer() {
+  initWebServer();
   // Serve the root file
-  webServer.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (LittleFS.exists("/index.html")) {
       AsyncWebServerResponse *response =
           request->beginResponse(LittleFS, "/index.html", "text/html");
@@ -32,7 +39,7 @@ void ESPWiFi::startWebServer() {
   });
 
   // Device info endpoint
-  webServer.on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String info =
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
         "Info</title>";
@@ -152,7 +159,7 @@ void ESPWiFi::startWebServer() {
   });
 
   // Generic file requests
-  webServer.onNotFound([this](AsyncWebServerRequest *request) {
+  webServer->onNotFound([this](AsyncWebServerRequest *request) {
     String path = request->url();
     if (LittleFS.exists(path)) {
       String contentType = getContentType(path);
@@ -169,10 +176,10 @@ void ESPWiFi::startWebServer() {
   });
 
   // /config endpoint
-  webServer.on("/config", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
-    handleCorsPreflight(request);
-  });
-  webServer.on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on(
+      "/config", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String responseStr;
     serializeJson(config, responseStr);
     AsyncWebServerResponse *response =
@@ -180,7 +187,7 @@ void ESPWiFi::startWebServer() {
     addCORS(response);
     request->send(response);
   });
-  webServer.addHandler(new AsyncCallbackJsonWebHandler(
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
       "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
         if (json.isNull()) {
           AsyncWebServerResponse *response = request->beginResponse(
@@ -204,10 +211,10 @@ void ESPWiFi::startWebServer() {
       }));
 
   // /restart endpoint
-  webServer.on(
+  webServer->on(
       "/restart", HTTP_OPTIONS,
       [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-  webServer.on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response =
         request->beginResponse(200, "application/json", "{\"success\":true}");
     addCORS(response);
@@ -218,7 +225,7 @@ void ESPWiFi::startWebServer() {
   });
 
   // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
-  webServer.on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String html =
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "
         "Files</title>";
@@ -299,8 +306,8 @@ void ESPWiFi::startWebServer() {
     request->send(response);
   });
 
-  webServer.begin();
-  Serial.println("🌐 HTTP Web Server Running");
+  webServer->begin();
+  Serial.println("🕸️  HTTP Web Server Running");
   Serial.print("\tURL: http://" + WiFi.localIP().toString() + "\n");
   Serial.print("\tURL: http://" + config["mdns"].as<String>() + ".local\n");
 }

@@ -7,15 +7,16 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::startGPIO() {
+  initWebServer();
   // CORS preflight
-  webServer.on("/gpio", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
+  webServer->on("/gpio", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response = request->beginResponse(204);
     addCORS(response);
     request->send(response);
   });
 
   // JSON POST handler
-  webServer.addHandler(new AsyncCallbackJsonWebHandler(
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
       "/gpio", [this](AsyncWebServerRequest *request, JsonVariant &json) {
         JsonObject reqJson = json.as<JsonObject>();
         AsyncWebServerResponse *response = nullptr;

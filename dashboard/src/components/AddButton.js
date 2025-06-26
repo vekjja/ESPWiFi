@@ -89,7 +89,7 @@ export default function AddButton({ config, saveConfig }) {
                 onChange={(e) => setIsAddingWebSocket(e.target.checked)}
               />
             }
-            label={isAddingWebSocket ? "Add WebSocket" : "Add Pin"}
+            label={isAddingWebSocket ? "WebSocket" : "Pin"}
           />
 
           {isAddingWebSocket ? (

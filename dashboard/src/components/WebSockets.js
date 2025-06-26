@@ -8,10 +8,11 @@ import {
   IconButton,
   Modal,
   Box,
-  Button,
   TextField,
 } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
+import DeleteIcon from "@mui/icons-material/Delete";
+import SaveIcon from "@mui/icons-material/Save";
 
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
@@ -154,29 +155,21 @@ export default function WebSockets({ config, saveConfig }) {
             fullWidth
             sx={{ marginBottom: 2 }}
           />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSaveSettings}
-            sx={{ mt: 2 }}
-          >
-            Save
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={handleCloseModal}
-            sx={{ mt: 2, ml: 2 }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
+          <IconButton
             color="error"
             onClick={handleDeleteSocket}
-            sx={{ mt: 2, ml: 2 }}
+            sx={{ mt: 3, mr: 9 }}
           >
-            Delete
-          </Button>
+            <DeleteIcon />
+          </IconButton>
+
+          <IconButton
+            color="primary"
+            onClick={handleSaveSettings}
+            sx={{ mt: 3, ml: 9 }}
+          >
+            <SaveIcon />
+          </IconButton>
         </Box>
       </Modal>
     </Container>

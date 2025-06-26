@@ -13,6 +13,9 @@ import {
   MenuItem,
   Fab,
   Button,
+  Modal,
+  Box,
+  Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 
@@ -21,6 +24,8 @@ export default function AddButton({ config, saveConfig }) {
   const [isAddingWebSocket, setIsAddingWebSocket] = useState(false);
   const [selectedPinNum, setSelectedPinNum] = useState("");
   const [webSocketURL, setWebSocketURL] = useState("");
+  const [openPinModal, setOpenPinModal] = useState(false);
+  const [editedPinName, setEditedPinName] = useState("");
 
   const pinOptions = Array.from({ length: 22 }, (_, i) => i).filter(
     (pin) =>
@@ -65,6 +70,27 @@ export default function AddButton({ config, saveConfig }) {
     handleCloseModal();
   };
 
+  const handleOpenPinModal = (pin) => {
+    setEditedPinName(pin.name || "");
+    setOpenPinModal(true);
+  };
+
+  const handleClosePinModal = () => {
+    setOpenPinModal(false);
+  };
+
+  const handleSavePinSettings = () => {
+    const updatedPins = {
+      ...config.pins,
+      [selectedPinNum]: {
+        ...config.pins[selectedPinNum],
+        name: editedPinName,
+      },
+    };
+    saveConfig({ ...config, pins: updatedPins });
+    handleClosePinModal();
+  };
+
   return (
     <>
       <Fab
@@ -89,7 +115,7 @@ export default function AddButton({ config, saveConfig }) {
                 onChange={(e) => setIsAddingWebSocket(e.target.checked)}
               />
             }
-            label={isAddingWebSocket ? "WebSocket" : "Pin"}
+            label={isAddingWebSocket ? "Add WebSocket" : "Add Pin"}
           />
 
           {isAddingWebSocket ? (
@@ -110,7 +136,15 @@ export default function AddButton({ config, saveConfig }) {
                 onChange={(e) => setSelectedPinNum(e.target.value)}
               >
                 {pinOptions.map((pin) => (
-                  <MenuItem key={pin} value={pin}>
+                  <MenuItem
+                    key={pin}
+                    value={pin}
+                    onClick={() => {
+                      if (config.pins && config.pins[pin]) {
+                        handleOpenPinModal(config.pins[pin]);
+                      }
+                    }}
+                  >
                     GPIO{pin}
                   </MenuItem>
                 ))}
@@ -131,6 +165,49 @@ export default function AddButton({ config, saveConfig }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Modal open={openPinModal} onClose={handleClosePinModal}>
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 300,
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            p: 4,
+            borderRadius: 2,
+          }}
+        >
+          <Typography variant="h6" gutterBottom>
+            Pin Settings
+          </Typography>
+          <TextField
+            label="Name"
+            value={editedPinName}
+            onChange={(e) => setEditedPinName(e.target.value)}
+            variant="outlined"
+            fullWidth
+            sx={{ marginBottom: 2 }}
+          />
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSavePinSettings}
+            sx={{ mt: 2 }}
+          >
+            Save
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleClosePinModal}
+            sx={{ mt: 2, ml: 2 }}
+          >
+            Cancel
+          </Button>
+        </Box>
+      </Modal>
     </>
   );
 }

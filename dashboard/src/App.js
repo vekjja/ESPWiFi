@@ -5,6 +5,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Settings from "./components/Settings";
 import AddButton from "./components/AddButton";
 import Pins from "./components/pins/Pins";
+import WebSockets from "./components/WebSockets";
 
 // Define the theme
 const theme = createTheme({
@@ -114,6 +115,7 @@ function App() {
           <Settings config={config} saveConfig={saveConfig} />
           <AddButton config={config} saveConfig={saveConfig} />
           <Pins config={config} saveConfig={saveConfig} />
+          <WebSockets config={config} saveConfig={saveConfig} />
         </Container>
       )}
     </ThemeProvider>

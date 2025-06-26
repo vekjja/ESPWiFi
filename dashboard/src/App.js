@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
-import Settings from "./Settings";
-import Pins from "./pins/Pins";
+import Settings from "./components/Settings";
+import AddButton from "./components/AddButton";
+import Pins from "./components/pins/Pins";
 
 // Define the theme
 const theme = createTheme({
@@ -45,6 +46,7 @@ function App() {
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
 
   useEffect(() => {
+    console.log("Fetching configuration from:", apiURL + "/config");
     fetch(apiURL + "/config")
       .then((response) => {
         if (!response.ok) {
@@ -53,6 +55,7 @@ function App() {
         return response.json();
       })
       .then((data) => {
+        console.log("Fetched Configuration:", data);
         setConfig({ ...data, apiURL });
         setLoading(false);
       })
@@ -64,11 +67,9 @@ function App() {
 
   if (loading) {
     return <LinearProgress color="inherit" />;
-    // return <div> Loading... </div>
   }
 
   const saveConfig = (newConfig) => {
-    // Remove apiURL before saving config to backend
     const { apiURL: _apiURL, ...configToSave } = newConfig;
     fetch(apiURL + "/config", {
       method: "POST",
@@ -108,10 +109,13 @@ function App() {
       >
         {config["mdns"]}
       </Container>
-      <Container>
-        <Settings config={config} saveConfig={saveConfig} />
-        <Pins config={config} saveConfig={saveConfig} />
-      </Container>
+      {config && (
+        <Container>
+          <Settings config={config} saveConfig={saveConfig} />
+          <AddButton config={config} saveConfig={saveConfig} />
+          <Pins config={config} saveConfig={saveConfig} />
+        </Container>
+      )}
     </ThemeProvider>
   );
 }

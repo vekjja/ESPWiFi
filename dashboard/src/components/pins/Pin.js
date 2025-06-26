@@ -23,7 +23,7 @@ import BuildIcon from "@mui/icons-material/Build"; // Generic icon for modes wit
 
 export default function Pin({ config, pinNum, props, updatePins }) {
   const [isOn, setIsOn] = useState(props.state === "high"); // Initialize with a boolean
-  const [name] = useState(props.name || "Pin"); // Default to pin
+  const [name, setName] = useState(props.name || "Pin"); // Default to pin
   const [mode, setMode] = useState(props.mode || "out"); // Default to "out"
   const [hz] = useState(props.hz || 50); // Default to 50
   const [cycle] = useState(props.cycle || 20000); // Default to 20000
@@ -104,6 +104,7 @@ export default function Pin({ config, pinNum, props, updatePins }) {
   };
 
   const handleSavePinSettings = () => {
+    setName(editedPinName); // Update name state immediately after saving
     setMode(editedMode); // Update mode state immediately after saving
     updatePinState({
       name: editedPinName,

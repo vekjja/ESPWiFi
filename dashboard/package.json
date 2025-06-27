@@ -19,6 +19,8 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
+    "build:uploadfs": "npm run build && (cd .. && pio run --target uploadfs)",
+    "pio:clean": "cd .. && pio run --target clean",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

@@ -14,12 +14,12 @@ import {
   Box,
   Typography,
 } from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
-import SaveIcon from "@mui/icons-material/Save";
 import EarbudsIcon from "@mui/icons-material/Earbuds";
 import OutputIcon from "@mui/icons-material/Output";
 import InputIcon from "@mui/icons-material/Input";
-import BuildIcon from "@mui/icons-material/Build"; // Generic icon for modes without a specific icon
+import BuildIcon from "@mui/icons-material/Build";
+import SaveButton from "../SaveButton";
+import DeleteButton from "../DeleteButton";
 
 export default function Pin({ config, pinNum, props, updatePins }) {
   const [isOn, setIsOn] = useState(props.state === "high"); // Initialize with a boolean
@@ -273,20 +273,14 @@ export default function Pin({ config, pinNum, props, updatePins }) {
               />
             </>
           )}
-          <IconButton
-            color="error"
+          <DeleteButton
             onClick={() => updatePinState({}, "DELETE")}
-            sx={{ mt: 2, ml: 2 }}
-          >
-            <DeleteIcon />
-          </IconButton>
-          <IconButton
-            color="primary"
+            tooltip={"Delete Pin"}
+          />
+          <SaveButton
             onClick={handleSavePinSettings}
-            sx={{ mt: 2, ml: 2 }}
-          >
-            <SaveIcon />
-          </IconButton>
+            tooltip={"Save Pin Settings"}
+          />
         </Box>
       </Modal>
 

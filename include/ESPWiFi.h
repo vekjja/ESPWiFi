@@ -22,7 +22,9 @@ class ESPWiFi {
   JsonDocument config;
   String configFile = "/config.json";
   AsyncWebServer* webServer = nullptr;
+
   IntervalTimer s10Timer{10000};  // 10 seconds
+  IntervalTimer s1Timer{1000};    // 1 second
 
   int connectTimeout = 12000;  // 12 seconds
   void (*connectSubroutine)() = nullptr;
@@ -68,13 +70,12 @@ class ESPWiFi {
 
   // SSID Spoofing
 #ifdef ESP8266
-  void initSSIDSpoof();
+  void startSSIDSpoof();
   void handleSSIDSpoof();
   bool ssidSpoofEnabled = false;
   unsigned long lastSSIDPacketTime = 0;
 #endif
 
-  // #############################################################################################################
  private:
   void handleCorsPreflight(AsyncWebServerRequest* request);
 };

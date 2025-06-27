@@ -257,7 +257,17 @@ void ESPWiFi::streamCamera(int frameRate) {
 
 #else
 void ESPWiFi::startCamera() {
-  Serial.println("❌ Camera support is only available on ESP32 devices.");
+  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
+}
+
+void ESPWiFi::takeSnapshot(String filePath) {
+  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
+}
+void ESPWiFi::streamCamera(int frameRate) {
+  if (!s10Timer.shouldRun()) {
+    return;
+  }
+  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
 }
 #endif
 

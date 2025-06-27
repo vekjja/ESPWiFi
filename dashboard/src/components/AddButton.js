@@ -4,28 +4,24 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControlLabel,
-  Switch,
   TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   Fab,
-  Button,
-  Modal,
-  Box,
-  Typography,
+  Tabs,
+  Tab,
 } from "@mui/material";
+import IButton from "./IButton";
 import AddIcon from "@mui/icons-material/Add";
+import AddTaskIcon from "@mui/icons-material/AddTask";
 
 export default function AddButton({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isAddingWebSocket, setIsAddingWebSocket] = useState(false);
+  const [selectedTab, setSelectedTab] = useState(0);
   const [selectedPinNum, setSelectedPinNum] = useState("");
   const [webSocketURL, setWebSocketURL] = useState("");
-  const [openPinModal, setOpenPinModal] = useState(false);
-  const [editedPinName, setEditedPinName] = useState("");
 
   const pinOptions = Array.from({ length: 22 }, (_, i) => i).filter(
     (pin) =>
@@ -37,7 +33,7 @@ export default function AddButton({ config, saveConfig }) {
   const handleOpenModal = () => {
     setSelectedPinNum("");
     setWebSocketURL("");
-    setIsAddingWebSocket(false);
+    setSelectedTab(0);
     setIsModalOpen(true);
   };
 
@@ -46,7 +42,7 @@ export default function AddButton({ config, saveConfig }) {
   };
 
   const handleAdd = () => {
-    if (isAddingWebSocket) {
+    if (selectedTab === 1) {
       const updatedWebSockets = [
         ...(config.webSockets || []),
         { url: webSocketURL },
@@ -70,30 +66,14 @@ export default function AddButton({ config, saveConfig }) {
     handleCloseModal();
   };
 
-  const handleOpenPinModal = (pin) => {
-    setEditedPinName(pin.name || "");
-    setOpenPinModal(true);
-  };
-
-  const handleClosePinModal = () => {
-    setOpenPinModal(false);
-  };
-
-  const handleSavePinSettings = () => {
-    const updatedPins = {
-      ...config.pins,
-      [selectedPinNum]: {
-        ...config.pins[selectedPinNum],
-        name: editedPinName,
-      },
-    };
-    saveConfig({ ...config, pins: updatedPins });
-    handleClosePinModal();
+  const handleTabChange = (event, newValue) => {
+    setSelectedTab(newValue);
   };
 
   return (
     <>
       <Fab
+        size="small" // Match the size of the SettingsIcon Fab
         color="primary"
         onClick={handleOpenModal}
         sx={{
@@ -108,17 +88,18 @@ export default function AddButton({ config, saveConfig }) {
       <Dialog open={isModalOpen} onClose={handleCloseModal}>
         <DialogTitle>Add Module</DialogTitle>
         <DialogContent>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={isAddingWebSocket}
-                onChange={(e) => setIsAddingWebSocket(e.target.checked)}
-              />
-            }
-            label={isAddingWebSocket ? "Add WebSocket" : "Add Pin"}
-          />
+          <Tabs
+            value={selectedTab}
+            onChange={handleTabChange}
+            indicatorColor="primary"
+            textColor="primary"
+            centered
+          >
+            <Tab label="Pin" />
+            <Tab label="WebSocket" />
+          </Tabs>
 
-          {isAddingWebSocket ? (
+          {selectedTab === 1 ? (
             <TextField
               label="WebSocket URL"
               value={webSocketURL}
@@ -141,7 +122,7 @@ export default function AddButton({ config, saveConfig }) {
                     value={pin}
                     onClick={() => {
                       if (config.pins && config.pins[pin]) {
-                        handleOpenPinModal(config.pins[pin]);
+                        // Removed unused handleOpenPinModal function
                       }
                     }}
                   >
@@ -153,61 +134,15 @@ export default function AddButton({ config, saveConfig }) {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModal} color="error">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleAdd}
+          <IButton
             color="primary"
-            disabled={isAddingWebSocket ? !webSocketURL : selectedPinNum === ""}
-          >
-            Add
-          </Button>
+            Icon={AddTaskIcon}
+            onClick={handleAdd}
+            tooltip={"Add " + (selectedTab === 1 ? "WebSocket" : "Pin")}
+            disabled={selectedTab === 1 ? !webSocketURL : selectedPinNum === ""}
+          />
         </DialogActions>
       </Dialog>
-
-      <Modal open={openPinModal} onClose={handleClosePinModal}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 300,
-            bgcolor: "background.paper",
-            boxShadow: 24,
-            p: 4,
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Pin Settings
-          </Typography>
-          <TextField
-            label="Name"
-            value={editedPinName}
-            onChange={(e) => setEditedPinName(e.target.value)}
-            variant="outlined"
-            fullWidth
-            sx={{ marginBottom: 2 }}
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSavePinSettings}
-            sx={{ mt: 2 }}
-          >
-            Save
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={handleClosePinModal}
-            sx={{ mt: 2, ml: 2 }}
-          >
-            Cancel
-          </Button>
-        </Box>
-      </Modal>
     </>
   );
 }

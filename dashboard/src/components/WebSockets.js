@@ -11,8 +11,8 @@ import {
   TextField,
 } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
-import DeleteIcon from "@mui/icons-material/Delete";
-import SaveIcon from "@mui/icons-material/Save";
+import DeleteButton from "./DeleteButton";
+import SaveButton from "./SaveButton";
 
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
@@ -155,21 +155,14 @@ export default function WebSockets({ config, saveConfig }) {
             fullWidth
             sx={{ marginBottom: 2 }}
           />
-          <IconButton
-            color="error"
+          <DeleteButton
             onClick={handleDeleteSocket}
-            sx={{ mt: 3, mr: 9 }}
-          >
-            <DeleteIcon />
-          </IconButton>
-
-          <IconButton
-            color="primary"
+            tooltip={"Delte Websocket"}
+          />
+          <SaveButton
             onClick={handleSaveSettings}
-            sx={{ mt: 3, ml: 9 }}
-          >
-            <SaveIcon />
-          </IconButton>
+            tooltip={"Save Websocket Settings"}
+          />
         </Box>
       </Modal>
     </Container>

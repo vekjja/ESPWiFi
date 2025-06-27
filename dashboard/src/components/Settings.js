@@ -6,13 +6,16 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
+  Tooltip,
   TextField,
   FormControl,
   FormControlLabel,
   Switch,
 } from "@mui/material";
-import SettingsIcon from "@mui/icons-material/Settings"; // Import gear icon
+import SettingsIcon from "@mui/icons-material/Settings";
+import RestartIcon from "@mui/icons-material/RestartAlt";
+import IconButton from "@mui/material/IconButton";
+import SaveButton from "./SaveButton";
 
 export default function Pins({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false); // Modal visibility state
@@ -93,9 +96,7 @@ export default function Pins({ config, saveConfig }) {
   };
 
   const handleRestart = () => {
-    handleSave();
-
-    fetch("/restart", {
+    fetch(`${config.apiURL}/restart`, {
       method: "GET",
     })
       .then((response) => {
@@ -131,7 +132,7 @@ export default function Pins({ config, saveConfig }) {
       </Fab>
 
       <Dialog open={isModalOpen} onClose={handleCloseModal}>
-        <DialogTitle>Settings</DialogTitle>
+        <DialogTitle>Network Settings</DialogTitle>
         <DialogContent>
           <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
             <TextField
@@ -192,15 +193,12 @@ export default function Pins({ config, saveConfig }) {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModal} color="error">
-            Cancel
-          </Button>
-          <Button onClick={handleSave} color="primary">
-            Save
-          </Button>
-          <Button onClick={handleRestart} color="primary">
-            Save & Restart
-          </Button>
+          <Tooltip title="Restart Device">
+            <IconButton onClick={handleRestart} sx={{ mt: 2, ml: 2 }}>
+              <RestartIcon />
+            </IconButton>
+          </Tooltip>
+          <SaveButton onSave={handleSave} tooltip={"Save Network Settings"} />
         </DialogActions>
       </Dialog>
     </Container>

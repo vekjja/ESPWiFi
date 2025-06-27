@@ -6,7 +6,7 @@ const SettingsButton = ({
   onClick,
   tooltip,
   color,
-  sx = { position: "absolute", left: 0, bottom: 0, m: 2 },
+  sx = { position: "absolute", left: 0, bottom: 0 },
 }) => {
   return (
     <IButton

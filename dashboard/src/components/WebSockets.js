@@ -2,8 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
-  Card,
-  CardContent,
   Modal,
   Box,
   TextField,
@@ -14,7 +12,7 @@ import {
 } from "@mui/material";
 import DeleteButton from "./DeleteButton";
 import SaveButton from "./SaveButton";
-import SettingsButton from "./SettingsButton";
+import Module from "./Module";
 
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
@@ -138,68 +136,39 @@ export default function WebSockets({ config, saveConfig }) {
       }}
     >
       {webSockets.map((webSocket, index) => (
-        <Card
+        <Module
           key={index}
-          sx={{
-            padding: "10px",
-            margin: "10px",
-            maxWidth: "200px",
-            border: "1px solid",
-            borderColor: "primary.main",
-            borderRadius: "5px",
-            backgroundColor: "secondary.light",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            position: "relative",
-          }}
+          title={webSocket.name || "Unnamed"}
+          onSettings={() => handleSettingsClick(webSocket)}
+          settingsTooltip={"Websocket Settings"}
         >
-          <CardContent
-            sx={{
-              width: "100%",
-              padding: 0,
-              paddingBottom: "48px",
-              "&:last-child": { paddingBottom: 0 },
-            }}
-          >
-            <Typography variant="body1" align="center">
-              {webSocket.name || "Unnamed"}
-            </Typography>
-            {webSocket.type === "binary" ? (
-              <img
-                src={messages[index]}
-                alt="WebSocket"
-                style={{
-                  width: "100%",
-                  marginTop: "10px",
-                  maxHeight: "120px",
-                  objectFit: "contain",
-                }}
-              />
-            ) : (
-              <Typography
-                variant="body2"
-                sx={{
-                  marginTop: "10px",
-                  wordBreak: "break-all",
-                  maxHeight: "120px",
-                  overflow: "auto",
-                  textAlign: "center",
-                  fontSize: webSocket.fontSize || 14,
-                }}
-              >
-                {messages[index]}
-              </Typography>
-            )}
-          </CardContent>
-          <Box sx={{ position: "absolute", left: 0, bottom: 0, m: 1 }}>
-            <SettingsButton
-              color="secondary"
-              onClick={() => handleSettingsClick(webSocket)}
-              tooltip={"Websocket Settings"}
+          {webSocket.type === "binary" ? (
+            <img
+              src={messages[index]}
+              alt="WebSocket"
+              style={{
+                width: "100%",
+                marginTop: "10px",
+                maxHeight: "120px",
+                objectFit: "contain",
+              }}
             />
-          </Box>
-        </Card>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                marginTop: "10px",
+                wordBreak: "break-all",
+                maxHeight: "120px",
+                overflow: "auto",
+                textAlign: "center",
+                fontSize: webSocket.fontSize || 14,
+              }}
+            >
+              {messages[index]}
+            </Typography>
+          )}
+        </Module>
       ))}
 
       <Modal open={openModal} onClose={handleCloseModal}>

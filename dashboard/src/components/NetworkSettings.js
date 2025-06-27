@@ -12,12 +12,12 @@ import {
   FormControlLabel,
   Switch,
 } from "@mui/material";
-import SettingsIcon from "@mui/icons-material/Settings";
+import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import IconButton from "@mui/material/IconButton";
 import SaveButton from "./SaveButton";
 
-export default function Pins({ config, saveConfig }) {
+export default function NetworkSettings({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false); // Modal visibility state
   const [ssid, setSsid] = useState(""); // State for WiFi SSID
   const [mdns, setMdns] = useState(config["mdns"]); // State for mDNS hostname
@@ -128,7 +128,7 @@ export default function Pins({ config, saveConfig }) {
           left: "20px",
         }}
       >
-        <SettingsIcon />
+        <NetworkCheckIcon />
       </Fab>
 
       <Dialog open={isModalOpen} onClose={handleCloseModal}>

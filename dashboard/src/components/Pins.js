@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import {
@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import SaveButton from "./SaveButton";
 import DeleteButton from "./DeleteButton";
-import SettingsButton from "./SettingsButton";
+import Module from "./Module";
 
 // Pin component inlined from Pin.js
 function Pin({ config, pinNum, props, updatePins }) {
@@ -30,7 +30,6 @@ function Pin({ config, pinNum, props, updatePins }) {
   const [editedMode, setEditedMode] = useState(mode);
   const [editedHz, setEditedHz] = useState(hz);
   const [editedCycle, setEditedCycle] = useState(cycle);
-  const containerRef = useRef(null);
 
   const dutyMin = props.dutyMin || 0;
   const dutyMax = props.dutyMax || 100;
@@ -121,20 +120,17 @@ function Pin({ config, pinNum, props, updatePins }) {
   }, [editedDutyMin, editedDutyMax]);
 
   return (
-    <Container
-      ref={containerRef}
+    <Module
+      title={name || pinNum}
+      onSettings={handleOpenPinModal}
+      settingsTooltip={"Pin Settings"}
       sx={{
-        padding: "10px",
-        margin: "10px",
-        border: "1px solid",
         backgroundColor: anchorEl
           ? "primary.dark"
           : isOn
           ? "secondary.light"
           : "secondary.dark",
         borderColor: isOn ? "primary.main" : "secondary.main",
-        borderRadius: "5px",
-        position: "relative",
         maxWidth: "200px",
       }}
     >
@@ -232,7 +228,6 @@ function Pin({ config, pinNum, props, updatePins }) {
 
       <FormControlLabel
         labelPlacement="top"
-        label={name || pinNum}
         control={
           <Switch
             checked={!!isOn}
@@ -244,7 +239,7 @@ function Pin({ config, pinNum, props, updatePins }) {
       />
 
       {mode === "pwm" && (
-        <Container sx={{ marginTop: "10px" }}>
+        <Box sx={{ marginTop: "10px" }}>
           <Slider
             value={duty}
             onChange={(event, newValue) => setDuty(newValue)}
@@ -256,16 +251,9 @@ function Pin({ config, pinNum, props, updatePins }) {
             max={Number(sliderMax)}
             valueLabelDisplay="auto"
           />
-        </Container>
+        </Box>
       )}
-
-      <SettingsButton
-        onClick={handleOpenPinModal}
-        tooltip="Pin Settings"
-        color="secondary"
-        sx={{ position: "absolute", left: 0, bottom: 0, m: 1 }}
-      />
-    </Container>
+    </Module>
   );
 }
 

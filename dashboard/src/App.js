@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
-import Settings from "./components/Settings";
+import NetworkSettings from "./components/NetworkSettings";
 import AddButton from "./components/AddButton";
 import Pins from "./components/Pins";
 import WebSockets from "./components/WebSockets";
@@ -112,7 +112,7 @@ function App() {
       </Container>
       {config && (
         <Container>
-          <Settings config={config} saveConfig={saveConfig} />
+          <NetworkSettings config={config} saveConfig={saveConfig} />
           <AddButton config={config} saveConfig={saveConfig} />
           <Pins config={config} saveConfig={saveConfig} />
           <WebSockets config={config} saveConfig={saveConfig} />

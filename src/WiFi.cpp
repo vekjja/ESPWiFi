@@ -26,7 +26,8 @@ void ESPWiFi::startWiFi() {
   mode.toLowerCase();
   if (strcmp(mode.c_str(), "client") == 0) {
     startClient();
-  } else if (strcmp(mode.c_str(), "accesspoint") == 0) {
+  } else if (strcmp(mode.c_str(), "accesspoint") == 0 ||
+             strcmp(mode.c_str(), "ap") == 0) {
     startAP();
   } else {
     Serial.println("⚠️  Invalid Mode: " + mode);

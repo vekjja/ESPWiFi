@@ -105,17 +105,21 @@ export default function NetworkSettings({ config, saveConfig }) {
   };
 
   const handleRestart = () => {
+    // Send restart request without waiting for response
     fetch(`${config.apiURL}/restart`, {
       method: "GET",
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Failed to reboot");
-        console.log("Restarting...");
-      })
-      .catch((error) => {
-        console.error("Error restarting:", error);
-        alert("Failed to restart");
-      });
+    }).catch((error) => {
+      // Ignore errors since device will restart
+      console.log("Restart request sent, device is restarting...");
+    });
+
+    // Close the modal immediately
+    handleCloseModal();
+
+    // Refresh the page after a short delay
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   };
 
   return (

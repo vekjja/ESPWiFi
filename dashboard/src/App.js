@@ -4,7 +4,7 @@ import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
 import Settings from "./components/Settings";
 import AddButton from "./components/AddButton";
-import Pins from "./components/pins/Pins";
+import Pins from "./components/Pins";
 import WebSockets from "./components/WebSockets";
 
 // Define the theme

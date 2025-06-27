@@ -3,7 +3,6 @@ import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import {
   Container,
-  IconButton,
   MenuItem,
   TextField,
   FormControl,
@@ -14,19 +13,17 @@ import {
   Box,
   Typography,
 } from "@mui/material";
-import EarbudsIcon from "@mui/icons-material/Earbuds";
-import OutputIcon from "@mui/icons-material/Output";
-import InputIcon from "@mui/icons-material/Input";
-import BuildIcon from "@mui/icons-material/Build";
-import SaveButton from "../SaveButton";
-import DeleteButton from "../DeleteButton";
+import SaveButton from "./SaveButton";
+import DeleteButton from "./DeleteButton";
+import SettingsButton from "./SettingsButton";
 
-export default function Pin({ config, pinNum, props, updatePins }) {
-  const [isOn, setIsOn] = useState(props.state === "high"); // Initialize with a boolean
-  const [name, setName] = useState(props.name || "Pin"); // Default to pin
-  const [mode, setMode] = useState(props.mode || "out"); // Default to "out"
-  const [hz] = useState(props.hz || 50); // Default to 50
-  const [cycle] = useState(props.cycle || 20000); // Default to 20000
+// Pin component inlined from Pin.js
+function Pin({ config, pinNum, props, updatePins }) {
+  const [isOn, setIsOn] = useState(props.state === "high");
+  const [name, setName] = useState(props.name || "Pin");
+  const [mode, setMode] = useState(props.mode || "out");
+  const [hz] = useState(props.hz || 50);
+  const [cycle] = useState(props.cycle || 20000);
   const [anchorEl] = useState(null);
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
@@ -35,19 +32,13 @@ export default function Pin({ config, pinNum, props, updatePins }) {
   const [editedCycle, setEditedCycle] = useState(cycle);
   const containerRef = useRef(null);
 
-  // Define dutyMin and dutyMax before use
   const dutyMin = props.dutyMin || 0;
   const dutyMax = props.dutyMax || 100;
-
-  const [editedDutyMin, setEditedDutyMin] = useState(dutyMin); // Initialize with default
-  const [editedDutyMax, setEditedDutyMax] = useState(dutyMax); // Initialize with default
-
-  // Update the slider's min and max dynamically
+  const [editedDutyMin, setEditedDutyMin] = useState(dutyMin);
+  const [editedDutyMax, setEditedDutyMax] = useState(dutyMax);
   const [sliderMin, setSliderMin] = useState(props.dutyMin || dutyMin);
   const [sliderMax, setSliderMax] = useState(props.dutyMax || dutyMax);
-
-  // Reintroduce duty state for slider functionality
-  const [duty, setDuty] = useState(props.duty || 0); // Default to 0
+  const [duty, setDuty] = useState(props.duty || 0);
 
   const updatePinState = (newState, deletePin) => {
     const pinState = {
@@ -56,8 +47,8 @@ export default function Pin({ config, pinNum, props, updatePins }) {
       hz: hz,
       duty: duty,
       cycle: cycle,
-      state: isOn ? "high" : "low", // Map the current "on" state to "state"
-      ...newState, // Merge any additional state values
+      state: isOn ? "high" : "low",
+      ...newState,
     };
     fetch(`${config.apiURL}/gpio`, {
       method: "POST",
@@ -68,7 +59,7 @@ export default function Pin({ config, pinNum, props, updatePins }) {
         ...pinState,
         mode: deletePin ? "in" : pinState.mode,
         state: deletePin ? "low" : pinState.state,
-        num: parseInt(pinNum, 10), // Only for backend, not for config
+        num: parseInt(pinNum, 10),
       }),
     })
       .then((response) => {
@@ -78,7 +69,7 @@ export default function Pin({ config, pinNum, props, updatePins }) {
         return response.json();
       })
       .then((data) => {
-        updatePins(pinState, deletePin); // Revert to original updatePins call
+        updatePins(pinState, deletePin);
       })
       .catch((error) => {
         console.error("Error updating pin state:", error);
@@ -88,7 +79,7 @@ export default function Pin({ config, pinNum, props, updatePins }) {
   const handleChange = (event) => {
     const newIsOn = event.target.checked;
     setIsOn(newIsOn);
-    updatePinState({ state: newIsOn ? "high" : "low" }); // Pass updated `state`
+    updatePinState({ state: newIsOn ? "high" : "low" });
   };
 
   const handleOpenPinModal = () => {
@@ -104,60 +95,30 @@ export default function Pin({ config, pinNum, props, updatePins }) {
   };
 
   const handleSavePinSettings = () => {
-    setName(editedPinName); // Update name state immediately after saving
-    setMode(editedMode); // Update mode state immediately after saving
+    setName(editedPinName);
+    setMode(editedMode);
     updatePinState({
       name: editedPinName,
       mode: editedMode,
       hz: editedHz,
       cycle: editedCycle,
-      dutyMin: editedDutyMin, // Save min duty
-      dutyMax: editedDutyMax, // Save max duty
+      dutyMin: editedDutyMin,
+      dutyMax: editedDutyMax,
     });
-    setSliderMin(editedDutyMin); // Update slider min
-    setSliderMax(editedDutyMax); // Update slider max
+    setSliderMin(editedDutyMin);
+    setSliderMax(editedDutyMax);
     handleClosePinModal();
   };
 
   useEffect(() => {
-    setEditedDutyMin(props.dutyMin || 0); // Revert to initializing min duty from props
-    setEditedDutyMax(props.dutyMax || 255); // Revert to initializing max duty from props
+    setEditedDutyMin(props.dutyMin || 0);
+    setEditedDutyMax(props.dutyMax || 255);
   }, [props.dutyMin, props.dutyMax]);
 
   useEffect(() => {
-    if (duty < editedDutyMin) setDuty(Number(editedDutyMin)); // Ensure duty is within range
+    if (duty < editedDutyMin) setDuty(Number(editedDutyMin));
     if (duty > editedDutyMax) setDuty(Number(editedDutyMax));
   }, [editedDutyMin, editedDutyMax]);
-
-  // Determine the icon based on the mode
-  const getIconForMode = (mode) => {
-    switch (mode) {
-      case "in":
-        return (
-          <InputIcon
-            sx={{ color: isOn ? "primary.dark" : "secondary.light" }}
-          />
-        );
-      case "out":
-        return (
-          <OutputIcon
-            sx={{ color: isOn ? "primary.dark" : "secondary.light" }}
-          />
-        );
-      case "pwm":
-        return (
-          <EarbudsIcon
-            sx={{ color: isOn ? "primary.dark" : "secondary.light" }}
-          />
-        );
-      default:
-        return (
-          <BuildIcon
-            sx={{ color: isOn ? "primary.dark" : "secondary.light" }}
-          />
-        ); // Fallback icon
-    }
-  };
 
   return (
     <Container
@@ -177,21 +138,6 @@ export default function Pin({ config, pinNum, props, updatePins }) {
         maxWidth: "200px",
       }}
     >
-      <IconButton
-        aria-controls="pin-settings-menu"
-        aria-haspopup="true"
-        onClick={handleOpenPinModal}
-        sx={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          margin: "5px",
-          maxHeight: "9px",
-        }}
-      >
-        {getIconForMode(mode)}
-      </IconButton>
-
       <Modal open={openPinModal} onClose={handleClosePinModal}>
         <Box
           sx={{
@@ -306,12 +252,66 @@ export default function Pin({ config, pinNum, props, updatePins }) {
               updatePinState({ duty: newValue });
             }}
             aria-labelledby="duty-length-slider"
-            min={Number(sliderMin)} // Use dynamic min
-            max={Number(sliderMax)} // Use dynamic max
+            min={Number(sliderMin)}
+            max={Number(sliderMax)}
             valueLabelDisplay="auto"
           />
         </Container>
       )}
+
+      <SettingsButton
+        onClick={handleOpenPinModal}
+        tooltip="Pin Settings"
+        color="secondary"
+        sx={{ position: "absolute", left: 0, bottom: 0, m: 1 }}
+      />
+    </Container>
+  );
+}
+
+// Pins container
+export default function Pins({ config, saveConfig }) {
+  const [pins, setPins] = useState({});
+
+  useEffect(() => {
+    if (config && config.pins) {
+      setPins(config.pins);
+    } else if (config && !config.pins) {
+      setPins({});
+    }
+  }, [config]);
+
+  const pinElements = Object.keys(pins).map((key) => {
+    const pin = pins[key];
+    return (
+      <Pin
+        key={key}
+        config={config}
+        pinNum={key}
+        props={pin}
+        updatePins={(pinState, deletePin) => {
+          const updatedPins = { ...pins };
+          if (deletePin) {
+            delete updatedPins[key];
+          } else {
+            updatedPins[key] = pinState;
+          }
+          setPins(updatedPins);
+          saveConfig({ ...config, pins: updatedPins });
+        }}
+      />
+    );
+  });
+
+  if (!config || !config.pins) {
+    return <div>Loading configuration...</div>;
+  }
+
+  return (
+    <Container
+      sx={{ display: "flex", flexWrap: "wrap", justifyContent: "center" }}
+    >
+      {pinElements}
     </Container>
   );
 }

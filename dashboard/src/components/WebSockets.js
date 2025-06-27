@@ -4,43 +4,63 @@ import {
   Typography,
   Card,
   CardContent,
-  CardActions,
-  IconButton,
   Modal,
   Box,
   TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
-import SettingsIcon from "@mui/icons-material/Settings";
 import DeleteButton from "./DeleteButton";
 import SaveButton from "./SaveButton";
+import SettingsButton from "./SettingsButton";
 
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
-  const [imageURLs, setImageURLs] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [openModal, setOpenModal] = useState(false);
   const [selectedWebSocket, setSelectedWebSocket] = useState(null);
   const [editedURL, setEditedURL] = useState("");
   const [editedName, setEditedName] = useState("");
+  const [editedType, setEditedType] = useState("binary");
+  const [editedFontSize, setEditedFontSize] = useState(14);
 
   useEffect(() => {
     if (config && config.webSockets) {
-      setWebSockets(config.webSockets);
+      setWebSockets(
+        config.webSockets.map((ws) => ({
+          ...ws,
+          type: ws.type || "binary",
+          fontSize: ws.fontSize || 14,
+        }))
+      );
     }
   }, [config]);
 
   useEffect(() => {
     const sockets = webSockets.map((webSocket, index) => {
       const ws = new WebSocket(webSocket.url);
-      ws.binaryType = "arraybuffer";
+      if (webSocket.type === "binary") {
+        ws.binaryType = "arraybuffer";
+      }
 
       ws.onmessage = (event) => {
-        const blob = new Blob([event.data], { type: "image/jpeg" });
-        const objectURL = URL.createObjectURL(blob);
-        setImageURLs((prev) => {
-          const updated = [...prev];
-          updated[index] = objectURL;
-          return updated;
-        });
+        if (webSocket.type === "binary") {
+          const blob = new Blob([event.data], { type: "image/jpeg" });
+          const objectURL = URL.createObjectURL(blob);
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[index] = objectURL;
+            return updated;
+          });
+        } else {
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[index] = event.data;
+            return updated;
+          });
+        }
       };
 
       ws.onerror = (error) => {
@@ -81,7 +101,13 @@ export default function WebSockets({ config, saveConfig }) {
   const handleSaveSettings = () => {
     const updatedWebSockets = webSockets.map((ws) =>
       ws === selectedWebSocket
-        ? { ...selectedWebSocket, url: editedURL, name: editedName }
+        ? {
+            ...selectedWebSocket,
+            url: editedURL,
+            name: editedName,
+            type: editedType,
+            fontSize: Number(editedFontSize),
+          }
         : ws
     );
     setWebSockets(updatedWebSockets);
@@ -97,28 +123,82 @@ export default function WebSockets({ config, saveConfig }) {
     if (selectedWebSocket) {
       setEditedURL(selectedWebSocket.url);
       setEditedName(selectedWebSocket.name || "");
+      setEditedType(selectedWebSocket.type || "binary");
+      setEditedFontSize(selectedWebSocket.fontSize || 14);
     }
   }, [selectedWebSocket]);
 
   return (
-    <Container sx={{ marginTop: 2 }}>
+    <Container
+      sx={{
+        marginTop: 2,
+        display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "center",
+      }}
+    >
       {webSockets.map((webSocket, index) => (
-        <Card key={index} sx={{ marginBottom: 2 }}>
-          <CardContent>
-            <Typography variant="body1">
+        <Card
+          key={index}
+          sx={{
+            padding: "10px",
+            margin: "10px",
+            maxWidth: "200px",
+            border: "1px solid",
+            borderColor: "primary.main",
+            borderRadius: "5px",
+            backgroundColor: "secondary.light",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            position: "relative",
+          }}
+        >
+          <CardContent
+            sx={{
+              width: "100%",
+              padding: 0,
+              paddingBottom: "48px",
+              "&:last-child": { paddingBottom: 0 },
+            }}
+          >
+            <Typography variant="body1" align="center">
               {webSocket.name || "Unnamed"}
             </Typography>
-            <img
-              src={imageURLs[index]}
-              alt="Camera Stream"
-              style={{ width: "100%", marginTop: "10px" }}
-            />
+            {webSocket.type === "binary" ? (
+              <img
+                src={messages[index]}
+                alt="WebSocket"
+                style={{
+                  width: "100%",
+                  marginTop: "10px",
+                  maxHeight: "120px",
+                  objectFit: "contain",
+                }}
+              />
+            ) : (
+              <Typography
+                variant="body2"
+                sx={{
+                  marginTop: "10px",
+                  wordBreak: "break-all",
+                  maxHeight: "120px",
+                  overflow: "auto",
+                  textAlign: "center",
+                  fontSize: webSocket.fontSize || 14,
+                }}
+              >
+                {messages[index]}
+              </Typography>
+            )}
           </CardContent>
-          <CardActions sx={{ justifyContent: "flex-start" }}>
-            <IconButton onClick={() => handleSettingsClick(webSocket)}>
-              <SettingsIcon />
-            </IconButton>
-          </CardActions>
+          <Box sx={{ position: "absolute", left: 0, bottom: 0, m: 1 }}>
+            <SettingsButton
+              color="secondary"
+              onClick={() => handleSettingsClick(webSocket)}
+              tooltip={"Websocket Settings"}
+            />
+          </Box>
         </Card>
       ))}
 
@@ -155,9 +235,32 @@ export default function WebSockets({ config, saveConfig }) {
             fullWidth
             sx={{ marginBottom: 2 }}
           />
+          <FormControl fullWidth sx={{ marginBottom: 2 }}>
+            <InputLabel id="websocket-type-select-label">Type</InputLabel>
+            <Select
+              labelId="websocket-type-select-label"
+              id="websocket-type-select"
+              value={editedType}
+              label="Type"
+              onChange={(e) => setEditedType(e.target.value)}
+            >
+              <MenuItem value="binary">Binary</MenuItem>
+              <MenuItem value="text">Text</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Font Size (px)"
+            type="number"
+            value={editedFontSize}
+            onChange={(e) => setEditedFontSize(e.target.value)}
+            variant="outlined"
+            fullWidth
+            sx={{ marginBottom: 2 }}
+            inputProps={{ min: 8, max: 48 }}
+          />
           <DeleteButton
             onClick={handleDeleteSocket}
-            tooltip={"Delte Websocket"}
+            tooltip={"Delete Websocket"}
           />
           <SaveButton
             onClick={handleSaveSettings}

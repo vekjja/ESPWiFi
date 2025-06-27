@@ -32,7 +32,7 @@ const theme = createTheme({
       main: "#333",
     },
     error: {
-      main: "#ff3838",
+      main: "#FF4949",
     },
   },
 });

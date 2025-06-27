@@ -29,6 +29,14 @@ class ESPWiFi {
   int connectTimeout = 12000;  // 12 seconds
   void (*connectSubroutine)() = nullptr;
 
+  void startSerial(int baudRate = 115200) {
+    if (Serial) {
+      return;
+    }
+    Serial.begin(baudRate);
+    delay(900);
+    Serial.println("🔌 Serial Started at " + String(baudRate) + " baud");
+  }
   void disableLowPowerSleep() {
     WiFi.setSleep(false);
     Serial.println("🚫 🔋 Low Power Sleep Disabled");
@@ -67,14 +75,6 @@ class ESPWiFi {
   String getFileExtension(const String& filename);
   void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
                      std::function<void()> functionToRun);
-
-  // SSID Spoofing
-#ifdef ESP8266
-  void startSSIDSpoof();
-  void handleSSIDSpoof();
-  bool ssidSpoofEnabled = false;
-  unsigned long lastSSIDPacketTime = 0;
-#endif
 
  private:
   void handleCorsPreflight(AsyncWebServerRequest* request);

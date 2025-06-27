@@ -16,9 +16,6 @@
 #endif
 
 void ESPWiFi::startWiFi() {
-  Serial.begin(115200);
-  delay(500);  // allow time for USB to connect
-
   if (!LittleFS.begin()) {
     Serial.println("An Error has occurred while mounting LittleFS");
   }

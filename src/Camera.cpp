@@ -11,6 +11,7 @@
 WebSocket *camSoc = nullptr;
 
 void ESPWiFi::startCamera() {
+
   camera_config_t camConfig;
   camConfig.ledc_channel = LEDC_CHANNEL_0;
   camConfig.ledc_timer = LEDC_TIMER_0;

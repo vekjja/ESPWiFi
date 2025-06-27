@@ -230,7 +230,7 @@ function Pin({ config, pinNum, props, updatePins }) {
               onChange={(e) => setEditedInverted(e.target.checked)}
             />
           }
-          label="Invert Logic (ON = LOW, OFF = HIGH)"
+          label="Invert"
           sx={{ marginBottom: 2 }}
         />
         {editedMode === "pwm" && (

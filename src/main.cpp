@@ -2,7 +2,7 @@
 #include <WebSocket.h>
 
 ESPWiFi device;
-WebSocket wsServer;
+WebSocket* rssiSoc;
 
 void setup() {
   device.startSerial();
@@ -12,15 +12,15 @@ void setup() {
 #ifdef ESP32
   device.startCamera();
 #endif
-  wsServer = WebSocket("/rssi", &device);
+  rssiSoc = new WebSocket("/rssi", &device);
   device.startWebServer();
 }
 
 void loop() {
   if (device.s1Timer.shouldRun()) {
-    if (wsServer) {
+    if (rssiSoc) {
       int rssi = WiFi.RSSI() | 0;
-      wsServer.textAll(String(rssi));
+      rssiSoc->textAll(String(rssi));
     }
   }
 #ifdef ESP32

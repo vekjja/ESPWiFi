@@ -65,6 +65,10 @@ export default function AddButton({ config, saveConfig }) {
 
   const handleTabChange = (event, newValue) => {
     setSelectedTab(newValue);
+    // Set default value when switching to WebSocket tab
+    if (newValue === 1 && !webSocketURL) {
+      setWebSocketURL("ws://");
+    }
   };
 
   const handleWebSocketURLChange = (e) => {
@@ -123,6 +127,7 @@ export default function AddButton({ config, saveConfig }) {
             label="WebSocket URL"
             value={webSocketURL}
             onChange={handleWebSocketURLChange}
+            placeholder="ws://localhost:8080"
             variant="outlined"
             fullWidth
             sx={{ marginTop: 2 }}

@@ -7,6 +7,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  CircularProgress,
 } from "@mui/material";
 import DeleteButton from "./DeleteButton";
 import SaveButton from "./SaveButton";
@@ -16,6 +17,7 @@ import SettingsModal from "./SettingsModal";
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [connectionStatus, setConnectionStatus] = useState({});
   const [openModal, setOpenModal] = useState(false);
   const [selectedWebSocket, setSelectedWebSocket] = useState(null);
   const [editedURL, setEditedURL] = useState("");
@@ -37,10 +39,23 @@ export default function WebSockets({ config, saveConfig }) {
 
   useEffect(() => {
     const sockets = webSockets.map((webSocket, index) => {
+      // Set loading state for this socket
+      setConnectionStatus((prev) => ({
+        ...prev,
+        [index]: "connecting",
+      }));
+
       const ws = new WebSocket(webSocket.url);
       if (webSocket.type === "binary") {
         ws.binaryType = "arraybuffer";
       }
+
+      ws.onopen = () => {
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [index]: "connected",
+        }));
+      };
 
       ws.onmessage = (event) => {
         if (webSocket.type === "binary") {
@@ -62,6 +77,17 @@ export default function WebSockets({ config, saveConfig }) {
 
       ws.onerror = (error) => {
         console.error("WebSocket error:", error);
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [index]: "error",
+        }));
+      };
+
+      ws.onclose = () => {
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [index]: "📶",
+        }));
       };
 
       return ws;
@@ -141,7 +167,50 @@ export default function WebSockets({ config, saveConfig }) {
           onSettings={() => handleSettingsClick(webSocket)}
           settingsTooltip={"Websocket Settings"}
         >
-          {webSocket.type === "binary" ? (
+          {connectionStatus[index] === "connecting" ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                height: "120px",
+                flexDirection: "column",
+              }}
+            >
+              <CircularProgress size={24} sx={{ marginBottom: 1 }} />
+              <Typography variant="caption" color="text.secondary">
+                Connecting...
+              </Typography>
+            </div>
+          ) : connectionStatus[index] === "error" ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                height: "120px",
+                flexDirection: "column",
+              }}
+            >
+              <Typography variant="caption" color="error">
+                Connection Error
+              </Typography>
+            </div>
+          ) : connectionStatus[index] === "disconnected" ? (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                height: "120px",
+                flexDirection: "column",
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Disconnected
+              </Typography>
+            </div>
+          ) : webSocket.type === "binary" ? (
             <img
               src={messages[index]}
               alt="WebSocket"
@@ -202,6 +271,11 @@ export default function WebSockets({ config, saveConfig }) {
           variant="outlined"
           fullWidth
           sx={{ marginBottom: 2 }}
+          InputProps={{
+            startAdornment: (
+              <span style={{ color: "#666", marginRight: "8px" }}></span>
+            ),
+          }}
         />
         <FormControl fullWidth sx={{ marginBottom: 2 }}>
           <InputLabel id="websocket-type-select-label">Type</InputLabel>

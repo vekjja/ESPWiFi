@@ -17,7 +17,6 @@ export default function Module({
       sx={{
         padding: "10px",
         margin: "10px",
-        // maxWidth: "200px",
         minWidth: "200px",
         border: "1px solid",
         borderColor: "primary.main",

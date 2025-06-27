@@ -10,6 +10,7 @@ import {
   Select,
   Slider,
   Box,
+  Checkbox,
 } from "@mui/material";
 import SaveButton from "./SaveButton";
 import DeleteButton from "./DeleteButton";
@@ -23,12 +24,14 @@ function Pin({ config, pinNum, props, updatePins }) {
   const [mode, setMode] = useState(props.mode || "out");
   const [hz] = useState(props.hz || 50);
   const [cycle] = useState(props.cycle || 20000);
+  const [inverted, setInverted] = useState(props.inverted || false);
   const [anchorEl] = useState(null);
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
   const [editedMode, setEditedMode] = useState(mode);
   const [editedHz, setEditedHz] = useState(hz);
   const [editedCycle, setEditedCycle] = useState(cycle);
+  const [editedInverted, setEditedInverted] = useState(inverted);
 
   const dutyMin = props.dutyMin || 0;
   const dutyMax = props.dutyMax || 100;
@@ -45,6 +48,7 @@ function Pin({ config, pinNum, props, updatePins }) {
       hz: hz,
       duty: duty,
       cycle: cycle,
+      inverted: inverted,
       state: isOn ? "high" : "low",
       ...newState,
     };
@@ -75,9 +79,18 @@ function Pin({ config, pinNum, props, updatePins }) {
   };
 
   const handleChange = (event) => {
-    const newIsOn = event.target.checked;
-    setIsOn(newIsOn);
-    updatePinState({ state: newIsOn ? "high" : "low" });
+    const uiState = event.target.checked;
+    // When inverted, UI ON means actual LOW, UI OFF means actual HIGH
+    const actualState = inverted
+      ? uiState
+        ? "low"
+        : "high"
+      : uiState
+      ? "high"
+      : "low";
+    // Update the internal state to match the actual pin state
+    setIsOn(actualState === "high");
+    updatePinState({ state: actualState });
   };
 
   const handleOpenPinModal = () => {
@@ -85,6 +98,7 @@ function Pin({ config, pinNum, props, updatePins }) {
     setEditedMode(mode);
     setEditedHz(hz);
     setEditedCycle(cycle);
+    setEditedInverted(inverted);
     setOpenPinModal(true);
   };
 
@@ -93,16 +107,45 @@ function Pin({ config, pinNum, props, updatePins }) {
   };
 
   const handleSavePinSettings = () => {
+    const newInverted = editedInverted;
     setName(editedPinName);
     setMode(editedMode);
-    updatePinState({
+    setInverted(newInverted);
+
+    // Create a temporary pinState with the new inverted value for the API call
+    const tempPinState = {
       name: editedPinName,
       mode: editedMode,
       hz: editedHz,
+      duty: duty,
       cycle: editedCycle,
-      dutyMin: editedDutyMin,
-      dutyMax: editedDutyMax,
-    });
+      inverted: newInverted,
+      state: isOn ? "high" : "low",
+    };
+
+    fetch(`${config.apiURL}/gpio`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...tempPinState,
+        num: parseInt(pinNum, 10),
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to update pin state");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        updatePins(tempPinState, false);
+      })
+      .catch((error) => {
+        console.error("Error updating pin state:", error);
+      });
+
     setSliderMin(editedDutyMin);
     setSliderMax(editedDutyMax);
     handleClosePinModal();
@@ -118,6 +161,8 @@ function Pin({ config, pinNum, props, updatePins }) {
     if (duty > editedDutyMax) setDuty(Number(editedDutyMax));
   }, [editedDutyMin, editedDutyMax]);
 
+  const effectiveIsOn = inverted ? !isOn : isOn;
+
   return (
     <Module
       title={name || pinNum}
@@ -126,10 +171,10 @@ function Pin({ config, pinNum, props, updatePins }) {
       sx={{
         backgroundColor: anchorEl
           ? "primary.dark"
-          : isOn
+          : effectiveIsOn
           ? "secondary.light"
           : "secondary.dark",
-        borderColor: isOn ? "primary.main" : "secondary.main",
+        borderColor: effectiveIsOn ? "primary.main" : "secondary.main",
         maxWidth: "200px",
       }}
     >
@@ -178,6 +223,16 @@ function Pin({ config, pinNum, props, updatePins }) {
             <MenuItem value="pwm">PWM</MenuItem>
           </Select>
         </FormControl>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={editedInverted}
+              onChange={(e) => setEditedInverted(e.target.checked)}
+            />
+          }
+          label="Invert Logic (ON = LOW, OFF = HIGH)"
+          sx={{ marginBottom: 2 }}
+        />
         {editedMode === "pwm" && (
           <>
             <TextField
@@ -220,12 +275,12 @@ function Pin({ config, pinNum, props, updatePins }) {
         labelPlacement="top"
         control={
           <Switch
-            checked={!!isOn}
+            checked={!!effectiveIsOn}
             onChange={handleChange}
             disabled={props.mode === "in"}
           />
         }
-        value={isOn}
+        value={effectiveIsOn}
       />
 
       {mode === "pwm" && (

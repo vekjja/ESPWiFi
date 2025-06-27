@@ -9,13 +9,12 @@ import {
   InputLabel,
   Select,
   Slider,
-  Modal,
   Box,
-  Typography,
 } from "@mui/material";
 import SaveButton from "./SaveButton";
 import DeleteButton from "./DeleteButton";
 import Module from "./Module";
+import SettingsModal from "./SettingsModal";
 
 // Pin component inlined from Pin.js
 function Pin({ config, pinNum, props, updatePins }) {
@@ -134,97 +133,88 @@ function Pin({ config, pinNum, props, updatePins }) {
         maxWidth: "200px",
       }}
     >
-      <Modal open={openPinModal} onClose={handleClosePinModal}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 300,
-            bgcolor: "background.paper",
-            boxShadow: 24,
-            p: 4,
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            Pin Settings
-          </Typography>
-          <TextField
-            label="Name"
-            value={editedPinName}
-            onChange={(e) => setEditedPinName(e.target.value)}
-            variant="outlined"
-            fullWidth
-            sx={{ marginBottom: 2 }}
-          />
-          <TextField
-            label="Pin Number"
-            value={pinNum}
-            variant="outlined"
-            fullWidth
-            disabled
-            sx={{ marginBottom: 2 }}
-          />
-          <FormControl fullWidth variant="outlined" sx={{ marginBottom: 2 }}>
-            <InputLabel id="mode-select-label">Mode</InputLabel>
-            <Select
-              labelId="mode-select-label"
-              value={editedMode}
-              onChange={(e) => setEditedMode(e.target.value)}
-            >
-              <MenuItem value="in">Input</MenuItem>
-              <MenuItem value="out">Output</MenuItem>
-              <MenuItem value="pwm">PWM</MenuItem>
-            </Select>
-          </FormControl>
-          {editedMode === "pwm" && (
-            <>
-              <TextField
-                label="Frequency (Hz)"
-                value={editedHz}
-                onChange={(e) => setEditedHz(e.target.value)}
-                variant="outlined"
-                fullWidth
-                sx={{ marginBottom: 2 }}
-              />
-              <TextField
-                label="Min Duty (µs)"
-                value={editedDutyMin}
-                onChange={(e) => setEditedDutyMin(e.target.value)}
-                variant="outlined"
-                fullWidth
-                sx={{ marginBottom: 2 }}
-              />
-              <TextField
-                label="Max Duty (µs)"
-                value={editedDutyMax}
-                onChange={(e) => setEditedDutyMax(e.target.value)}
-                variant="outlined"
-                fullWidth
-                sx={{ marginBottom: 2 }}
-              />
-              <TextField
-                label="Cycle (µs)"
-                value={editedCycle}
-                onChange={(e) => setEditedCycle(e.target.value)}
-                variant="outlined"
-                fullWidth
-                sx={{ marginBottom: 2 }}
-              />
-            </>
-          )}
-          <DeleteButton
-            onClick={() => updatePinState({}, "DELETE")}
-            tooltip={"Delete Pin"}
-          />
-          <SaveButton
-            onClick={handleSavePinSettings}
-            tooltip={"Save Pin Settings"}
-          />
-        </Box>
-      </Modal>
+      <SettingsModal
+        open={openPinModal}
+        onClose={handleClosePinModal}
+        title="Pin Settings"
+        actions={
+          <>
+            <DeleteButton
+              onClick={() => updatePinState({}, "DELETE")}
+              tooltip={"Delete Pin"}
+            />
+            <SaveButton
+              onClick={handleSavePinSettings}
+              tooltip={"Save Pin Settings"}
+            />
+          </>
+        }
+      >
+        <TextField
+          label="Name"
+          value={editedPinName}
+          onChange={(e) => setEditedPinName(e.target.value)}
+          variant="outlined"
+          fullWidth
+          sx={{ marginBottom: 2 }}
+        />
+        <TextField
+          label="Pin Number"
+          value={pinNum}
+          variant="outlined"
+          fullWidth
+          disabled
+          sx={{ marginBottom: 2 }}
+        />
+        <FormControl fullWidth variant="outlined" sx={{ marginBottom: 2 }}>
+          <InputLabel id="mode-select-label">Mode</InputLabel>
+          <Select
+            labelId="mode-select-label"
+            value={editedMode}
+            onChange={(e) => setEditedMode(e.target.value)}
+          >
+            <MenuItem value="in">Input</MenuItem>
+            <MenuItem value="out">Output</MenuItem>
+            <MenuItem value="pwm">PWM</MenuItem>
+          </Select>
+        </FormControl>
+        {editedMode === "pwm" && (
+          <>
+            <TextField
+              label="Frequency (Hz)"
+              value={editedHz}
+              onChange={(e) => setEditedHz(e.target.value)}
+              variant="outlined"
+              fullWidth
+              sx={{ marginBottom: 2 }}
+            />
+            <TextField
+              label="Min Duty (µs)"
+              value={editedDutyMin}
+              onChange={(e) => setEditedDutyMin(e.target.value)}
+              variant="outlined"
+              fullWidth
+              sx={{ marginBottom: 2 }}
+            />
+            <TextField
+              label="Max Duty (µs)"
+              value={editedDutyMax}
+              onChange={(e) => setEditedDutyMax(e.target.value)}
+              variant="outlined"
+              fullWidth
+              sx={{ marginBottom: 2 }}
+            />
+            <TextField
+              label="Cycle (µs)"
+              value={editedCycle}
+              onChange={(e) => setEditedCycle(e.target.value)}
+              variant="outlined"
+              fullWidth
+              sx={{ marginBottom: 2 }}
+            />
+          </>
+        )}
+      </SettingsModal>
 
       <FormControlLabel
         labelPlacement="top"

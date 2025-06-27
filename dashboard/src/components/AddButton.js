@@ -1,9 +1,5 @@
 import React, { useState } from "react";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
   FormControl,
   InputLabel,
@@ -16,6 +12,7 @@ import {
 import IButton from "./IButton";
 import AddIcon from "@mui/icons-material/Add";
 import AddTaskIcon from "@mui/icons-material/AddTask";
+import SettingsModal from "./SettingsModal";
 
 export default function AddButton({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -70,6 +67,17 @@ export default function AddButton({ config, saveConfig }) {
     setSelectedTab(newValue);
   };
 
+  const handleWebSocketURLChange = (e) => {
+    let value = e.target.value;
+
+    // If the value doesn't start with a protocol, prepend ws://
+    if (value && !value.match(/^(ws|wss):\/\//)) {
+      value = `ws://${value}`;
+    }
+
+    setWebSocketURL(value);
+  };
+
   return (
     <>
       <Fab
@@ -85,55 +93,11 @@ export default function AddButton({ config, saveConfig }) {
         <AddIcon />
       </Fab>
 
-      <Dialog open={isModalOpen} onClose={handleCloseModal}>
-        <DialogTitle>Add Module</DialogTitle>
-        <DialogContent>
-          <Tabs
-            value={selectedTab}
-            onChange={handleTabChange}
-            indicatorColor="primary"
-            textColor="primary"
-            centered
-          >
-            <Tab label="Pin" />
-            <Tab label="WebSocket" />
-          </Tabs>
-
-          {selectedTab === 1 ? (
-            <TextField
-              label="WebSocket URL"
-              value={webSocketURL}
-              onChange={(e) => setWebSocketURL(e.target.value)}
-              variant="outlined"
-              fullWidth
-              sx={{ marginTop: 2 }}
-            />
-          ) : (
-            <FormControl fullWidth variant="outlined" sx={{ marginTop: 2 }}>
-              <InputLabel id="pin-select-label">Pin</InputLabel>
-              <Select
-                labelId="pin-select-label"
-                value={selectedPinNum}
-                onChange={(e) => setSelectedPinNum(e.target.value)}
-              >
-                {pinOptions.map((pin) => (
-                  <MenuItem
-                    key={pin}
-                    value={pin}
-                    onClick={() => {
-                      if (config.pins && config.pins[pin]) {
-                        // Removed unused handleOpenPinModal function
-                      }
-                    }}
-                  >
-                    GPIO{pin}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        </DialogContent>
-        <DialogActions>
+      <SettingsModal
+        open={isModalOpen}
+        onClose={handleCloseModal}
+        title="Add Module"
+        actions={
           <IButton
             color="primary"
             Icon={AddTaskIcon}
@@ -141,8 +105,53 @@ export default function AddButton({ config, saveConfig }) {
             tooltip={"Add " + (selectedTab === 1 ? "WebSocket" : "Pin")}
             disabled={selectedTab === 1 ? !webSocketURL : selectedPinNum === ""}
           />
-        </DialogActions>
-      </Dialog>
+        }
+      >
+        <Tabs
+          value={selectedTab}
+          onChange={handleTabChange}
+          indicatorColor="primary"
+          textColor="primary"
+          centered
+        >
+          <Tab label="Pin" />
+          <Tab label="WebSocket" />
+        </Tabs>
+
+        {selectedTab === 1 ? (
+          <TextField
+            label="WebSocket URL"
+            value={webSocketURL}
+            onChange={handleWebSocketURLChange}
+            variant="outlined"
+            fullWidth
+            sx={{ marginTop: 2 }}
+          />
+        ) : (
+          <FormControl fullWidth variant="outlined" sx={{ marginTop: 2 }}>
+            <InputLabel id="pin-select-label">Pin</InputLabel>
+            <Select
+              labelId="pin-select-label"
+              value={selectedPinNum}
+              onChange={(e) => setSelectedPinNum(e.target.value)}
+            >
+              {pinOptions.map((pin) => (
+                <MenuItem
+                  key={pin}
+                  value={pin}
+                  onClick={() => {
+                    if (config.pins && config.pins[pin]) {
+                      // Removed unused handleOpenPinModal function
+                    }
+                  }}
+                >
+                  GPIO{pin}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+      </SettingsModal>
     </>
   );
 }

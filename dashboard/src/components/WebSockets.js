@@ -2,8 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
-  Modal,
-  Box,
   TextField,
   FormControl,
   InputLabel,
@@ -13,6 +11,7 @@ import {
 import DeleteButton from "./DeleteButton";
 import SaveButton from "./SaveButton";
 import Module from "./Module";
+import SettingsModal from "./SettingsModal";
 
 export default function WebSockets({ config, saveConfig }) {
   const [webSockets, setWebSockets] = useState([]);
@@ -21,7 +20,7 @@ export default function WebSockets({ config, saveConfig }) {
   const [selectedWebSocket, setSelectedWebSocket] = useState(null);
   const [editedURL, setEditedURL] = useState("");
   const [editedName, setEditedName] = useState("");
-  const [editedType, setEditedType] = useState("binary");
+  const [editedType, setEditedType] = useState("text");
   const [editedFontSize, setEditedFontSize] = useState(14);
 
   useEffect(() => {
@@ -29,7 +28,7 @@ export default function WebSockets({ config, saveConfig }) {
       setWebSockets(
         config.webSockets.map((ws) => ({
           ...ws,
-          type: ws.type || "binary",
+          type: ws.type || "text",
           fontSize: ws.fontSize || 14,
         }))
       );
@@ -121,7 +120,7 @@ export default function WebSockets({ config, saveConfig }) {
     if (selectedWebSocket) {
       setEditedURL(selectedWebSocket.url);
       setEditedName(selectedWebSocket.name || "");
-      setEditedType(selectedWebSocket.type || "binary");
+      setEditedType(selectedWebSocket.type || "text");
       setEditedFontSize(selectedWebSocket.fontSize || 14);
     }
   }, [selectedWebSocket]);
@@ -171,72 +170,62 @@ export default function WebSockets({ config, saveConfig }) {
         </Module>
       ))}
 
-      <Modal open={openModal} onClose={handleCloseModal}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 300,
-            bgcolor: "background.paper",
-            boxShadow: 24,
-            p: 4,
-            borderRadius: 2,
-          }}
-        >
-          <Typography variant="h6" gutterBottom>
-            WebSocket Settings
-          </Typography>
-          <TextField
-            label="Name"
-            value={editedName}
-            onChange={(e) => setEditedName(e.target.value)}
-            variant="outlined"
-            fullWidth
-            sx={{ marginBottom: 2 }}
-          />
-          <TextField
-            label="WebSocket URL"
-            value={editedURL}
-            onChange={(e) => setEditedURL(e.target.value)}
-            variant="outlined"
-            fullWidth
-            sx={{ marginBottom: 2 }}
-          />
-          <FormControl fullWidth sx={{ marginBottom: 2 }}>
-            <InputLabel id="websocket-type-select-label">Type</InputLabel>
-            <Select
-              labelId="websocket-type-select-label"
-              id="websocket-type-select"
-              value={editedType}
-              label="Type"
-              onChange={(e) => setEditedType(e.target.value)}
-            >
-              <MenuItem value="binary">Binary</MenuItem>
-              <MenuItem value="text">Text</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            label="Font Size (px)"
-            type="number"
-            value={editedFontSize}
-            onChange={(e) => setEditedFontSize(e.target.value)}
-            variant="outlined"
-            fullWidth
-            sx={{ marginBottom: 2 }}
-            inputProps={{ min: 8, max: 48 }}
-          />
-          <DeleteButton
-            onClick={handleDeleteSocket}
-            tooltip={"Delete Websocket"}
-          />
-          <SaveButton
-            onClick={handleSaveSettings}
-            tooltip={"Save Websocket Settings"}
-          />
-        </Box>
-      </Modal>
+      <SettingsModal
+        open={openModal}
+        onClose={handleCloseModal}
+        title="WebSocket Settings"
+        actions={
+          <>
+            <DeleteButton
+              onClick={handleDeleteSocket}
+              tooltip={"Delete Websocket"}
+            />
+            <SaveButton
+              onClick={handleSaveSettings}
+              tooltip={"Save Websocket Settings"}
+            />
+          </>
+        }
+      >
+        <TextField
+          label="Name"
+          value={editedName}
+          onChange={(e) => setEditedName(e.target.value)}
+          variant="outlined"
+          fullWidth
+          sx={{ marginBottom: 2 }}
+        />
+        <TextField
+          label="WebSocket URL"
+          value={editedURL}
+          onChange={(e) => setEditedURL(e.target.value)}
+          variant="outlined"
+          fullWidth
+          sx={{ marginBottom: 2 }}
+        />
+        <FormControl fullWidth sx={{ marginBottom: 2 }}>
+          <InputLabel id="websocket-type-select-label">Type</InputLabel>
+          <Select
+            labelId="websocket-type-select-label"
+            id="websocket-type-select"
+            value={editedType}
+            label="Type"
+            onChange={(e) => setEditedType(e.target.value)}
+          >
+            <MenuItem value="binary">Binary</MenuItem>
+            <MenuItem value="text">Text</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          label="Font Size (px)"
+          type="number"
+          value={editedFontSize}
+          onChange={(e) => setEditedFontSize(e.target.value)}
+          variant="outlined"
+          fullWidth
+          sx={{ marginBottom: 2 }}
+        />
+      </SettingsModal>
     </Container>
   );
 }

@@ -2,10 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Container,
   Fab,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Tooltip,
   TextField,
   FormControl,
@@ -16,6 +12,7 @@ import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import IconButton from "@mui/material/IconButton";
 import SaveButton from "./SaveButton";
+import SettingsModal from "./SettingsModal";
 
 export default function NetworkSettings({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false); // Modal visibility state
@@ -131,76 +128,76 @@ export default function NetworkSettings({ config, saveConfig }) {
         <NetworkCheckIcon />
       </Fab>
 
-      <Dialog open={isModalOpen} onClose={handleCloseModal}>
-        <DialogTitle>Network Settings</DialogTitle>
-        <DialogContent>
+      <SettingsModal
+        open={isModalOpen}
+        onClose={handleCloseModal}
+        title="Network Settings"
+        actions={
+          <>
+            <Tooltip title="Restart Device">
+              <IconButton onClick={handleRestart} sx={{ mt: 2, ml: 2 }}>
+                <RestartIcon />
+              </IconButton>
+            </Tooltip>
+            <SaveButton onSave={handleSave} tooltip={"Save Network Settings"} />
+          </>
+        }
+      >
+        <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
+          <TextField
+            label="mDNS Hostname"
+            value={mdns}
+            onChange={handleMDNSChange}
+            variant="outlined"
+            fullWidth
+          />
+        </FormControl>
+        <FormControl variant="outlined" sx={{ marginTop: 1 }}>
+          <FormControlLabel
+            control={
+              <Switch checked={mode === "client"} onChange={handleModeToggle} />
+            }
+            label={mode === "client" ? "WiFi Client" : "Access Point"}
+          />
+        </FormControl>
+        {mode === "client" ? (
           <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
             <TextField
-              label="mDNS Hostname"
-              value={mdns}
-              onChange={handleMDNSChange}
+              label="SSID"
+              value={ssid}
+              onChange={handleSsidChange}
               variant="outlined"
               fullWidth
             />
-          </FormControl>
-          <FormControl variant="outlined" sx={{ marginTop: 1 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={mode === "client"}
-                  onChange={handleModeToggle}
-                />
-              }
-              label={mode === "client" ? "WiFi Client" : "Access Point"}
+            <TextField
+              label="Password"
+              value={password}
+              onChange={handlePasswordChange}
+              variant="outlined"
+              fullWidth
+              sx={{ marginTop: 1 }}
             />
           </FormControl>
-          {mode === "client" ? (
-            <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
-              <TextField
-                label="SSID"
-                value={ssid}
-                onChange={handleSsidChange}
-                variant="outlined"
-                fullWidth
-              />
-              <TextField
-                label="Password"
-                value={password}
-                onChange={handlePasswordChange}
-                variant="outlined"
-                fullWidth
-                sx={{ marginTop: 1 }}
-              />
-            </FormControl>
-          ) : (
-            <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
-              <TextField
-                label="SSID"
-                value={apSsid}
-                onChange={handleApSsidChange}
-                variant="outlined"
-                fullWidth
-              />
-              <TextField
-                label="Password"
-                value={apPassword}
-                onChange={handleApPasswordChange}
-                variant="outlined"
-                fullWidth
-                sx={{ marginTop: 1 }}
-              />
-            </FormControl>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Tooltip title="Restart Device">
-            <IconButton onClick={handleRestart} sx={{ mt: 2, ml: 2 }}>
-              <RestartIcon />
-            </IconButton>
-          </Tooltip>
-          <SaveButton onSave={handleSave} tooltip={"Save Network Settings"} />
-        </DialogActions>
-      </Dialog>
+        ) : (
+          <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
+            <TextField
+              label="SSID"
+              value={apSsid}
+              onChange={handleApSsidChange}
+              variant="outlined"
+              fullWidth
+            />
+            <TextField
+              label="Password"
+              value={apPassword}
+              onChange={handleApPasswordChange}
+              variant="outlined"
+              fullWidth
+              sx={{ marginTop: 1 }}
+            />
+          </FormControl>
+        )}
+      </SettingsModal>
     </Container>
   );
 }

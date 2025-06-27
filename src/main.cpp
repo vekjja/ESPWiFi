@@ -1,8 +1,8 @@
 #include <ESPWiFi.h>
+#include <WebSocket.h>
 
-// ESP WiFi Capable Device:
-//     ESP8266 or ESP32 device with WiFi
 ESPWiFi device;
+WebSocket wsServer;
 
 void setup() {
   device.startSerial();
@@ -12,10 +12,17 @@ void setup() {
 #ifdef ESP32
   device.startCamera();
 #endif
+  wsServer = WebSocket("/rssi", &device);
   device.startWebServer();
 }
 
 void loop() {
+  if (device.s1Timer.shouldRun()) {
+    if (wsServer) {
+      int rssi = WiFi.RSSI() | 0;
+      wsServer.textAll(String(rssi));
+    }
+  }
 #ifdef ESP32
   device.streamCamera();
 #endif

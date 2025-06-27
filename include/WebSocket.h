@@ -5,7 +5,9 @@ class WebSocket {
   std::list<AsyncWebSocketClient *> clients;
 
  public:
-  AsyncWebSocket *socket;
+  AsyncWebSocket *socket = nullptr;
+
+  WebSocket() {}
 
   WebSocket(String path, ESPWiFi *espWifi,
             void (*onWsEvent)(AsyncWebSocket *, AsyncWebSocketClient *,
@@ -28,7 +30,8 @@ class WebSocket {
 
     espWifi->initWebServer();
     espWifi->webServer->addHandler(socket);
-    Serial.printf("⛓️  WebSocket Started: %s\n", path.c_str());
+    Serial.println("⛓️  WebSocket Started:");
+    Serial.printf("\tPath: %s\n", path.c_str());
   }
 
   ~WebSocket() {
@@ -37,6 +40,8 @@ class WebSocket {
       socket = nullptr;
     }
   }
+
+  operator bool() const { return socket != nullptr; }
 
   void textAll(const String &message) { socket->textAll(message); }
 

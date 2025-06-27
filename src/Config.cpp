@@ -21,7 +21,7 @@ void ESPWiFi::saveConfig() {
 }
 
 void ESPWiFi::readConfig() {
-  Serial.println("\n⚙️  Reading Config: " + configFile);
+  Serial.println("⚙️  Reading Config: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
     Serial.println("⚠️  Failed to open config file");

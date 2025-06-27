@@ -49,7 +49,7 @@ void ESPWiFi::defaultConfig() {
 #ifdef ESP8266
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.hostname());
 #else
-  config["ap"]["ssid"] = "ESPWiFi " + String(WiFi.getHostname());
+  config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.getHostname());
 #endif
   config["ap"]["password"] = "abcd1234";
   config["mdns"] = "ESPWiFi";

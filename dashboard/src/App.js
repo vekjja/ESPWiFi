@@ -71,13 +71,18 @@ function App() {
   }
 
   const saveConfig = (newConfig) => {
+    console.log("saveConfig called with:", newConfig);
     const { apiURL: _apiURL, ...configToSave } = newConfig;
+    console.log("Config to save (without apiURL):", configToSave);
+    console.log("API URL:", apiURL);
+
     fetch(apiURL + "/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(configToSave),
     })
       .then((response) => {
+        console.log("Response status:", response.status);
         if (!response.ok) throw new Error("Failed to save configuration");
         return response.json();
       })

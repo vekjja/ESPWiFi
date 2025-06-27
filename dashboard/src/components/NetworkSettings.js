@@ -10,9 +10,9 @@ import {
 } from "@mui/material";
 import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
 import RestartIcon from "@mui/icons-material/RestartAlt";
-import IconButton from "@mui/material/IconButton";
 import SaveButton from "./SaveButton";
 import SettingsModal from "./SettingsModal";
+import IButton from "./IButton";
 
 export default function NetworkSettings({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false); // Modal visibility state
@@ -71,12 +71,19 @@ export default function NetworkSettings({ config, saveConfig }) {
   };
 
   const handleSave = () => {
+    console.log("Save button clicked");
+    console.log("Current mdns value:", mdns);
+    console.log("Current mode:", mode);
+
     if (!isValidHostname(mdns)) {
+      console.log("Invalid hostname detected");
       alert("Invalid mDNS hostname. Please enter a valid hostname.");
       return;
     }
-    // Handle the submit action
-    saveConfig({
+
+    console.log("Hostname is valid, proceeding with save");
+
+    const configToSave = {
       ...config,
       mode: mode,
       mdns: mdns,
@@ -88,7 +95,12 @@ export default function NetworkSettings({ config, saveConfig }) {
         ssid: apSsid,
         password: apPassword,
       },
-    });
+    };
+
+    console.log("Config to save:", configToSave);
+
+    // Handle the submit action
+    saveConfig(configToSave);
     handleCloseModal();
   };
 
@@ -135,11 +147,16 @@ export default function NetworkSettings({ config, saveConfig }) {
         actions={
           <>
             <Tooltip title="Restart Device">
-              <IconButton onClick={handleRestart} sx={{ mt: 2, ml: 2 }}>
-                <RestartIcon />
-              </IconButton>
+              <IButton
+                Icon={RestartIcon}
+                onClick={handleRestart}
+                tooltip={"Restart Device"}
+              />
             </Tooltip>
-            <SaveButton onSave={handleSave} tooltip={"Save Network Settings"} />
+            <SaveButton
+              onClick={handleSave}
+              tooltip={"Save Network Settings"}
+            />
           </>
         }
       >

@@ -12,22 +12,11 @@ const IButton = ({
 }) => {
   return (
     <Tooltip title={tooltip} placement="bottom">
-      {disabled ? (
-        <span>
-          <IconButton
-            color={color}
-            onClick={onClick}
-            sx={sx}
-            disabled={disabled}
-          >
-            <Icon />
-          </IconButton>
-        </span>
-      ) : (
+      <span>
         <IconButton color={color} onClick={onClick} sx={sx} disabled={disabled}>
           <Icon />
         </IconButton>
-      )}
+      </span>
     </Tooltip>
   );
 };

@@ -17,12 +17,19 @@ void setup() {
 }
 
 void loop() {
+  // Feed the watchdog timer to prevent resets
+  yield();
+
   if (device.s1Timer.shouldRun()) {
     if (rssiSoc) {
+      // Use static buffer to prevent memory fragmentation
+      static char rssiBuffer[16];
       int rssi = WiFi.RSSI() | 0;
-      rssiSoc->textAll(String(rssi));
+      snprintf(rssiBuffer, sizeof(rssiBuffer), "%d", rssi);
+      rssiSoc->textAll(String(rssiBuffer));
     }
   }
+
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();
 #endif

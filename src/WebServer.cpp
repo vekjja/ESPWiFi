@@ -195,11 +195,15 @@ void ESPWiFi::startWebServer() {
           log("❌ /config HTTP_POST Error parsing JSON: EmptyInput");
           return;
         }
+
         // Merge posted JSON into config
         for (JsonPair kv : json.as<JsonObject>()) {
           config[kv.key()] = kv.value();
         }
+
+        // Save config to file
         saveConfig();
+
         String responseStr;
         serializeJson(config, responseStr);
         AsyncWebServerResponse *response =

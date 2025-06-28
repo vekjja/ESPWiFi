@@ -17,6 +17,7 @@ void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                           AwsEventType type, void *arg, uint8_t *data,
                           size_t len, ESPWiFi *espWifi) {
   if (type == WS_EVT_DATA) {
+
     espWifi->log("🔌 WebSocket Data Received: 📨");
     espWifi->logf("\tClient ID: %d\n", client->id());
     espWifi->logf("\tData Length: %d bytes\n", len);
@@ -33,7 +34,7 @@ void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       digitalWrite(CAM_LED_PIN, HIGH);
     }
     if (receivedData == "light:off") {
-      espWifi->log("📸 Light: OFF");
+      espWifi->log("📷 Light: OFF");
       pinMode(CAM_LED_PIN, OUTPUT);
       digitalWrite(CAM_LED_PIN, LOW);
     }
@@ -282,14 +283,24 @@ void ESPWiFi::streamCamera(int frameRate) {
   lastFrame = now;
 
   camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb || fb->format != PIXFORMAT_JPEG) {
-    log(fb ? "❌ Unsupported Pixel Format" : "❌ Camera Capture Failed");
-    if (fb)
-      esp_camera_fb_return(fb);
+  if (!fb) {
+    log("❌ Camera Capture Failed");
     return;
   }
 
-  camSoc->binaryAll((const char *)fb->buf, fb->len);
+  if (fb->format != PIXFORMAT_JPEG) {
+    log("❌ Unsupported Pixel Format");
+    esp_camera_fb_return(fb);
+    return;
+  }
+
+  // Validate buffer before sending
+  if (fb->buf && fb->len > 0) {
+    camSoc->binaryAll((const char *)fb->buf, fb->len);
+  } else {
+    log("❌ Invalid camera buffer");
+  }
+
   esp_camera_fb_return(fb);
   delay(200); // Add delay to prevent queue overflow
 }

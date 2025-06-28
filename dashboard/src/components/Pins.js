@@ -18,7 +18,7 @@ import Module from "./Module";
 import SettingsModal from "./SettingsModal";
 
 // Pin component inlined from Pin.js
-function Pin({ config, pinNum, props, updatePins }) {
+function Pin({ pinNum, props, updatePins, config }) {
   const [isOn, setIsOn] = useState(props.state === "high");
   const [name, setName] = useState(props.name || "Pin");
   const [mode, setMode] = useState(props.mode || "out");
@@ -42,40 +42,57 @@ function Pin({ config, pinNum, props, updatePins }) {
   const [duty, setDuty] = useState(props.duty || 0);
 
   const updatePinState = (newState, deletePin) => {
-    const pinState = {
+    // Use the new state if provided, otherwise use current state
+    const newPinState = {
       name: name,
       mode: mode,
       hz: hz,
       duty: duty,
       cycle: cycle,
       inverted: inverted,
-      state: isOn ? "high" : "low",
+      state: newState.state || (isOn ? "high" : "low"),
       ...newState,
     };
-    fetch(`${config.apiURL}/gpio`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...pinState,
-        mode: deletePin ? "in" : pinState.mode,
-        state: deletePin ? "low" : pinState.state,
-        num: parseInt(pinNum, 10),
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to update pin state");
-        }
-        return response.json();
+
+    // For immediate pin state changes (like toggling), send to ESP32
+    // For configuration changes (like settings), only update local config
+    if (config && (newState.state || newState.duty)) {
+      // Use apiURL if available, otherwise use current hostname
+      const baseURL = config.apiURL || window.location.origin;
+      fetch(`${baseURL}/gpio`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...newPinState,
+          mode: deletePin ? "in" : newPinState.mode,
+          state: deletePin ? "low" : newPinState.state,
+          num: parseInt(pinNum, 10),
+          delete: deletePin === "DELETE" || deletePin === true,
+        }),
       })
-      .then((data) => {
-        updatePins(pinState, deletePin);
-      })
-      .catch((error) => {
-        console.error("Error updating pin state:", error);
-      });
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("Failed to update pin state");
+          }
+          return response.json();
+        })
+        .then((data) => {
+          // Only update local state after successful API call
+          updatePins(newPinState, deletePin);
+        })
+        .catch((error) => {
+          console.error("Error updating pin state:", error);
+          // Revert local state change if API call failed
+          if (newState.state) {
+            setIsOn(!isOn);
+          }
+        });
+    } else {
+      // Update local state only for configuration changes
+      updatePins(newPinState, deletePin);
+    }
   };
 
   const handleChange = (event) => {
@@ -88,8 +105,11 @@ function Pin({ config, pinNum, props, updatePins }) {
       : uiState
       ? "high"
       : "low";
+
     // Update the internal state to match the actual pin state
     setIsOn(actualState === "high");
+
+    // Send the update request with the new state
     updatePinState({ state: actualState });
   };
 
@@ -112,7 +132,7 @@ function Pin({ config, pinNum, props, updatePins }) {
     setMode(editedMode);
     setInverted(newInverted);
 
-    // Create a temporary pinState with the new inverted value for the API call
+    // Create a temporary pinState with the new inverted value
     const tempPinState = {
       name: editedPinName,
       mode: editedMode,
@@ -123,28 +143,8 @@ function Pin({ config, pinNum, props, updatePins }) {
       state: isOn ? "high" : "low",
     };
 
-    fetch(`${config.apiURL}/gpio`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...tempPinState,
-        num: parseInt(pinNum, 10),
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Failed to update pin state");
-        }
-        return response.json();
-      })
-      .then((data) => {
-        updatePins(tempPinState, false);
-      })
-      .catch((error) => {
-        console.error("Error updating pin state:", error);
-      });
+    // Update local state only - no remote API calls for settings
+    updatePins(tempPinState, false);
 
     setSliderMin(editedDutyMin);
     setSliderMax(editedDutyMax);
@@ -190,7 +190,7 @@ function Pin({ config, pinNum, props, updatePins }) {
             />
             <SaveButton
               onClick={handleSavePinSettings}
-              tooltip={"Save Pin Settings"}
+              tooltip={"Apply Pin Settings"}
             />
           </>
         }
@@ -319,7 +319,6 @@ export default function Pins({ config, saveConfig }) {
     return (
       <Pin
         key={key}
-        config={config}
         pinNum={key}
         props={pin}
         updatePins={(pinState, deletePin) => {
@@ -330,8 +329,12 @@ export default function Pins({ config, saveConfig }) {
             updatedPins[key] = pinState;
           }
           setPins(updatedPins);
-          saveConfig({ ...config, pins: updatedPins });
+
+          // Update the global config with the new pins state
+          const updatedConfig = { ...config, pins: updatedPins };
+          saveConfig(updatedConfig);
         }}
+        config={config}
       />
     );
   });

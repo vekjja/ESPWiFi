@@ -71,17 +71,10 @@ export default function NetworkSettings({ config, saveConfig }) {
   };
 
   const handleSave = () => {
-    console.log("Save button clicked");
-    console.log("Current mdns value:", mdns);
-    console.log("Current mode:", mode);
-
     if (!isValidHostname(mdns)) {
-      console.log("Invalid hostname detected");
       alert("Invalid mDNS hostname. Please enter a valid hostname.");
       return;
     }
-
-    console.log("Hostname is valid, proceeding with save");
 
     const configToSave = {
       ...config,
@@ -97,9 +90,7 @@ export default function NetworkSettings({ config, saveConfig }) {
       },
     };
 
-    console.log("Config to save:", configToSave);
-
-    // Handle the submit action
+    // Update local config only - no immediate ESP32 save
     saveConfig(configToSave);
     handleCloseModal();
   };
@@ -110,7 +101,6 @@ export default function NetworkSettings({ config, saveConfig }) {
       method: "GET",
     }).catch((error) => {
       // Ignore errors since device will restart
-      console.log("Restart request sent, device is restarting...");
     });
 
     // Close the modal immediately
@@ -130,19 +120,21 @@ export default function NetworkSettings({ config, saveConfig }) {
         justifyContent: "center",
       }}
     >
-      <Fab
-        size="small"
-        color="primary"
-        aria-label="add"
-        onClick={handleOpenModal}
-        sx={{
-          position: "fixed",
-          top: "20px",
-          left: "20px",
-        }}
-      >
-        <NetworkCheckIcon />
-      </Fab>
+      <Tooltip title={"Network Settings"}>
+        <Fab
+          size="small"
+          color="primary"
+          aria-label="add"
+          onClick={handleOpenModal}
+          sx={{
+            position: "fixed",
+            top: "20px",
+            left: "20px",
+          }}
+        >
+          <NetworkCheckIcon />
+        </Fab>
+      </Tooltip>
 
       <SettingsModal
         open={isModalOpen}
@@ -159,7 +151,7 @@ export default function NetworkSettings({ config, saveConfig }) {
             </Tooltip>
             <SaveButton
               onClick={handleSave}
-              tooltip={"Save Network Settings"}
+              tooltip={"Apply Network Settings"}
             />
           </>
         }

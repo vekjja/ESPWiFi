@@ -24,8 +24,10 @@ void ESPWiFi::startGPIO() {
         String mode = reqJson["mode"] | "";
         String state = reqJson["state"] | "";
         int duty = reqJson["duty"] | 0;
+        bool isDelete = reqJson["delete"] | false;
         mode.toLowerCase();
         state.toLowerCase();
+
         String errorMsg;
         if (pinNum < 0) {
           errorMsg = "{\"error\":\"Missing pin number\"}";
@@ -34,6 +36,19 @@ void ESPWiFi::startGPIO() {
           request->send(response);
           return;
         }
+
+        // If this is a delete operation, just return success without changing
+        // pin mode This prevents issues with strapping pins that could cause
+        // reboots
+        if (isDelete) {
+          String okMsg = "{\"status\":\"Pin deleted\"}";
+          response = request->beginResponse(200, "application/json", okMsg);
+          addCORS(response);
+          request->send(response);
+          log("📍 GPIO " + String(pinNum) + " deleted (no pin mode change)");
+          return;
+        }
+
         if (mode == "out" || mode == "output" || mode == "pwm") {
           pinMode(pinNum, OUTPUT);
         } else if (mode == "input" || mode == "in") {

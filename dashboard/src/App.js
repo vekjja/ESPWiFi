@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
+import { Fab, Tooltip } from "@mui/material";
+import SaveIcon from "@mui/icons-material/Save";
 import NetworkSettings from "./components/NetworkSettings";
 import AddButton from "./components/AddButton";
 import Pins from "./components/Pins";
@@ -39,12 +41,20 @@ const theme = createTheme({
 
 function App() {
   const [config, setConfig] = useState(null);
+  const [localConfig, setLocalConfig] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const hostname = process.env.REACT_APP_API_HOST || "localhost";
   const port = process.env.REACT_APP_API_PORT || 80;
   const apiURL =
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges =
+    config &&
+    localConfig &&
+    JSON.stringify(config) !== JSON.stringify(localConfig);
 
   useEffect(() => {
     console.log("Fetching configuration from:", apiURL + "/config");
@@ -57,7 +67,9 @@ function App() {
       })
       .then((data) => {
         console.log("Fetched Configuration:", data);
-        setConfig({ ...data, apiURL });
+        const configWithAPI = { ...data, apiURL };
+        setConfig(configWithAPI);
+        setLocalConfig(configWithAPI);
         setLoading(false);
       })
       .catch((error) => {
@@ -70,8 +82,23 @@ function App() {
     return <LinearProgress color="inherit" />;
   }
 
-  const saveConfig = (newConfig) => {
-    const { apiURL: _apiURL, ...configToSave } = newConfig;
+  if (saving) {
+    return <LinearProgress color="primary" />;
+  }
+
+  // Update local config only (no ESP32 calls)
+  const updateLocalConfig = (newConfig) => {
+    const configWithAPI = { ...newConfig, apiURL };
+    setLocalConfig(configWithAPI);
+    console.log("Local config updated:", configWithAPI);
+  };
+
+  // Save current local config to ESP32
+  const saveToESP32 = () => {
+    if (!localConfig) return;
+
+    setSaving(true);
+    const { apiURL: _apiURL, ...configToSave } = localConfig;
 
     fetch(apiURL + "/config", {
       method: "POST",
@@ -83,12 +110,16 @@ function App() {
         return response.json();
       })
       .then((savedConfig) => {
-        setConfig({ ...savedConfig, apiURL });
-        console.log("Configuration Updated:", savedConfig);
+        const configWithAPI = { ...savedConfig, apiURL };
+        setConfig(configWithAPI);
+        setLocalConfig(configWithAPI);
+        console.log("Configuration Saved to Device:", savedConfig);
+        setSaving(false);
       })
       .catch((error) => {
-        console.error("Error Updating configuration:", error);
-        alert("Failed to save configuration");
+        console.error("Error saving configuration to ESP32:", error);
+        alert("Failed to save configuration to ESP32");
+        setSaving(false);
       });
   };
 
@@ -109,14 +140,42 @@ function App() {
           minWidth: "100%",
         }}
       >
-        {config["mdns"]}
+        {localConfig?.["mdns"] || config?.["mdns"]}
       </Container>
-      {config && (
+
+      {/* Global Save Button */}
+      <Tooltip
+        title={
+          hasUnsavedChanges
+            ? "Save Module Configuration (unsaved changes)"
+            : "Save Module Configuration"
+        }
+      >
+        <Fab
+          size="small"
+          color={hasUnsavedChanges ? "primary" : "secondary"}
+          onClick={saveToESP32}
+          sx={{
+            position: "fixed",
+            top: "20px",
+            right: "80px", // Position to the left of the Add button
+            zIndex: 1001,
+            display: hasUnsavedChanges ? "block" : "none",
+          }}
+        >
+          <SaveIcon />
+        </Fab>
+      </Tooltip>
+
+      {localConfig && (
         <Container>
-          <NetworkSettings config={config} saveConfig={saveConfig} />
-          <AddButton config={config} saveConfig={saveConfig} />
-          <Pins config={config} saveConfig={saveConfig} />
-          <WebSockets config={config} saveConfig={saveConfig} />
+          <NetworkSettings
+            config={localConfig}
+            saveConfig={updateLocalConfig}
+          />
+          <AddButton config={localConfig} saveConfig={updateLocalConfig} />
+          <Pins config={localConfig} saveConfig={updateLocalConfig} />
+          <WebSockets config={localConfig} saveConfig={updateLocalConfig} />
         </Container>
       )}
     </ThemeProvider>

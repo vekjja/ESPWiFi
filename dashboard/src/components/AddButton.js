@@ -3,6 +3,7 @@ import {
   TextField,
   FormControl,
   InputLabel,
+  Tooltip,
   Select,
   MenuItem,
   Fab,
@@ -47,7 +48,7 @@ export default function AddButton({ config, saveConfig }) {
       saveConfig({ ...config, webSockets: updatedWebSockets });
     } else {
       const updatedPins = {
-        ...config.pins,
+        ...(config.pins || {}),
         [selectedPinNum]: {
           state: "low",
           name: `GPIO${selectedPinNum}`,
@@ -84,31 +85,36 @@ export default function AddButton({ config, saveConfig }) {
 
   return (
     <>
-      <Fab
-        size="small" // Match the size of the SettingsIcon Fab
-        color="primary"
-        onClick={handleOpenModal}
-        sx={{
-          position: "fixed",
-          top: "20px",
-          right: "20px",
-        }}
-      >
-        <AddIcon />
-      </Fab>
-
+      <Tooltip title={"Add Module"}>
+        <Fab
+          size="small" // Match the size of the SettingsIcon Fab
+          color="primary"
+          onClick={handleOpenModal}
+          sx={{
+            position: "fixed",
+            top: "20px",
+            right: "20px",
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      </Tooltip>
       <SettingsModal
         open={isModalOpen}
         onClose={handleCloseModal}
         title="Add Module"
         actions={
-          <IButton
-            color="primary"
-            Icon={AddTaskIcon}
-            onClick={handleAdd}
-            tooltip={"Add " + (selectedTab === 1 ? "WebSocket" : "Pin")}
-            disabled={selectedTab === 1 ? !webSocketURL : selectedPinNum === ""}
-          />
+          <>
+            <IButton
+              color="primary"
+              Icon={AddTaskIcon}
+              onClick={handleAdd}
+              tooltip={"Add " + (selectedTab === 1 ? "WebSocket" : "Pin")}
+              disabled={
+                selectedTab === 1 ? !webSocketURL : selectedPinNum === ""
+              }
+            />
+          </>
         }
       >
         <Tabs

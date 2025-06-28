@@ -1,5 +1,5 @@
 import React from "react";
-import SaveIcon from "@mui/icons-material/Save";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import IButton from "./IButton";
 
 const SaveButton = ({ onClick, tooltip }) => {
@@ -15,7 +15,7 @@ const SaveButton = ({ onClick, tooltip }) => {
       color="primary"
       tooltip={tooltip}
       onClick={handleClick}
-      Icon={SaveIcon}
+      Icon={FactCheckIcon}
     />
   );
 };

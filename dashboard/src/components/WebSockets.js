@@ -45,6 +45,7 @@ export default function WebSockets({ config, saveConfig }) {
         type: ws.type || "text",
         fontSize: ws.fontSize || 14,
         enableSending: ws.enableSending !== false,
+        connectionState: ws.connectionState || "disconnected",
       }));
     }
     return [];
@@ -54,6 +55,7 @@ export default function WebSockets({ config, saveConfig }) {
           config.webSockets.map((ws) => ({
             url: ws.url,
             type: ws.type || "text",
+            connectionState: ws.connectionState || "disconnected",
           }))
         )
       : null,
@@ -62,10 +64,18 @@ export default function WebSockets({ config, saveConfig }) {
   useEffect(() => {
     // Only update if the configuration has actually changed
     const currentConfigString = JSON.stringify(
-      webSockets.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+      webSockets.map((ws) => ({
+        url: ws.url,
+        type: ws.type || "text",
+        connectionState: ws.connectionState || "disconnected",
+      }))
     );
     const newConfigString = JSON.stringify(
-      webSocketConfig.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+      webSocketConfig.map((ws) => ({
+        url: ws.url,
+        type: ws.type || "text",
+        connectionState: ws.connectionState || "disconnected",
+      }))
     );
 
     if (currentConfigString !== newConfigString) {
@@ -73,6 +83,30 @@ export default function WebSockets({ config, saveConfig }) {
       setWebSockets(webSocketConfig);
     }
   }, [webSocketConfig]);
+
+  // Function to update connection state in config
+  const updateConnectionStateInConfig = (index, newState) => {
+    setConnectionStatus((prev) => ({
+      ...prev,
+      [index]: newState,
+    }));
+
+    // Update the WebSocket configuration with the new connection state
+    const updatedWebSockets = [...webSockets];
+    if (updatedWebSockets[index]) {
+      updatedWebSockets[index] = {
+        ...updatedWebSockets[index],
+        connectionState: newState,
+      };
+
+      // Update local state
+      setWebSockets(updatedWebSockets);
+
+      // Update config
+      const updatedConfig = { ...config, webSockets: updatedWebSockets };
+      saveConfig(updatedConfig);
+    }
+  };
 
   // Function to create a WebSocket connection for a specific index
   const createWebSocketConnection = (index, webSocket) => {
@@ -89,10 +123,7 @@ export default function WebSockets({ config, saveConfig }) {
     );
 
     // Set loading state for this socket
-    setConnectionStatus((prev) => ({
-      ...prev,
-      [index]: "connecting",
-    }));
+    updateConnectionStateInConfig(index, "connecting");
 
     const ws = new WebSocket(webSocket.url);
     if (webSocket.type === "binary") {
@@ -104,10 +135,7 @@ export default function WebSockets({ config, saveConfig }) {
 
     ws.onopen = () => {
       console.log(`WebSocket ${index} connected successfully`);
-      setConnectionStatus((prev) => ({
-        ...prev,
-        [index]: "connected",
-      }));
+      updateConnectionStateInConfig(index, "connected");
     };
 
     ws.onmessage = (event) => {
@@ -130,10 +158,7 @@ export default function WebSockets({ config, saveConfig }) {
 
     ws.onerror = (error) => {
       console.error(`WebSocket ${index} error:`, error);
-      setConnectionStatus((prev) => ({
-        ...prev,
-        [index]: "error",
-      }));
+      updateConnectionStateInConfig(index, "error");
     };
 
     ws.onclose = (event) => {
@@ -143,10 +168,7 @@ export default function WebSockets({ config, saveConfig }) {
 
       // Only update status if this is still the current WebSocket for this index
       if (socketRefs.current[index] === ws) {
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "📶",
-        }));
+        updateConnectionStateInConfig(index, "disconnected");
         delete socketRefs.current[index];
       }
     };
@@ -157,7 +179,11 @@ export default function WebSockets({ config, saveConfig }) {
   useEffect(() => {
     // Check if the WebSocket configuration has actually changed
     const currentConfigString = JSON.stringify(
-      webSockets.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+      webSockets.map((ws) => ({
+        url: ws.url,
+        type: ws.type || "text",
+        connectionState: ws.connectionState || "disconnected",
+      }))
     );
     const prevConfigString = prevWebSocketConfigRef.current;
 
@@ -259,6 +285,18 @@ export default function WebSockets({ config, saveConfig }) {
       }
     });
   }, [webSockets]); // Only recreate when webSockets array changes
+
+  // Initialize connection status from config on component mount
+  useEffect(() => {
+    if (webSockets.length > 0) {
+      const initialConnectionStatus = {};
+      webSockets.forEach((webSocket, index) => {
+        initialConnectionStatus[index] =
+          webSocket.connectionState || "disconnected";
+      });
+      setConnectionStatus(initialConnectionStatus);
+    }
+  }, [webSockets]);
 
   // Separate cleanup effect for component unmount
   useEffect(() => {
@@ -376,10 +414,7 @@ export default function WebSockets({ config, saveConfig }) {
         }
 
         // Set connecting status
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "connecting",
-        }));
+        updateConnectionStateInConfig(index, "connecting");
 
         // Add timeout before reconnection attempt
         setTimeout(() => {
@@ -410,10 +445,7 @@ export default function WebSockets({ config, saveConfig }) {
         }
 
         // Set disconnected status
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "disconnected",
-        }));
+        updateConnectionStateInConfig(index, "disconnected");
       }
     }
 
@@ -438,10 +470,20 @@ export default function WebSockets({ config, saveConfig }) {
       newWebSockets.length,
       "connections"
     );
-    setWebSockets(newWebSockets);
+
+    // Preserve connection states for existing WebSockets
+    const updatedWebSockets = newWebSockets.map((ws, index) => {
+      const existingWebSocket = webSockets[index];
+      return {
+        ...ws,
+        connectionState: existingWebSocket?.connectionState || "disconnected",
+      };
+    });
+
+    setWebSockets(updatedWebSockets);
 
     // Update local config
-    const updatedConfig = { ...config, webSockets: newWebSockets };
+    const updatedConfig = { ...config, webSockets: updatedWebSockets };
     saveConfig(updatedConfig);
   };
 
@@ -490,7 +532,8 @@ export default function WebSockets({ config, saveConfig }) {
                 Connection Error
               </Typography>
             </div>
-          ) : connectionStatus[index] === "disconnected" ? (
+          ) : connectionStatus[index] === "disconnected" ||
+            connectionStatus[index] === "📶" ? (
             <div
               style={{
                 display: "flex",

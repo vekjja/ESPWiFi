@@ -71,6 +71,7 @@ public:
   void log(String message);
   void writeLog(String message);
   void logf(const char *format, ...);
+  void checkAndCleanupLogFile();
   template <typename T> void log(T value) {
     String valueString = String(value);
     log(valueString);

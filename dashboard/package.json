@@ -23,6 +23,7 @@
     "build:uploadfs:esp8266": "PIO_ENV=esp8266 npm run build:uploadfs",
     "build:uploadfs:esp32-cam": "PIO_ENV=esp32-cam npm run build:uploadfs",
     "build:uploadfs:esp32-s3": "PIO_ENV=esp32-s3 npm run build:uploadfs",
+    "build:uploadfs:esp32-c3": "PIO_ENV=esp32-c3 npm run build:uploadfs",
     "pio:clean": "cd .. && pio run --target clean",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

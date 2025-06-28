@@ -1,6 +1,6 @@
 #include <ESPWiFi.h>
 #include <WebSocket.h>
-
+ 
 ESPWiFi device;
 WebSocket* rssiSoc;
 
@@ -9,7 +9,7 @@ void setup() {
   device.startWiFi();
   device.startMDNS();
   device.startGPIO();
-#ifdef ESP32
+#ifdef ESPWiFi_CAMERA_ENABLED
   device.startCamera();
 #endif
   rssiSoc = new WebSocket("/rssi", &device);
@@ -23,7 +23,7 @@ void loop() {
       rssiSoc->textAll(String(rssi));
     }
   }
-#ifdef ESP32
+#ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();
 #endif
 #ifdef ESP8266

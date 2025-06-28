@@ -12,7 +12,7 @@
 #ifdef ESP8266
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
-#else
+#elif defined(ESP32)
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #endif
@@ -66,9 +66,11 @@ class ESPWiFi {
   void startGPIO();
 
   // Camera
+#ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshot.jpg");
+#endif
 
   // Utils
   String getContentType(String filename);

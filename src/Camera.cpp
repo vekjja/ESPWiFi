@@ -1,3 +1,5 @@
+#ifdef ESPWiFi_CAMERA_ENABLED
+
 #ifndef ESPWIFI_CAMERA
 #define ESPWIFI_CAMERA
 
@@ -273,3 +275,5 @@ void ESPWiFi::streamCamera(int frameRate) {
 #endif
 
 #endif  // ESPWIFI_CAMERA
+
+#endif  // ESPWiFi_CAMERA_ENABLED

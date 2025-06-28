@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Container,
   Typography,
@@ -25,6 +25,9 @@ export default function WebSockets({ config, saveConfig }) {
   const [editedType, setEditedType] = useState("text");
   const [editedFontSize, setEditedFontSize] = useState(14);
 
+  // Use refs to store WebSocket instances for proper cleanup
+  const socketRefs = useRef({});
+
   useEffect(() => {
     if (config && config.webSockets) {
       setWebSockets(
@@ -38,7 +41,16 @@ export default function WebSockets({ config, saveConfig }) {
   }, [config]);
 
   useEffect(() => {
-    const sockets = webSockets.map((webSocket, index) => {
+    // Clean up existing connections first
+    Object.values(socketRefs.current).forEach((ws) => {
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        ws.close();
+      }
+    });
+    socketRefs.current = {};
+
+    // Create new connections only if webSockets array has changed
+    webSockets.forEach((webSocket, index) => {
       // Set loading state for this socket
       setConnectionStatus((prev) => ({
         ...prev,
@@ -49,6 +61,9 @@ export default function WebSockets({ config, saveConfig }) {
       if (webSocket.type === "binary") {
         ws.binaryType = "arraybuffer";
       }
+
+      // Store the WebSocket instance in refs for cleanup
+      socketRefs.current[index] = ws;
 
       ws.onopen = () => {
         setConnectionStatus((prev) => ({
@@ -88,15 +103,21 @@ export default function WebSockets({ config, saveConfig }) {
           ...prev,
           [index]: "📶",
         }));
+        // Remove from refs when closed
+        delete socketRefs.current[index];
       };
-
-      return ws;
     });
 
+    // Cleanup function
     return () => {
-      sockets.forEach((ws) => ws.close());
+      Object.values(socketRefs.current).forEach((ws) => {
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+          ws.close();
+        }
+      });
+      socketRefs.current = {};
     };
-  }, [webSockets]);
+  }, [webSockets]); // Only recreate when webSockets array changes
 
   const handleSettingsClick = (webSocket) => {
     setSelectedWebSocket(webSocket);

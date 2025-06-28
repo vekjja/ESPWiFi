@@ -71,10 +71,7 @@ function App() {
   }
 
   const saveConfig = (newConfig) => {
-    console.log("saveConfig called with:", newConfig);
     const { apiURL: _apiURL, ...configToSave } = newConfig;
-    console.log("Config to save (without apiURL):", configToSave);
-    console.log("API URL:", apiURL);
 
     fetch(apiURL + "/config", {
       method: "POST",
@@ -82,16 +79,15 @@ function App() {
       body: JSON.stringify(configToSave),
     })
       .then((response) => {
-        console.log("Response status:", response.status);
         if (!response.ok) throw new Error("Failed to save configuration");
         return response.json();
       })
       .then((savedConfig) => {
         setConfig({ ...savedConfig, apiURL });
-        console.log("Configuration saved successfully:", savedConfig);
+        console.log("Configuration Updated:", savedConfig);
       })
       .catch((error) => {
-        console.error("Error saving configuration:", error);
+        console.error("Error Updating configuration:", error);
         alert("Failed to save configuration");
       });
   };

@@ -202,6 +202,9 @@ void ESPWiFi::startCamera() {
     Serial.println("❌ Failed to create Camera WebSocket");
     return;
   }
+  
+  // Debug camera WebSocket status
+  Serial.printf("📷 Camera WebSocket created at: %s\n", camSoc->socket->url());
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
@@ -245,6 +248,14 @@ void ESPWiFi::streamCamera(int frameRate) {
                                : 200;  // Default to 5 fps if frameRate is 0
   if (now - lastFrame < interval) return;
   lastFrame = now;
+
+  // Debug camera WebSocket status every 100 frames (roughly every 20 seconds at 5fps)
+  static int debugCounter = 0;
+  if (++debugCounter >= 100) {
+    debugCounter = 0;
+    Serial.println("📷 Camera WebSocket Debug:");
+    camSoc->debugClients();
+  }
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb || fb->format != PIXFORMAT_JPEG) {

@@ -224,6 +224,50 @@ void ESPWiFi::startWebServer() {
     ESP.restart();
   });
 
+  // /websocket-debug endpoint
+  webServer->on("/websocket-debug", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>WebSocket Debug</title>";
+    html += "<style>body{font-family:sans-serif;background:#181a1b;color:#e8eaed;margin:0;padding:2em;}";
+    html += "h2{color:#7FF9E9;}table{background:#23272a;border-radius:8px;box-shadow:0 2px 8px #0008;";
+    html += "border-collapse:collapse;width:100%;max-width:800px;margin:auto;}";
+    html += "th,td{padding:10px 16px;text-align:left;}th{background:#222c36;color:#7FF9E9;}";
+    html += "tr:nth-child(even){background:#202124;}tr:hover{background:#263238;}";
+    html += "button{background:#7FF9E9;color:#000;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;margin:10px;}";
+    html += "button:hover{background:#5CD6B2;}pre{background:#23272a;color:#e8eaed;padding:1em;border-radius:8px;overflow-x:auto;}";
+    html += "</style></head><body>";
+    html += "<h2>🔍 WebSocket Debug</h2>";
+    html += "<button onclick='location.reload()'>🔄 Refresh</button>";
+    html += "<button onclick='debugWebSockets()'>🔍 Debug WebSockets</button>";
+    html += "<div id='debug-output'></div>";
+    html += "<script>";
+    html += "function debugWebSockets() {";
+    html += "  const output = document.getElementById('debug-output');";
+    html += "  output.innerHTML = '<p>🔍 Checking WebSocket connections...</p>';";
+    html += "  // Try to connect to known WebSocket endpoints";
+    html += "  const endpoints = ['/rssi', '/ws/camera'];";
+    html += "  let results = [];";
+    html += "  endpoints.forEach(endpoint => {";
+    html += "    try {";
+    html += "      const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + endpoint);";
+    html += "      ws.onopen = () => { results.push('✅ ' + endpoint + ' - Connected'); updateResults(); };";
+    html += "      ws.onerror = () => { results.push('❌ ' + endpoint + ' - Failed'); updateResults(); };";
+    html += "      setTimeout(() => { if(ws.readyState !== WebSocket.OPEN) { results.push('⏰ ' + endpoint + ' - Timeout'); updateResults(); } }, 2000);";
+    html += "    } catch(e) { results.push('💥 ' + endpoint + ' - Error: ' + e.message); updateResults(); }";
+    html += "  });";
+    html += "  function updateResults() {";
+    html += "    if(results.length === endpoints.length) {";
+    html += "      output.innerHTML = '<h3>WebSocket Test Results:</h3><pre>' + results.join('\\n') + '</pre>';";
+    html += "    }";
+    html += "  }";
+    html += "}";
+    html += "</script>";
+    html += "</body></html>";
+    
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
+    addCORS(response);
+    request->send(response);
+  });
+
   // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
   webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String html =

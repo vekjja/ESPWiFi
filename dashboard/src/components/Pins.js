@@ -25,6 +25,7 @@ function Pin({ pinNum, props, updatePins, config }) {
   const [hz] = useState(props.hz || 50);
   const [cycle] = useState(props.cycle || 20000);
   const [inverted, setInverted] = useState(props.inverted || false);
+  const [remoteURL, setRemoteURL] = useState(props.remoteURL || "");
   const [anchorEl] = useState(null);
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
@@ -32,6 +33,7 @@ function Pin({ pinNum, props, updatePins, config }) {
   const [editedHz, setEditedHz] = useState(hz);
   const [editedCycle, setEditedCycle] = useState(cycle);
   const [editedInverted, setEditedInverted] = useState(inverted);
+  const [editedRemoteURL, setEditedRemoteURL] = useState(remoteURL);
 
   const dutyMin = props.dutyMin || 0;
   const dutyMax = props.dutyMax || 100;
@@ -50,6 +52,7 @@ function Pin({ pinNum, props, updatePins, config }) {
       duty: duty,
       cycle: cycle,
       inverted: inverted,
+      remoteURL: remoteURL,
       state: newState.state || (isOn ? "high" : "low"),
       ...newState,
     };
@@ -57,9 +60,28 @@ function Pin({ pinNum, props, updatePins, config }) {
     // For immediate pin state changes (like toggling), send to ESP32
     // For configuration changes (like settings), only update local config
     if (config && (newState.state || newState.duty)) {
-      // Use apiURL if available, otherwise use current hostname
-      const baseURL = config.apiURL || window.location.origin;
-      fetch(`${baseURL}/gpio`, {
+      // Determine the target URL - use remoteURL if specified, otherwise use apiURL or current hostname
+      let targetURL;
+      if (remoteURL && remoteURL.trim()) {
+        // Ensure the remote URL has the correct protocol and path
+        let cleanURL = remoteURL.trim();
+        if (
+          !cleanURL.startsWith("http://") &&
+          !cleanURL.startsWith("https://")
+        ) {
+          cleanURL = "http://" + cleanURL;
+        }
+        if (!cleanURL.endsWith("/gpio")) {
+          cleanURL = cleanURL.replace(/\/$/, "") + "/gpio";
+        }
+        targetURL = cleanURL;
+      } else {
+        // Use apiURL if available, otherwise use current hostname
+        const baseURL = config.apiURL || window.location.origin;
+        targetURL = `${baseURL}/gpio`;
+      }
+
+      fetch(targetURL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -119,6 +141,7 @@ function Pin({ pinNum, props, updatePins, config }) {
     setEditedHz(hz);
     setEditedCycle(cycle);
     setEditedInverted(inverted);
+    setEditedRemoteURL(remoteURL);
     setOpenPinModal(true);
   };
 
@@ -128,11 +151,13 @@ function Pin({ pinNum, props, updatePins, config }) {
 
   const handleSavePinSettings = () => {
     const newInverted = editedInverted;
+    const newRemoteURL = editedRemoteURL;
     setName(editedPinName);
     setMode(editedMode);
     setInverted(newInverted);
+    setRemoteURL(newRemoteURL);
 
-    // Create a temporary pinState with the new inverted value
+    // Create a temporary pinState with the new values
     const tempPinState = {
       name: editedPinName,
       mode: editedMode,
@@ -140,6 +165,7 @@ function Pin({ pinNum, props, updatePins, config }) {
       duty: duty,
       cycle: editedCycle,
       inverted: newInverted,
+      remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
     };
 
@@ -163,11 +189,19 @@ function Pin({ pinNum, props, updatePins, config }) {
 
   const effectiveIsOn = inverted ? !isOn : isOn;
 
+  // Create title with remote indicator
+  const moduleTitle =
+    remoteURL && remoteURL.trim() ? `${name || pinNum} 🌐` : name || pinNum;
+
   return (
     <Module
-      title={name || pinNum}
+      title={moduleTitle}
       onSettings={handleOpenPinModal}
-      settingsTooltip={"Pin Settings"}
+      settingsTooltip={
+        remoteURL && remoteURL.trim()
+          ? `Pin Settings (Remote: ${remoteURL})`
+          : "Pin Settings"
+      }
       sx={{
         backgroundColor: anchorEl
           ? "primary.dark"
@@ -223,6 +257,16 @@ function Pin({ pinNum, props, updatePins, config }) {
             <MenuItem value="pwm">PWM</MenuItem>
           </Select>
         </FormControl>
+        <TextField
+          label="Remote GPIO URL (optional)"
+          value={editedRemoteURL}
+          onChange={(e) => setEditedRemoteURL(e.target.value)}
+          variant="outlined"
+          fullWidth
+          placeholder="http://192.168.1.100 or esp32.local"
+          helperText="Leave empty to use local ESP32. Include protocol (http://) for remote devices."
+          sx={{ marginBottom: 2 }}
+        />
         <FormControlLabel
           control={
             <Checkbox

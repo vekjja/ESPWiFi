@@ -12,6 +12,7 @@
 #define CAM_LED_PIN 4
 
 WebSocket *camSoc = nullptr;
+String camSocPath = "/ws/camera";
 
 void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                           AwsEventType type, void *arg, uint8_t *data,
@@ -231,7 +232,7 @@ void ESPWiFi::startCamera() {
 
   logf("📷 Camera Started\n");
 
-  camSoc = new WebSocket(String("/camera"), this, cameraWebSocketEvent);
+  camSoc = new WebSocket(camSocPath, this, cameraWebSocketEvent);
 
   if (!camSoc) {
     log("❌ Failed to create Camera WebSocket");

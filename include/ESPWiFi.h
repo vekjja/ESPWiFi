@@ -98,6 +98,7 @@ public:
 
   // GPIO
   void startGPIO();
+  void startGPIOWebSocket();
 
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED

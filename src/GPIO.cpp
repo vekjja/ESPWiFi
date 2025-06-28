@@ -5,6 +5,33 @@
 #include <AsyncJson.h>
 
 #include "ESPWiFi.h"
+#include <WebSocket.h>
+
+WebSocket *gpioSoc;
+String gpioSocPath = "/ws/gpio";
+
+void gpioWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
+                        AwsEventType type, void *arg, uint8_t *data, size_t len,
+                        ESPWiFi *espWifi) {
+  if (type == WS_EVT_DATA) {
+
+    // Convert received data to string
+    String receivedData = String((char *)data, len);
+    receivedData.trim(); // Remove any whitespace
+
+    espWifi->log("📍 GPIO WS Data Received: 📨");
+    espWifi->logf("\tClient ID: %d\n", client->id());
+    espWifi->logf("\tData: %s\n", receivedData);
+  }
+}
+
+void ESPWiFi::startGPIOWebSocket() {
+  gpioSoc = new WebSocket(gpioSocPath, this, gpioWebSocketEvent);
+  if (!gpioSoc) {
+    log("❌ Failed to create GPIO WebSocket");
+    return;
+  }
+}
 
 void ESPWiFi::startGPIO() {
   initWebServer();

@@ -5,8 +5,8 @@
 class WebSocket {
 private:
   std::list<AsyncWebSocketClient *> clients;
-  size_t maxClients = 10;     // Limit maximum connections
   ESPWiFi *espWifi = nullptr; // Store ESPWiFi instance
+  size_t maxClients = 9;      // Default maximum number of clients
 
 public:
   AsyncWebSocket *socket = nullptr;
@@ -35,9 +35,10 @@ public:
       if (!espWifi || !client)
         return; // Early return if no ESPWiFi instance or invalid client
 
+      int clientCount = activeClientCount();
       if (type == WS_EVT_CONNECT) {
         // Check if we're at the connection limit using total count
-        if (clients.size() >= maxClients) {
+        if (clientCount >= maxClients) {
           espWifi->logf(
               "⚠️  Connection limit reached (%d), rejecting new connection\n",
               maxClients);
@@ -51,7 +52,7 @@ public:
         espWifi->logf("\tPath: %s\n", socket->url());
         espWifi->logf("\tPort: %d\n", client->remotePort());
         espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
-        espWifi->logf("\tActive Clients: %d\n", clients.size());
+        espWifi->logf("\tActive Clients: %d\n", clientCount);
       } else if (type == WS_EVT_DISCONNECT) {
         // Safely remove client from list
         auto it = std::find(clients.begin(), clients.end(), client);
@@ -61,7 +62,7 @@ public:
           espWifi->logf("\tPath: %s\n", socket->url());
           espWifi->logf("\tPort: %d\n", client->remotePort());
           espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
-          espWifi->logf("\tActive Clients: %d\n", clients.size() - 1);
+          espWifi->logf("\tActive Clients: %d\n", clientCount);
           espWifi->logf("\tTotal Clients: %d\n", clients.size());
           espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
 

@@ -13,6 +13,7 @@ void setup() {
   device.startCamera();
 #endif
   rssiSoc = new WebSocket("/rssi", &device);
+  device.stopSleep();
   device.startWebServer();
 }
 

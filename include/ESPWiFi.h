@@ -61,9 +61,9 @@ public:
     logf("\tTotal: %s\n", bytesToHumanReadable(LittleFS.totalBytes()).c_str());
   }
 
-  void stopLowPowerSleep() {
+  void stopSleep() {
     WiFi.setSleep(false);
-    log("🚫 🔋 Low Power Sleep Disabled");
+    log("🔋 WiFi Sleep Stopped 🛑");
   }
 
   // Log

@@ -48,21 +48,117 @@ export default function WebSockets({ config, saveConfig }) {
       }));
     }
     return [];
-  }, [config?.webSockets ? JSON.stringify(config.webSockets) : null]);
+  }, [
+    config?.webSockets
+      ? JSON.stringify(
+          config.webSockets.map((ws) => ({
+            url: ws.url,
+            type: ws.type || "text",
+          }))
+        )
+      : null,
+  ]);
 
   useEffect(() => {
     // Only update if the configuration has actually changed
-    const currentConfigString = JSON.stringify(webSockets);
-    const newConfigString = JSON.stringify(webSocketConfig);
+    const currentConfigString = JSON.stringify(
+      webSockets.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+    );
+    const newConfigString = JSON.stringify(
+      webSocketConfig.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+    );
 
     if (currentConfigString !== newConfigString) {
+      console.log("Updating WebSocket configuration from props");
       setWebSockets(webSocketConfig);
     }
   }, [webSocketConfig]);
 
+  // Function to create a WebSocket connection for a specific index
+  const createWebSocketConnection = (index, webSocket) => {
+    // Check if we already have a connection for this index
+    if (socketRefs.current[index]) {
+      console.log(
+        `WebSocket connection already exists for index ${index}, skipping creation`
+      );
+      return socketRefs.current[index];
+    }
+
+    console.log(
+      `Creating WebSocket connection for index ${index} to ${webSocket.url}`
+    );
+
+    // Set loading state for this socket
+    setConnectionStatus((prev) => ({
+      ...prev,
+      [index]: "connecting",
+    }));
+
+    const ws = new WebSocket(webSocket.url);
+    if (webSocket.type === "binary") {
+      ws.binaryType = "arraybuffer";
+    }
+
+    // Store the WebSocket instance in refs for cleanup
+    socketRefs.current[index] = ws;
+
+    ws.onopen = () => {
+      console.log(`WebSocket ${index} connected successfully`);
+      setConnectionStatus((prev) => ({
+        ...prev,
+        [index]: "connected",
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      if (webSocket.type === "binary") {
+        const blob = new Blob([event.data], { type: "image/jpeg" });
+        const objectURL = URL.createObjectURL(blob);
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[index] = objectURL;
+          return updated;
+        });
+      } else {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[index] = event.data;
+          return updated;
+        });
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error(`WebSocket ${index} error:`, error);
+      setConnectionStatus((prev) => ({
+        ...prev,
+        [index]: "error",
+      }));
+    };
+
+    ws.onclose = (event) => {
+      console.log(
+        `WebSocket ${index} closed with code: ${event.code}, reason: ${event.reason}`
+      );
+
+      // Only update status if this is still the current WebSocket for this index
+      if (socketRefs.current[index] === ws) {
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [index]: "📶",
+        }));
+        delete socketRefs.current[index];
+      }
+    };
+
+    return ws;
+  };
+
   useEffect(() => {
     // Check if the WebSocket configuration has actually changed
-    const currentConfigString = JSON.stringify(webSockets);
+    const currentConfigString = JSON.stringify(
+      webSockets.map((ws) => ({ url: ws.url, type: ws.type || "text" }))
+    );
     const prevConfigString = prevWebSocketConfigRef.current;
 
     if (currentConfigString === prevConfigString) {
@@ -70,144 +166,106 @@ export default function WebSockets({ config, saveConfig }) {
       return;
     }
 
-    console.log("WebSocket configuration changed, recreating connections");
+    console.log("WebSocket configuration changed, checking for differences");
     prevWebSocketConfigRef.current = currentConfigString;
 
-    // Clean up existing connections first
-    Object.values(socketRefs.current).forEach((ws) => {
-      if (ws && ws.readyState !== WebSocket.CLOSED) {
-        ws.close();
-      }
-    });
-    socketRefs.current = {};
+    // Parse the previous configuration to compare
+    let prevConfig = [];
+    try {
+      prevConfig = prevConfigString ? JSON.parse(prevConfigString) : [];
+    } catch (e) {
+      prevConfig = [];
+    }
 
-    // Clear messages when WebSockets change to prevent index mismatches
-    setMessages([]);
-
-    // Create new connections only if webSockets array has changed
+    // Compare configurations and only update changed WebSockets
     webSockets.forEach((webSocket, index) => {
-      // Set loading state for this socket
-      setConnectionStatus((prev) => ({
-        ...prev,
-        [index]: "connecting",
-      }));
+      const prevWebSocket = prevConfig[index];
 
-      const ws = new WebSocket(webSocket.url);
-      if (webSocket.type === "binary") {
-        ws.binaryType = "arraybuffer";
+      // Check if this WebSocket is new, modified, or unchanged
+      const isNew = !prevWebSocket;
+      const isModified =
+        prevWebSocket &&
+        (prevWebSocket.url !== webSocket.url ||
+          prevWebSocket.type !== webSocket.type);
+
+      if (isNew) {
+        console.log(`Creating new WebSocket connection for index ${index}`);
+        createWebSocketConnection(index, webSocket);
+      } else if (isModified) {
+        console.log(
+          `Updating WebSocket connection for index ${index} - configuration changed`
+        );
+        // Close existing connection if it exists
+        if (
+          socketRefs.current[index] &&
+          socketRefs.current[index].readyState !== WebSocket.CLOSED
+        ) {
+          socketRefs.current[index].close(1000, "Configuration changed");
+        }
+        // Clear the message for this index
+        setMessages((prev) => {
+          const updated = [...prev];
+          if (
+            updated[index] &&
+            typeof updated[index] === "string" &&
+            updated[index].startsWith("blob:")
+          ) {
+            URL.revokeObjectURL(updated[index]);
+          }
+          updated[index] = null;
+          return updated;
+        });
+        // Create new connection
+        createWebSocketConnection(index, webSocket);
+      } else {
+        console.log(
+          `WebSocket at index ${index} unchanged, keeping existing connection`
+        );
       }
-
-      // Store the WebSocket instance in refs for cleanup
-      socketRefs.current[index] = ws;
-
-      ws.onopen = () => {
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "connected",
-        }));
-      };
-
-      ws.onmessage = (event) => {
-        if (webSocket.type === "binary") {
-          const blob = new Blob([event.data], { type: "image/jpeg" });
-          const objectURL = URL.createObjectURL(blob);
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[index] = objectURL;
-            return updated;
-          });
-        } else {
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[index] = event.data;
-            return updated;
-          });
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "error",
-        }));
-      };
-
-      ws.onclose = () => {
-        setConnectionStatus((prev) => ({
-          ...prev,
-          [index]: "📶",
-        }));
-        // Only remove from refs if this is still the current WebSocket for this index
-        if (socketRefs.current[index] === ws) {
-          delete socketRefs.current[index];
-
-          // Auto-reconnect after a timeout (only if not manually disconnected)
-          setTimeout(() => {
-            if (!socketRefs.current[index] && webSockets[index]) {
-              console.log(`Auto-reconnecting to ${webSockets[index].url}`);
-              setConnectionStatus((prev) => ({
-                ...prev,
-                [index]: "connecting",
-              }));
-
-              const newWs = new WebSocket(webSockets[index].url);
-              if (webSockets[index].type === "binary") {
-                newWs.binaryType = "arraybuffer";
-              }
-
-              socketRefs.current[index] = newWs;
-
-              newWs.onopen = () => {
-                setConnectionStatus((prev) => ({
-                  ...prev,
-                  [index]: "connected",
-                }));
-              };
-
-              newWs.onmessage = (event) => {
-                if (webSockets[index].type === "binary") {
-                  const blob = new Blob([event.data], { type: "image/jpeg" });
-                  const objectURL = URL.createObjectURL(blob);
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    updated[index] = objectURL;
-                    return updated;
-                  });
-                } else {
-                  setMessages((prev) => {
-                    const updated = [...prev];
-                    updated[index] = event.data;
-                    return updated;
-                  });
-                }
-              };
-
-              newWs.onerror = (error) => {
-                console.error("WebSocket auto-reconnect error:", error);
-                setConnectionStatus((prev) => ({
-                  ...prev,
-                  [index]: "error",
-                }));
-              };
-
-              newWs.onclose = () => {
-                setConnectionStatus((prev) => ({
-                  ...prev,
-                  [index]: "📶",
-                }));
-                if (socketRefs.current[index] === newWs) {
-                  delete socketRefs.current[index];
-                }
-              };
-            }
-          }, 3000); // 3 second timeout for auto-reconnection
-        }
-      };
     });
 
-    // Cleanup function
+    // Remove WebSockets that no longer exist
+    prevConfig.forEach((prevWebSocket, index) => {
+      if (!webSockets[index]) {
+        console.log(`Removing WebSocket connection for index ${index}`);
+        if (
+          socketRefs.current[index] &&
+          socketRefs.current[index].readyState !== WebSocket.CLOSED
+        ) {
+          socketRefs.current[index].close(1000, "WebSocket removed");
+        }
+        delete socketRefs.current[index];
+
+        // Clear the message for this index
+        setMessages((prev) => {
+          const updated = [...prev];
+          if (
+            updated[index] &&
+            typeof updated[index] === "string" &&
+            updated[index].startsWith("blob:")
+          ) {
+            URL.revokeObjectURL(updated[index]);
+          }
+          updated[index] = null;
+          return updated;
+        });
+
+        // Clear connection status
+        setConnectionStatus((prev) => {
+          const updated = { ...prev };
+          delete updated[index];
+          return updated;
+        });
+      }
+    });
+  }, [webSockets]); // Only recreate when webSockets array changes
+
+  // Separate cleanup effect for component unmount
+  useEffect(() => {
     return () => {
+      console.log(
+        "Component unmounting, cleaning up all WebSocket connections"
+      );
       // Clean up object URLs to prevent memory leaks
       setMessages((prev) => {
         prev.forEach((message, idx) => {
@@ -220,12 +278,12 @@ export default function WebSockets({ config, saveConfig }) {
 
       Object.values(socketRefs.current).forEach((ws) => {
         if (ws && ws.readyState !== WebSocket.CLOSED) {
-          ws.close();
+          ws.close(1000, "Component unmount");
         }
       });
       socketRefs.current = {};
     };
-  }, [webSockets]); // Only recreate when webSockets array changes
+  }, []); // Only run on component unmount
 
   const handleSettingsClick = (webSocket) => {
     setSelectedWebSocket(webSocket);
@@ -241,34 +299,37 @@ export default function WebSockets({ config, saveConfig }) {
     const updatedWebSockets = webSockets.filter(
       (ws) => ws !== selectedWebSocket
     );
-    setWebSockets(updatedWebSockets);
-
-    // Update local config only - no immediate ESP32 save
-    const updatedConfig = { ...config, webSockets: updatedWebSockets };
-    saveConfig(updatedConfig);
-
+    updateWebSocketArray(updatedWebSockets);
     handleCloseModal();
   };
 
   const handleSaveSettings = () => {
-    const updatedWebSockets = webSockets.map((ws) =>
-      ws === selectedWebSocket
-        ? {
-            ...selectedWebSocket,
-            url: editedURL,
-            name: editedName,
-            type: editedType,
-            fontSize: Number(editedFontSize),
-            enableSending: editedEnableSending,
-          }
-        : ws
+    // Find the index of the selected WebSocket
+    const selectedIndex = webSockets.findIndex(
+      (ws) => ws === selectedWebSocket
     );
-    setWebSockets(updatedWebSockets);
 
-    // Update local config only - no immediate ESP32 save
-    const updatedConfig = { ...config, webSockets: updatedWebSockets };
-    saveConfig(updatedConfig);
+    if (selectedIndex === -1) {
+      console.error("Selected WebSocket not found");
+      handleCloseModal();
+      return;
+    }
 
+    // Create the updated WebSocket configuration
+    const updatedWebSocket = {
+      ...selectedWebSocket,
+      url: editedURL,
+      name: editedName,
+      type: editedType,
+      fontSize: Number(editedFontSize),
+      enableSending: editedEnableSending,
+    };
+
+    // Update only the specific WebSocket in the array
+    const updatedWebSockets = [...webSockets];
+    updatedWebSockets[selectedIndex] = updatedWebSocket;
+
+    updateWebSocketArray(updatedWebSockets);
     handleCloseModal();
   };
 
@@ -306,12 +367,12 @@ export default function WebSockets({ config, saveConfig }) {
       // Find the index of the selected WebSocket
       const index = webSockets.findIndex((ws) => ws === selectedWebSocket);
       if (index !== -1) {
-        // Close the current connection
+        // Close the current connection with a normal closure code
         if (
           socketRefs.current[index] &&
           socketRefs.current[index].readyState !== WebSocket.CLOSED
         ) {
-          socketRefs.current[index].close();
+          socketRefs.current[index].close(1000, "Manual reconnect");
         }
 
         // Set connecting status
@@ -322,59 +383,12 @@ export default function WebSockets({ config, saveConfig }) {
 
         // Add timeout before reconnection attempt
         setTimeout(() => {
-          // Create new WebSocket connection
-          const ws = new WebSocket(selectedWebSocket.url);
-          if (selectedWebSocket.type === "binary") {
-            ws.binaryType = "arraybuffer";
+          // Only create new connection if we don't already have one
+          if (!socketRefs.current[index]) {
+            console.log(`Manual reconnection for index ${index}`);
+            createWebSocketConnection(index, selectedWebSocket);
           }
-
-          // Store the new WebSocket instance
-          socketRefs.current[index] = ws;
-
-          ws.onopen = () => {
-            setConnectionStatus((prev) => ({
-              ...prev,
-              [index]: "connected",
-            }));
-          };
-
-          ws.onmessage = (event) => {
-            if (selectedWebSocket.type === "binary") {
-              const blob = new Blob([event.data], { type: "image/jpeg" });
-              const objectURL = URL.createObjectURL(blob);
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[index] = objectURL;
-                return updated;
-              });
-            } else {
-              setMessages((prev) => {
-                const updated = [...prev];
-                updated[index] = event.data;
-                return updated;
-              });
-            }
-          };
-
-          ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            setConnectionStatus((prev) => ({
-              ...prev,
-              [index]: "error",
-            }));
-          };
-
-          ws.onclose = () => {
-            setConnectionStatus((prev) => ({
-              ...prev,
-              [index]: "📶",
-            }));
-            // Only remove from refs if this is still the current WebSocket for this index
-            if (socketRefs.current[index] === ws) {
-              delete socketRefs.current[index];
-            }
-          };
-        }, 1000); // 1 second timeout before reconnection
+        }, 1000);
       }
     }
 
@@ -387,12 +401,12 @@ export default function WebSockets({ config, saveConfig }) {
       // Find the index of the selected WebSocket
       const index = webSockets.findIndex((ws) => ws === selectedWebSocket);
       if (index !== -1) {
-        // Close the current connection
+        // Close the current connection with a normal closure code to prevent auto-reconnect
         if (
           socketRefs.current[index] &&
           socketRefs.current[index].readyState !== WebSocket.CLOSED
         ) {
-          socketRefs.current[index].close();
+          socketRefs.current[index].close(1000, "Manual disconnect");
         }
 
         // Set disconnected status
@@ -416,6 +430,20 @@ export default function WebSockets({ config, saveConfig }) {
       setEditedEnableSending(selectedWebSocket.enableSending !== false);
     }
   }, [selectedWebSocket]);
+
+  // Function to safely update WebSocket array
+  const updateWebSocketArray = (newWebSockets) => {
+    console.log(
+      "Updating WebSocket array:",
+      newWebSockets.length,
+      "connections"
+    );
+    setWebSockets(newWebSockets);
+
+    // Update local config
+    const updatedConfig = { ...config, webSockets: newWebSockets };
+    saveConfig(updatedConfig);
+  };
 
   return (
     <Container

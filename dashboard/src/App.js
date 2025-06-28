@@ -82,10 +82,6 @@ function App() {
     return <LinearProgress color="inherit" />;
   }
 
-  if (saving) {
-    return <LinearProgress color="primary" />;
-  }
-
   // Update local config only (no ESP32 calls)
   const updateLocalConfig = (newConfig) => {
     const configWithAPI = { ...newConfig, apiURL };
@@ -94,7 +90,7 @@ function App() {
   };
 
   // Save current local config to ESP32
-  const saveToESP32 = () => {
+  const saveToDevice = () => {
     if (!localConfig) return;
 
     setSaving(true);
@@ -125,6 +121,20 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
+      {/* Show saving progress bar at the top when saving */}
+      {saving && (
+        <LinearProgress
+          color="primary"
+          sx={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1002,
+          }}
+        />
+      )}
+
       <Container
         sx={{
           fontFamily: "Roboto Slab",
@@ -154,7 +164,7 @@ function App() {
         <Fab
           size="small"
           color={hasUnsavedChanges ? "primary" : "secondary"}
-          onClick={saveToESP32}
+          onClick={saveToDevice}
           sx={{
             position: "fixed",
             top: "20px",

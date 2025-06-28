@@ -16,9 +16,6 @@
 #endif
 
 void ESPWiFi::startWiFi() {
-  if (!LittleFS.begin()) {
-    Serial.println("An Error has occurred while mounting LittleFS");
-  }
 
   readConfig();
 
@@ -30,8 +27,8 @@ void ESPWiFi::startWiFi() {
              strcmp(mode.c_str(), "ap") == 0) {
     startAP();
   } else {
-    Serial.println("⚠️  Invalid Mode: " + mode);
-    config["mode"] = "accessPoint";  // Ensure mode is set to accesspoint
+    log("⚠️  Invalid Mode: " + mode);
+    config["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
     startAP();
   }
 }
@@ -41,20 +38,20 @@ void ESPWiFi::startClient() {
   String password = config["client"]["password"];
 
   if (ssid.isEmpty()) {
-    Serial.println("⚠️  Warning: SSID or Password: Cannot be empty");
+    log("⚠️  Warning: SSID or Password: Cannot be empty");
     config["mode"] = "accessPoint";
     startAP();
     return;
   }
-  Serial.println("🔗 Connecting to Network:");
-  Serial.println("\tSSID: " + ssid);
-  Serial.println("\tPassword: " + password);
-  Serial.print("\t");
+  log("🔗 Connecting to Network:");
+  log("\tSSID: " + ssid);
+  log("\tPassword: " + password);
+  logf("\t");
 
-  WiFi.disconnect(true);       // Ensure clean start
-  delay(100);                  // Allow time for disconnect
-  WiFi.mode(WIFI_STA);         // Station mode only
-  WiFi.begin(ssid, password);  // Start connection
+  WiFi.disconnect(true);      // Ensure clean start
+  delay(100);                 // Allow time for disconnect
+  WiFi.mode(WIFI_STA);        // Station mode only
+  WiFi.begin(ssid, password); // Start connection
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED &&
@@ -62,34 +59,34 @@ void ESPWiFi::startClient() {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
-    Serial.print(".");
-    delay(30);  // Wait for connection
+    logf(".");
+    delay(30); // Wait for connection
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n❌ Failed to connect to WiFi");
+    log("\n❌ Failed to connect to WiFi");
     config["mode"] = "accessPoint";
     startAP();
     return;
   }
-  Serial.println("");
-  Serial.println("\n🛜  WiFi Connected:");
-  Serial.print("\tIP Address: ");
-  Serial.println(WiFi.localIP());
+  log("");
+  log("\n🛜  WiFi Connected:");
+  logf("\tIP Address: ");
+  log(WiFi.localIP().toString());
 }
 
 int ESPWiFi::selectBestChannel() {
   int channels[14] = {
-      0};  // Array to hold channel usage counts, 14 for 2.4 GHz band
+      0}; // Array to hold channel usage counts, 14 for 2.4 GHz band
   int numNetworks = WiFi.scanNetworks();
   for (int i = 0; i < numNetworks; i++) {
     int channel = WiFi.channel(i);
     if (channel > 0 &&
-        channel <= 13) {  // Ensure the channel is within a valid range
+        channel <= 13) { // Ensure the channel is within a valid range
       channels[channel]++;
     }
   }
-  int leastCongestedChannel = 1;  // Default to channel 1
+  int leastCongestedChannel = 1; // Default to channel 1
   for (int i = 1; i <= 13; i++) {
     if (channels[i] < channels[leastCongestedChannel]) {
       leastCongestedChannel = i;
@@ -101,20 +98,20 @@ int ESPWiFi::selectBestChannel() {
 void ESPWiFi::startAP() {
   String ssid = config["ap"]["ssid"];
   String password = config["ap"]["password"];
-  Serial.println("\n📡 Starting Access Point:");
-  Serial.println("\tSSID: " + ssid);
-  Serial.println("\tPassword: " + password);
+  log("\n📡 Starting Access Point:");
+  log("\tSSID: " + ssid);
+  log("\tPassword: " + password);
   int bestChannel = selectBestChannel();
-  Serial.print("\tChannel: ");
-  Serial.println(bestChannel);
+  logf("\tChannel: ");
+  log(bestChannel);
 
   WiFi.softAP(ssid, password, bestChannel);
   if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
-    Serial.println("❌ Failed to start Access Point");
+    log("❌ Failed to start Access Point");
     return;
   }
-  Serial.print("\tIP Address: ");
-  Serial.println(WiFi.softAPIP());
+  logf("\tIP Address: ");
+  log(WiFi.softAPIP());
 }
 
 void ESPWiFi::mDSNUpdate() {
@@ -128,13 +125,13 @@ void ESPWiFi::mDSNUpdate() {
 void ESPWiFi::startMDNS() {
   String domain = config["mdns"];
   if (!MDNS.begin(domain)) {
-    Serial.println("❌ Error setting up MDNS responder!");
+    log("❌ Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
-    Serial.println("📛 mDNS Started:");
+    log("📛 mDNS Started:");
     domain.toLowerCase();
-    Serial.println("\tDomain Name: " + domain + ".local");
+    log("\tDomain Name: " + domain + ".local");
   }
 }
 
-#endif  // ESPWIFI_WIFI
+#endif // ESPWIFI_WIFI

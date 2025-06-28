@@ -18,15 +18,16 @@
 #endif
 
 class ESPWiFi {
- public:
+public:
   JsonDocument config;
+  String logFile = "/log.txt";
   String configFile = "/config.json";
-  AsyncWebServer* webServer = nullptr;
+  AsyncWebServer *webServer = nullptr;
 
-  IntervalTimer s10Timer{10000};  // 10 seconds
-  IntervalTimer s1Timer{1000};    // 1 second
+  IntervalTimer s10Timer{10000}; // 10 seconds
+  IntervalTimer s1Timer{1000};   // 1 second
 
-  int connectTimeout = 12000;  // 12 seconds
+  int connectTimeout = 12000; // 12 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {
@@ -35,11 +36,43 @@ class ESPWiFi {
     }
     Serial.begin(baudRate);
     delay(900);
-    Serial.println("🔌 Serial Started at " + String(baudRate) + " baud");
+    log("⛓️  Serial Started:");
+    logf("\tBaud Rate: %d\n", baudRate);
   }
-  void disableLowPowerSleep() {
+
+  void startLittleFS() {
+    // Check if LittleFS is already mounted using a static flag
+    static bool fsMounted = false;
+    if (fsMounted) {
+      return;
+    }
+
+    if (!LittleFS.begin()) {
+      log("❌  Failed to mount LittleFS");
+      return;
+    }
+
+    fsMounted = true;
+    log("💾 LittleFS mounted:");
+    logf("\tSize: %d bytes\n", LittleFS.totalBytes());
+    logf("\tUsed: %d bytes\n", LittleFS.usedBytes());
+    logf("\tFree: %d bytes\n", LittleFS.totalBytes() - LittleFS.usedBytes());
+  }
+
+  void stopLowPowerSleep() {
     WiFi.setSleep(false);
-    Serial.println("🚫 🔋 Low Power Sleep Disabled");
+    log("🚫 🔋 Low Power Sleep Disabled");
+  }
+
+  // Log
+  void closeLog();
+  void log(String message);
+  void writeLog(String message);
+  void logf(const char *format, ...);
+  template <typename T> void log(T value) {
+    String valueString = String(value);
+    log(valueString);
+    writeLog(valueString + "\n");
   }
 
   // Config
@@ -60,7 +93,7 @@ class ESPWiFi {
   // Web Server
   void initWebServer();
   void startWebServer();
-  void addCORS(AsyncWebServerResponse* response);
+  void addCORS(AsyncWebServerResponse *response);
 
   // GPIO
   void startGPIO();
@@ -74,12 +107,12 @@ class ESPWiFi {
 
   // Utils
   String getContentType(String filename);
-  String getFileExtension(const String& filename);
-  void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
+  String getFileExtension(const String &filename);
+  void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
- private:
-  void handleCorsPreflight(AsyncWebServerRequest* request);
+private:
+  void handleCorsPreflight(AsyncWebServerRequest *request);
 };
 
-#endif  // ESPWiFi
+#endif // ESPWiFi

@@ -1,11 +1,13 @@
+#include "ESPWiFi.h"
 #include <list>
 
 class WebSocket {
- private:
+private:
   std::list<AsyncWebSocketClient *> clients;
-  size_t maxClients = 10; // Limit maximum connections
+  size_t maxClients = 10;     // Limit maximum connections
+  ESPWiFi *espWifi = nullptr; // Store ESPWiFi instance
 
- public:
+public:
   AsyncWebSocket *socket = nullptr;
 
   WebSocket() {}
@@ -14,47 +16,54 @@ class WebSocket {
             void (*onWsEvent)(AsyncWebSocket *, AsyncWebSocketClient *,
                               AwsEventType, void *, uint8_t *,
                               size_t) = nullptr) {
+    this->espWifi = espWifi; // Store the ESPWiFi instance
     socket = new AsyncWebSocket(path.c_str());
 
-    socket->onEvent([this, onWsEvent](AsyncWebSocket *server,
-                                      AsyncWebSocketClient *client,
-                                      AwsEventType type, void *arg,
-                                      uint8_t *data, size_t len) {
+    socket->onEvent([this, onWsEvent, espWifi](AsyncWebSocket *server,
+                                               AsyncWebSocketClient *client,
+                                               AwsEventType type, void *arg,
+                                               uint8_t *data, size_t len) {
+      if (!espWifi)
+        return; // Early return if no ESPWiFi instance
+
       if (type == WS_EVT_CONNECT) {
         // Clean up any disconnected clients first
         activeClientCount(); // This will clean up stale connections
-        
+
         // Check if we're at the connection limit using active count
         if (activeClientCount() >= maxClients) {
-          Serial.printf("⚠️  Connection limit reached (%d), rejecting new connection\n", maxClients);
+          espWifi->logf(
+              "⚠️  Connection limit reached (%d), rejecting new connection\n",
+              maxClients);
           client->close();
           return;
         }
-        
+
         clients.push_back(client);
-        Serial.printf("🔌 WebSocket Client Connected: 🔗\n");
-        Serial.printf("\tID: %d\n", client->id());
-        Serial.printf("\tPath: %s\n", socket->url());
-        Serial.printf("\tPort: %d\n", client->remotePort());
-        Serial.printf("\tIP: %s\n", client->remoteIP().toString().c_str());
-        Serial.printf("\tActive Clients: %d\n", activeClientCount());
-        Serial.printf("\tTotal in List: %d\n", clients.size());
+        espWifi->logf("🔌 WebSocket Client Connected: 🔗\n");
+        espWifi->logf("\tID: %d\n", client->id());
+        espWifi->logf("\tPath: %s\n", socket->url());
+        espWifi->logf("\tPort: %d\n", client->remotePort());
+        espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
+        espWifi->logf("\tActive Clients: %d\n", activeClientCount());
+        espWifi->logf("\tTotal in List: %d\n", clients.size());
       } else if (type == WS_EVT_DISCONNECT) {
         clients.remove(client);
-        Serial.println("🔌 WebSocket Client Disconnected: ⛓️‍💥");
-        Serial.printf("\tID: %d\n", client->id());
-        Serial.printf("\tActive Clients: %d\n", activeClientCount());
-        Serial.printf("\tTotal Clients: %d\n", clients.size());
+        espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
+        espWifi->logf("\tID: %d\n", client->id());
+        espWifi->logf("\tActive Clients: %d\n", activeClientCount());
+        espWifi->logf("\tTotal Clients: %d\n", clients.size());
       }
 
-      if (onWsEvent) onWsEvent(server, client, type, arg, data, len);
+      if (onWsEvent)
+        onWsEvent(server, client, type, arg, data, len);
     });
 
     espWifi->initWebServer();
     espWifi->webServer->addHandler(socket);
-    Serial.println("🔌 WebSocket Started:");
-    Serial.printf("\tPath: %s\n", path.c_str());
-    Serial.printf("\tMax Clients: %d\n", maxClients);
+    espWifi->log("🔌 WebSocket Started:");
+    espWifi->logf("\tPath: %s\n", path.c_str());
+    espWifi->logf("\tMax Clients: %d\n", maxClients);
   }
 
   ~WebSocket() {
@@ -82,9 +91,9 @@ class WebSocket {
         ++it;
       } else {
         // Remove disconnected client
-        Serial.println("🔌 WebSocket Client Removed: ⛓️‍💥");
-        Serial.printf("\tID: %d\n", (*it)->id());
-        Serial.printf("\tPath: %s\n", socket->url());
+        espWifi->log("🔌 WebSocket Client Removed: ⛓️‍💥");
+        espWifi->logf("\tID: %d\n", (*it)->id());
+        espWifi->logf("\tPath: %s\n", socket->url());
         it = clients.erase(it);
       }
     }
@@ -92,14 +101,10 @@ class WebSocket {
   }
 
   // Get total clients in list (including potentially disconnected ones)
-  size_t totalClientCount() const {
-    return clients.size();
-  }
+  size_t totalClientCount() const { return clients.size(); }
 
   // Set maximum number of clients allowed
-  void setMaxClients(size_t max) {
-    maxClients = max;
-  }
+  void setMaxClients(size_t max) { maxClients = max; }
 
   // Close all connections
   void closeAll() {
@@ -109,23 +114,7 @@ class WebSocket {
       }
     }
     clients.clear();
-    Serial.println("🔌 All WebSocket connections closed");
-  }
-
-  // Debug method to print current client status
-  void debugClients() {
-    Serial.printf("🔍 WebSocket Debug - Path: %s\n", socket ? socket->url() : "null");
-    Serial.printf("\tActive Clients: %d\n", activeClientCount());
-    Serial.printf("\tTotal in List: %d\n", clients.size());
-    Serial.printf("\tMax Allowed: %d\n", maxClients);
-    
-    int i = 0;
-    for (auto client : clients) {
-      Serial.printf("\tClient %d: ID=%d, Status=%s, IP=%s\n", 
-                   i++, 
-                   client->id(),
-                   client->status() == WS_CONNECTED ? "CONNECTED" : "DISCONNECTED",
-                   client->remoteIP().toString().c_str());
-    }
+    if (espWifi)
+      espWifi->log("🔌 All WebSocket connections closed");
   }
 };

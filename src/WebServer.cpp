@@ -112,9 +112,8 @@ void ESPWiFi::startWebServer() {
     info += "<tr><td>Free PSRAM</td><td>" +
             String(ESP.getFreePsram() / 1048576.0, 2) + " MB</td></tr>";
 #endif
-    info +=
-        "</table><h3>🗄️ "
-        "Storage</h3><table><tr><th>Type</th><th>Value</th></tr>";
+    info += "</table><h3>🗄️ "
+            "Storage</h3><table><tr><th>Type</th><th>Value</th></tr>";
     info += "<tr><td>Sketch Size</td><td>" +
             String(ESP.getSketchSize() / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>Free Sketch Space</td><td>" +
@@ -144,9 +143,8 @@ void ESPWiFi::startWebServer() {
     info += "<tr><td>FS Total</td><td>" + String(totalBytes / 1048576.0, 2) + " MB</td></tr>";
     info += "<tr><td>FS Used</td><td>" + String(usedBytes / 1048576.0, 2) + " MB</td></tr>";
 #endif
-    info +=
-        "</table><h3>📝 "
-        "Sketch</h3><table><tr><th>Property</th><th>Value</th></tr>";
+    info += "</table><h3>📝 "
+            "Sketch</h3><table><tr><th>Property</th><th>Value</th></tr>";
     info += "<tr><td>MD5</td><td>" + ESP.getSketchMD5() + "</td></tr></table>";
     info += "<h3>⚙️ Config</h3>";
     String configStr;
@@ -194,7 +192,7 @@ void ESPWiFi::startWebServer() {
               400, "application/json", "{\"error\":\"EmptyInput\"}");
           addCORS(response);
           request->send(response);
-          Serial.println("❌ /config HTTP_POST Error parsing JSON: EmptyInput");
+          log("❌ /config HTTP_POST Error parsing JSON: EmptyInput");
           return;
         }
         // Merge posted JSON into config
@@ -219,54 +217,73 @@ void ESPWiFi::startWebServer() {
         request->beginResponse(200, "application/json", "{\"success\":true}");
     addCORS(response);
     request->send(response);
-    Serial.println("🔄 Restarting...");
+    log("🔄 Restarting...");
     delay(1000);
     ESP.restart();
   });
 
   // /websocket-debug endpoint
-  webServer->on("/websocket-debug", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>WebSocket Debug</title>";
-    html += "<style>body{font-family:sans-serif;background:#181a1b;color:#e8eaed;margin:0;padding:2em;}";
-    html += "h2{color:#7FF9E9;}table{background:#23272a;border-radius:8px;box-shadow:0 2px 8px #0008;";
-    html += "border-collapse:collapse;width:100%;max-width:800px;margin:auto;}";
-    html += "th,td{padding:10px 16px;text-align:left;}th{background:#222c36;color:#7FF9E9;}";
-    html += "tr:nth-child(even){background:#202124;}tr:hover{background:#263238;}";
-    html += "button{background:#7FF9E9;color:#000;border:none;padding:10px 20px;border-radius:5px;cursor:pointer;margin:10px;}";
-    html += "button:hover{background:#5CD6B2;}pre{background:#23272a;color:#e8eaed;padding:1em;border-radius:8px;overflow-x:auto;}";
-    html += "</style></head><body>";
-    html += "<h2>🔍 WebSocket Debug</h2>";
-    html += "<button onclick='location.reload()'>🔄 Refresh</button>";
-    html += "<button onclick='debugWebSockets()'>🔍 Debug WebSockets</button>";
-    html += "<div id='debug-output'></div>";
-    html += "<script>";
-    html += "function debugWebSockets() {";
-    html += "  const output = document.getElementById('debug-output');";
-    html += "  output.innerHTML = '<p>🔍 Checking WebSocket connections...</p>';";
-    html += "  // Try to connect to known WebSocket endpoints";
-    html += "  const endpoints = ['/rssi', '/ws/camera'];";
-    html += "  let results = [];";
-    html += "  endpoints.forEach(endpoint => {";
-    html += "    try {";
-    html += "      const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + endpoint);";
-    html += "      ws.onopen = () => { results.push('✅ ' + endpoint + ' - Connected'); updateResults(); };";
-    html += "      ws.onerror = () => { results.push('❌ ' + endpoint + ' - Failed'); updateResults(); };";
-    html += "      setTimeout(() => { if(ws.readyState !== WebSocket.OPEN) { results.push('⏰ ' + endpoint + ' - Timeout'); updateResults(); } }, 2000);";
-    html += "    } catch(e) { results.push('💥 ' + endpoint + ' - Error: ' + e.message); updateResults(); }";
-    html += "  });";
-    html += "  function updateResults() {";
-    html += "    if(results.length === endpoints.length) {";
-    html += "      output.innerHTML = '<h3>WebSocket Test Results:</h3><pre>' + results.join('\\n') + '</pre>';";
-    html += "    }";
-    html += "  }";
-    html += "}";
-    html += "</script>";
-    html += "</body></html>";
-    
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", html);
-    addCORS(response);
-    request->send(response);
-  });
+  webServer->on(
+      "/websocket-debug", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String html = "<!DOCTYPE html><html><head><meta "
+                      "charset='UTF-8'><title>WebSocket Debug</title>";
+        html += "<style>body{font-family:sans-serif;background:#181a1b;color:#"
+                "e8eaed;margin:0;padding:2em;}";
+        html += "h2{color:#7FF9E9;}table{background:#23272a;border-radius:8px;"
+                "box-shadow:0 2px 8px #0008;";
+        html +=
+            "border-collapse:collapse;width:100%;max-width:800px;margin:auto;}";
+        html += "th,td{padding:10px "
+                "16px;text-align:left;}th{background:#222c36;color:#7FF9E9;}";
+        html += "tr:nth-child(even){background:#202124;}tr:hover{background:#"
+                "263238;}";
+        html += "button{background:#7FF9E9;color:#000;border:none;padding:10px "
+                "20px;border-radius:5px;cursor:pointer;margin:10px;}";
+        html += "button:hover{background:#5CD6B2;}pre{background:#23272a;color:"
+                "#e8eaed;padding:1em;border-radius:8px;overflow-x:auto;}";
+        html += "</style></head><body>";
+        html += "<h2>🔍 WebSocket Debug</h2>";
+        html += "<button onclick='location.reload()'>🔄 Refresh</button>";
+        html +=
+            "<button onclick='debugWebSockets()'>🔍 Debug WebSockets</button>";
+        html += "<div id='debug-output'></div>";
+        html += "<script>";
+        html += "function debugWebSockets() {";
+        html += "  const output = document.getElementById('debug-output');";
+        html += "  output.innerHTML = '<p>🔍 Checking WebSocket "
+                "connections...</p>';";
+        html += "  // Try to connect to known WebSocket endpoints";
+        html += "  const endpoints = ['/rssi', '/ws/camera'];";
+        html += "  let results = [];";
+        html += "  endpoints.forEach(endpoint => {";
+        html += "    try {";
+        html += "      const ws = new WebSocket((location.protocol === "
+                "'https:' ? 'wss://' : 'ws://') + location.host + endpoint);";
+        html += "      ws.onopen = () => { results.push('✅ ' + endpoint + ' - "
+                "Connected'); updateResults(); };";
+        html += "      ws.onerror = () => { results.push('❌ ' + endpoint + ' "
+                "- Failed'); updateResults(); };";
+        html += "      setTimeout(() => { if(ws.readyState !== WebSocket.OPEN) "
+                "{ results.push('⏰ ' + endpoint + ' - Timeout'); "
+                "updateResults(); } }, 2000);";
+        html += "    } catch(e) { results.push('💥 ' + endpoint + ' - Error: ' "
+                "+ e.message); updateResults(); }";
+        html += "  });";
+        html += "  function updateResults() {";
+        html += "    if(results.length === endpoints.length) {";
+        html += "      output.innerHTML = '<h3>WebSocket Test "
+                "Results:</h3><pre>' + results.join('\\n') + '</pre>';";
+        html += "    }";
+        html += "  }";
+        html += "}";
+        html += "</script>";
+        html += "</body></html>";
+
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "text/html", html);
+        addCORS(response);
+        request->send(response);
+      });
 
   // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
   webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -287,7 +304,8 @@ void ESPWiFi::startWebServer() {
     String path = "/";
     if (request->hasParam("dir")) {
       path = request->getParam("dir")->value();
-      if (!path.startsWith("/")) path = "/" + path;
+      if (!path.startsWith("/"))
+        path = "/" + path;
     }
     File root = LittleFS.open(path, "r");
     if (!root || !root.isDirectory()) {
@@ -319,25 +337,31 @@ void ESPWiFi::startWebServer() {
       String displayName = fname;
       if (fname.startsWith(path) && path != "/") {
         displayName = fname.substring(path.length());
-        if (displayName.startsWith("/")) displayName = displayName.substring(1);
+        if (displayName.startsWith("/"))
+          displayName = displayName.substring(1);
       }
-      if (displayName == "") displayName = fname;
+      if (displayName == "")
+        displayName = fname;
       if (file.isDirectory()) {
         // Build subdirectory path for query string
         String subdirPath = path;
-        if (!subdirPath.endsWith("/")) subdirPath += "/";
+        if (!subdirPath.endsWith("/"))
+          subdirPath += "/";
         subdirPath += displayName;
         // Remove leading slash for query string
-        if (subdirPath.startsWith("/")) subdirPath = subdirPath.substring(1);
+        if (subdirPath.startsWith("/"))
+          subdirPath = subdirPath.substring(1);
         html += "<li class='folder'>📁 <a href='/files?dir=" + subdirPath +
                 "'>" + displayName + "/</a></li>";
       } else {
         // Build file path for link
         String filePath = path;
-        if (!filePath.endsWith("/")) filePath += "/";
+        if (!filePath.endsWith("/"))
+          filePath += "/";
         filePath += displayName;
         // Ensure single leading slash
-        if (!filePath.startsWith("/")) filePath = "/" + filePath;
+        if (!filePath.startsWith("/"))
+          filePath = "/" + filePath;
         html += "<li class='file'>📄 <a href='" + filePath +
                 "' target='_blank'>" + displayName + "</a></li>";
       }
@@ -351,7 +375,7 @@ void ESPWiFi::startWebServer() {
   });
 
   webServer->begin();
-  Serial.println("🕸️  HTTP Web Server Running:");
-  Serial.print("\tURL: http://" + WiFi.localIP().toString() + "\n");
-  Serial.print("\tURL: http://" + config["mdns"].as<String>() + ".local\n");
+  log("🕸️  HTTP Web Server Running:");
+  logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
+  logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
 }

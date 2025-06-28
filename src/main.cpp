@@ -1,8 +1,8 @@
 #include <ESPWiFi.h>
 #include <WebSocket.h>
- 
+
 ESPWiFi device;
-WebSocket* rssiSoc;
+WebSocket *rssiSoc;
 
 void setup() {
   device.startSerial();

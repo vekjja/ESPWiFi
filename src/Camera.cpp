@@ -5,7 +5,6 @@
 
 #include "ESPWiFi.h"
 #include "base64.h"
-#ifdef ESP32
 #include <WebSocket.h>
 
 #include "esp_camera.h"
@@ -35,14 +34,14 @@ void ESPWiFi::startCamera() {
   camConfig.pin_reset = -1;
   camConfig.xclk_freq_hz = 20000000;
   camConfig.pixel_format = PIXFORMAT_JPEG;
-  camConfig.frame_size = FRAMESIZE_SVGA;  // SVGA (800x600) is a good balance
-                                          // between quality and performance
+  camConfig.frame_size = FRAMESIZE_SVGA; // SVGA (800x600) is a good balance
+                                         // between quality and performance
   camConfig.jpeg_quality = 15;
   camConfig.fb_count = 2;
 
   esp_err_t err = esp_camera_init(&camConfig);
   if (err != ESP_OK) {
-    Serial.printf("❌ Camera Init Failed: Error 0x%x\n", err);
+    logf("❌ Camera Init Failed: Error 0x%x\n", err);
     return;
   }
 
@@ -94,14 +93,16 @@ void ESPWiFi::startCamera() {
 
               if (fb == nullptr) {
                 fb = esp_camera_fb_get();
-                if (!fb) return 0;
+                if (!fb)
+                  return 0;
                 head = "--frame\r\nContent-Type: image/jpeg\r\n\r\n";
                 sent = 0;
                 totalLen = head.length() + fb->len + tail.length();
               }
 
               size_t toSend = totalLen - sent;
-              if (toSend > maxLen) toSend = maxLen;
+              if (toSend > maxLen)
+                toSend = maxLen;
 
               size_t bufPos = 0;
               size_t remain = toSend;
@@ -114,7 +115,8 @@ void ESPWiFi::startCamera() {
                 bufPos += copyLen;
                 sent += copyLen;
                 remain -= copyLen;
-                if (remain == 0) return bufPos;
+                if (remain == 0)
+                  return bufPos;
               }
 
               // Send JPEG
@@ -127,7 +129,8 @@ void ESPWiFi::startCamera() {
                 bufPos += copyLen;
                 sent += copyLen;
                 remain -= copyLen;
-                if (remain == 0) return bufPos;
+                if (remain == 0)
+                  return bufPos;
               }
 
               // Send tail
@@ -148,7 +151,7 @@ void ESPWiFi::startCamera() {
                 esp_camera_fb_return(fb);
                 fb = nullptr;
                 sent = 0;
-                delay(100);  // ~10 fps
+                delay(100); // ~10 fps
               }
               return bufPos;
             });
@@ -196,26 +199,23 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
-  Serial.print("📷 Camera Started\n\t");
-  camSoc = new WebSocket("/ws/camera", this);
+  logf("📷 Camera Started\n\t");
+  camSoc = new WebSocket("/camera", this);
   if (!camSoc) {
-    Serial.println("❌ Failed to create Camera WebSocket");
+    log("❌ Failed to create Camera WebSocket");
     return;
   }
-  
-  // Debug camera WebSocket status
-  Serial.printf("📷 Camera WebSocket created at: %s\n", camSoc->socket->url());
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("❌ Camera Capture Failed");
+    log("❌ Camera Capture Failed");
     return;
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
-    Serial.println("❌ Unsupported Pixel Format");
+    log("❌ Unsupported Pixel Format");
     esp_camera_fb_return(fb);
     return;
   }
@@ -223,13 +223,13 @@ void ESPWiFi::takeSnapshot(String filePath) {
   // save the image LittleFS
   File file = LittleFS.open(filePath, "w");
   if (!file) {
-    Serial.println("❌ Failed to open file for writing");
+    log("❌ Failed to open file for writing");
   } else {
     size_t written = file.write(fb->buf, fb->len);
     if (written != fb->len) {
-      Serial.println("❌ Failed to write complete image to file");
+      log("❌ Failed to write complete image to file");
     } else {
-      Serial.println("📸 Snapshot Saved: " + filePath);
+      log("📸 Snapshot Saved: " + filePath);
     }
     file.close();
   }
@@ -239,29 +239,22 @@ void ESPWiFi::takeSnapshot(String filePath) {
 
 void ESPWiFi::streamCamera(int frameRate) {
   if (!camSoc || camSoc->activeClientCount() == 0)
-    return;  // Ensure WebSocket and clients exist
+    return; // Ensure WebSocket and clients exist
 
   static unsigned long lastFrame = 0;
   unsigned long now = millis();
   unsigned long interval = frameRate > 0
                                ? (1000 / frameRate)
-                               : 200;  // Default to 5 fps if frameRate is 0
-  if (now - lastFrame < interval) return;
+                               : 200; // Default to 5 fps if frameRate is 0
+  if (now - lastFrame < interval)
+    return;
   lastFrame = now;
-
-  // Debug camera WebSocket status every 100 frames (roughly every 20 seconds at 5fps)
-  static int debugCounter = 0;
-  if (++debugCounter >= 100) {
-    debugCounter = 0;
-    Serial.println("📷 Camera WebSocket Debug:");
-    camSoc->debugClients();
-  }
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb || fb->format != PIXFORMAT_JPEG) {
-    Serial.println(fb ? "❌ Unsupported Pixel Format"
-                      : "❌ Camera Capture Failed");
-    if (fb) esp_camera_fb_return(fb);
+    log(fb ? "❌ Unsupported Pixel Format" : "❌ Camera Capture Failed");
+    if (fb)
+      esp_camera_fb_return(fb);
     return;
   }
 
@@ -269,22 +262,5 @@ void ESPWiFi::streamCamera(int frameRate) {
   esp_camera_fb_return(fb);
 }
 
-#else
-void ESPWiFi::startCamera() {
-  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
-}
-
-void ESPWiFi::takeSnapshot(String filePath) {
-  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
-}
-void ESPWiFi::streamCamera(int frameRate) {
-  if (!s10Timer.shouldRun()) {
-    return;
-  }
-  Serial.println("⚠️ Camera support is only available on ESP32 devices.");
-}
-#endif
-
-#endif  // ESPWIFI_CAMERA
-
-#endif  // ESPWiFi_CAMERA_ENABLED
+#endif // ESPWIFI_CAMERA
+#endif // ESPWiFi_CAMERA_ENABLED

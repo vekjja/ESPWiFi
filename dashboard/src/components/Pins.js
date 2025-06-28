@@ -207,7 +207,7 @@ function Pin({ pinNum, props, updatePins, config }) {
 
   // Create title with remote indicator
   const moduleTitle =
-    remoteURL && remoteURL.trim() ? `${name || pinNum} 🌐` : name || pinNum;
+    remoteURL && remoteURL.trim() ? `${name || pinNum}` : name || pinNum;
 
   return (
     <Module

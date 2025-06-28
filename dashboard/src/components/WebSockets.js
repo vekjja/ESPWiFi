@@ -49,40 +49,62 @@ export default function WebSockets({ config, saveConfig }) {
       }));
     }
     return [];
-  }, [
-    config?.webSockets
-      ? JSON.stringify(
-          config.webSockets.map((ws) => ({
-            url: ws.url,
-            type: ws.type || "text",
-            connectionState: ws.connectionState || "disconnected",
-          }))
+  }, [config?.webSockets]); // Simplified dependency - only depend on the webSockets array reference
+
+  // Update webSockets from props when config changes
+  useEffect(() => {
+    if (webSocketConfig && webSocketConfig.length > 0) {
+      // Only update if the webSockets array is empty or significantly different
+      if (
+        webSockets.length === 0 ||
+        webSockets.length !== webSocketConfig.length ||
+        webSockets.some(
+          (ws, index) =>
+            ws.url !== webSocketConfig[index]?.url ||
+            ws.type !== webSocketConfig[index]?.type
         )
-      : null,
-  ]);
+      ) {
+        setWebSockets(webSocketConfig);
+      }
+    } else if (webSockets.length > 0) {
+      // Clear webSockets if config is empty
+      setWebSockets([]);
+    }
+  }, [webSocketConfig, webSockets.length]);
 
   useEffect(() => {
-    // Only update if the configuration has actually changed
-    const currentConfigString = JSON.stringify(
-      webSockets.map((ws) => ({
-        url: ws.url,
-        type: ws.type || "text",
-        connectionState: ws.connectionState || "disconnected",
-      }))
-    );
-    const newConfigString = JSON.stringify(
-      webSocketConfig.map((ws) => ({
-        url: ws.url,
-        type: ws.type || "text",
-        connectionState: ws.connectionState || "disconnected",
-      }))
-    );
+    // Use a simpler comparison to avoid unnecessary re-connections
+    const currentConfig = webSockets.map((ws) => ({
+      url: ws.url,
+      type: ws.type || "text",
+    }));
+    const prevConfig = prevWebSocketConfigRef.current;
 
-    if (currentConfigString !== newConfigString) {
-      console.log("Updating WebSocket configuration from props");
-      setWebSockets(webSocketConfig);
+    // Only proceed if configuration actually changed
+    if (JSON.stringify(currentConfig) === JSON.stringify(prevConfig)) {
+      return;
     }
-  }, [webSocketConfig]);
+
+    prevWebSocketConfigRef.current = currentConfig;
+
+    // Close all existing connections first
+    Object.values(socketRefs.current).forEach((ws) => {
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        ws.close(1000, "Configuration changed");
+      }
+    });
+    socketRefs.current = {};
+
+    // Clear all messages
+    setMessages([]);
+
+    // Create new connections for all WebSockets
+    webSockets.forEach((webSocket, index) => {
+      if (webSocket.url) {
+        createWebSocketConnection(index, webSocket);
+      }
+    });
+  }, [webSockets]); // Only recreate when webSockets array changes
 
   // Function to update connection state in config
   const updateConnectionStateInConfig = (index, newState) => {
@@ -99,12 +121,8 @@ export default function WebSockets({ config, saveConfig }) {
         connectionState: newState,
       };
 
-      // Update local state
+      // Update local state only - don't save config for connection state changes
       setWebSockets(updatedWebSockets);
-
-      // Update config
-      const updatedConfig = { ...config, webSockets: updatedWebSockets };
-      saveConfig(updatedConfig);
     }
   };
 
@@ -134,7 +152,7 @@ export default function WebSockets({ config, saveConfig }) {
     socketRefs.current[index] = ws;
 
     ws.onopen = () => {
-      console.log(`WebSocket ${index} connected successfully`);
+      console.log(`WebSocket ${ws.url} connected successfully`);
       updateConnectionStateInConfig(index, "connected");
     };
 
@@ -176,116 +194,6 @@ export default function WebSockets({ config, saveConfig }) {
     return ws;
   };
 
-  useEffect(() => {
-    // Check if the WebSocket configuration has actually changed
-    const currentConfigString = JSON.stringify(
-      webSockets.map((ws) => ({
-        url: ws.url,
-        type: ws.type || "text",
-        connectionState: ws.connectionState || "disconnected",
-      }))
-    );
-    const prevConfigString = prevWebSocketConfigRef.current;
-
-    if (currentConfigString === prevConfigString) {
-      console.log("WebSocket configuration unchanged, skipping reconnection");
-      return;
-    }
-
-    console.log("WebSocket configuration changed, checking for differences");
-    prevWebSocketConfigRef.current = currentConfigString;
-
-    // Parse the previous configuration to compare
-    let prevConfig = [];
-    try {
-      prevConfig = prevConfigString ? JSON.parse(prevConfigString) : [];
-    } catch (e) {
-      prevConfig = [];
-    }
-
-    // Compare configurations and only update changed WebSockets
-    webSockets.forEach((webSocket, index) => {
-      const prevWebSocket = prevConfig[index];
-
-      // Check if this WebSocket is new, modified, or unchanged
-      const isNew = !prevWebSocket;
-      const isModified =
-        prevWebSocket &&
-        (prevWebSocket.url !== webSocket.url ||
-          prevWebSocket.type !== webSocket.type);
-
-      if (isNew) {
-        console.log(`Creating new WebSocket connection for index ${index}`);
-        createWebSocketConnection(index, webSocket);
-      } else if (isModified) {
-        console.log(
-          `Updating WebSocket connection for index ${index} - configuration changed`
-        );
-        // Close existing connection if it exists
-        if (
-          socketRefs.current[index] &&
-          socketRefs.current[index].readyState !== WebSocket.CLOSED
-        ) {
-          socketRefs.current[index].close(1000, "Configuration changed");
-        }
-        // Clear the message for this index
-        setMessages((prev) => {
-          const updated = [...prev];
-          if (
-            updated[index] &&
-            typeof updated[index] === "string" &&
-            updated[index].startsWith("blob:")
-          ) {
-            URL.revokeObjectURL(updated[index]);
-          }
-          updated[index] = null;
-          return updated;
-        });
-        // Create new connection
-        createWebSocketConnection(index, webSocket);
-      } else {
-        console.log(
-          `WebSocket at index ${index} unchanged, keeping existing connection`
-        );
-      }
-    });
-
-    // Remove WebSockets that no longer exist
-    prevConfig.forEach((prevWebSocket, index) => {
-      if (!webSockets[index]) {
-        console.log(`Removing WebSocket connection for index ${index}`);
-        if (
-          socketRefs.current[index] &&
-          socketRefs.current[index].readyState !== WebSocket.CLOSED
-        ) {
-          socketRefs.current[index].close(1000, "WebSocket removed");
-        }
-        delete socketRefs.current[index];
-
-        // Clear the message for this index
-        setMessages((prev) => {
-          const updated = [...prev];
-          if (
-            updated[index] &&
-            typeof updated[index] === "string" &&
-            updated[index].startsWith("blob:")
-          ) {
-            URL.revokeObjectURL(updated[index]);
-          }
-          updated[index] = null;
-          return updated;
-        });
-
-        // Clear connection status
-        setConnectionStatus((prev) => {
-          const updated = { ...prev };
-          delete updated[index];
-          return updated;
-        });
-      }
-    });
-  }, [webSockets]); // Only recreate when webSockets array changes
-
   // Initialize connection status from config on component mount
   useEffect(() => {
     if (webSockets.length > 0) {
@@ -304,6 +212,7 @@ export default function WebSockets({ config, saveConfig }) {
       console.log(
         "Component unmounting, cleaning up all WebSocket connections"
       );
+
       // Clean up object URLs to prevent memory leaks
       setMessages((prev) => {
         prev.forEach((message, idx) => {
@@ -453,6 +362,28 @@ export default function WebSockets({ config, saveConfig }) {
     handleCloseModal();
   };
 
+  const handleQuickReconnect = (index) => {
+    // Close the current connection with a normal closure code
+    if (
+      socketRefs.current[index] &&
+      socketRefs.current[index].readyState !== WebSocket.CLOSED
+    ) {
+      socketRefs.current[index].close(1000, "Quick reconnect");
+    }
+
+    // Set connecting status
+    updateConnectionStateInConfig(index, "connecting");
+
+    // Add timeout before reconnection attempt
+    setTimeout(() => {
+      // Only create new connection if we don't already have one
+      if (!socketRefs.current[index]) {
+        console.log(`Quick reconnection for index ${index}`);
+        createWebSocketConnection(index, webSockets[index]);
+      }
+    }, 1000);
+  };
+
   useEffect(() => {
     if (selectedWebSocket) {
       setEditedURL(selectedWebSocket.url);
@@ -480,11 +411,32 @@ export default function WebSockets({ config, saveConfig }) {
       };
     });
 
-    setWebSockets(updatedWebSockets);
+    // Only update if the configuration actually changed
+    const currentConfig = webSockets.map((ws) => ({
+      url: ws.url,
+      name: ws.name,
+      type: ws.type,
+      fontSize: ws.fontSize,
+      enableSending: ws.enableSending,
+    }));
+    const newConfig = updatedWebSockets.map((ws) => ({
+      url: ws.url,
+      name: ws.name,
+      type: ws.type,
+      fontSize: ws.fontSize,
+      enableSending: ws.enableSending,
+    }));
 
-    // Update local config
-    const updatedConfig = { ...config, webSockets: updatedWebSockets };
-    saveConfig(updatedConfig);
+    if (JSON.stringify(currentConfig) !== JSON.stringify(newConfig)) {
+      setWebSockets(updatedWebSockets);
+
+      // Update local config
+      const updatedConfig = { ...config, webSockets: updatedWebSockets };
+      saveConfig(updatedConfig);
+    } else {
+      // Just update local state without saving config
+      setWebSockets(updatedWebSockets);
+    }
   };
 
   return (
@@ -502,6 +454,14 @@ export default function WebSockets({ config, saveConfig }) {
           title={webSocket.name || "Unnamed"}
           onSettings={() => handleSettingsClick(webSocket)}
           settingsTooltip={"Websocket Settings"}
+          onReconnect={
+            connectionStatus[index] === "disconnected" ||
+            connectionStatus[index] === "error" ||
+            connectionStatus[index] === "📶"
+              ? () => handleQuickReconnect(index)
+              : undefined
+          }
+          reconnectTooltip={"Reconnect WebSocket"}
         >
           {connectionStatus[index] === "connecting" ? (
             <div

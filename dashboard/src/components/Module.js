@@ -2,14 +2,18 @@ import React from "react";
 import { Card, CardContent, Typography, Box } from "@mui/material";
 import SettingsButton from "./SettingsButton";
 import DeleteButton from "./DeleteButton";
+import IButton from "./IButton";
+import { RestartAlt } from "@mui/icons-material";
 
 export default function Module({
   title,
   children,
   onSettings,
   onDelete,
+  onReconnect,
   settingsTooltip = "Settings",
   deleteTooltip = "Delete",
+  reconnectTooltip = "Reconnect",
   sx = {},
 }) {
   return (
@@ -63,6 +67,23 @@ export default function Module({
           <DeleteButton onClick={onDelete} tooltip={deleteTooltip} />
         )}
       </Box>
+      {onReconnect && (
+        <Box
+          sx={{
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            m: 1,
+          }}
+        >
+          <IButton
+            onClick={onReconnect}
+            tooltip={reconnectTooltip}
+            Icon={RestartAlt}
+            color="secondary"
+          />
+        </Box>
+      )}
     </Card>
   );
 }

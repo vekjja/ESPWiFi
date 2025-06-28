@@ -35,7 +35,7 @@ public:
       return;
     }
     Serial.begin(baudRate);
-    delay(900);
+    delay(1008); // wait for serial to start
     log("⛓️  Serial Started:");
     logf("\tBaud Rate: %d\n", baudRate);
   }
@@ -54,9 +54,11 @@ public:
 
     fsMounted = true;
     log("💾 LittleFS mounted:");
-    logf("\tSize: %d bytes\n", LittleFS.totalBytes());
-    logf("\tUsed: %d bytes\n", LittleFS.usedBytes());
-    logf("\tFree: %d bytes\n", LittleFS.totalBytes() - LittleFS.usedBytes());
+    logf("\tUsed: %s\n", bytesToHumanReadable(LittleFS.usedBytes()).c_str());
+    logf("\tFree: %s\n",
+         bytesToHumanReadable(LittleFS.totalBytes() - LittleFS.usedBytes())
+             .c_str());
+    logf("\tTotal: %s\n", bytesToHumanReadable(LittleFS.totalBytes()).c_str());
   }
 
   void stopLowPowerSleep() {
@@ -72,7 +74,6 @@ public:
   template <typename T> void log(T value) {
     String valueString = String(value);
     log(valueString);
-    writeLog(valueString + "\n");
   }
 
   // Config
@@ -108,6 +109,7 @@ public:
   // Utils
   String getContentType(String filename);
   String getFileExtension(const String &filename);
+  String bytesToHumanReadable(size_t bytes);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 

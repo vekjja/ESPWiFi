@@ -46,6 +46,7 @@ void ESPWiFi::startClient() {
   log("🔗 Connecting to Network:");
   log("\tSSID: " + ssid);
   log("\tPassword: " + password);
+  logf("\tMAC: %s\n", WiFi.macAddress().c_str());
   logf("\t");
 
   WiFi.disconnect(true);      // Ensure clean start

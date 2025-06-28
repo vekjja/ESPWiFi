@@ -4,7 +4,7 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::runAtInterval(unsigned int interval,
-                            unsigned long& lastIntervalRun,
+                            unsigned long &lastIntervalRun,
                             std::function<void()> functionToRun) {
   unsigned long currentRunTime = millis();
   if (currentRunTime - lastIntervalRun >= interval) {
@@ -13,7 +13,7 @@ void ESPWiFi::runAtInterval(unsigned int interval,
   }
 }
 
-String ESPWiFi::getFileExtension(const String& filename) {
+String ESPWiFi::getFileExtension(const String &filename) {
   int dotIndex = filename.lastIndexOf(".");
   if (dotIndex == -1) {
     return "";
@@ -50,4 +50,21 @@ String ESPWiFi::getContentType(String filename) {
   return "text/plain";
 }
 
-#endif  // ESPWIFI_UTILS
+String ESPWiFi::bytesToHumanReadable(size_t bytes) {
+  const char *units[] = {"B", "KB", "MB", "GB"};
+  int unitIndex = 0;
+  double size = bytes;
+
+  while (size >= 1024.0 && unitIndex < 3) {
+    size /= 1024.0;
+    unitIndex++;
+  }
+
+  if (unitIndex == 0) {
+    return String((int)size) + " " + units[unitIndex];
+  } else {
+    return String(size, 1) + " " + units[unitIndex];
+  }
+}
+
+#endif // ESPWIFI_UTILS

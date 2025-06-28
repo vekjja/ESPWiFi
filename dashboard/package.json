@@ -17,7 +17,7 @@
     "web-vitals": "^4.2.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "BROWSER=none react-scripts start",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "build:uploadfs": "npm run build && (cd .. && pio run --target uploadfs --environment $PIO_ENV)",
     "build:uploadfs:esp8266": "PIO_ENV=esp8266 npm run build:uploadfs",

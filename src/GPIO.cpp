@@ -106,8 +106,13 @@ void ESPWiFi::startGPIO() {
         response = request->beginResponse(200, "application/json", okMsg);
         addCORS(response);
         request->send(response);
-        log("📍 GPIO " + String(pinNum) + " " + mode + " " + state + " " +
-            String(duty));
+
+        // Log the operation - only include duty for PWM mode
+        String logMsg = "📍 GPIO " + String(pinNum) + " " + mode + " " + state;
+        if (mode == "pwm") {
+          logMsg += " " + String(duty);
+        }
+        log(logMsg);
       }));
   log("📍 GPIO Started:");
   log("\tPOST /gpio");

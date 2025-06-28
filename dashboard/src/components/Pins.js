@@ -49,13 +49,17 @@ function Pin({ pinNum, props, updatePins, config }) {
       name: name,
       mode: mode,
       hz: hz,
-      duty: duty,
       cycle: cycle,
       inverted: inverted,
       remoteURL: remoteURL,
       state: newState.state || (isOn ? "high" : "low"),
       ...newState,
     };
+
+    // Only include duty for PWM mode pins
+    if (mode === "pwm") {
+      newPinState.duty = duty;
+    }
 
     // For immediate pin state changes (like toggling), send to ESP32
     // For configuration changes (like settings), only update local config
@@ -81,18 +85,26 @@ function Pin({ pinNum, props, updatePins, config }) {
         targetURL = `${baseURL}/gpio`;
       }
 
+      // Prepare request body - only include duty for PWM mode
+      const requestBody = {
+        ...newPinState,
+        mode: deletePin ? "in" : newPinState.mode,
+        state: deletePin ? "low" : newPinState.state,
+        num: parseInt(pinNum, 10),
+        delete: deletePin === "DELETE" || deletePin === true,
+      };
+
+      // Only include duty in request for PWM mode
+      if (mode === "pwm" && !deletePin) {
+        requestBody.duty = duty;
+      }
+
       fetch(targetURL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...newPinState,
-          mode: deletePin ? "in" : newPinState.mode,
-          state: deletePin ? "low" : newPinState.state,
-          num: parseInt(pinNum, 10),
-          delete: deletePin === "DELETE" || deletePin === true,
-        }),
+        body: JSON.stringify(requestBody),
       })
         .then((response) => {
           if (!response.ok) {
@@ -162,12 +174,16 @@ function Pin({ pinNum, props, updatePins, config }) {
       name: editedPinName,
       mode: editedMode,
       hz: editedHz,
-      duty: duty,
       cycle: editedCycle,
       inverted: newInverted,
       remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
     };
+
+    // Only include duty for PWM mode pins
+    if (editedMode === "pwm") {
+      tempPinState.duty = duty;
+    }
 
     // Update local state only - no remote API calls for settings
     updatePins(tempPinState, false);

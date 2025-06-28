@@ -47,16 +47,16 @@ export default function AddButton({ config, saveConfig }) {
       ];
       saveConfig({ ...config, webSockets: updatedWebSockets });
     } else {
+      // Create base pin configuration
+      const newPin = {
+        state: "low",
+        name: `GPIO${selectedPinNum}`,
+        mode: "out",
+      };
+
       const updatedPins = {
         ...(config.pins || {}),
-        [selectedPinNum]: {
-          state: "low",
-          name: `GPIO${selectedPinNum}`,
-          mode: "out",
-          duty: 1860,
-          cycle: 20000,
-          hz: 50,
-        },
+        [selectedPinNum]: newPin,
       };
       saveConfig({ ...config, pins: updatedPins });
       setSelectedPinNum(""); // Clear the selected pin to ensure UI updates

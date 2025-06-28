@@ -13,9 +13,6 @@
         "4": {
             "name": "Builtin LED",
             "mode": "out",
-            "hz": 50,
-            "duty": 1860,
-            "cycle": 20000,
             "state": "low"
         }
     }

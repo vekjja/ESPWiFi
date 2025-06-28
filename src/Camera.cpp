@@ -9,7 +9,36 @@
 
 #include "esp_camera.h"
 
+#define CAM_LED_PIN 4
+
 WebSocket *camSoc = nullptr;
+
+void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
+                          AwsEventType type, void *arg, uint8_t *data,
+                          size_t len, ESPWiFi *espWifi) {
+  if (type == WS_EVT_DATA) {
+    espWifi->log("🔌 WebSocket Data Received: 📨");
+    espWifi->logf("\tClient ID: %d\n", client->id());
+    espWifi->logf("\tData Length: %d bytes\n", len);
+    espWifi->logf("\tData: %s\n", String((char *)data, len).c_str());
+
+    // Convert received data to string
+    String receivedData = String((char *)data, len);
+    receivedData.trim(); // Remove any whitespace
+
+    // Check if the text matches "light:on"
+    if (receivedData == "light:on") {
+      espWifi->log("📸 Light: ON");
+      pinMode(CAM_LED_PIN, OUTPUT);
+      digitalWrite(CAM_LED_PIN, HIGH);
+    }
+    if (receivedData == "light:off") {
+      espWifi->log("📸 Light: OFF");
+      pinMode(CAM_LED_PIN, OUTPUT);
+      digitalWrite(CAM_LED_PIN, LOW);
+    }
+  }
+}
 
 void ESPWiFi::startCamera() {
 
@@ -36,7 +65,7 @@ void ESPWiFi::startCamera() {
   camConfig.pixel_format = PIXFORMAT_JPEG;
   camConfig.frame_size = FRAMESIZE_SVGA; // SVGA (800x600) is a good balance
                                          // between quality and performance
-  camConfig.jpeg_quality = 15;
+  camConfig.jpeg_quality = 30;
   camConfig.fb_count = 2;
 
   esp_err_t err = esp_camera_init(&camConfig);
@@ -199,8 +228,10 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
-  logf("📷 Camera Started\n\t");
-  camSoc = new WebSocket("/camera", this);
+  logf("📷 Camera Started\n");
+
+  camSoc = new WebSocket(String("/camera"), this, cameraWebSocketEvent);
+
   if (!camSoc) {
     log("❌ Failed to create Camera WebSocket");
     return;
@@ -245,7 +276,7 @@ void ESPWiFi::streamCamera(int frameRate) {
   unsigned long now = millis();
   unsigned long interval = frameRate > 0
                                ? (1000 / frameRate)
-                               : 200; // Default to 5 fps if frameRate is 0
+                               : 500; // Default to 2 fps if frameRate is 0
   if (now - lastFrame < interval)
     return;
   lastFrame = now;
@@ -260,6 +291,7 @@ void ESPWiFi::streamCamera(int frameRate) {
 
   camSoc->binaryAll((const char *)fb->buf, fb->len);
   esp_camera_fb_return(fb);
+  delay(200); // Add delay to prevent queue overflow
 }
 
 #endif // ESPWIFI_CAMERA

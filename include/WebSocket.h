@@ -14,8 +14,8 @@ public:
 
   WebSocket(String path, ESPWiFi *espWifi,
             void (*onWsEvent)(AsyncWebSocket *, AsyncWebSocketClient *,
-                              AwsEventType, void *, uint8_t *,
-                              size_t) = nullptr) {
+                              AwsEventType, void *, uint8_t *, size_t,
+                              ESPWiFi *espWifi) = nullptr) {
     this->espWifi = espWifi; // Store the ESPWiFi instance
     socket = new AsyncWebSocket(path.c_str());
 
@@ -56,14 +56,13 @@ public:
       }
 
       if (onWsEvent)
-        onWsEvent(server, client, type, arg, data, len);
+        onWsEvent(server, client, type, arg, data, len, espWifi);
     });
 
     espWifi->initWebServer();
     espWifi->webServer->addHandler(socket);
     espWifi->log("🔌 WebSocket Started:");
     espWifi->logf("\tPath: %s\n", path.c_str());
-    espWifi->logf("\tMax Clients: %d\n", maxClients);
   }
 
   ~WebSocket() {

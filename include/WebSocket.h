@@ -27,11 +27,12 @@ public:
         return; // Early return if no ESPWiFi instance
 
       if (type == WS_EVT_CONNECT) {
-        // Clean up any disconnected clients first
-        activeClientCount(); // This will clean up stale connections
+
+        int clientCount =
+            activeClientCount(); // This will clean up stale connections
 
         // Check if we're at the connection limit using active count
-        if (activeClientCount() >= maxClients) {
+        if (clientCount >= maxClients) {
           espWifi->logf(
               "⚠️  Connection limit reached (%d), rejecting new connection\n",
               maxClients);
@@ -45,13 +46,12 @@ public:
         espWifi->logf("\tPath: %s\n", socket->url());
         espWifi->logf("\tPort: %d\n", client->remotePort());
         espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
-        espWifi->logf("\tActive Clients: %d\n", activeClientCount());
-        espWifi->logf("\tTotal in List: %d\n", clients.size());
+        espWifi->logf("\tActive Clients: %d\n", clientCount);
       } else if (type == WS_EVT_DISCONNECT) {
         clients.remove(client);
         espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
         espWifi->logf("\tID: %d\n", client->id());
-        espWifi->logf("\tActive Clients: %d\n", activeClientCount());
+        espWifi->logf("\tActive Clients: %d\n", clientCount);
         espWifi->logf("\tTotal Clients: %d\n", clients.size());
       }
 

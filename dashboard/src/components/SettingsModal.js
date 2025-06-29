@@ -26,7 +26,7 @@ export default function SettingsModal({
         sx: {
           bgcolor: "black",
           margin: "auto",
-          maxWidth: "33%",
+          maxWidth: "69%",
           outline: "1px solid",
           outlineColor: "secondary.dark",
         },

@@ -12,7 +12,7 @@
 #define CAM_LED_PIN 4
 
 WebSocket *camSoc = nullptr;
-String camSocPath = "/ws/camera";
+String camSocPath = "/camera";
 
 void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                           AwsEventType type, void *arg, uint8_t *data,
@@ -271,7 +271,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!camSoc || camSoc->activeClientCount() == 0)
+  if (!camSoc)
     return; // Ensure WebSocket and clients exist
 
   static unsigned long lastFrame = 0;

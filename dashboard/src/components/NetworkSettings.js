@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
 import RestartIcon from "@mui/icons-material/RestartAlt";
-import SaveButton from "./SaveButton";
+import OkayButton from "./OkayButton";
 import SettingsModal from "./SettingsModal";
 import IButton from "./IButton";
 
@@ -149,7 +149,7 @@ export default function NetworkSettings({ config, saveConfig }) {
                 tooltip={"Restart Device"}
               />
             </Tooltip>
-            <SaveButton
+            <OkayButton
               onClick={handleSave}
               tooltip={"Apply Network Settings"}
             />

@@ -2,7 +2,7 @@ import React from "react";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import IButton from "./IButton";
 
-const SaveButton = ({ onClick, tooltip }) => {
+const OkayButton = ({ onClick, tooltip }) => {
   const handleClick = () => {
     console.log("SaveButton clicked");
     if (onClick) {
@@ -20,4 +20,4 @@ const SaveButton = ({ onClick, tooltip }) => {
   );
 };
 
-export default SaveButton;
+export default OkayButton;

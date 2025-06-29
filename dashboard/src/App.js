@@ -6,8 +6,7 @@ import { Fab, Tooltip } from "@mui/material";
 import SaveIcon from "@mui/icons-material/Save";
 import NetworkSettings from "./components/NetworkSettings";
 import AddButton from "./components/AddButton";
-import Pins from "./components/Pins";
-import WebSockets from "./components/WebSockets";
+import Modules from "./components/Modules";
 
 // Define the theme
 const theme = createTheme({
@@ -184,8 +183,7 @@ function App() {
             saveConfig={updateLocalConfig}
           />
           <AddButton config={localConfig} saveConfig={updateLocalConfig} />
-          <Pins config={localConfig} saveConfig={updateLocalConfig} />
-          <WebSockets config={localConfig} saveConfig={updateLocalConfig} />
+          <Modules config={localConfig} saveConfig={updateLocalConfig} />
         </Container>
       )}
     </ThemeProvider>

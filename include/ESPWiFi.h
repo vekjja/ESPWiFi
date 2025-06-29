@@ -27,7 +27,7 @@ public:
   IntervalTimer s10Timer{10000}; // 10 seconds
   IntervalTimer s1Timer{1000};   // 1 second
 
-  int connectTimeout = 12000; // 12 seconds
+  int connectTimeout = 15000; // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {

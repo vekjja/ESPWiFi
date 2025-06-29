@@ -14,6 +14,7 @@ export default function Module({
   settingsTooltip = "Settings",
   deleteTooltip = "Delete",
   reconnectTooltip = "Reconnect",
+  reconnectIcon = RestartAlt,
   sx = {},
 }) {
   return (
@@ -79,7 +80,7 @@ export default function Module({
           <IButton
             onClick={onReconnect}
             tooltip={reconnectTooltip}
-            Icon={RestartAlt}
+            Icon={reconnectIcon}
             color="secondary"
           />
         </Box>

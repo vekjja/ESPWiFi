@@ -15,5 +15,15 @@
             "mode": "out",
             "state": "low"
         }
-    }
+    },
+    "webSockets": [
+        {
+            "url": "/rssi",
+            "name": "WiFi RSSI",
+            "type": "text",
+            "fontSize": 14,
+            "enableSending": false,
+            "connectionState": "disconnected"
+        }
+    ]
 }

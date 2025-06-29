@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import {
-  Container,
   MenuItem,
   TextField,
   FormControl,
@@ -12,21 +11,25 @@ import {
   Box,
   Checkbox,
 } from "@mui/material";
-import SaveButton from "./SaveButton";
+import OkayButton from "./OkayButton";
 import DeleteButton from "./DeleteButton";
 import Module from "./Module";
 import SettingsModal from "./SettingsModal";
 
-// Pin component inlined from Pin.js
-function Pin({ pinNum, props, updatePins, config }) {
-  const [isOn, setIsOn] = useState(props.state === "high");
-  const [name, setName] = useState(props.name || "Pin");
-  const [mode, setMode] = useState(props.mode || "out");
-  const [hz] = useState(props.hz || 50);
-  const [cycle] = useState(props.cycle || 20000);
-  const [inverted, setInverted] = useState(props.inverted || false);
-  const [remoteURL, setRemoteURL] = useState(props.remoteURL || "");
-  const [anchorEl] = useState(null);
+export default function PinModule({
+  pinNum,
+  initialProps,
+  config,
+  onUpdate,
+  onDelete,
+}) {
+  const [isOn, setIsOn] = useState(initialProps.state === "high");
+  const [name, setName] = useState(initialProps.name || "Pin");
+  const [mode, setMode] = useState(initialProps.mode || "out");
+  const [hz] = useState(initialProps.hz || 50);
+  const [cycle] = useState(initialProps.cycle || 20000);
+  const [inverted, setInverted] = useState(initialProps.inverted || false);
+  const [remoteURL, setRemoteURL] = useState(initialProps.remoteURL || "");
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
   const [editedMode, setEditedMode] = useState(mode);
@@ -35,13 +38,13 @@ function Pin({ pinNum, props, updatePins, config }) {
   const [editedInverted, setEditedInverted] = useState(inverted);
   const [editedRemoteURL, setEditedRemoteURL] = useState(remoteURL);
 
-  const dutyMin = props.dutyMin || 0;
-  const dutyMax = props.dutyMax || 100;
+  const dutyMin = initialProps.dutyMin || 0;
+  const dutyMax = initialProps.dutyMax || 100;
   const [editedDutyMin, setEditedDutyMin] = useState(dutyMin);
   const [editedDutyMax, setEditedDutyMax] = useState(dutyMax);
-  const [sliderMin, setSliderMin] = useState(props.dutyMin || dutyMin);
-  const [sliderMax, setSliderMax] = useState(props.dutyMax || dutyMax);
-  const [duty, setDuty] = useState(props.duty || 0);
+  const [sliderMin, setSliderMin] = useState(initialProps.dutyMin || dutyMin);
+  const [sliderMax, setSliderMax] = useState(initialProps.dutyMax || dutyMax);
+  const [duty, setDuty] = useState(initialProps.duty || 0);
 
   const updatePinState = (newState, deletePin) => {
     // Use the new state if provided, otherwise use current state
@@ -114,7 +117,11 @@ function Pin({ pinNum, props, updatePins, config }) {
         })
         .then((data) => {
           // Only update local state after successful API call
-          updatePins(newPinState, deletePin);
+          if (deletePin) {
+            onDelete(pinNum);
+          } else {
+            onUpdate(pinNum, newPinState);
+          }
         })
         .catch((error) => {
           console.error("Error updating pin state:", error);
@@ -125,7 +132,11 @@ function Pin({ pinNum, props, updatePins, config }) {
         });
     } else {
       // Update local state only for configuration changes
-      updatePins(newPinState, deletePin);
+      if (deletePin) {
+        onDelete(pinNum);
+      } else {
+        onUpdate(pinNum, newPinState);
+      }
     }
   };
 
@@ -186,7 +197,7 @@ function Pin({ pinNum, props, updatePins, config }) {
     }
 
     // Update local state only - no remote API calls for settings
-    updatePins(tempPinState, false);
+    onUpdate(pinNum, tempPinState);
 
     setSliderMin(editedDutyMin);
     setSliderMax(editedDutyMax);
@@ -194,9 +205,9 @@ function Pin({ pinNum, props, updatePins, config }) {
   };
 
   useEffect(() => {
-    setEditedDutyMin(props.dutyMin || 0);
-    setEditedDutyMax(props.dutyMax || 255);
-  }, [props.dutyMin, props.dutyMax]);
+    setEditedDutyMin(initialProps.dutyMin || 0);
+    setEditedDutyMax(initialProps.dutyMax || 255);
+  }, [initialProps.dutyMin, initialProps.dutyMax]);
 
   useEffect(() => {
     if (duty < editedDutyMin) setDuty(Number(editedDutyMin));
@@ -219,11 +230,7 @@ function Pin({ pinNum, props, updatePins, config }) {
           : "Pin Settings"
       }
       sx={{
-        backgroundColor: anchorEl
-          ? "primary.dark"
-          : effectiveIsOn
-          ? "secondary.light"
-          : "secondary.dark",
+        backgroundColor: effectiveIsOn ? "secondary.light" : "secondary.dark",
         borderColor: effectiveIsOn ? "primary.main" : "secondary.main",
         maxWidth: "200px",
       }}
@@ -238,7 +245,7 @@ function Pin({ pinNum, props, updatePins, config }) {
               onClick={() => updatePinState({}, "DELETE")}
               tooltip={"Delete Pin"}
             />
-            <SaveButton
+            <OkayButton
               onClick={handleSavePinSettings}
               tooltip={"Apply Pin Settings"}
             />
@@ -337,7 +344,7 @@ function Pin({ pinNum, props, updatePins, config }) {
           <Switch
             checked={!!effectiveIsOn}
             onChange={handleChange}
-            disabled={props.mode === "in"}
+            disabled={mode === "in"}
           />
         }
         value={effectiveIsOn}
@@ -359,55 +366,5 @@ function Pin({ pinNum, props, updatePins, config }) {
         </Box>
       )}
     </Module>
-  );
-}
-
-// Pins container
-export default function Pins({ config, saveConfig }) {
-  const [pins, setPins] = useState({});
-
-  useEffect(() => {
-    if (config && config.pins) {
-      setPins(config.pins);
-    } else if (config && !config.pins) {
-      setPins({});
-    }
-  }, [config]);
-
-  const pinElements = Object.keys(pins).map((key) => {
-    const pin = pins[key];
-    return (
-      <Pin
-        key={key}
-        pinNum={key}
-        props={pin}
-        updatePins={(pinState, deletePin) => {
-          const updatedPins = { ...pins };
-          if (deletePin) {
-            delete updatedPins[key];
-          } else {
-            updatedPins[key] = pinState;
-          }
-          setPins(updatedPins);
-
-          // Update the global config with the new pins state
-          const updatedConfig = { ...config, pins: updatedPins };
-          saveConfig(updatedConfig);
-        }}
-        config={config}
-      />
-    );
-  });
-
-  if (!config || !config.pins) {
-    return <div>Loading configuration...</div>;
-  }
-
-  return (
-    <Container
-      sx={{ display: "flex", flexWrap: "wrap", justifyContent: "center" }}
-    >
-      {pinElements}
-    </Container>
   );
 }

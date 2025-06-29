@@ -41,13 +41,19 @@ export default function AddButton({ config, saveConfig }) {
 
   const handleAdd = () => {
     if (selectedTab === 1) {
-      const updatedWebSockets = [
-        ...(config.webSockets || []),
-        { url: webSocketURL },
-      ];
+      // Add WebSocket
+      const newWebSocket = {
+        url: webSocketURL,
+        name: "Unnamed",
+        type: "text",
+        fontSize: 14,
+        enableSending: true,
+        connectionState: "disconnected",
+      };
+      const updatedWebSockets = [...(config.webSockets || []), newWebSocket];
       saveConfig({ ...config, webSockets: updatedWebSockets });
     } else {
-      // Create base pin configuration
+      // Add Pin
       const newPin = {
         state: "low",
         name: `GPIO${selectedPinNum}`,
@@ -75,8 +81,10 @@ export default function AddButton({ config, saveConfig }) {
   const handleWebSocketURLChange = (e) => {
     let value = e.target.value;
 
-    // If the value doesn't start with a protocol, prepend ws://
-    if (value && !value.match(/^(ws|wss):\/\//)) {
+    // Allow relative URLs (starting with /) or absolute URLs (starting with ws:// or wss://)
+    // Don't automatically prepend ws:// for relative paths
+    if (value && !value.match(/^(ws|wss):\/\//) && !value.startsWith("/")) {
+      // Only prepend ws:// if it's not a relative path and doesn't have a protocol
       value = `ws://${value}`;
     }
 
@@ -147,15 +155,7 @@ export default function AddButton({ config, saveConfig }) {
               onChange={(e) => setSelectedPinNum(e.target.value)}
             >
               {pinOptions.map((pin) => (
-                <MenuItem
-                  key={pin}
-                  value={pin}
-                  onClick={() => {
-                    if (config.pins && config.pins[pin]) {
-                      // Removed unused handleOpenPinModal function
-                    }
-                  }}
-                >
+                <MenuItem key={pin} value={pin}>
                   GPIO{pin}
                 </MenuItem>
               ))}

@@ -4,9 +4,7 @@
 
 class WebSocket {
 private:
-  std::list<AsyncWebSocketClient *> clients;
   ESPWiFi *espWifi = nullptr; // Store ESPWiFi instance
-  size_t maxClients = 9;      // Default maximum number of clients
 
 public:
   AsyncWebSocket *socket = nullptr;
@@ -35,39 +33,20 @@ public:
       if (!espWifi || !client)
         return; // Early return if no ESPWiFi instance or invalid client
 
-      int clientCount = activeClientCount();
       if (type == WS_EVT_CONNECT) {
-        // Check if we're at the connection limit using total count
-        if (clientCount >= maxClients) {
-          espWifi->logf(
-              "⚠️  Connection limit reached (%d), rejecting new connection\n",
-              maxClients);
-          client->close();
-          return;
-        }
-
-        clients.push_back(client);
         espWifi->logf("🔌 WebSocket Client Connected: 🔗\n");
         espWifi->logf("\tID: %d\n", client->id());
         espWifi->logf("\tPath: %s\n", socket->url());
         espWifi->logf("\tPort: %d\n", client->remotePort());
         espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
-        espWifi->logf("\tActive Clients: %d\n", clientCount);
       } else if (type == WS_EVT_DISCONNECT) {
         // Safely remove client from list
-        auto it = std::find(clients.begin(), clients.end(), client);
-        if (it != clients.end()) {
-          espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
-          espWifi->logf("\tID: %d\n", client->id());
-          espWifi->logf("\tPath: %s\n", socket->url());
-          espWifi->logf("\tPort: %d\n", client->remotePort());
-          espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
-          espWifi->logf("\tActive Clients: %d\n", clientCount);
-          espWifi->logf("\tTotal Clients: %d\n", clients.size());
-          espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
-
-          clients.erase(it);
-        }
+        espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
+        espWifi->logf("\tID: %d\n", client->id());
+        espWifi->logf("\tPath: %s\n", socket->url());
+        espWifi->logf("\tPort: %d\n", client->remotePort());
+        espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
+        espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
       }
 
       if (onWsEvent)
@@ -83,9 +62,6 @@ public:
   }
 
   ~WebSocket() {
-    // Close all connections first
-    closeAll();
-
     // Clean up the socket
     if (socket) {
       delete socket;
@@ -105,62 +81,5 @@ public:
     if (socket && data && len > 0) {
       socket->binaryAll((const uint8_t *)data, len);
     }
-  }
-
-  // Clean up disconnected clients and return actual active count
-  size_t activeClientCount() {
-    size_t count = 0;
-    auto it = clients.begin();
-    while (it != clients.end()) {
-      AsyncWebSocketClient *client = *it;
-      if (client) {
-        // Safely check client status
-        try {
-          if (client->status() == WS_CONNECTED) {
-            count++;
-            ++it;
-          } else {
-            // Remove disconnected client
-            espWifi->log("🔌 WebSocket Client Removed: ⛓️‍💥");
-            espWifi->logf("\tID: %d\n", client->id());
-            espWifi->logf("\tPath: %s\n", socket->url());
-            it = clients.erase(it);
-          }
-        } catch (...) {
-          // If we can't access client status, remove it
-          espWifi->log(
-              "🔌 WebSocket Client Removed (invalid): ⛓️‍💥");
-          it = clients.erase(it);
-        }
-      } else {
-        // Remove null client
-        it = clients.erase(it);
-      }
-    }
-    return count;
-  }
-
-  // Get total clients in list (including potentially disconnected ones)
-  size_t totalClientCount() const { return clients.size(); }
-
-  // Set maximum number of clients allowed
-  void setMaxClients(size_t max) { maxClients = max; }
-
-  // Close all connections
-  void closeAll() {
-    for (auto client : clients) {
-      if (client) {
-        try {
-          if (client->status() == WS_CONNECTED) {
-            client->close();
-          }
-        } catch (...) {
-          // Ignore errors when closing clients
-        }
-      }
-    }
-    clients.clear();
-    if (espWifi)
-      espWifi->log("🔌 All WebSocket connections closed");
   }
 };

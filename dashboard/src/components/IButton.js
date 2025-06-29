@@ -11,7 +11,18 @@ const IButton = ({
   disabled = false,
 }) => {
   return (
-    <Tooltip title={tooltip} placement="bottom">
+    <Tooltip
+      title={tooltip}
+      placement="bottom"
+      arrow
+      componentsProps={{
+        tooltip: {
+          sx: {
+            mt: 1, // Add margin top to push tooltip down
+          },
+        },
+      }}
+    >
       <span>
         <IconButton color={color} onClick={onClick} sx={sx} disabled={disabled}>
           <Icon />

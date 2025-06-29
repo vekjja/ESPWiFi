@@ -31,6 +31,10 @@ export default function Module({
         flexDirection: "column",
         alignItems: "center",
         position: "relative",
+        cursor: "grab",
+        "&:active": {
+          cursor: "grabbing",
+        },
         ...sx,
       }}
     >

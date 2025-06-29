@@ -3,7 +3,7 @@ import IButton from "./IButton";
 import DeleteButton from "./DeleteButton";
 import SettingsButton from "./SettingsButton";
 import { RestartAlt } from "@mui/icons-material";
-import { Card, CardContent, Typography, Box } from "@mui/material";
+import { Card, CardContent, Typography } from "@mui/material";
 
 export default function Module({
   title,
@@ -15,6 +15,7 @@ export default function Module({
   deleteTooltip = "Delete",
   reconnectTooltip = "Reconnect",
   reconnectIcon = RestartAlt,
+  reconnectColor = "secondary",
   sx = {},
 }) {
   return (
@@ -52,47 +53,43 @@ export default function Module({
         </Typography>
         {children}
       </CardContent>
-      <Box
-        sx={{
-          position: "absolute",
-          left: 0,
-          bottom: 0,
-          m: 1,
-          display: "flex",
-          gap: 1,
-        }}
-      >
-        {onSettings && (
-          <SettingsButton
-            color="secondary"
-            onClick={onSettings}
-            tooltip={settingsTooltip}
-          />
-        )}
-        {onDelete && (
-          <DeleteButton onClick={onDelete} tooltip={deleteTooltip} />
-        )}
-      </Box>
-      {onReconnect && (
-        <Box
+      {onSettings && (
+        <SettingsButton
+          color="default"
+          onClick={onSettings}
+          tooltip={settingsTooltip}
+        />
+      )}
+      {onDelete && (
+        <DeleteButton
+          onClick={onDelete}
+          tooltip={deleteTooltip}
           sx={{
             position: "absolute",
-            right: 0,
-            bottom: 0,
-            m: 1,
+            left: 48,
+            bottom: 8,
           }}
-        >
-          <IButton
-            onClick={(e) => {
-              console.log("Module reconnect button clicked");
-              e.stopPropagation(); // Prevent drag activation
-              onReconnect();
-            }}
-            tooltip={reconnectTooltip}
-            Icon={reconnectIcon}
-            color="secondary"
-          />
-        </Box>
+        />
+      )}
+      {onReconnect && (
+        <IButton
+          onClick={(e) => {
+            console.log("Module reconnect button clicked");
+            e.stopPropagation(); // Prevent drag activation
+            onReconnect();
+          }}
+          tooltip={reconnectTooltip}
+          Icon={reconnectIcon}
+          color={reconnectColor}
+          enhanced={true}
+          tooltipPlacement="top"
+          sx={{
+            position: "absolute",
+            right: 8,
+            bottom: 8,
+            zIndex: 1,
+          }}
+        />
       )}
     </Card>
   );

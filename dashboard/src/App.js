@@ -33,7 +33,10 @@ const theme = createTheme({
       main: "#333",
     },
     error: {
-      main: "#FF4949",
+      main: "#FF0051",
+    },
+    success: {
+      main: "#01EC9E",
     },
   },
 });

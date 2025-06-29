@@ -62,6 +62,11 @@ export default function WebSocketModule({
       ) {
         socketRef.current.close();
       }
+
+      // Clean up debounce timeout
+      if (saveConnectionState.timeoutId) {
+        clearTimeout(saveConnectionState.timeoutId);
+      }
     };
   }, []);
 
@@ -97,11 +102,15 @@ export default function WebSocketModule({
 
     setConnectionStatus(newStatus);
 
-    const updatedWebSocket = {
-      ...initialProps,
-      connectionState: newStatus,
-    };
-    onUpdate(index, updatedWebSocket);
+    // Debounce config updates to prevent excessive saves
+    clearTimeout(saveConnectionState.timeoutId);
+    saveConnectionState.timeoutId = setTimeout(() => {
+      const updatedWebSocket = {
+        ...initialProps,
+        connectionState: newStatus,
+      };
+      onUpdate(index, updatedWebSocket);
+    }, 500); // 500ms debounce
   };
 
   // Manual state update (for disconnect button)
@@ -147,11 +156,16 @@ export default function WebSocketModule({
         console.log(`WebSocket ${index} connected to: ${wsUrl}`);
         // Force update to connected status regardless of current state
         setConnectionStatus("connected");
-        const updatedWebSocket = {
-          ...initialProps,
-          connectionState: "connected",
-        };
-        onUpdate(index, updatedWebSocket);
+
+        // Debounce the config update
+        clearTimeout(saveConnectionState.timeoutId);
+        saveConnectionState.timeoutId = setTimeout(() => {
+          const updatedWebSocket = {
+            ...initialProps,
+            connectionState: "connected",
+          };
+          onUpdate(index, updatedWebSocket);
+        }, 500); // 500ms debounce
       };
 
       ws.onmessage = (event) => {
@@ -310,6 +324,16 @@ export default function WebSocketModule({
       }
       reconnectTooltip={getConnectionTooltip()}
       reconnectIcon={getConnectionIcon()}
+      reconnectColor={connectionStatus === "connected" ? "success" : "error"}
+      sx={{
+        backgroundColor:
+          connectionStatus === "connected"
+            ? "secondary.light"
+            : "secondary.dark",
+        borderColor:
+          connectionStatus === "connected" ? "primary.main" : "secondary.main",
+        maxWidth: "200px",
+      }}
     >
       {connectionStatus === "connecting" ? (
         <div

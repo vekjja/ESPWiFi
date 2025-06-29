@@ -17,12 +17,18 @@ import OkayButton from "./OkayButton";
 import Module from "./Module";
 import SettingsModal from "./SettingsModal";
 
+// Global connection manager to persist connections across re-renders
+const connectionManager = new Map();
+
 export default function WebSocketModule({
   index,
   initialProps,
   onUpdate,
   onDelete,
 }) {
+  // Use the module's id for stable identification
+  const moduleId = initialProps.id || index;
+
   const [message, setMessage] = useState("");
   const [connectionStatus, setConnectionStatus] = useState(
     initialProps.connectionState || "disconnected"
@@ -62,6 +68,9 @@ export default function WebSocketModule({
       ) {
         socketRef.current.close();
       }
+
+      // Remove from connection manager
+      connectionManager.delete(moduleId);
 
       // Clean up debounce timeout
       if (saveConnectionState.timeoutId) {
@@ -109,7 +118,7 @@ export default function WebSocketModule({
         ...initialProps,
         connectionState: newStatus,
       };
-      onUpdate(index, updatedWebSocket);
+      onUpdate(moduleId, updatedWebSocket);
     }, 500); // 500ms debounce
   };
 
@@ -119,6 +128,20 @@ export default function WebSocketModule({
   };
 
   const createWebSocketConnection = () => {
+    // Check if we already have a connection for this module
+    const existingConnection = connectionManager.get(moduleId);
+    if (
+      existingConnection &&
+      existingConnection.readyState === WebSocket.OPEN
+    ) {
+      console.log(
+        `WebSocket ${moduleId} already connected, reusing existing connection`
+      );
+      socketRef.current = existingConnection;
+      setConnectionStatus("connected");
+      return existingConnection;
+    }
+
     // Close existing connection if any
     if (socketRef.current) {
       socketRef.current.close();
@@ -140,7 +163,7 @@ export default function WebSocketModule({
       wsUrl = `ws://${wsUrl}`;
     }
 
-    console.log(`WebSocket ${index} connecting to: ${wsUrl}`);
+    console.log(`WebSocket ${moduleId} connecting to: ${wsUrl}`);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -150,10 +173,11 @@ export default function WebSocketModule({
       }
 
       socketRef.current = ws;
+      connectionManager.set(moduleId, ws);
       saveConnectionState("connecting");
 
       ws.onopen = () => {
-        console.log(`WebSocket ${index} connected to: ${wsUrl}`);
+        console.log(`WebSocket ${moduleId} connected to: ${wsUrl}`);
         // Force update to connected status regardless of current state
         setConnectionStatus("connected");
 
@@ -164,7 +188,7 @@ export default function WebSocketModule({
             ...initialProps,
             connectionState: "connected",
           };
-          onUpdate(index, updatedWebSocket);
+          onUpdate(moduleId, updatedWebSocket);
         }, 500); // 500ms debounce
       };
 
@@ -181,14 +205,15 @@ export default function WebSocketModule({
       };
 
       ws.onerror = (error) => {
-        console.error(`WebSocket ${index} error:`, error);
+        console.error(`WebSocket ${moduleId} error:`, error);
         saveConnectionState("error");
       };
 
       ws.onclose = (event) => {
-        console.log(`WebSocket ${index} disconnected from: ${wsUrl}`);
+        console.log(`WebSocket ${moduleId} disconnected from: ${wsUrl}`);
         saveConnectionState("disconnected");
         socketRef.current = null;
+        connectionManager.delete(moduleId);
       };
 
       return ws;
@@ -208,7 +233,7 @@ export default function WebSocketModule({
   };
 
   const handleDeleteSocket = () => {
-    onDelete(index);
+    onDelete(moduleId);
     handleCloseModal();
   };
 
@@ -223,22 +248,23 @@ export default function WebSocketModule({
       connectionState: connectionStatus,
     };
 
-    onUpdate(index, updatedWebSocket);
+    onUpdate(moduleId, updatedWebSocket);
     handleCloseModal();
   };
 
   const handleConnect = () => {
-    console.log(`WebSocket ${index} connect button clicked`);
+    console.log(`WebSocket ${moduleId} connect button clicked`);
     setManuallyDisconnected(false); // Reset manual disconnect flag
     createWebSocketConnection();
   };
 
   const handleDisconnect = () => {
-    console.log(`WebSocket ${index} disconnect button clicked`);
+    console.log(`WebSocket ${moduleId} disconnect button clicked`);
     setManuallyDisconnected(true); // Set manual disconnect flag
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
+      connectionManager.delete(moduleId);
       // Immediately update the connection status manually
       updateConnectionState("disconnected");
     } else {

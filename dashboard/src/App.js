@@ -27,16 +27,17 @@ const theme = createTheme({
   palette: {
     mode: "dark",
     primary: {
-      main: "#3effc1",
+      main: "#47FFF0",
+      alt: "#FF4186",
     },
     secondary: {
       main: "#333",
     },
     error: {
-      main: "#FF0051",
+      main: "#FF5656",
     },
     success: {
-      main: "#01EC9E",
+      main: "#17EB9D",
     },
   },
 });

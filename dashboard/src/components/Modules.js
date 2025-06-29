@@ -3,7 +3,6 @@ import { Container } from "@mui/material";
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -11,7 +10,6 @@ import {
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
@@ -161,9 +159,6 @@ export default function Modules({ config, saveConfig }) {
 
         return true;
       },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
@@ -245,9 +240,27 @@ export default function Modules({ config, saveConfig }) {
 
   const updateModule = (moduleId, moduleState) => {
     console.log("Updating module:", moduleId, moduleState);
-    const updatedModules = modules.map((module) =>
-      module.id === moduleId ? { ...module, ...moduleState } : module
-    );
+    const updatedModules = modules.map((module) => {
+      if (module.id === moduleId) {
+        // Update the target module
+        return { ...module, ...moduleState };
+      } else if (module.type === "webSocket") {
+        // For other WebSocket modules, preserve their connectionState from the previous config
+        const prevConfigModule = (config.modules || []).find(
+          (m) => m.id === module.id
+        );
+        if (
+          prevConfigModule &&
+          prevConfigModule.connectionState !== undefined
+        ) {
+          return {
+            ...module,
+            connectionState: prevConfigModule.connectionState,
+          };
+        }
+      }
+      return module;
+    });
 
     setModules(updatedModules);
 
@@ -341,7 +354,7 @@ export default function Modules({ config, saveConfig }) {
               if (module.type === "pin") {
                 return (
                   <SortablePinModule
-                    key={`module-${module.id}`}
+                    key={`pin-${module.id}`}
                     module={module}
                     config={config}
                     onUpdate={updateModule}
@@ -351,7 +364,7 @@ export default function Modules({ config, saveConfig }) {
               } else if (module.type === "webSocket") {
                 return (
                   <SortableWebSocketModule
-                    key={`module-${module.id}`}
+                    key={`websocket-${module.id}`}
                     module={module}
                     onUpdate={updateModule}
                     onDelete={deleteModule}

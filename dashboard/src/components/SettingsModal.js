@@ -5,6 +5,8 @@ import {
   DialogContent,
   DialogActions,
   Box,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
 
 export default function SettingsModal({
@@ -16,27 +18,95 @@ export default function SettingsModal({
   maxWidth = "sm",
   fullWidth = true,
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       maxWidth={maxWidth}
       fullWidth={fullWidth}
+      fullScreen={isMobile}
       PaperProps={{
         sx: {
           bgcolor: "black",
-          margin: "auto",
-          maxWidth: "69%",
+          margin: isMobile ? 0 : "auto",
+          maxWidth: isMobile ? "90%" : "36%",
+          width: isMobile ? "auto" : "auto",
+          height: isMobile ? "auto" : "auto",
+          maxHeight: isMobile ? "90%" : "90vh",
           outline: "1px solid",
           outlineColor: "secondary.dark",
+          borderRadius: isMobile ? 0 : theme.shape.borderRadius,
+          display: "flex",
+          flexDirection: "column",
+        },
+      }}
+      sx={{
+        "& .MuiDialog-paper": {
+          margin: isMobile ? 0 : "auto",
         },
       }}
     >
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <Box sx={{ mt: 1 }}>{children}</Box>
+      <DialogTitle
+        sx={{
+          borderBottom: "1px solid",
+          borderColor: "secondary.dark",
+          pb: isMobile ? 2 : 1.5,
+          pt: isMobile ? 3 : 2,
+          px: isMobile ? 3 : 2,
+          fontSize: isMobile ? "1.25rem" : "1.125rem",
+          fontWeight: 600,
+        }}
+      >
+        {title}
+      </DialogTitle>
+      <DialogContent
+        sx={{
+          flex: 1,
+          p: isMobile ? 3 : 2,
+          pt: isMobile ? 2 : 1.5,
+          pb: isMobile ? 2 : 1.5,
+          overflowY: "auto",
+          "&::-webkit-scrollbar": {
+            width: "6px",
+          },
+          "&::-webkit-scrollbar-track": {
+            background: "rgba(255, 255, 255, 0.1)",
+            borderRadius: "3px",
+          },
+          "&::-webkit-scrollbar-thumb": {
+            background: "rgba(255, 255, 255, 0.3)",
+            borderRadius: "3px",
+            "&:hover": {
+              background: "rgba(255, 255, 255, 0.5)",
+            },
+          },
+        }}
+      >
+        <Box sx={{ mt: 0 }}>{children}</Box>
       </DialogContent>
-      {actions && <DialogActions>{actions}</DialogActions>}
+      {actions && (
+        <DialogActions
+          sx={{
+            borderTop: "1px solid",
+            borderColor: "secondary.dark",
+            p: isMobile ? 3 : 2,
+            pt: isMobile ? 2 : 1.5,
+            gap: isMobile ? 2 : 1,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            "& .MuiButton-root": {
+              minWidth: isMobile ? "120px" : "100px",
+              height: isMobile ? "48px" : "36px",
+              fontSize: isMobile ? "0.875rem" : "0.8125rem",
+            },
+          }}
+        >
+          {actions}
+        </DialogActions>
+      )}
     </Dialog>
   );
 }

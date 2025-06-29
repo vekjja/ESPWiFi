@@ -20,13 +20,7 @@ import PinModule from "./PinModule";
 import WebSocketModule from "./WebSocketModule";
 
 // Sortable wrapper component for Pin modules
-function SortablePinModule({
-  pinNum,
-  initialProps,
-  config,
-  onUpdate,
-  onDelete,
-}) {
+function SortablePinModule({ module, config, onUpdate, onDelete }) {
   const {
     attributes,
     listeners,
@@ -34,7 +28,7 @@ function SortablePinModule({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `pin-${pinNum}` });
+  } = useSortable({ id: `module-${module.id}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -46,8 +40,8 @@ function SortablePinModule({
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <PinModule
-        pinNum={pinNum}
-        initialProps={initialProps}
+        pinNum={module.number}
+        initialProps={module}
         config={config}
         onUpdate={onUpdate}
         onDelete={onDelete}
@@ -57,12 +51,7 @@ function SortablePinModule({
 }
 
 // Sortable wrapper component for WebSocket modules
-function SortableWebSocketModule({ index, initialProps, onUpdate, onDelete }) {
-  // Use a stable ID based on the WebSocket URL or name to prevent issues during reordering
-  const stableId = `websocket-${
-    initialProps.url || initialProps.name || index
-  }`;
-
+function SortableWebSocketModule({ module, onUpdate, onDelete }) {
   const {
     attributes,
     listeners,
@@ -70,7 +59,7 @@ function SortableWebSocketModule({ index, initialProps, onUpdate, onDelete }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: stableId });
+  } = useSortable({ id: `module-${module.id}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -82,8 +71,8 @@ function SortableWebSocketModule({ index, initialProps, onUpdate, onDelete }) {
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <WebSocketModule
-        index={index}
-        initialProps={initialProps}
+        index={module.id}
+        initialProps={module}
         onUpdate={onUpdate}
         onDelete={onDelete}
       />
@@ -92,10 +81,7 @@ function SortableWebSocketModule({ index, initialProps, onUpdate, onDelete }) {
 }
 
 export default function Modules({ config, saveConfig }) {
-  const [modules, setModules] = useState({
-    pins: {},
-    webSockets: [],
-  });
+  const [modules, setModules] = useState([]);
 
   // Configure sensors for drag detection with activation constraints
   const sensors = useSensors(
@@ -103,17 +89,76 @@ export default function Modules({ config, saveConfig }) {
       activationConstraint: {
         distance: 8, // Require 8px movement before starting drag
       },
-      // Exclude slider elements from drag activation
+      // Exclude input elements from drag activation
       shouldActivateOnEvent: (event) => {
         const target = event.target;
-        // Don't activate drag if clicking on slider elements
+
+        // More comprehensive check for interactive elements
+        const interactiveSelectors = [
+          "input",
+          "textarea",
+          "select",
+          "button",
+          "label",
+          "a",
+          '[role="slider"]',
+          '[role="button"]',
+          '[role="checkbox"]',
+          '[role="switch"]',
+          ".MuiSlider-root",
+          ".MuiSlider-thumb",
+          ".MuiSlider-track",
+          ".MuiSlider-rail",
+          ".MuiSlider-mark",
+          ".MuiSlider-markLabel",
+          ".MuiSlider-valueLabel",
+          ".MuiTextField-root",
+          ".MuiSelect-root",
+          ".MuiSwitch-root",
+          ".MuiCheckbox-root",
+          ".MuiButton-root",
+          ".MuiIconButton-root",
+          ".MuiFab-root",
+          ".IButton",
+          "[aria-valuenow]",
+          "[aria-valuemin]",
+          "[aria-valuemax]",
+          '[data-testid*="slider"]',
+          '[class*="slider"]',
+          '[class*="Slider"]',
+          "[tabindex]",
+          "[onclick]",
+          "[onmousedown]",
+          "[onmouseup]",
+          // Additional Material-UI specific selectors
+          ".MuiSlider-marked",
+          ".MuiSlider-colorPrimary",
+          ".MuiSlider-colorSecondary",
+          ".MuiSlider-sizeSmall",
+          ".MuiSlider-sizeMedium",
+          ".MuiSlider-sizeLarge",
+          ".MuiSlider-disabled",
+          ".MuiSlider-readOnly",
+        ];
+
+        // Check if the target or any of its parents match any interactive selector
+        for (const selector of interactiveSelectors) {
+          if (target.closest(selector)) {
+            return false;
+          }
+        }
+
+        // Additional check: if the element has any event handlers or is part of a form
         if (
-          target.closest('[role="slider"]') ||
-          target.closest(".MuiSlider-root") ||
-          target.closest("[data-dnd-kit-sortable-item]") === null
+          target.onclick ||
+          target.onmousedown ||
+          target.onmouseup ||
+          target.closest("form") ||
+          target.closest("[data-no-dnd]")
         ) {
           return false;
         }
+
         return true;
       },
     }),
@@ -125,64 +170,100 @@ export default function Modules({ config, saveConfig }) {
   // Update modules from config when it changes
   useEffect(() => {
     if (config) {
-      setModules({
-        pins: config.pins || {},
-        webSockets: config.webSockets || [],
+      let modulesArray = [];
+
+      // Handle new unified modules format
+      if (config.modules && Array.isArray(config.modules)) {
+        modulesArray = config.modules.map((module, index) => ({
+          ...module,
+          id: module.id !== undefined ? module.id : index, // Preserve existing IDs or use index
+        }));
+      } else {
+        // Convert old separate format to new unified format
+        const pins = config.pins || [];
+        const webSockets = config.webSockets || [];
+
+        let moduleId = 0;
+
+        // Convert pins
+        if (Array.isArray(pins)) {
+          pins.forEach((pin) => {
+            modulesArray.push({
+              ...pin,
+              type: "pin",
+              id: moduleId++,
+            });
+          });
+        } else if (typeof pins === "object") {
+          // Convert from old object format
+          Object.entries(pins).forEach(([pinNum, pinData]) => {
+            modulesArray.push({
+              ...pinData,
+              type: "pin",
+              number: parseInt(pinNum, 10),
+              id: moduleId++,
+            });
+          });
+        }
+
+        // Convert webSockets
+        webSockets.forEach((webSocket) => {
+          modulesArray.push({
+            ...webSocket,
+            type: "webSocket",
+            id: moduleId++,
+          });
+        });
+      }
+
+      // Ensure all modules have unique IDs
+      const existingIds = new Set();
+      modulesArray = modulesArray.map((module, index) => {
+        let id = module.id;
+        if (id === undefined || existingIds.has(id)) {
+          // Generate a new unique ID
+          let newId = index;
+          while (existingIds.has(newId)) {
+            newId++;
+          }
+          id = newId;
+        }
+        existingIds.add(id);
+        return { ...module, id };
       });
+
+      console.log(
+        "Setting modules:",
+        modulesArray.map((m) => ({ id: m.id, name: m.name, type: m.type }))
+      );
+      setModules(modulesArray);
     }
   }, [config]);
 
   // Use useMemo to ensure stable references
-  const pinKeys = useMemo(() => Object.keys(modules.pins), [modules.pins]);
-  const webSocketItems = useMemo(
-    () => modules.webSockets,
-    [modules.webSockets]
-  );
+  const moduleItems = useMemo(() => modules, [modules]);
 
-  const updatePin = (pinNum, pinState) => {
-    const updatedPins = { ...modules.pins };
-    updatedPins[pinNum] = pinState;
+  const updateModule = (moduleId, moduleState) => {
+    console.log("Updating module:", moduleId, moduleState);
+    const updatedModules = modules.map((module) =>
+      module.id === moduleId ? { ...module, ...moduleState } : module
+    );
 
-    const updatedModules = { ...modules, pins: updatedPins };
     setModules(updatedModules);
 
     // Update the global config
-    const updatedConfig = { ...config, pins: updatedPins };
+    const updatedConfig = { ...config, modules: updatedModules };
     saveConfig(updatedConfig);
   };
 
-  const deletePin = (pinNum) => {
-    const updatedPins = { ...modules.pins };
-    delete updatedPins[pinNum];
+  const deleteModule = (moduleId) => {
+    console.log("Deleting module:", moduleId);
+    const updatedModules = modules.filter((module) => module.id !== moduleId);
 
-    const updatedModules = { ...modules, pins: updatedPins };
     setModules(updatedModules);
 
     // Update the global config
-    const updatedConfig = { ...config, pins: updatedPins };
-    saveConfig(updatedConfig);
-  };
-
-  const updateWebSocket = (index, webSocketState) => {
-    const updatedWebSockets = [...modules.webSockets];
-    updatedWebSockets[index] = webSocketState;
-
-    const updatedModules = { ...modules, webSockets: updatedWebSockets };
-    setModules(updatedModules);
-
-    // Update the global config
-    const updatedConfig = { ...config, webSockets: updatedWebSockets };
-    saveConfig(updatedConfig);
-  };
-
-  const deleteWebSocket = (index) => {
-    const updatedWebSockets = modules.webSockets.filter((_, i) => i !== index);
-
-    const updatedModules = { ...modules, webSockets: updatedWebSockets };
-    setModules(updatedModules);
-
-    // Update the global config
-    const updatedConfig = { ...config, webSockets: updatedWebSockets };
+    const updatedConfig = { ...config, modules: updatedModules };
     saveConfig(updatedConfig);
   };
 
@@ -190,69 +271,33 @@ export default function Modules({ config, saveConfig }) {
     const { active, over } = event;
 
     if (active.id !== over.id) {
-      // Handle pin reordering
-      if (active.id.toString().startsWith("pin-")) {
-        const oldIndex = pinKeys.indexOf(
-          active.id.toString().replace("pin-", "")
-        );
-        const newIndex = pinKeys.indexOf(
-          over.id.toString().replace("pin-", "")
-        );
+      console.log("Drag end:", active.id, "->", over.id);
+      const oldIndex = moduleItems.findIndex(
+        (module) => `module-${module.id}` === active.id.toString()
+      );
+      const newIndex = moduleItems.findIndex(
+        (module) => `module-${module.id}` === over.id.toString()
+      );
 
-        if (oldIndex !== -1 && newIndex !== -1) {
-          const reorderedKeys = arrayMove(pinKeys, oldIndex, newIndex);
-          const reorderedPins = {};
-          reorderedKeys.forEach((pinKey) => {
-            reorderedPins[pinKey] = modules.pins[pinKey];
-          });
+      console.log("Indices:", oldIndex, "->", newIndex);
 
-          const updatedModules = { ...modules, pins: reorderedPins };
-          setModules(updatedModules);
-
-          // Update the global config (local only)
-          const updatedConfig = { ...config, pins: reorderedPins };
-          saveConfig(updatedConfig);
-        }
-      }
-      // Handle WebSocket reordering
-      else if (active.id.toString().startsWith("websocket-")) {
-        // Find the indices based on stable IDs
-        const activeWebSocket = webSocketItems.find(
-          (ws) =>
-            `websocket-${ws.url || ws.name || webSocketItems.indexOf(ws)}` ===
-            active.id
-        );
-        const overWebSocket = webSocketItems.find(
-          (ws) =>
-            `websocket-${ws.url || ws.name || webSocketItems.indexOf(ws)}` ===
-            over.id
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reorderedModules = arrayMove(moduleItems, oldIndex, newIndex);
+        console.log(
+          "Reordered modules:",
+          reorderedModules.map((m) => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+          }))
         );
 
-        if (activeWebSocket && overWebSocket) {
-          const oldIndex = webSocketItems.indexOf(activeWebSocket);
-          const newIndex = webSocketItems.indexOf(overWebSocket);
+        // Update local state first
+        setModules(reorderedModules);
 
-          if (oldIndex !== -1 && newIndex !== -1) {
-            const reorderedWebSockets = arrayMove(
-              webSocketItems,
-              oldIndex,
-              newIndex
-            );
-
-            const updatedModules = {
-              ...modules,
-              webSockets: reorderedWebSockets,
-            };
-            setModules(updatedModules);
-
-            // Update the global config (local only)
-            const updatedConfig = {
-              ...config,
-              webSockets: reorderedWebSockets,
-            };
-            saveConfig(updatedConfig);
-          }
-        }
+        // Update the global config with the reordered modules
+        const updatedConfig = { ...config, modules: reorderedModules };
+        saveConfig(updatedConfig);
       }
     }
   };
@@ -261,10 +306,8 @@ export default function Modules({ config, saveConfig }) {
     return <div>Loading configuration...</div>;
   }
 
-  // Create stable IDs for WebSocket items
-  const webSocketIds = webSocketItems.map(
-    (ws, index) => `websocket-${ws.url || ws.name || index}`
-  );
+  // Create IDs for module items
+  const moduleIds = moduleItems.map((module) => `module-${module.id}`);
 
   return (
     <DndContext
@@ -280,9 +323,9 @@ export default function Modules({ config, saveConfig }) {
           marginTop: 2,
         }}
       >
-        {/* Render Pin Modules */}
+        {/* Render all modules together */}
         <SortableContext
-          items={pinKeys.map((key) => `pin-${key}`)}
+          items={moduleIds}
           strategy={verticalListSortingStrategy}
         >
           <div
@@ -294,42 +337,29 @@ export default function Modules({ config, saveConfig }) {
               minHeight: "100px",
             }}
           >
-            {pinKeys.map((pinNum) => (
-              <SortablePinModule
-                key={`pin-${pinNum}`}
-                pinNum={pinNum}
-                initialProps={modules.pins[pinNum]}
-                config={config}
-                onUpdate={updatePin}
-                onDelete={deletePin}
-              />
-            ))}
-          </div>
-        </SortableContext>
-
-        {/* Render WebSocket Modules */}
-        <SortableContext
-          items={webSocketIds}
-          strategy={verticalListSortingStrategy}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              width: "100%",
-              minHeight: "100px",
-            }}
-          >
-            {webSocketItems.map((webSocket, index) => (
-              <SortableWebSocketModule
-                key={`websocket-${webSocket.url || webSocket.name || index}`}
-                index={index}
-                initialProps={webSocket}
-                onUpdate={updateWebSocket}
-                onDelete={deleteWebSocket}
-              />
-            ))}
+            {moduleItems.map((module) => {
+              if (module.type === "pin") {
+                return (
+                  <SortablePinModule
+                    key={`module-${module.id}`}
+                    module={module}
+                    config={config}
+                    onUpdate={updateModule}
+                    onDelete={deleteModule}
+                  />
+                );
+              } else if (module.type === "webSocket") {
+                return (
+                  <SortableWebSocketModule
+                    key={`module-${module.id}`}
+                    module={module}
+                    onUpdate={updateModule}
+                    onDelete={deleteModule}
+                  />
+                );
+              }
+              return null;
+            })}
           </div>
         </SortableContext>
       </Container>

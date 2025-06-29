@@ -30,7 +30,9 @@ export default function WebSocketModule({
   const [openModal, setOpenModal] = useState(false);
   const [editedURL, setEditedURL] = useState(initialProps.url || "");
   const [editedName, setEditedName] = useState(initialProps.name || "");
-  const [editedType, setEditedType] = useState(initialProps.type || "text");
+  const [editedPayload, setEditedPayload] = useState(
+    initialProps.payload || "text"
+  );
   const [editedFontSize, setEditedFontSize] = useState(
     initialProps.fontSize || 14
   );
@@ -38,9 +40,12 @@ export default function WebSocketModule({
     initialProps.enableSending !== false
   );
   const [inputText, setInputText] = useState("");
+  const [manuallyDisconnected, setManuallyDisconnected] = useState(false);
 
   // Use ref to store WebSocket instance
   const socketRef = useRef(null);
+  // Use ref to preserve message across re-renders
+  const messageRef = useRef("");
 
   // Cleanup on unmount
   useEffect(() => {
@@ -62,29 +67,46 @@ export default function WebSocketModule({
 
   // Auto-connect if previously connected
   useEffect(() => {
-    if (initialProps.connectionState === "connected" && !socketRef.current) {
+    // Only auto-connect if explicitly set to connected, no socket exists, and not manually disconnected
+    if (
+      initialProps.connectionState === "connected" &&
+      !socketRef.current &&
+      !manuallyDisconnected
+    ) {
       // Small delay to ensure component is fully mounted
       const timer = setTimeout(() => {
         // Double-check that we still need to connect
         if (
           initialProps.connectionState === "connected" &&
-          !socketRef.current
+          !socketRef.current &&
+          !manuallyDisconnected
         ) {
           createWebSocketConnection();
         }
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [initialProps.connectionState, initialProps.url]); // Add url as dependency
+  }, [initialProps.connectionState, manuallyDisconnected]); // Remove url dependency to prevent reconnection loops
 
   // Save connection state to config whenever it changes
   const saveConnectionState = (newStatus) => {
+    // Only update if status actually changed
+    if (newStatus === connectionStatus) {
+      return;
+    }
+
     setConnectionStatus(newStatus);
+
     const updatedWebSocket = {
       ...initialProps,
       connectionState: newStatus,
     };
     onUpdate(index, updatedWebSocket);
+  };
+
+  // Manual state update (for disconnect button)
+  const updateConnectionState = (newStatus) => {
+    setConnectionStatus(newStatus);
   };
 
   const createWebSocketConnection = () => {
@@ -98,18 +120,23 @@ export default function WebSocketModule({
 
     // Convert relative path to absolute URL
     if (wsUrl.startsWith("/")) {
+      // For relative paths, use the current hostname
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const hostname = window.location.hostname;
       const port = window.location.port ? `:${window.location.port}` : "";
       wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
+    } else if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
+      // If it's not a full WebSocket URL and not relative, assume it's a hostname
+      // and add the default WebSocket protocol
+      wsUrl = `ws://${wsUrl}`;
     }
 
-    console.log(`Creating WebSocket connection for index ${index} to ${wsUrl}`);
+    console.log(`WebSocket ${index} connecting to: ${wsUrl}`);
 
     try {
       const ws = new WebSocket(wsUrl);
 
-      if (initialProps.type === "binary") {
+      if (initialProps.payload === "binary") {
         ws.binaryType = "arraybuffer";
       }
 
@@ -117,16 +144,24 @@ export default function WebSocketModule({
       saveConnectionState("connecting");
 
       ws.onopen = () => {
-        console.log(`WebSocket ${index} connected`);
-        saveConnectionState("connected");
+        console.log(`WebSocket ${index} connected to: ${wsUrl}`);
+        // Force update to connected status regardless of current state
+        setConnectionStatus("connected");
+        const updatedWebSocket = {
+          ...initialProps,
+          connectionState: "connected",
+        };
+        onUpdate(index, updatedWebSocket);
       };
 
       ws.onmessage = (event) => {
-        if (initialProps.type === "binary") {
+        if (initialProps.payload === "binary") {
           const blob = new Blob([event.data], { type: "image/jpeg" });
           const objectURL = URL.createObjectURL(blob);
+          messageRef.current = objectURL;
           setMessage(objectURL);
         } else {
+          messageRef.current = event.data;
           setMessage(event.data);
         }
       };
@@ -136,8 +171,8 @@ export default function WebSocketModule({
         saveConnectionState("error");
       };
 
-      ws.onclose = () => {
-        console.log(`WebSocket ${index} closed`);
+      ws.onclose = (event) => {
+        console.log(`WebSocket ${index} disconnected from: ${wsUrl}`);
         saveConnectionState("disconnected");
         socketRef.current = null;
       };
@@ -168,7 +203,7 @@ export default function WebSocketModule({
       ...initialProps,
       url: editedURL,
       name: editedName,
-      type: editedType,
+      payload: editedPayload,
       fontSize: Number(editedFontSize),
       enableSending: editedEnableSending,
       connectionState: connectionStatus,
@@ -179,12 +214,24 @@ export default function WebSocketModule({
   };
 
   const handleConnect = () => {
+    console.log(`WebSocket ${index} connect button clicked`);
+    setManuallyDisconnected(false); // Reset manual disconnect flag
     createWebSocketConnection();
   };
 
   const handleDisconnect = () => {
+    console.log(`WebSocket ${index} disconnect button clicked`);
+    setManuallyDisconnected(true); // Set manual disconnect flag
     if (socketRef.current) {
       socketRef.current.close();
+      socketRef.current = null;
+      // Immediately update the connection status manually
+      updateConnectionState("disconnected");
+    } else {
+      // If there's no socket but status is still connected, fix the status
+      if (connectionStatus === "connected") {
+        updateConnectionState("disconnected");
+      }
     }
   };
 
@@ -208,7 +255,7 @@ export default function WebSocketModule({
   useEffect(() => {
     setEditedURL(initialProps.url || "");
     setEditedName(initialProps.name || "");
-    setEditedType(initialProps.type || "text");
+    setEditedPayload(initialProps.payload || "text");
     setEditedFontSize(initialProps.fontSize || 14);
     setEditedEnableSending(initialProps.enableSending !== false);
 
@@ -218,6 +265,11 @@ export default function WebSocketModule({
       initialProps.connectionState !== connectionStatus
     ) {
       setConnectionStatus(initialProps.connectionState);
+    }
+
+    // Restore message from ref if it exists
+    if (messageRef.current && messageRef.current !== message) {
+      setMessage(messageRef.current);
     }
   }, [initialProps]);
 
@@ -298,12 +350,12 @@ export default function WebSocketModule({
             Disconnected
           </Typography>
         </div>
-      ) : initialProps.type === "binary" ? (
-        message &&
-        typeof message === "string" &&
-        message.startsWith("blob:") ? (
+      ) : initialProps.payload === "binary" ? (
+        messageRef.current &&
+        typeof messageRef.current === "string" &&
+        messageRef.current.startsWith("blob:") ? (
           <img
-            src={message}
+            src={messageRef.current}
             alt="WebSocket"
             style={{
               width: "100%",
@@ -329,7 +381,7 @@ export default function WebSocketModule({
             fontSize: initialProps.fontSize || 14,
           }}
         >
-          {typeof message === "string" ? message : ""}
+          {typeof messageRef.current === "string" ? messageRef.current : ""}
         </Typography>
       )}
 
@@ -392,12 +444,12 @@ export default function WebSocketModule({
           helperText="Use relative path (e.g., /rssi) for same server, or full URL for external WebSockets"
         />
         <FormControl fullWidth sx={{ marginBottom: 2 }}>
-          <InputLabel id="websocket-type-select-label">Type</InputLabel>
+          <InputLabel id="websocket-payload-select-label">Payload</InputLabel>
           <Select
-            labelId="websocket-type-select-label"
-            value={editedType}
-            label="Type"
-            onChange={(e) => setEditedType(e.target.value)}
+            labelId="websocket-payload-select-label"
+            value={editedPayload}
+            label="Payload"
+            onChange={(e) => setEditedPayload(e.target.value)}
           >
             <MenuItem value="binary">Binary</MenuItem>
             <MenuItem value="text">Text</MenuItem>

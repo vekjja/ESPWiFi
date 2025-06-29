@@ -21,11 +21,21 @@ export default function AddButton({ config, saveConfig }) {
   const [selectedPinNum, setSelectedPinNum] = useState("");
   const [webSocketURL, setWebSocketURL] = useState("");
 
+  // Get used pin numbers from the current config
+  const getUsedPinNumbers = () => {
+    const pins = config?.pins || [];
+    if (Array.isArray(pins)) {
+      // New array format
+      return pins.map((pin) => pin.number);
+    } else {
+      // Old object format - convert to array of numbers
+      return Object.keys(pins).map(Number);
+    }
+  };
+
+  const usedPinNumbers = getUsedPinNumbers();
   const pinOptions = Array.from({ length: 22 }, (_, i) => i).filter(
-    (pin) =>
-      !Object.keys(config?.pins || {})
-        .map(Number)
-        .includes(pin)
+    (pin) => !usedPinNumbers.includes(pin)
   );
 
   const handleOpenModal = () => {
@@ -40,31 +50,128 @@ export default function AddButton({ config, saveConfig }) {
   };
 
   const handleAdd = () => {
+    // Helper function to generate unique ID
+    const generateUniqueId = (existingModules) => {
+      if (!existingModules || existingModules.length === 0) {
+        return 0;
+      }
+      const maxId = Math.max(...existingModules.map((m) => m.id || 0));
+      return maxId + 1;
+    };
+
     if (selectedTab === 1) {
-      // Add WebSocket
+      // Add WebSocket module
+      const existingModules = config.modules || [];
       const newWebSocket = {
+        type: "webSocket",
         url: webSocketURL,
         name: "Unnamed",
-        type: "text",
+        payload: "text",
         fontSize: 14,
         enableSending: true,
         connectionState: "disconnected",
+        id: generateUniqueId(existingModules),
       };
-      const updatedWebSockets = [...(config.webSockets || []), newWebSocket];
-      saveConfig({ ...config, webSockets: updatedWebSockets });
+
+      // Handle new unified modules format
+      if (config.modules && Array.isArray(config.modules)) {
+        const updatedModules = [...config.modules, newWebSocket];
+        saveConfig({ ...config, modules: updatedModules });
+      } else {
+        // Convert old format to new format
+        const existingModules = [];
+
+        // Convert existing pins
+        const pins = config.pins || [];
+        if (Array.isArray(pins)) {
+          pins.forEach((pin, index) => {
+            existingModules.push({
+              ...pin,
+              type: "pin",
+              id: index,
+            });
+          });
+        } else if (typeof pins === "object") {
+          Object.entries(pins).forEach(([pinNum, pinData], index) => {
+            existingModules.push({
+              ...pinData,
+              type: "pin",
+              number: parseInt(pinNum, 10),
+              id: index,
+            });
+          });
+        }
+
+        // Convert existing webSockets
+        const webSockets = config.webSockets || [];
+        webSockets.forEach((webSocket, index) => {
+          existingModules.push({
+            ...webSocket,
+            type: "webSocket",
+            id: existingModules.length + index,
+          });
+        });
+
+        // Add new webSocket
+        existingModules.push(newWebSocket);
+        saveConfig({ ...config, modules: existingModules });
+      }
     } else {
-      // Add Pin
+      // Add Pin module
+      const existingModules = config.modules || [];
       const newPin = {
+        type: "pin",
+        number: parseInt(selectedPinNum, 10),
         state: "low",
         name: `GPIO${selectedPinNum}`,
         mode: "out",
+        id: generateUniqueId(existingModules),
       };
 
-      const updatedPins = {
-        ...(config.pins || {}),
-        [selectedPinNum]: newPin,
-      };
-      saveConfig({ ...config, pins: updatedPins });
+      // Handle new unified modules format
+      if (config.modules && Array.isArray(config.modules)) {
+        const updatedModules = [...config.modules, newPin];
+        saveConfig({ ...config, modules: updatedModules });
+      } else {
+        // Convert old format to new format
+        const existingModules = [];
+
+        // Convert existing pins
+        const pins = config.pins || [];
+        if (Array.isArray(pins)) {
+          pins.forEach((pin, index) => {
+            existingModules.push({
+              ...pin,
+              type: "pin",
+              id: index,
+            });
+          });
+        } else if (typeof pins === "object") {
+          Object.entries(pins).forEach(([pinNum, pinData], index) => {
+            existingModules.push({
+              ...pinData,
+              type: "pin",
+              number: parseInt(pinNum, 10),
+              id: index,
+            });
+          });
+        }
+
+        // Convert existing webSockets
+        const webSockets = config.webSockets || [];
+        webSockets.forEach((webSocket, index) => {
+          existingModules.push({
+            ...webSocket,
+            type: "webSocket",
+            id: existingModules.length + index,
+          });
+        });
+
+        // Add new pin
+        existingModules.push(newPin);
+        saveConfig({ ...config, modules: existingModules });
+      }
+
       setSelectedPinNum(""); // Clear the selected pin to ensure UI updates
     }
     handleCloseModal();
@@ -72,41 +179,30 @@ export default function AddButton({ config, saveConfig }) {
 
   const handleTabChange = (event, newValue) => {
     setSelectedTab(newValue);
-    // Set default value when switching to WebSocket tab
-    if (newValue === 1 && !webSocketURL) {
-      setWebSocketURL("ws://");
-    }
   };
 
-  const handleWebSocketURLChange = (e) => {
-    let value = e.target.value;
-
-    // Allow relative URLs (starting with /) or absolute URLs (starting with ws:// or wss://)
-    // Don't automatically prepend ws:// for relative paths
-    if (value && !value.match(/^(ws|wss):\/\//) && !value.startsWith("/")) {
-      // Only prepend ws:// if it's not a relative path and doesn't have a protocol
-      value = `ws://${value}`;
-    }
-
-    setWebSocketURL(value);
+  const handleWebSocketURLChange = (event) => {
+    setWebSocketURL(event.target.value);
   };
 
   return (
     <>
-      <Tooltip title={"Add Module"}>
+      <Tooltip title="Add Module">
         <Fab
-          size="small" // Match the size of the SettingsIcon Fab
+          size="small"
           color="primary"
           onClick={handleOpenModal}
           sx={{
             position: "fixed",
             top: "20px",
             right: "20px",
+            zIndex: 1001,
           }}
         >
           <AddIcon />
         </Fab>
       </Tooltip>
+
       <SettingsModal
         open={isModalOpen}
         onClose={handleCloseModal}

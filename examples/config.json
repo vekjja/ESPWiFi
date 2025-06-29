@@ -9,21 +9,34 @@
         "ssid": "ESPWiFi-AP",
         "password": "abcd1234"
     },
-    "pins": {
-        "4": {
-            "name": "Builtin LED",
-            "mode": "out",
-            "state": "low"
-        }
-    },
-    "webSockets": [
+    "modules": [
         {
+            "type": "pin",
+            "name": "Cam Light",
+            "number": 4,
+            "mode": "pwm",
+            "inverted": false,
+            "remoteURL": "cam.local",
+            "state": "low",
+            "duty": 63
+        },
+        {
+            "type": "webSocket",
             "url": "/rssi",
             "name": "WiFi RSSI",
-            "type": "text",
+            "payload": "text",
             "fontSize": 14,
             "enableSending": false,
             "connectionState": "disconnected"
+        },
+        {
+            "type": "pin",
+            "name": "ESPWiFi Light",
+            "number": 10,
+            "mode": "out",
+            "inverted": false,
+            "remoteURL": "",
+            "state": "low"
         }
     ]
 }

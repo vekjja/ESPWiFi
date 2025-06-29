@@ -14,12 +14,12 @@
         "voice": "onyx",
         "system_message": "You are a helpful assistant. On an ESP Micro Controller."
     },
-    "pins": {
-        "8": {
+    "pins": [
+        {
             "name": "Builtin LED",
-            "num": 8,
+            "number": 8,
             "mode": "out",
             "state": "low"
         }
-    }
+    ]
 }

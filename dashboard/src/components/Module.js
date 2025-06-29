@@ -1,9 +1,9 @@
 import React from "react";
-import { Card, CardContent, Typography, Box } from "@mui/material";
-import SettingsButton from "./SettingsButton";
-import DeleteButton from "./DeleteButton";
 import IButton from "./IButton";
+import DeleteButton from "./DeleteButton";
+import SettingsButton from "./SettingsButton";
 import { RestartAlt } from "@mui/icons-material";
+import { Card, CardContent, Typography, Box } from "@mui/material";
 
 export default function Module({
   title,
@@ -23,6 +23,7 @@ export default function Module({
         padding: "10px",
         margin: "10px",
         minWidth: "200px",
+        minHeight: "200px",
         border: "1px solid",
         borderColor: "primary.main",
         borderRadius: "5px",
@@ -82,7 +83,11 @@ export default function Module({
           }}
         >
           <IButton
-            onClick={onReconnect}
+            onClick={(e) => {
+              console.log("Module reconnect button clicked");
+              e.stopPropagation(); // Prevent drag activation
+              onReconnect();
+            }}
             tooltip={reconnectTooltip}
             Icon={reconnectIcon}
             color="secondary"

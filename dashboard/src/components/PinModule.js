@@ -10,6 +10,7 @@ import {
   Slider,
   Box,
   Checkbox,
+  Tooltip,
 } from "@mui/material";
 import OkayButton from "./OkayButton";
 import DeleteButton from "./DeleteButton";
@@ -26,15 +27,11 @@ export default function PinModule({
   const [isOn, setIsOn] = useState(initialProps.state === "high");
   const [name, setName] = useState(initialProps.name || "Pin");
   const [mode, setMode] = useState(initialProps.mode || "out");
-  const [hz] = useState(initialProps.hz || 50);
-  const [cycle] = useState(initialProps.cycle || 20000);
   const [inverted, setInverted] = useState(initialProps.inverted || false);
   const [remoteURL, setRemoteURL] = useState(initialProps.remoteURL || "");
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
   const [editedMode, setEditedMode] = useState(mode);
-  const [editedHz, setEditedHz] = useState(hz);
-  const [editedCycle, setEditedCycle] = useState(cycle);
   const [editedInverted, setEditedInverted] = useState(inverted);
   const [editedRemoteURL, setEditedRemoteURL] = useState(remoteURL);
 
@@ -46,13 +43,14 @@ export default function PinModule({
   const [sliderMax, setSliderMax] = useState(initialProps.dutyMax || dutyMax);
   const [duty, setDuty] = useState(initialProps.duty || 0);
 
+  // Use module ID for updates
+  const moduleId = initialProps.id;
+
   const updatePinState = (newState, deletePin) => {
     // Use the new state if provided, otherwise use current state
     const newPinState = {
       name: name,
       mode: mode,
-      hz: hz,
-      cycle: cycle,
       inverted: inverted,
       remoteURL: remoteURL,
       state: newState.state || (isOn ? "high" : "low"),
@@ -118,9 +116,9 @@ export default function PinModule({
         .then((data) => {
           // Only update local state after successful API call
           if (deletePin) {
-            onDelete(pinNum);
+            onDelete(moduleId);
           } else {
-            onUpdate(pinNum, newPinState);
+            onUpdate(moduleId, newPinState);
           }
         })
         .catch((error) => {
@@ -133,9 +131,9 @@ export default function PinModule({
     } else {
       // Update local state only for configuration changes
       if (deletePin) {
-        onDelete(pinNum);
+        onDelete(moduleId);
       } else {
-        onUpdate(pinNum, newPinState);
+        onUpdate(moduleId, newPinState);
       }
     }
   };
@@ -161,8 +159,6 @@ export default function PinModule({
   const handleOpenPinModal = () => {
     setEditedPinName(name);
     setEditedMode(mode);
-    setEditedHz(hz);
-    setEditedCycle(cycle);
     setEditedInverted(inverted);
     setEditedRemoteURL(remoteURL);
     setOpenPinModal(true);
@@ -184,8 +180,6 @@ export default function PinModule({
     const tempPinState = {
       name: editedPinName,
       mode: editedMode,
-      hz: editedHz,
-      cycle: editedCycle,
       inverted: newInverted,
       remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
@@ -197,7 +191,7 @@ export default function PinModule({
     }
 
     // Update local state only - no remote API calls for settings
-    onUpdate(pinNum, tempPinState);
+    onUpdate(moduleId, tempPinState);
 
     setSliderMin(editedDutyMin);
     setSliderMax(editedDutyMax);
@@ -252,6 +246,19 @@ export default function PinModule({
           </>
         }
       >
+        <FormControlLabel
+          control={
+            <Tooltip title="Invert: When checked, the pin will be LOW when the UI is ON">
+              <Checkbox
+                checked={editedInverted}
+                onChange={(e) => setEditedInverted(e.target.checked)}
+                data-no-dnd="true"
+              />
+            </Tooltip>
+          }
+          label="Invert"
+          sx={{ marginBottom: 2 }}
+        />
         <TextField
           label="Name"
           value={editedPinName}
@@ -259,6 +266,7 @@ export default function PinModule({
           variant="outlined"
           fullWidth
           sx={{ marginBottom: 2 }}
+          data-no-dnd="true"
         />
         <TextField
           label="Pin Number"
@@ -267,6 +275,7 @@ export default function PinModule({
           fullWidth
           disabled
           sx={{ marginBottom: 2 }}
+          data-no-dnd="true"
         />
         <FormControl fullWidth variant="outlined" sx={{ marginBottom: 2 }}>
           <InputLabel id="mode-select-label">Mode</InputLabel>
@@ -274,6 +283,7 @@ export default function PinModule({
             labelId="mode-select-label"
             value={editedMode}
             onChange={(e) => setEditedMode(e.target.value)}
+            data-no-dnd="true"
           >
             <MenuItem value="in">Input</MenuItem>
             <MenuItem value="out">Output</MenuItem>
@@ -289,27 +299,10 @@ export default function PinModule({
           placeholder="http://192.168.1.100 or esp32.local"
           helperText="Leave empty to use local ESP32. Include protocol (http://) for remote devices."
           sx={{ marginBottom: 2 }}
-        />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={editedInverted}
-              onChange={(e) => setEditedInverted(e.target.checked)}
-            />
-          }
-          label="Invert"
-          sx={{ marginBottom: 2 }}
+          data-no-dnd="true"
         />
         {editedMode === "pwm" && (
           <>
-            <TextField
-              label="Frequency (Hz)"
-              value={editedHz}
-              onChange={(e) => setEditedHz(e.target.value)}
-              variant="outlined"
-              fullWidth
-              sx={{ marginBottom: 2 }}
-            />
             <TextField
               label="Min Duty (µs)"
               value={editedDutyMin}
@@ -317,6 +310,7 @@ export default function PinModule({
               variant="outlined"
               fullWidth
               sx={{ marginBottom: 2 }}
+              data-no-dnd="true"
             />
             <TextField
               label="Max Duty (µs)"
@@ -325,14 +319,7 @@ export default function PinModule({
               variant="outlined"
               fullWidth
               sx={{ marginBottom: 2 }}
-            />
-            <TextField
-              label="Cycle (µs)"
-              value={editedCycle}
-              onChange={(e) => setEditedCycle(e.target.value)}
-              variant="outlined"
-              fullWidth
-              sx={{ marginBottom: 2 }}
+              data-no-dnd="true"
             />
           </>
         )}
@@ -345,6 +332,7 @@ export default function PinModule({
             checked={!!effectiveIsOn}
             onChange={handleChange}
             disabled={mode === "in"}
+            data-no-dnd="true"
           />
         }
         value={effectiveIsOn}
@@ -362,6 +350,7 @@ export default function PinModule({
             min={Number(sliderMin)}
             max={Number(sliderMax)}
             valueLabelDisplay="auto"
+            data-no-dnd="true"
           />
         </Box>
       )}

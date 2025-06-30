@@ -2,10 +2,9 @@ import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
-import { Fab, Tooltip } from "@mui/material";
-import SaveIcon from "@mui/icons-material/Save";
 import NetworkSettings from "./components/NetworkSettings";
 import AddButton from "./components/AddButton";
+import ConfigButton from "./components/ConfigButton";
 import Modules from "./components/Modules";
 
 // Define the theme
@@ -45,17 +44,16 @@ const theme = createTheme({
       styleOverrides: {
         tooltip: {
           fontSize: "0.75rem",
-          backgroundColor: "rgba(0, 0, 0, 0.87)",
+          backgroundColor: "primary",
           color: "white",
           padding: "6px 10px",
           borderRadius: "4px",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
           maxWidth: "200px",
           textAlign: "center",
           fontFamily: "Roboto Slab, sans-serif",
         },
         arrow: {
-          color: "rgba(0, 0, 0, 0.87)",
+          color: "primary",
         },
       },
       defaultProps: {
@@ -78,12 +76,6 @@ function App() {
   const port = process.env.REACT_APP_API_PORT || 80;
   const apiURL =
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
-
-  // Check if there are unsaved changes
-  const hasUnsavedChanges =
-    config &&
-    localConfig &&
-    JSON.stringify(config) !== JSON.stringify(localConfig);
 
   useEffect(() => {
     console.log("Fetching configuration from:", apiURL + "/config");
@@ -118,12 +110,15 @@ function App() {
     console.log("Local config updated:", configWithAPI);
   };
 
-  // Save current local config to ESP32
-  const saveToDevice = () => {
-    if (!localConfig) return;
+  // Save config from ConfigButton (updates local config and saves to device)
+  const saveConfigFromButton = (newConfig) => {
+    // First update local config
+    const configWithAPI = { ...newConfig, apiURL };
+    setLocalConfig(configWithAPI);
 
+    // Then save to device
     setSaving(true);
-    const { apiURL: _apiURL, ...configToSave } = localConfig;
+    const { apiURL: _apiURL, ...configToSave } = configWithAPI;
 
     fetch(apiURL + "/config", {
       method: "POST",
@@ -182,35 +177,15 @@ function App() {
         {localConfig?.["mdns"] || config?.["mdns"]}
       </Container>
 
-      {/* Global Save Button */}
-      <Tooltip
-        title={
-          hasUnsavedChanges
-            ? "Save Module Configuration (unsaved changes)"
-            : "Save Module Configuration"
-        }
-      >
-        <Fab
-          size="small"
-          color={hasUnsavedChanges ? "primary" : "secondary"}
-          onClick={saveToDevice}
-          sx={{
-            position: "fixed",
-            top: "20px",
-            right: "80px", // Position to the left of the Add button
-            zIndex: 1001,
-            display: hasUnsavedChanges ? "block" : "none",
-          }}
-        >
-          <SaveIcon />
-        </Fab>
-      </Tooltip>
-
       {localConfig && (
         <Container>
           <NetworkSettings
             config={localConfig}
             saveConfig={updateLocalConfig}
+          />
+          <ConfigButton
+            config={localConfig}
+            saveConfig={saveConfigFromButton}
           />
           <AddButton config={localConfig} saveConfig={updateLocalConfig} />
           <Modules config={localConfig} saveConfig={updateLocalConfig} />

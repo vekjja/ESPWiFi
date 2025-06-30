@@ -26,7 +26,7 @@ function SortablePinModule({ module, config, onUpdate, onDelete }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `module-${module.id}` });
+  } = useSortable({ id: `module-${module.key}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -57,7 +57,7 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: `module-${module.id}` });
+  } = useSortable({ id: `module-${module.key}` });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -169,16 +169,11 @@ export default function Modules({ config, saveConfig }) {
 
       // Handle new unified modules format
       if (config.modules && Array.isArray(config.modules)) {
-        modulesArray = config.modules.map((module, index) => ({
-          ...module,
-          id: module.id !== undefined ? module.id : index, // Preserve existing IDs or use index
-        }));
+        modulesArray = config.modules;
       } else {
         // Convert old separate format to new unified format
         const pins = config.pins || [];
         const webSockets = config.webSockets || [];
-
-        let moduleId = 0;
 
         // Convert pins
         if (Array.isArray(pins)) {
@@ -186,7 +181,6 @@ export default function Modules({ config, saveConfig }) {
             modulesArray.push({
               ...pin,
               type: "pin",
-              id: moduleId++,
             });
           });
         } else if (typeof pins === "object") {
@@ -196,7 +190,6 @@ export default function Modules({ config, saveConfig }) {
               ...pinData,
               type: "pin",
               number: parseInt(pinNum, 10),
-              id: moduleId++,
             });
           });
         }
@@ -206,26 +199,9 @@ export default function Modules({ config, saveConfig }) {
           modulesArray.push({
             ...webSocket,
             type: "webSocket",
-            id: moduleId++,
           });
         });
       }
-
-      // Ensure all modules have unique IDs
-      const existingIds = new Set();
-      modulesArray = modulesArray.map((module, index) => {
-        let id = module.id;
-        if (id === undefined || existingIds.has(id)) {
-          // Generate a new unique ID
-          let newId = index;
-          while (existingIds.has(newId)) {
-            newId++;
-          }
-          id = newId;
-        }
-        existingIds.add(id);
-        return { ...module, id };
-      });
 
       setModules(modulesArray);
     }
@@ -234,56 +210,16 @@ export default function Modules({ config, saveConfig }) {
   // Use useMemo to ensure stable references
   const moduleItems = useMemo(() => modules, [modules]);
 
-  // Simple update function that lets modules manage their own state
-  const updateModule = (moduleId, moduleState) => {
-    console.log("Updating module:", moduleId, moduleState);
-
-    // Update local state immediately
-    const updatedModules = modules.map((module) => {
-      if (module.id === moduleId) {
-        return { ...module, ...moduleState };
-      }
-      return module;
-    });
-
-    setModules(updatedModules);
-
-    // Only save to global config for non-state changes (settings, etc.)
-    // Pin state changes and WebSocket connection states are managed locally
-    const targetModule = modules.find((module) => module.id === moduleId);
-    const isStateOnlyChange =
-      targetModule &&
-      (moduleState.state !== undefined ||
-        moduleState.duty !== undefined ||
-        moduleState.connectionState !== undefined);
-
-    if (!isStateOnlyChange) {
-      const updatedConfig = { ...config, modules: updatedModules };
-      saveConfig(updatedConfig);
-    }
-  };
-
-  const deleteModule = (moduleId) => {
-    console.log("Deleting module:", moduleId);
-    const updatedModules = modules.filter((module) => module.id !== moduleId);
-
-    setModules(updatedModules);
-
-    // Update the global config
-    const updatedConfig = { ...config, modules: updatedModules };
-    saveConfig(updatedConfig);
-  };
-
   const handleDragEnd = (event) => {
     const { active, over } = event;
 
     if (active.id !== over.id) {
       console.log("Drag end:", active.id, "->", over.id);
       const oldIndex = moduleItems.findIndex(
-        (module) => `module-${module.id}` === active.id.toString()
+        (module) => `module-${module.key}` === active.id.toString()
       );
       const newIndex = moduleItems.findIndex(
-        (module) => `module-${module.id}` === over.id.toString()
+        (module) => `module-${module.key}` === over.id.toString()
       );
 
       console.log("Indices:", oldIndex, "->", newIndex);
@@ -293,7 +229,7 @@ export default function Modules({ config, saveConfig }) {
         console.log(
           "Reordered modules:",
           reorderedModules.map((m) => ({
-            id: m.id,
+            key: m.key,
             name: m.name,
             type: m.type,
           }))
@@ -309,12 +245,50 @@ export default function Modules({ config, saveConfig }) {
     }
   };
 
+  const updateModule = (moduleKey, moduleState) => {
+    console.log("Updating module:", moduleKey, moduleState);
+
+    // Update local state immediately
+    const updatedModules = modules.map((module) => {
+      if (module.key === moduleKey) {
+        return { ...module, ...moduleState };
+      }
+      return module;
+    });
+
+    setModules(updatedModules);
+
+    // Only save to global config for non-state changes (settings, etc.)
+    const targetModule = modules.find((module) => module.key === moduleKey);
+    const isStateOnlyChange =
+      targetModule &&
+      (moduleState.state !== undefined ||
+        moduleState.duty !== undefined ||
+        moduleState.connectionState !== undefined);
+
+    if (!isStateOnlyChange) {
+      const updatedConfig = { ...config, modules: updatedModules };
+      saveConfig(updatedConfig);
+    }
+  };
+
+  const deleteModule = (moduleKey) => {
+    console.log("Deleting module:", moduleKey);
+    const updatedModules = modules.filter((module) => module.key !== moduleKey);
+
+    setModules(updatedModules);
+
+    // Update the global config
+    const updatedConfig = { ...config, modules: updatedModules };
+    saveConfig(updatedConfig);
+  };
+
   if (!config) {
     return <div>Loading configuration...</div>;
   }
 
   // Create IDs for module items
-  const moduleIds = moduleItems.map((module) => `module-${module.id}`);
+  const moduleIds = moduleItems.map((module) => `module-${module.key}`);
 
   return (
     <DndContext
@@ -348,7 +322,7 @@ export default function Modules({ config, saveConfig }) {
               if (module.type === "pin") {
                 return (
                   <SortablePinModule
-                    key={`pin-${module.id}`}
+                    key={`pin-${module.key}`}
                     module={module}
                     config={config}
                     onUpdate={updateModule}
@@ -358,7 +332,7 @@ export default function Modules({ config, saveConfig }) {
               } else if (module.type === "webSocket") {
                 return (
                   <SortableWebSocketModule
-                    key={`websocket-${module.id}`}
+                    key={`websocket-${module.key}`}
                     module={module}
                     onUpdate={updateModule}
                     onDelete={deleteModule}

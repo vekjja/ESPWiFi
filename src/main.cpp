@@ -2,7 +2,6 @@
 #include <WebSocket.h>
 
 ESPWiFi device;
-WebSocket *rssiSoc;
 
 void setup() {
   device.startSerial();
@@ -12,12 +11,10 @@ void setup() {
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.startCamera();
 #endif
-  device.stopSleep();
   device.startWebServer();
 }
 
 void loop() {
-  // Feed the watchdog timer to prevent resets
   yield();
 
   device.streamRssi();

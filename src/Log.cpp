@@ -1,15 +1,15 @@
 #ifndef ESPWIFI_LOG
 #define ESPWIFI_LOG
 
-#include "ESPWiFi.h"
 #include <stdarg.h>
+
+#include "ESPWiFi.h"
 
 // Global file handle for logging
 static File logFileHandle;
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::checkAndCleanupLogFile() {
-
   size_t totalBytes = LittleFS.totalBytes();
   size_t usedBytes = LittleFS.usedBytes();
   size_t freeBytes = totalBytes - usedBytes;
@@ -47,7 +47,7 @@ void ESPWiFi::writeLog(String message) {
   if (logFileHandle) {
     checkAndCleanupLogFile();
     logFileHandle.print(message);
-    logFileHandle.flush(); // Ensure data is written immediately
+    logFileHandle.flush();  // Ensure data is written immediately
   } else {
     startLittleFS();
     logFileHandle = LittleFS.open(logFile, "a");
@@ -57,6 +57,7 @@ void ESPWiFi::writeLog(String message) {
 
 void ESPWiFi::log(String message) {
   Serial.println(message);
+  Serial.flush();  // Ensure immediate output
   writeLog(message + "\n");
 }
 
@@ -68,6 +69,7 @@ void ESPWiFi::logf(const char *format, ...) {
   va_end(args);
 
   Serial.print(buffer);
+  Serial.flush();
   writeLog(buffer);
 }
 
@@ -78,4 +80,4 @@ void ESPWiFi::closeLog() {
   }
 }
 
-#endif // ESPWIFI_LOG
+#endif  // ESPWIFI_LOG

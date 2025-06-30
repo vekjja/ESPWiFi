@@ -23,7 +23,6 @@ void ESPWiFi::saveConfig() {
 
 void ESPWiFi::readConfig() {
   startLittleFS();
-  // log("⚙️  Reading Config: " + configFile);
   log("⚙️  Reading Config: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
@@ -59,8 +58,12 @@ void ESPWiFi::defaultConfig() {
   config["client"]["ssid"] = "";
   config["client"]["password"] = "";
 
+  // Power management settings
+  config["power"]["mode"] = "full";  // "full", "balanced", "saving"
+  config["power"]["wifiSleep"] = false;
+
   serializeJsonPretty(config, Serial);
   log("\n");
 }
 
-#endif // ESPWIFI_CONFIG
+#endif  // ESPWIFI_CONFIG

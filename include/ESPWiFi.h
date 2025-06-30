@@ -21,16 +21,16 @@
 class WebSocket;
 
 class ESPWiFi {
-public:
+ public:
   JsonDocument config;
   String logFile = "/log.txt";
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
 
-  IntervalTimer s10Timer{10000}; // 10 seconds
-  IntervalTimer s1Timer{1000};   // 1 second
+  IntervalTimer s10Timer{10000};  // 10 seconds
+  IntervalTimer s1Timer{1000};    // 1 second
 
-  int connectTimeout = 15000; // 15 seconds
+  int connectTimeout = 15000;  // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {
@@ -38,9 +38,8 @@ public:
       return;
     }
     Serial.begin(baudRate);
-    delay(1008); // wait for serial to start
-    log("⛓️  Serial Started:");
-    logf("\tBaud Rate: %d\n", baudRate);
+    delay(999);  // wait for serial to start
+    logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
   }
 
   void startLittleFS() {
@@ -49,12 +48,10 @@ public:
     if (fsMounted) {
       return;
     }
-
     if (!LittleFS.begin()) {
       log("❌  Failed to mount LittleFS");
       return;
     }
-
     fsMounted = true;
     log("💾 LittleFS mounted:");
     logf("\tUsed: %s\n", bytesToHumanReadable(LittleFS.usedBytes()).c_str());
@@ -64,18 +61,20 @@ public:
     logf("\tTotal: %s\n", bytesToHumanReadable(LittleFS.totalBytes()).c_str());
   }
 
-  void stopSleep() {
-    WiFi.setSleep(false);
-    log("🔋 WiFi Sleep Stopped 🛑");
-  }
+  // Power Management
+  void stopSleep();
+  void enablePowerSaving();
+  void applyPowerSettings();
+  void optimizeForFastResponse();
 
   // Log
   void closeLog();
-  void log(String message);
+  void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);
-  void checkAndCleanupLogFile();
-  template <typename T> void log(T value) {
+  void log(String message);
+  template <typename T>
+  void log(T value) {
     String valueString = String(value);
     log(valueString);
   }
@@ -122,8 +121,8 @@ public:
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
-private:
+ private:
   void handleCorsPreflight(AsyncWebServerRequest *request);
 };
 
-#endif // ESPWiFi
+#endif  // ESPWiFi

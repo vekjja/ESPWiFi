@@ -32,9 +32,10 @@ export default function SettingsModal({
         sx: {
           bgcolor: "black",
           margin: isMobile ? 0 : "auto",
-          maxWidth: isMobile ? "90%" : "36%",
           width: isMobile ? "auto" : "auto",
           height: isMobile ? "auto" : "auto",
+          minWidth: isMobile ? "90%" : "36%",
+          maxWidth: isMobile ? "90%" : "36%",
           maxHeight: isMobile ? "90%" : "90vh",
           outline: "1px solid",
           outlineColor: "secondary.dark",

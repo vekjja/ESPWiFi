@@ -9,6 +9,11 @@
         "ssid": "ESPWiFi-AP",
         "password": "abcd1234"
     },
+    "power": {
+        "mode": "fast",
+        "wifiSleep": false,
+        "cpuFreq": 240
+    },
     "modules": [
         {
             "type": "pin",

@@ -142,13 +142,11 @@ export default function NetworkSettings({ config, saveConfig }) {
         title="Network Settings"
         actions={
           <>
-            <Tooltip title="Restart Device">
-              <IButton
-                Icon={RestartIcon}
-                onClick={handleRestart}
-                tooltip={"Restart Device"}
-              />
-            </Tooltip>
+            <IButton
+              Icon={RestartIcon}
+              onClick={handleRestart}
+              tooltip={"Restart Device"}
+            />
             <OkayButton
               onClick={handleSave}
               tooltip={"Apply Network Settings"}

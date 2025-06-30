@@ -68,25 +68,7 @@ const IButton = ({
     : baseSx;
 
   return (
-    <Tooltip
-      title={tooltip}
-      placement={getTooltipPlacement()}
-      arrow
-      enterDelay={300}
-      leaveDelay={0}
-      enterNextDelay={150}
-      componentsProps={{
-        tooltip: {
-          sx: {
-            fontSize: "0.75rem",
-            backgroundColor: "rgba(0, 0, 0, 0.87)",
-            color: "white",
-            padding: "4px 8px",
-            pointerEvents: "none",
-          },
-        },
-      }}
-    >
+    <Tooltip title={tooltip} placement={getTooltipPlacement()}>
       <span>
         <IconButton
           color={color}

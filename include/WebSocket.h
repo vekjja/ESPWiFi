@@ -1,3 +1,6 @@
+#ifndef WEBSOCKET_H
+#define WEBSOCKET_H
+
 #include "ESPWiFi.h"
 #include <algorithm>
 #include <list>
@@ -83,3 +86,5 @@ public:
     }
   }
 };
+
+#endif

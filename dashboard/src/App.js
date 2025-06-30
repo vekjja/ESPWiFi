@@ -40,6 +40,32 @@ const theme = createTheme({
       main: "#17EB9D",
     },
   },
+  components: {
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          fontSize: "0.75rem",
+          backgroundColor: "rgba(0, 0, 0, 0.87)",
+          color: "white",
+          padding: "6px 10px",
+          borderRadius: "4px",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+          maxWidth: "200px",
+          textAlign: "center",
+          fontFamily: "Roboto Slab, sans-serif",
+        },
+        arrow: {
+          color: "rgba(0, 0, 0, 0.87)",
+        },
+      },
+      defaultProps: {
+        arrow: true,
+        enterDelay: 300,
+        leaveDelay: 0,
+        enterNextDelay: 150,
+      },
+    },
+  },
 });
 
 function App() {

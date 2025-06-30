@@ -1,6 +1,7 @@
 #ifndef ESPWIFI_WIFI
 #define ESPWIFI_WIFI
 
+#include <WebSocket.h>
 #include <WiFiClient.h>
 
 #include "ESPWiFi.h"

@@ -163,6 +163,15 @@ export default function WebSocketModule({
       wsUrl = `ws://${wsUrl}`;
     }
 
+    // Validate URL format
+    try {
+      new URL(wsUrl);
+    } catch (error) {
+      console.error(`Invalid WebSocket URL: ${wsUrl}`);
+      saveConnectionState("error");
+      return null;
+    }
+
     console.log(`WebSocket ${moduleId} connecting to: ${wsUrl}`);
 
     try {
@@ -350,7 +359,7 @@ export default function WebSocketModule({
       }
       reconnectTooltip={getConnectionTooltip()}
       reconnectIcon={getConnectionIcon()}
-      reconnectColor={connectionStatus === "connected" ? "success" : "error"}
+      reconnectColor={connectionStatus === "connected" ? "primary" : "error"}
       sx={{
         backgroundColor:
           connectionStatus === "connected"

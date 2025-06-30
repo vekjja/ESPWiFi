@@ -17,6 +17,9 @@
 #include <WiFi.h>
 #endif
 
+// Forward declaration
+class WebSocket;
+
 class ESPWiFi {
 public:
   JsonDocument config;
@@ -107,6 +110,10 @@ public:
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshot.jpg");
 #endif
+
+  // RSSI
+  void streamRssi();
+  WebSocket *rssiWebSocket = nullptr;
 
   // Utils
   String getContentType(String filename);

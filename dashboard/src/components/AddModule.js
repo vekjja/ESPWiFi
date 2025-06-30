@@ -245,13 +245,13 @@ export default function AddModule({ config, saveConfig }) {
           <ListItemIcon>
             <PinIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Add Pin Module</ListItemText>
+          <ListItemText>Add Pin</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleOpenWebSocketModal}>
           <ListItemIcon>
             <WebSocketIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Add WebSocket Module</ListItemText>
+          <ListItemText>Add WebSocket</ListItemText>
         </MenuItem>
       </Menu>
 

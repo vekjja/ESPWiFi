@@ -227,10 +227,6 @@ export default function Modules({ config, saveConfig }) {
         return { ...module, id };
       });
 
-      console.log(
-        "Setting modules:",
-        modulesArray.map((m) => ({ id: m.id, name: m.name, type: m.type }))
-      );
       setModules(modulesArray);
     }
   }, [config]);

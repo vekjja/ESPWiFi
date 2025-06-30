@@ -1,21 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  Typography,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Button,
-  Box,
-  FormControlLabel,
-  Checkbox,
-} from "@mui/material";
+import { Typography, TextField, Button, Box } from "@mui/material";
 import { RestartAlt, Link, LinkOff } from "@mui/icons-material";
-import DeleteButton from "./DeleteButton";
-import OkayButton from "./OkayButton";
 import Module from "./Module";
-import SettingsModal from "./SettingsModal";
+import WebSocketSettingsModal from "./WebSocketSettingsModal";
 
 // Global connection manager to persist connections across re-renders
 const connectionManager = new Map();
@@ -32,19 +19,17 @@ export default function WebSocketModule({
   const [message, setMessage] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [openModal, setOpenModal] = useState(false);
-  const [editedURL, setEditedURL] = useState(initialProps.url || "");
-  const [editedName, setEditedName] = useState(initialProps.name || "");
-  const [editedPayload, setEditedPayload] = useState(
-    initialProps.payload || "text"
-  );
-  const [editedFontSize, setEditedFontSize] = useState(
-    initialProps.fontSize || 14
-  );
-  const [editedEnableSending, setEditedEnableSending] = useState(
-    initialProps.enableSending !== false
-  );
   const [inputText, setInputText] = useState("");
   const [manuallyDisconnected, setManuallyDisconnected] = useState(false);
+
+  // WebSocket settings data for the modal
+  const [websocketSettingsData, setWebSocketSettingsData] = useState({
+    name: initialProps.name || "",
+    url: initialProps.url || "",
+    payload: initialProps.payload || "text",
+    fontSize: initialProps.fontSize || 14,
+    enableSending: initialProps.enableSending !== false,
+  });
 
   // Use ref to store WebSocket instance
   const socketRef = useRef(null);
@@ -198,11 +183,22 @@ export default function WebSocketModule({
   };
 
   const handleSettingsClick = () => {
+    setWebSocketSettingsData({
+      name: initialProps.name || "",
+      url: initialProps.url || "",
+      payload: initialProps.payload || "text",
+      fontSize: initialProps.fontSize || 14,
+      enableSending: initialProps.enableSending !== false,
+    });
     setOpenModal(true);
   };
 
   const handleCloseModal = () => {
     setOpenModal(false);
+  };
+
+  const handleWebSocketDataChange = (changes) => {
+    setWebSocketSettingsData((prev) => ({ ...prev, ...changes }));
   };
 
   const handleDeleteSocket = () => {
@@ -213,11 +209,11 @@ export default function WebSocketModule({
   const handleSaveSettings = () => {
     const updatedWebSocket = {
       ...initialProps,
-      url: editedURL,
-      name: editedName,
-      payload: editedPayload,
-      fontSize: Number(editedFontSize),
-      enableSending: editedEnableSending,
+      url: websocketSettingsData.url,
+      name: websocketSettingsData.name,
+      payload: websocketSettingsData.payload,
+      fontSize: Number(websocketSettingsData.fontSize),
+      enableSending: websocketSettingsData.enableSending,
       // Don't save connection state - let the module manage it independently
     };
 
@@ -264,11 +260,13 @@ export default function WebSocketModule({
   };
 
   useEffect(() => {
-    setEditedURL(initialProps.url || "");
-    setEditedName(initialProps.name || "");
-    setEditedPayload(initialProps.payload || "text");
-    setEditedFontSize(initialProps.fontSize || 14);
-    setEditedEnableSending(initialProps.enableSending !== false);
+    setWebSocketSettingsData({
+      name: initialProps.name || "",
+      url: initialProps.url || "",
+      payload: initialProps.payload || "text",
+      fontSize: initialProps.fontSize || 14,
+      enableSending: initialProps.enableSending !== false,
+    });
 
     // Restore message from ref if it exists
     if (messageRef.current && messageRef.current !== message) {
@@ -422,71 +420,14 @@ export default function WebSocketModule({
           </Box>
         )}
 
-      <SettingsModal
+      <WebSocketSettingsModal
         open={openModal}
         onClose={handleCloseModal}
-        title="WebSocket Settings"
-        actions={
-          <>
-            <DeleteButton
-              onClick={handleDeleteSocket}
-              tooltip="Delete WebSocket"
-            />
-            <OkayButton
-              onClick={handleSaveSettings}
-              tooltip="Apply WebSocket Settings"
-            />
-          </>
-        }
-      >
-        <TextField
-          label="Name"
-          value={editedName}
-          onChange={(e) => setEditedName(e.target.value)}
-          variant="outlined"
-          fullWidth
-          sx={{ marginBottom: 2 }}
-        />
-        <TextField
-          label="WebSocket URL"
-          value={editedURL}
-          onChange={(e) => setEditedURL(e.target.value)}
-          variant="outlined"
-          fullWidth
-          sx={{ marginBottom: 2 }}
-          helperText="Use relative path (e.g., /rssi) for same server, or full URL for external WebSockets"
-        />
-        <FormControl fullWidth sx={{ marginBottom: 2 }}>
-          <InputLabel id="websocket-payload-select-label">Payload</InputLabel>
-          <Select
-            labelId="websocket-payload-select-label"
-            value={editedPayload}
-            label="Payload"
-            onChange={(e) => setEditedPayload(e.target.value)}
-          >
-            <MenuItem value="binary">Binary</MenuItem>
-            <MenuItem value="text">Text</MenuItem>
-          </Select>
-        </FormControl>
-        <TextField
-          label="Font Size (px)"
-          type="number"
-          value={editedFontSize}
-          onChange={(e) => setEditedFontSize(e.target.value)}
-          variant="outlined"
-          fullWidth
-          sx={{ marginBottom: 2 }}
-        />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={editedEnableSending}
-              onChange={(e) => setEditedEnableSending(e.target.checked)}
-            />
-          }
-          label="Enable Sending"
-        />
-      </SettingsModal>
+        onSave={handleSaveSettings}
+        onDelete={handleDeleteSocket}
+        websocketData={websocketSettingsData}
+        onWebSocketDataChange={handleWebSocketDataChange}
+      />
     </Module>
   );
 }

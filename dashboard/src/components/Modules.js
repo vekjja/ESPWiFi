@@ -169,7 +169,10 @@ export default function Modules({ config, saveConfig }) {
 
       // Handle new unified modules format
       if (config.modules && Array.isArray(config.modules)) {
-        modulesArray = config.modules;
+        modulesArray = config.modules.map((mod, idx) => ({
+          ...mod,
+          key: mod.key ?? mod.number ?? mod.id ?? `module-${idx}-${Date.now()}`,
+        }));
       } else {
         // Convert old separate format to new unified format
         const pins = config.pins || [];
@@ -177,28 +180,30 @@ export default function Modules({ config, saveConfig }) {
 
         // Convert pins
         if (Array.isArray(pins)) {
-          pins.forEach((pin) => {
+          pins.forEach((pin, idx) => {
             modulesArray.push({
               ...pin,
               type: "pin",
+              key: pin.key ?? pin.number ?? `pin-${idx}-${Date.now()}`,
             });
           });
         } else if (typeof pins === "object") {
-          // Convert from old object format
-          Object.entries(pins).forEach(([pinNum, pinData]) => {
+          Object.entries(pins).forEach(([pinNum, pinData], idx) => {
             modulesArray.push({
               ...pinData,
               type: "pin",
               number: parseInt(pinNum, 10),
+              key: pinData.key ?? pinNum ?? `pin-${idx}-${Date.now()}`,
             });
           });
         }
 
         // Convert webSockets
-        webSockets.forEach((webSocket) => {
+        webSockets.forEach((webSocket, idx) => {
           modulesArray.push({
             ...webSocket,
             type: "webSocket",
+            key: webSocket.key ?? webSocket.id ?? `ws-${idx}-${Date.now()}`,
           });
         });
       }

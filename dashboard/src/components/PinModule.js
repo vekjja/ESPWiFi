@@ -1,21 +1,9 @@
 import React, { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import {
-  MenuItem,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  Slider,
-  Box,
-  Checkbox,
-  Tooltip,
-} from "@mui/material";
-import OkayButton from "./OkayButton";
-import DeleteButton from "./DeleteButton";
+import { Slider, Box } from "@mui/material";
 import Module from "./Module";
-import SettingsModal from "./SettingsModal";
+import PinSettingsModal from "./PinSettingsModal";
 
 export default function PinModule({
   pinNum,
@@ -31,16 +19,20 @@ export default function PinModule({
   const [remoteURL, setRemoteURL] = useState(initialProps.remoteURL || "");
   const [currentPinNum, setCurrentPinNum] = useState(pinNum);
   const [openPinModal, setOpenPinModal] = useState(false);
-  const [editedPinName, setEditedPinName] = useState(name);
-  const [editedMode, setEditedMode] = useState(mode);
-  const [editedInverted, setEditedInverted] = useState(inverted);
-  const [editedRemoteURL, setEditedRemoteURL] = useState(remoteURL);
-  const [editedPinNum, setEditedPinNum] = useState(pinNum);
+
+  // Pin settings data for the modal
+  const [pinSettingsData, setPinSettingsData] = useState({
+    name: initialProps.name || "Pin",
+    pinNumber: pinNum,
+    mode: initialProps.mode || "out",
+    inverted: initialProps.inverted || false,
+    remoteURL: initialProps.remoteURL || "",
+    dutyMin: initialProps.dutyMin || 0,
+    dutyMax: initialProps.dutyMax || 255,
+  });
 
   const dutyMin = initialProps.dutyMin || 0;
   const dutyMax = initialProps.dutyMax || 100;
-  const [editedDutyMin, setEditedDutyMin] = useState(dutyMin);
-  const [editedDutyMax, setEditedDutyMax] = useState(dutyMax);
   const [sliderMin, setSliderMin] = useState(initialProps.dutyMin || dutyMin);
   const [sliderMax, setSliderMax] = useState(initialProps.dutyMax || dutyMax);
   const [duty, setDuty] = useState(initialProps.duty || 0);
@@ -159,11 +151,15 @@ export default function PinModule({
   };
 
   const handleOpenPinModal = () => {
-    setEditedPinName(name);
-    setEditedMode(mode);
-    setEditedInverted(inverted);
-    setEditedRemoteURL(remoteURL);
-    setEditedPinNum(currentPinNum);
+    setPinSettingsData({
+      name: name,
+      pinNumber: currentPinNum,
+      mode: mode,
+      inverted: inverted,
+      remoteURL: remoteURL,
+      dutyMin: dutyMin,
+      dutyMax: dutyMax,
+    });
     setOpenPinModal(true);
   };
 
@@ -171,20 +167,24 @@ export default function PinModule({
     setOpenPinModal(false);
   };
 
+  const handlePinDataChange = (changes) => {
+    setPinSettingsData((prev) => ({ ...prev, ...changes }));
+  };
+
   const handleSavePinSettings = () => {
-    const newInverted = editedInverted;
-    const newRemoteURL = editedRemoteURL;
-    const newPinNum = editedPinNum;
-    setName(editedPinName);
-    setMode(editedMode);
+    const newInverted = pinSettingsData.inverted;
+    const newRemoteURL = pinSettingsData.remoteURL;
+    const newPinNum = pinSettingsData.pinNumber;
+    setName(pinSettingsData.name);
+    setMode(pinSettingsData.mode);
     setInverted(newInverted);
     setRemoteURL(newRemoteURL);
     setCurrentPinNum(newPinNum);
 
     // Create a temporary pinState with the new values
     const tempPinState = {
-      name: editedPinName,
-      mode: editedMode,
+      name: pinSettingsData.name,
+      mode: pinSettingsData.mode,
       inverted: newInverted,
       remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
@@ -192,27 +192,29 @@ export default function PinModule({
     };
 
     // Only include duty for PWM mode pins
-    if (editedMode === "pwm") {
+    if (pinSettingsData.mode === "pwm") {
       tempPinState.duty = duty;
     }
 
     // Update local state only - no remote API calls for settings
     onUpdate(moduleId, tempPinState);
 
-    setSliderMin(editedDutyMin);
-    setSliderMax(editedDutyMax);
+    setSliderMin(pinSettingsData.dutyMin);
+    setSliderMax(pinSettingsData.dutyMax);
+    handleClosePinModal();
+  };
+
+  const handleDeletePin = () => {
+    updatePinState({}, "DELETE");
     handleClosePinModal();
   };
 
   useEffect(() => {
-    setEditedDutyMin(initialProps.dutyMin || 0);
-    setEditedDutyMax(initialProps.dutyMax || 255);
-  }, [initialProps.dutyMin, initialProps.dutyMax]);
-
-  useEffect(() => {
-    if (duty < editedDutyMin) setDuty(Number(editedDutyMin));
-    if (duty > editedDutyMax) setDuty(Number(editedDutyMax));
-  }, [editedDutyMin, editedDutyMax]);
+    if (duty < pinSettingsData.dutyMin)
+      setDuty(Number(pinSettingsData.dutyMin));
+    if (duty > pinSettingsData.dutyMax)
+      setDuty(Number(pinSettingsData.dutyMax));
+  }, [pinSettingsData.dutyMin, pinSettingsData.dutyMax]);
 
   // Update currentPinNum when initialProps.number changes
   useEffect(() => {
@@ -304,101 +306,14 @@ export default function PinModule({
         )}
       </Box>
 
-      <SettingsModal
+      <PinSettingsModal
         open={openPinModal}
         onClose={handleClosePinModal}
-        title="Pin Settings"
-        actions={
-          <>
-            <DeleteButton
-              onClick={() => updatePinState({}, "DELETE")}
-              tooltip={"Delete Pin"}
-            />
-            <OkayButton
-              onClick={handleSavePinSettings}
-              tooltip={"Apply Pin Settings"}
-            />
-          </>
-        }
-      >
-        <FormControlLabel
-          control={
-            <Tooltip title="Invert: When checked, the pin will be LOW when the UI is ON">
-              <Checkbox
-                checked={editedInverted}
-                onChange={(e) => setEditedInverted(e.target.checked)}
-                data-no-dnd="true"
-              />
-            </Tooltip>
-          }
-          label="Invert"
-          sx={{ marginBottom: 2 }}
-        />
-        <TextField
-          label="Name"
-          value={editedPinName}
-          onChange={(e) => setEditedPinName(e.target.value)}
-          variant="outlined"
-          fullWidth
-          sx={{ marginBottom: 2 }}
-          data-no-dnd="true"
-        />
-        <TextField
-          label="Pin Number"
-          value={editedPinNum}
-          onChange={(e) => setEditedPinNum(e.target.value)}
-          variant="outlined"
-          fullWidth
-          sx={{ marginBottom: 2 }}
-          data-no-dnd="true"
-        />
-        <FormControl fullWidth variant="outlined" sx={{ marginBottom: 2 }}>
-          <InputLabel id="mode-select-label">Mode</InputLabel>
-          <Select
-            labelId="mode-select-label"
-            value={editedMode}
-            onChange={(e) => setEditedMode(e.target.value)}
-            data-no-dnd="true"
-          >
-            <MenuItem value="in">Input</MenuItem>
-            <MenuItem value="out">Output</MenuItem>
-            <MenuItem value="pwm">PWM</MenuItem>
-          </Select>
-        </FormControl>
-        <TextField
-          label="Remote GPIO URL (optional)"
-          value={editedRemoteURL}
-          onChange={(e) => setEditedRemoteURL(e.target.value)}
-          variant="outlined"
-          fullWidth
-          placeholder="http://192.168.1.100 or esp32.local"
-          helperText="Leave empty to use local ESP32. Include protocol (http://) for remote devices."
-          sx={{ marginBottom: 2 }}
-          data-no-dnd="true"
-        />
-        {editedMode === "pwm" && (
-          <>
-            <TextField
-              label="Min Duty (µs)"
-              value={editedDutyMin}
-              onChange={(e) => setEditedDutyMin(e.target.value)}
-              variant="outlined"
-              fullWidth
-              sx={{ marginBottom: 2 }}
-              data-no-dnd="true"
-            />
-            <TextField
-              label="Max Duty (µs)"
-              value={editedDutyMax}
-              onChange={(e) => setEditedDutyMax(e.target.value)}
-              variant="outlined"
-              fullWidth
-              sx={{ marginBottom: 2 }}
-              data-no-dnd="true"
-            />
-          </>
-        )}
-      </SettingsModal>
+        onSave={handleSavePinSettings}
+        onDelete={handleDeletePin}
+        pinData={pinSettingsData}
+        onPinDataChange={handlePinDataChange}
+      />
     </Module>
   );
 }

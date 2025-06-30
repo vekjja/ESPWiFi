@@ -3,7 +3,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
 import NetworkSettings from "./components/NetworkSettings";
-import AddButton from "./components/AddButton";
+import AddModule from "./components/AddModule";
 import ConfigButton from "./components/ConfigButton";
 import Modules from "./components/Modules";
 
@@ -187,7 +187,7 @@ function App() {
             config={localConfig}
             saveConfig={saveConfigFromButton}
           />
-          <AddButton config={localConfig} saveConfig={updateLocalConfig} />
+          <AddModule config={localConfig} saveConfig={updateLocalConfig} />
           <Modules config={localConfig} saveConfig={updateLocalConfig} />
         </Container>
       )}

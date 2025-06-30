@@ -132,7 +132,7 @@ export default function WebSocketModule({
       return null;
     }
 
-    console.log(`WebSocket ${moduleKey} connecting to: ${wsUrl}`);
+    console.log(`WebSocket`, moduleKey, "connecting:", wsUrl);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -146,7 +146,7 @@ export default function WebSocketModule({
       updateConnectionState("connecting");
 
       ws.onopen = () => {
-        console.log(`WebSocket ${moduleKey} connected to: ${wsUrl}`);
+        console.log(`WebSocket`, moduleKey, "connected:", wsUrl);
         updateConnectionState("connected");
       };
 
@@ -168,7 +168,7 @@ export default function WebSocketModule({
       };
 
       ws.onclose = (event) => {
-        console.log(`WebSocket ${moduleKey} disconnected from: ${wsUrl}`);
+        console.log(`WebSocket`, moduleKey, "disconnected:", wsUrl);
         updateConnectionState("disconnected");
         socketRef.current = null;
         connectionManager.delete(moduleKey);
@@ -294,19 +294,19 @@ export default function WebSocketModule({
   const getConnectionTooltip = () => {
     switch (connectionStatus) {
       case "connected":
-        return "Disconnect WebSocket";
+        return "Disconnect";
       case "connecting":
         return "Connecting...";
       case "error":
         return "Connection Error - Click to retry";
       default:
-        return "Connect WebSocket";
+        return "Connect";
     }
   };
 
   return (
     <Module
-      title={initialProps.name || "Unnamed"}
+      title={initialProps.name || "WebSocket" + moduleKey}
       onSettings={handleSettingsClick}
       settingsTooltip="WebSocket Settings"
       onReconnect={
@@ -384,19 +384,27 @@ export default function WebSocketModule({
           </Typography>
         )
       ) : (
-        <Typography
-          variant="body2"
+        <Box
           sx={{
-            marginTop: "10px",
-            wordBreak: "break-all",
-            maxHeight: "120px",
-            overflow: "auto",
-            textAlign: "center",
-            fontSize: initialProps.fontSize || 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "120px",
           }}
         >
-          {typeof messageRef.current === "string" ? messageRef.current : ""}
-        </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              wordBreak: "break-all",
+              textAlign: "center",
+              fontSize: initialProps.fontSize || 14,
+              maxHeight: "120px",
+              overflow: "auto",
+            }}
+          >
+            {typeof messageRef.current === "string" ? messageRef.current : ""}
+          </Typography>
+        </Box>
       )}
 
       {connectionStatus === "connected" &&
@@ -406,7 +414,7 @@ export default function WebSocketModule({
               label="Send message"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               variant="outlined"
               size="small"
               fullWidth

@@ -2,6 +2,18 @@ import React from "react";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 
+/**
+ * IButton - A reusable icon button with optional tooltip.
+ * Props:
+ *   - onClick: function
+ *   - tooltip: string (optional)
+ *   - Icon: React component (icon)
+ *   - color: MUI color (default: "default")
+ *   - sx: style overrides
+ *   - disabled: boolean
+ *   - tooltipPlacement: string (default: "bottom")
+ *   - className, id, ...rest: passthrough
+ */
 const IButton = ({
   onClick,
   tooltip,
@@ -9,79 +21,36 @@ const IButton = ({
   color = "default",
   sx = {},
   disabled = false,
-  enhanced = false,
-  tooltipPlacement = "top",
+  tooltipPlacement = "bottom",
+  className,
+  id,
+  ...rest
 }) => {
-  // Determine tooltip placement based on button position
-  const getTooltipPlacement = () => {
-    if (tooltipPlacement !== "top") return tooltipPlacement;
-
-    // Auto-detect placement based on sx positioning
-    const sxStr = JSON.stringify(sx);
-    if (sxStr.includes("bottom") && sxStr.includes("left")) {
-      return "top";
-    } else if (sxStr.includes("bottom") && sxStr.includes("right")) {
-      return "top";
-    } else if (sxStr.includes("top")) {
-      return "bottom";
-    }
-    return "top";
-  };
-
-  const baseSx = {
-    transition: "all 0.2s ease-in-out",
-    "&:hover": {
-      transform: enhanced ? "scale(1.05)" : "scale(1.02)",
-    },
-    ...sx,
-  };
-
-  const enhancedSx = enhanced
-    ? {
-        ...baseSx,
-        backgroundColor:
-          color === "success"
-            ? "success.main"
-            : color === "error"
-            ? "error.main"
-            : color === "primary"
-            ? "primary.main"
-            : "secondary.main",
-        color: "white",
-        boxShadow: 1,
-        "&:hover": {
-          ...baseSx["&:hover"],
-          backgroundColor:
-            color === "success"
-              ? "success.dark"
-              : color === "error"
-              ? "error.dark"
-              : color === "primary"
-              ? "primary.dark"
-              : "secondary.dark",
-          boxShadow: 3,
-        },
-        "&:active": {
-          transform: "scale(0.95)",
-        },
-      }
-    : baseSx;
-
-  return (
-    <Tooltip title={tooltip} placement={getTooltipPlacement()}>
-      <span>
-        <IconButton
-          color={color}
-          onClick={onClick}
-          sx={enhancedSx}
-          disabled={disabled}
-          data-no-dnd="true"
-          size="small"
-        >
-          <Icon />
-        </IconButton>
-      </span>
+  const button = (
+    <IconButton
+      color={color}
+      onClick={onClick}
+      sx={sx}
+      disabled={disabled}
+      data-no-dnd="true"
+      size="small"
+      className={className}
+      id={id}
+      {...rest}
+    >
+      {Icon && <Icon />}
+    </IconButton>
+  );
+  return tooltip ? (
+    <Tooltip
+      title={tooltip}
+      placement={tooltipPlacement}
+      slotProps={{ popper: { disablePortal: true } }}
+    >
+      <span role="presentation">{button}</span>
     </Tooltip>
+  ) : (
+    button
   );
 };
 

@@ -21,16 +21,14 @@
 class WebSocket;
 
 class ESPWiFi {
- public:
+public:
   JsonDocument config;
   String logFile = "/log.txt";
+  bool loggingEnabled = false;
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
 
-  IntervalTimer s10Timer{10000};  // 10 seconds
-  IntervalTimer s1Timer{1000};    // 1 second
-
-  int connectTimeout = 15000;  // 15 seconds
+  int connectTimeout = 15000; // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {
@@ -38,7 +36,8 @@ class ESPWiFi {
       return;
     }
     Serial.begin(baudRate);
-    delay(999);  // wait for serial to start
+    Serial.setDebugOutput(true);
+    delay(999); // wait for serial to start
     logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
   }
 
@@ -61,6 +60,15 @@ class ESPWiFi {
     logf("\tTotal: %s\n", bytesToHumanReadable(LittleFS.totalBytes()).c_str());
   }
 
+  void startLog(String logFile = "/log.txt") {
+    startSerial();
+    startLittleFS();
+    loggingEnabled = true;
+    this->logFile = logFile;
+    log("🔍 Logging started:");
+    logf("\tFile: %s\n", logFile.c_str());
+  }
+
   // Power Management
   void stopSleep();
   void enablePowerSaving();
@@ -73,8 +81,7 @@ class ESPWiFi {
   void writeLog(String message);
   void logf(const char *format, ...);
   void log(String message);
-  template <typename T>
-  void log(T value) {
+  template <typename T> void log(T value) {
     String valueString = String(value);
     log(valueString);
   }
@@ -92,7 +99,9 @@ class ESPWiFi {
 
   // mDNS
   void startMDNS();
+#ifdef ESP8266
   void mDSNUpdate();
+#endif
 
   // Web Server
   void initWebServer();
@@ -121,8 +130,8 @@ class ESPWiFi {
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
- private:
+private:
   void handleCorsPreflight(AsyncWebServerRequest *request);
 };
 
-#endif  // ESPWiFi
+#endif // ESPWiFi

@@ -25,6 +25,8 @@ export default function Module({
         margin: "10px",
         minWidth: "200px",
         minHeight: "200px",
+        maxWidth: "200px",
+        maxHeight: "200px",
         border: "1px solid",
         borderColor: "primary.main",
         borderRadius: "5px",
@@ -43,8 +45,10 @@ export default function Module({
       <CardContent
         sx={{
           width: "100%",
+          flex: "1 1 auto",
+          overflowY: "auto",
           padding: 0,
-          paddingBottom: "48px",
+          paddingBottom: 0,
           "&:last-child": { paddingBottom: 0 },
         }}
       >
@@ -53,43 +57,63 @@ export default function Module({
         </Typography>
         {children}
       </CardContent>
-      {onSettings && (
-        <SettingsButton
-          color="default"
-          onClick={onSettings}
-          tooltip={settingsTooltip}
-        />
-      )}
-      {onDelete && (
-        <DeleteButton
-          onClick={onDelete}
-          tooltip={deleteTooltip}
-          sx={{
-            position: "absolute",
-            left: 48,
-            bottom: 8,
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "absolute",
+          bottom: 8,
+          left: 0,
+          zIndex: 2,
+          pointerEvents: "none",
+        }}
+      >
+        <div style={{ pointerEvents: "auto" }}>
+          {onSettings && (
+            <SettingsButton
+              color="default"
+              onClick={onSettings}
+              tooltip={settingsTooltip}
+              tooltipPlacement="bottom"
+              sx={{ pointerEvents: "auto" }}
+            />
+          )}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            pointerEvents: "auto",
           }}
-        />
-      )}
-      {onReconnect && (
-        <IButton
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent drag activation
-            onReconnect();
-          }}
-          tooltip={reconnectTooltip}
-          Icon={reconnectIcon}
-          color={reconnectColor}
-          enhanced={true}
-          tooltipPlacement="top"
-          sx={{
-            position: "absolute",
-            right: 8,
-            bottom: 8,
-            zIndex: 1,
-          }}
-        />
-      )}
+        >
+          {onDelete && (
+            <DeleteButton
+              onClick={onDelete}
+              tooltip={deleteTooltip}
+              sx={{
+                marginLeft: 8,
+                marginRight: 8,
+                pointerEvents: "auto",
+              }}
+            />
+          )}
+          {onReconnect && (
+            <IButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onReconnect();
+              }}
+              tooltip={reconnectTooltip}
+              Icon={reconnectIcon}
+              color={reconnectColor}
+              tooltipPlacement="bottom"
+              sx={{ pointerEvents: "auto", mr: 1 }}
+            />
+          )}
+        </div>
+      </div>
     </Card>
   );
 }

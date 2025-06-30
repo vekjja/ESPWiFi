@@ -44,6 +44,7 @@ void ESPWiFi::startWebServer() {
     jsonDoc["uptime"] = millis() / 1000;
     jsonDoc["ip"] = WiFi.localIP().toString();
     jsonDoc["mac"] = WiFi.macAddress();
+    jsonDoc["ap_ssid"] = WiFi.softAPSSID();
     if (WiFi.isConnected()) {
       jsonDoc["ssid"] = WiFi.SSID();
       jsonDoc["rssi"] = WiFi.RSSI();
@@ -133,7 +134,7 @@ void ESPWiFi::startWebServer() {
     request->send(response);
     delay(1000);
     log("🔄 Restarting...");
-    delay(1000);  // Give time for response to send
+    delay(1000); // Give time for response to send
     ESP.restart();
   });
 
@@ -156,7 +157,8 @@ void ESPWiFi::startWebServer() {
     String path = "/";
     if (request->hasParam("dir")) {
       path = request->getParam("dir")->value();
-      if (!path.startsWith("/")) path = "/" + path;
+      if (!path.startsWith("/"))
+        path = "/" + path;
     }
     File root = LittleFS.open(path, "r");
     if (!root || !root.isDirectory()) {
@@ -188,25 +190,31 @@ void ESPWiFi::startWebServer() {
       String displayName = fname;
       if (fname.startsWith(path) && path != "/") {
         displayName = fname.substring(path.length());
-        if (displayName.startsWith("/")) displayName = displayName.substring(1);
+        if (displayName.startsWith("/"))
+          displayName = displayName.substring(1);
       }
-      if (displayName == "") displayName = fname;
+      if (displayName == "")
+        displayName = fname;
       if (file.isDirectory()) {
         // Build subdirectory path for query string
         String subdirPath = path;
-        if (!subdirPath.endsWith("/")) subdirPath += "/";
+        if (!subdirPath.endsWith("/"))
+          subdirPath += "/";
         subdirPath += displayName;
         // Remove leading slash for query string
-        if (subdirPath.startsWith("/")) subdirPath = subdirPath.substring(1);
+        if (subdirPath.startsWith("/"))
+          subdirPath = subdirPath.substring(1);
         html += "<li class='folder'>📁 <a href='/files?dir=" + subdirPath +
                 "'>" + displayName + "/</a></li>";
       } else {
         // Build file path for link
         String filePath = path;
-        if (!filePath.endsWith("/")) filePath += "/";
+        if (!filePath.endsWith("/"))
+          filePath += "/";
         filePath += displayName;
         // Ensure single leading slash
-        if (!filePath.startsWith("/")) filePath = "/" + filePath;
+        if (!filePath.startsWith("/"))
+          filePath = "/" + filePath;
         html += "<li class='file'>📄 <a href='" + filePath +
                 "' target='_blank'>" + displayName + "</a></li>";
       }
@@ -220,7 +228,7 @@ void ESPWiFi::startWebServer() {
   });
 
   webServer->begin();
-  log("🕸️  HTTP Web Server Running:");
+  log("🗄️  HTTP Web Server Started:");
   logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
   logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
 }

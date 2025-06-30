@@ -219,7 +219,6 @@ export default function Modules({ config, saveConfig }) {
     const { active, over } = event;
 
     if (active.id !== over.id) {
-      console.log("Drag end:", active.id, "->", over.id);
       const oldIndex = moduleItems.findIndex(
         (module) => `module-${module.key}` === active.id.toString()
       );
@@ -227,18 +226,8 @@ export default function Modules({ config, saveConfig }) {
         (module) => `module-${module.key}` === over.id.toString()
       );
 
-      console.log("Indices:", oldIndex, "->", newIndex);
-
       if (oldIndex !== -1 && newIndex !== -1) {
         const reorderedModules = arrayMove(moduleItems, oldIndex, newIndex);
-        console.log(
-          "Reordered modules:",
-          reorderedModules.map((m) => ({
-            key: m.key,
-            name: m.name,
-            type: m.type,
-          }))
-        );
 
         // Update local state first
         setModules(reorderedModules);
@@ -251,8 +240,6 @@ export default function Modules({ config, saveConfig }) {
   };
 
   const updateModule = (moduleKey, moduleState) => {
-    console.log("Updating module:", moduleKey, moduleState);
-
     // Update local state immediately
     const updatedModules = modules.map((module) => {
       if (module.key === moduleKey) {

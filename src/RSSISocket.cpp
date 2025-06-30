@@ -1,15 +1,10 @@
-#ifndef ESPWIFI_RSSISOCKET
-#define ESPWIFI_RSSISOCKET
+#ifndef ESPWIFI_RSSI_SOCKET
+#define ESPWIFI_RSSI_SOCKET
 
 #include "ESPWiFi.h"
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
-// Using separate WebSocket for RSSI data provides:
-// - Clean separation of concerns
-// - Independent lifecycle management
-// - Optimized for text data streaming
-// - Easy to debug and maintain
 static IntervalTimer rssiSocTimer(1000);
 static WebSocket *rssiWebSocket = nullptr;
 
@@ -28,4 +23,4 @@ void ESPWiFi::streamRssi() {
   }
 }
 
-#endif // ESPWIFI_RSSISOCKET
+#endif // ESPWIFI_RSSI_SOCKET

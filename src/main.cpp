@@ -4,7 +4,7 @@
 ESPWiFi device;
 
 void setup() {
-  device.startSerial();
+  device.startLog();
   device.startWiFi();
   device.startMDNS();
   device.startGPIO();
@@ -22,6 +22,7 @@ void loop() {
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();
 #endif
+
 #ifdef ESP8266
   device.mDSNUpdate();
 #endif

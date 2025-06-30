@@ -10,8 +10,15 @@ static File logFileHandle;
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::checkAndCleanupLogFile() {
+#ifdef ESP8266
+  FSInfo fs_info;
+  LittleFS.info(fs_info);
+  size_t totalBytes = fs_info.totalBytes;
+  size_t usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
   size_t totalBytes = LittleFS.totalBytes();
   size_t usedBytes = LittleFS.usedBytes();
+#endif
   size_t freeBytes = totalBytes - usedBytes;
 
   // 100KB = 102400 bytes
@@ -47,7 +54,7 @@ void ESPWiFi::writeLog(String message) {
   if (logFileHandle) {
     checkAndCleanupLogFile();
     logFileHandle.print(message);
-    logFileHandle.flush();  // Ensure data is written immediately
+    logFileHandle.flush(); // Ensure data is written immediately
   } else {
     startLittleFS();
     logFileHandle = LittleFS.open(logFile, "a");
@@ -57,7 +64,7 @@ void ESPWiFi::writeLog(String message) {
 
 void ESPWiFi::log(String message) {
   Serial.println(message);
-  Serial.flush();  // Ensure immediate output
+  Serial.flush(); // Ensure immediate output
   writeLog(message + "\n");
 }
 
@@ -80,4 +87,4 @@ void ESPWiFi::closeLog() {
   }
 }
 
-#endif  // ESPWIFI_LOG
+#endif // ESPWIFI_LOG

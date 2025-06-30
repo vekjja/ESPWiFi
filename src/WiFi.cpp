@@ -128,7 +128,8 @@ void ESPWiFi::startMDNS() {
 
 #ifdef ESP8266
 void ESPWiFi::mDSNUpdate() {
-  if (s1Timer.shouldRun()) {
+  static IntervalTimer mDNSUpdateTimer(1000);
+  if (mDNSUpdateTimer.shouldRun()) {
     MDNS.update();
   }
 }

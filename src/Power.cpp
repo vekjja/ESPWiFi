@@ -51,7 +51,9 @@ void ESPWiFi::applyPowerSettings() {
     WiFi.setTxPower(WIFI_POWER_8_5dBm); // Maximum power for fastest performance
 #endif
   } else if (powerMode == "saving") {
+#ifdef ESP32
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
+#endif
   }
   WiFi.setSleep(wifiSleep);
 }

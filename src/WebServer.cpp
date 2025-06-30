@@ -51,12 +51,25 @@ void ESPWiFi::startWebServer() {
     }
     jsonDoc["hostname"] = WiFi.getHostname();
     jsonDoc["mdns"] = config["mdns"].as<String>() + ".local";
+#ifdef ESP32
     jsonDoc["chip"] = String(ESP.getChipModel());
+#else
+    jsonDoc["chip"] = String(ESP.getChipId());
+#endif
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
-    jsonDoc["littlefs_free"] = LittleFS.totalBytes() - LittleFS.usedBytes();
-    jsonDoc["littlefs_used"] = LittleFS.usedBytes();
-    jsonDoc["littlefs_total"] = LittleFS.totalBytes();
+#ifdef ESP8266
+    FSInfo fs_info;
+    LittleFS.info(fs_info);
+    size_t totalBytes = fs_info.totalBytes;
+    size_t usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
+    size_t totalBytes = LittleFSFS.totalBytes();
+    size_t usedBytes = LittleFSFS.usedBytes();
+#endif
+    jsonDoc["littlefs_free"] = totalBytes - usedBytes;
+    jsonDoc["littlefs_used"] = usedBytes;
+    jsonDoc["littlefs_total"] = totalBytes;
     jsonDoc["config"] = config.as<JsonObject>();
 
     String jsonResponse;

@@ -16,7 +16,14 @@ void gpioWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
   if (type == WS_EVT_DATA) {
 
     // Convert received data to string
-    String receivedData = String((char *)data, len);
+    String receivedData;
+    if (len > 0 && data) {
+      char *buf = new char[len + 1];
+      memcpy(buf, data, len);
+      buf[len] = '\0';
+      receivedData = String(buf);
+      delete[] buf;
+    }
     receivedData.trim(); // Remove any whitespace
 
     espWifi->log("📍 GPIO WS Data Received: 📨");

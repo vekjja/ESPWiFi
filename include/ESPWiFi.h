@@ -53,11 +53,18 @@ public:
     }
     fsMounted = true;
     log("💾 LittleFS mounted:");
-    logf("\tUsed: %s\n", bytesToHumanReadable(LittleFS.usedBytes()).c_str());
-    logf("\tFree: %s\n",
-         bytesToHumanReadable(LittleFS.totalBytes() - LittleFS.usedBytes())
-             .c_str());
-    logf("\tTotal: %s\n", bytesToHumanReadable(LittleFS.totalBytes()).c_str());
+#ifdef ESP8266
+    FSInfo fs_info;
+    LittleFS.info(fs_info);
+    size_t totalBytes = fs_info.totalBytes;
+    size_t usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
+#endif
+    logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
+    logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
+    logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
   }
 
   void startLog(String logFile = "/log.txt") {
@@ -81,6 +88,7 @@ public:
   void writeLog(String message);
   void logf(const char *format, ...);
   void log(String message);
+  void log(IPAddress ip) { log(ip.toString()); }
   template <typename T> void log(T value) {
     String valueString = String(value);
     log(valueString);

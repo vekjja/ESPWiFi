@@ -234,35 +234,33 @@ export default function Modules({ config, saveConfig }) {
   // Use useMemo to ensure stable references
   const moduleItems = useMemo(() => modules, [modules]);
 
+  // Simple update function that lets modules manage their own state
   const updateModule = (moduleId, moduleState) => {
     console.log("Updating module:", moduleId, moduleState);
+
+    // Update local state immediately
     const updatedModules = modules.map((module) => {
       if (module.id === moduleId) {
-        // Update the target module
         return { ...module, ...moduleState };
-      } else if (module.type === "webSocket") {
-        // For other WebSocket modules, preserve their connectionState from the previous config
-        const prevConfigModule = (config.modules || []).find(
-          (m) => m.id === module.id
-        );
-        if (
-          prevConfigModule &&
-          prevConfigModule.connectionState !== undefined
-        ) {
-          return {
-            ...module,
-            connectionState: prevConfigModule.connectionState,
-          };
-        }
       }
       return module;
     });
 
     setModules(updatedModules);
 
-    // Update the global config
-    const updatedConfig = { ...config, modules: updatedModules };
-    saveConfig(updatedConfig);
+    // Only save to global config for non-state changes (settings, etc.)
+    // Pin state changes and WebSocket connection states are managed locally
+    const targetModule = modules.find((module) => module.id === moduleId);
+    const isStateOnlyChange =
+      targetModule &&
+      (moduleState.state !== undefined ||
+        moduleState.duty !== undefined ||
+        moduleState.connectionState !== undefined);
+
+    if (!isStateOnlyChange) {
+      const updatedConfig = { ...config, modules: updatedModules };
+      saveConfig(updatedConfig);
+    }
   };
 
   const deleteModule = (moduleId) => {

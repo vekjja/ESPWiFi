@@ -29,11 +29,13 @@ export default function PinModule({
   const [mode, setMode] = useState(initialProps.mode || "out");
   const [inverted, setInverted] = useState(initialProps.inverted || false);
   const [remoteURL, setRemoteURL] = useState(initialProps.remoteURL || "");
+  const [currentPinNum, setCurrentPinNum] = useState(pinNum);
   const [openPinModal, setOpenPinModal] = useState(false);
   const [editedPinName, setEditedPinName] = useState(name);
   const [editedMode, setEditedMode] = useState(mode);
   const [editedInverted, setEditedInverted] = useState(inverted);
   const [editedRemoteURL, setEditedRemoteURL] = useState(remoteURL);
+  const [editedPinNum, setEditedPinNum] = useState(pinNum);
 
   const dutyMin = initialProps.dutyMin || 0;
   const dutyMax = initialProps.dutyMax || 100;
@@ -91,7 +93,7 @@ export default function PinModule({
         ...newPinState,
         mode: deletePin ? "in" : newPinState.mode,
         state: deletePin ? "low" : newPinState.state,
-        num: parseInt(pinNum, 10),
+        num: parseInt(currentPinNum, 10),
         delete: deletePin === "DELETE" || deletePin === true,
       };
 
@@ -161,6 +163,7 @@ export default function PinModule({
     setEditedMode(mode);
     setEditedInverted(inverted);
     setEditedRemoteURL(remoteURL);
+    setEditedPinNum(currentPinNum);
     setOpenPinModal(true);
   };
 
@@ -171,10 +174,12 @@ export default function PinModule({
   const handleSavePinSettings = () => {
     const newInverted = editedInverted;
     const newRemoteURL = editedRemoteURL;
+    const newPinNum = editedPinNum;
     setName(editedPinName);
     setMode(editedMode);
     setInverted(newInverted);
     setRemoteURL(newRemoteURL);
+    setCurrentPinNum(newPinNum);
 
     // Create a temporary pinState with the new values
     const tempPinState = {
@@ -183,6 +188,7 @@ export default function PinModule({
       inverted: newInverted,
       remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
+      number: newPinNum,
     };
 
     // Only include duty for PWM mode pins
@@ -208,11 +214,20 @@ export default function PinModule({
     if (duty > editedDutyMax) setDuty(Number(editedDutyMax));
   }, [editedDutyMin, editedDutyMax]);
 
+  // Update currentPinNum when initialProps.number changes
+  useEffect(() => {
+    if (initialProps.number !== undefined) {
+      setCurrentPinNum(initialProps.number);
+    }
+  }, [initialProps.number]);
+
   const effectiveIsOn = inverted ? !isOn : isOn;
 
   // Create title with remote indicator
   const moduleTitle =
-    remoteURL && remoteURL.trim() ? `${name || pinNum}` : name || pinNum;
+    remoteURL && remoteURL.trim()
+      ? `${name || currentPinNum}`
+      : name || currentPinNum;
 
   return (
     <Module
@@ -223,12 +238,72 @@ export default function PinModule({
           ? `Pin Settings (Remote: ${remoteURL})`
           : "Pin Settings"
       }
+      initialWidth={initialProps.width || 200}
+      initialHeight={initialProps.height || 200}
       sx={{
         backgroundColor: effectiveIsOn ? "secondary.light" : "secondary.dark",
         borderColor: effectiveIsOn ? "primary.main" : "secondary.main",
-        maxWidth: "200px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
       }}
     >
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          flex: 1,
+          width: "100%",
+          padding: "10px",
+        }}
+      >
+        <FormControlLabel
+          labelPlacement="top"
+          control={
+            <Switch
+              checked={!!effectiveIsOn}
+              onChange={handleChange}
+              disabled={mode === "in"}
+              data-no-dnd="true"
+            />
+          }
+          value={effectiveIsOn}
+          sx={{
+            margin: mode === "pwm" ? "0 0 10px 0" : "0",
+          }}
+        />
+
+        {mode === "pwm" && (
+          <Box
+            sx={{
+              width: "100%",
+              padding: "0 5px",
+              marginTop: "10px",
+            }}
+          >
+            <Slider
+              value={duty}
+              onChange={(event, newValue) => setDuty(newValue)}
+              onChangeCommitted={(event, newValue) => {
+                updatePinState({ duty: newValue });
+              }}
+              aria-labelledby="duty-length-slider"
+              min={Number(sliderMin)}
+              max={Number(sliderMax)}
+              valueLabelDisplay="auto"
+              data-no-dnd="true"
+              sx={{
+                width: "100%",
+                maxWidth: "180px",
+              }}
+            />
+          </Box>
+        )}
+      </Box>
+
       <SettingsModal
         open={openPinModal}
         onClose={handleClosePinModal}
@@ -270,10 +345,10 @@ export default function PinModule({
         />
         <TextField
           label="Pin Number"
-          value={pinNum}
+          value={editedPinNum}
+          onChange={(e) => setEditedPinNum(e.target.value)}
           variant="outlined"
           fullWidth
-          disabled
           sx={{ marginBottom: 2 }}
           data-no-dnd="true"
         />
@@ -324,36 +399,6 @@ export default function PinModule({
           </>
         )}
       </SettingsModal>
-
-      <FormControlLabel
-        labelPlacement="top"
-        control={
-          <Switch
-            checked={!!effectiveIsOn}
-            onChange={handleChange}
-            disabled={mode === "in"}
-            data-no-dnd="true"
-          />
-        }
-        value={effectiveIsOn}
-      />
-
-      {mode === "pwm" && (
-        <Box sx={{ marginTop: "10px" }}>
-          <Slider
-            value={duty}
-            onChange={(event, newValue) => setDuty(newValue)}
-            onChangeCommitted={(event, newValue) => {
-              updatePinState({ duty: newValue });
-            }}
-            aria-labelledby="duty-length-slider"
-            min={Number(sliderMin)}
-            max={Number(sliderMax)}
-            valueLabelDisplay="auto"
-            data-no-dnd="true"
-          />
-        </Box>
-      )}
     </Module>
   );
 }

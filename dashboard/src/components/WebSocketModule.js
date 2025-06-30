@@ -226,13 +226,11 @@ export default function WebSocketModule({
   };
 
   const handleConnect = () => {
-    console.log(`WebSocket ${moduleId} connect button clicked`);
     setManuallyDisconnected(false); // Reset manual disconnect flag
     createWebSocketConnection();
   };
 
   const handleDisconnect = () => {
-    console.log(`WebSocket ${moduleId} disconnect button clicked`);
     setManuallyDisconnected(true); // Set manual disconnect flag
     if (socketRef.current) {
       socketRef.current.close();

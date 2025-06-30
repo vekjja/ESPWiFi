@@ -74,7 +74,6 @@ export default function Module({
       {onReconnect && (
         <IButton
           onClick={(e) => {
-            console.log("Module reconnect button clicked");
             e.stopPropagation(); // Prevent drag activation
             onReconnect();
           }}

@@ -69,13 +69,15 @@ export default function AddModule({ config, saveConfig }) {
     setWebSocketModalOpen(false);
   };
 
-  // Helper function to generate unique ID
-  const generateUniqueId = (existingModules) => {
+  // Helper function to generate unique key
+  const generateUniqueKey = (existingModules) => {
     if (!existingModules || existingModules.length === 0) {
       return 0;
     }
-    const maxId = Math.max(...existingModules.map((m) => m.id || 0));
-    return maxId + 1;
+    const maxKey = Math.max(
+      ...existingModules.map((m) => (typeof m.key === "number" ? m.key : -1))
+    );
+    return maxKey + 1;
   };
 
   const handlePinDataChange = (changes) => {
@@ -100,7 +102,7 @@ export default function AddModule({ config, saveConfig }) {
       remoteURL: pinData.remoteURL,
       dutyMin: pinData.dutyMin,
       dutyMax: pinData.dutyMax,
-      id: generateUniqueId(existingModules),
+      key: generateUniqueKey(existingModules),
     };
 
     // Handle new unified modules format
@@ -118,7 +120,7 @@ export default function AddModule({ config, saveConfig }) {
           existingModules.push({
             ...pin,
             type: "pin",
-            id: index,
+            key: index,
           });
         });
       } else if (typeof pins === "object") {
@@ -127,7 +129,7 @@ export default function AddModule({ config, saveConfig }) {
             ...pinData,
             type: "pin",
             number: parseInt(pinNum, 10),
-            id: index,
+            key: index,
           });
         });
       }
@@ -138,7 +140,7 @@ export default function AddModule({ config, saveConfig }) {
         existingModules.push({
           ...webSocket,
           type: "webSocket",
-          id: existingModules.length + index,
+          key: existingModules.length + index,
         });
       });
 
@@ -162,7 +164,7 @@ export default function AddModule({ config, saveConfig }) {
       fontSize: webSocketData.fontSize,
       enableSending: webSocketData.enableSending,
       connectionState: "disconnected",
-      id: generateUniqueId(existingModules),
+      key: generateUniqueKey(existingModules),
     };
 
     // Handle new unified modules format
@@ -180,7 +182,7 @@ export default function AddModule({ config, saveConfig }) {
           existingModules.push({
             ...pin,
             type: "pin",
-            id: index,
+            key: index,
           });
         });
       } else if (typeof pins === "object") {
@@ -189,7 +191,7 @@ export default function AddModule({ config, saveConfig }) {
             ...pinData,
             type: "pin",
             number: parseInt(pinNum, 10),
-            id: index,
+            key: index,
           });
         });
       }
@@ -200,7 +202,7 @@ export default function AddModule({ config, saveConfig }) {
         existingModules.push({
           ...webSocket,
           type: "webSocket",
-          id: existingModules.length + index,
+          key: existingModules.length + index,
         });
       });
 

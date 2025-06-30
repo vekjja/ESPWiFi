@@ -13,8 +13,8 @@ export default function WebSocketModule({
   onUpdate,
   onDelete,
 }) {
-  // Use the module's id for stable identification
-  const moduleId = initialProps.id || index;
+  // Use the module's key for stable identification
+  const moduleKey = initialProps.key || index;
 
   const [message, setMessage] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
@@ -53,7 +53,7 @@ export default function WebSocketModule({
       }
 
       // Remove from connection manager
-      connectionManager.delete(moduleId);
+      connectionManager.delete(moduleKey);
     };
   }, []);
 
@@ -89,13 +89,13 @@ export default function WebSocketModule({
 
   const createWebSocketConnection = () => {
     // Check if we already have a connection for this module
-    const existingConnection = connectionManager.get(moduleId);
+    const existingConnection = connectionManager.get(moduleKey);
     if (
       existingConnection &&
       existingConnection.readyState === WebSocket.OPEN
     ) {
       console.log(
-        `WebSocket ${moduleId} already connected, reusing existing connection`
+        `WebSocket ${moduleKey} already connected, reusing existing connection`
       );
       socketRef.current = existingConnection;
       updateConnectionState("connected");
@@ -132,7 +132,7 @@ export default function WebSocketModule({
       return null;
     }
 
-    console.log(`WebSocket ${moduleId} connecting to: ${wsUrl}`);
+    console.log(`WebSocket ${moduleKey} connecting to: ${wsUrl}`);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -142,11 +142,11 @@ export default function WebSocketModule({
       }
 
       socketRef.current = ws;
-      connectionManager.set(moduleId, ws);
+      connectionManager.set(moduleKey, ws);
       updateConnectionState("connecting");
 
       ws.onopen = () => {
-        console.log(`WebSocket ${moduleId} connected to: ${wsUrl}`);
+        console.log(`WebSocket ${moduleKey} connected to: ${wsUrl}`);
         updateConnectionState("connected");
       };
 
@@ -163,15 +163,15 @@ export default function WebSocketModule({
       };
 
       ws.onerror = (error) => {
-        console.error(`WebSocket ${moduleId} error:`, error);
+        console.error(`WebSocket ${moduleKey} error:`, error);
         updateConnectionState("error");
       };
 
       ws.onclose = (event) => {
-        console.log(`WebSocket ${moduleId} disconnected from: ${wsUrl}`);
+        console.log(`WebSocket ${moduleKey} disconnected from: ${wsUrl}`);
         updateConnectionState("disconnected");
         socketRef.current = null;
-        connectionManager.delete(moduleId);
+        connectionManager.delete(moduleKey);
       };
 
       return ws;
@@ -202,22 +202,25 @@ export default function WebSocketModule({
   };
 
   const handleDeleteSocket = () => {
-    onDelete(moduleId);
+    onDelete(moduleKey);
     handleCloseModal();
   };
 
   const handleSaveSettings = () => {
+    // Only copy relevant settings fields, do NOT include connectionState
     const updatedWebSocket = {
-      ...initialProps,
+      // Only keep the fields that are actual settings
+      type: initialProps.type,
+      key: initialProps.key,
       url: websocketSettingsData.url,
       name: websocketSettingsData.name,
       payload: websocketSettingsData.payload,
       fontSize: Number(websocketSettingsData.fontSize),
       enableSending: websocketSettingsData.enableSending,
-      // Don't save connection state - let the module manage it independently
+      // Do NOT include connectionState or other runtime state
     };
 
-    onUpdate(moduleId, updatedWebSocket);
+    onUpdate(moduleKey, updatedWebSocket);
     handleCloseModal();
   };
 
@@ -231,7 +234,7 @@ export default function WebSocketModule({
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
-      connectionManager.delete(moduleId);
+      connectionManager.delete(moduleKey);
       // Immediately update the connection status manually
       updateConnectionState("disconnected");
     } else {

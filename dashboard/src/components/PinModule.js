@@ -37,8 +37,8 @@ export default function PinModule({
   const [sliderMax, setSliderMax] = useState(initialProps.dutyMax || dutyMax);
   const [duty, setDuty] = useState(initialProps.duty || 0);
 
-  // Use module ID for updates
-  const moduleId = initialProps.id;
+  // Use module key for updates
+  const moduleKey = initialProps.key;
 
   const updatePinState = (newState, deletePin) => {
     // Use the new state if provided, otherwise use current state
@@ -110,9 +110,9 @@ export default function PinModule({
         .then((data) => {
           // Only update local state after successful API call
           if (deletePin) {
-            onDelete(moduleId);
+            onDelete(moduleKey);
           } else {
-            onUpdate(moduleId, newPinState);
+            onUpdate(moduleKey, newPinState);
           }
         })
         .catch((error) => {
@@ -125,9 +125,9 @@ export default function PinModule({
     } else {
       // Update local state only for configuration changes
       if (deletePin) {
-        onDelete(moduleId);
+        onDelete(moduleKey);
       } else {
-        onUpdate(moduleId, newPinState);
+        onUpdate(moduleKey, newPinState);
       }
     }
   };
@@ -197,7 +197,7 @@ export default function PinModule({
     }
 
     // Update local state only - no remote API calls for settings
-    onUpdate(moduleId, tempPinState);
+    onUpdate(moduleKey, tempPinState);
 
     setSliderMin(pinSettingsData.dutyMin);
     setSliderMax(pinSettingsData.dutyMax);

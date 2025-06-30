@@ -69,7 +69,7 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <WebSocketModule
-        index={module.id}
+        index={module.key}
         initialProps={module}
         onUpdate={onUpdate}
         onDelete={onDelete}
@@ -171,7 +171,7 @@ export default function Modules({ config, saveConfig }) {
       if (config.modules && Array.isArray(config.modules)) {
         modulesArray = config.modules.map((mod, idx) => ({
           ...mod,
-          key: mod.key ?? mod.number ?? mod.id ?? `module-${idx}-${Date.now()}`,
+          key: typeof mod.key === "number" ? mod.key : idx,
         }));
       } else {
         // Convert old separate format to new unified format
@@ -263,18 +263,9 @@ export default function Modules({ config, saveConfig }) {
 
     setModules(updatedModules);
 
-    // Only save to global config for non-state changes (settings, etc.)
-    const targetModule = modules.find((module) => module.key === moduleKey);
-    const isStateOnlyChange =
-      targetModule &&
-      (moduleState.state !== undefined ||
-        moduleState.duty !== undefined ||
-        moduleState.connectionState !== undefined);
-
-    if (!isStateOnlyChange) {
-      const updatedConfig = { ...config, modules: updatedModules };
-      saveConfig(updatedConfig);
-    }
+    // Always update the global config with the updated modules
+    const updatedConfig = { ...config, modules: updatedModules };
+    saveConfig(updatedConfig);
   };
 
   const deleteModule = (moduleKey) => {

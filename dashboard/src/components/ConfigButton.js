@@ -4,11 +4,13 @@ import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import SaveIcon from "@mui/icons-material/Save";
 import SaveAsIcon from "@mui/icons-material/SaveAs";
+import EditIcon from "@mui/icons-material/Edit"; // Correct the import to use the existing Edit icon
 
 export default function ConfigButton({ config, saveConfig }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [jsonConfig, setJsonConfig] = useState("");
   const [jsonError, setJsonError] = useState("");
+  const [isEditable, setIsEditable] = useState(false); // State to control editability
 
   const handleOpenModal = () => {
     // Format the config as pretty JSON when opening the modal
@@ -49,6 +51,10 @@ export default function ConfigButton({ config, saveConfig }) {
     }
   };
 
+  const toggleEditability = () => {
+    setIsEditable((prev) => !prev);
+  };
+
   return (
     <>
       <Tooltip title="Configuration">
@@ -75,11 +81,16 @@ export default function ConfigButton({ config, saveConfig }) {
         actions={
           <>
             <IButton
+              color={isEditable ? "secondary" : "default"}
+              Icon={EditIcon} // Use the corrected Edit icon
+              onClick={toggleEditability}
+              tooltip={isEditable ? "Disable Editing" : "Enable Editing"}
+            />
+            <IButton
               color="primary"
               Icon={SaveIcon}
               onClick={handleSave}
               tooltip="Save Configuration to Device"
-              disabled={!!jsonError}
             />
           </>
         }
@@ -98,6 +109,7 @@ export default function ConfigButton({ config, saveConfig }) {
           multiline
           rows={20}
           error={!!jsonError}
+          disabled={!isEditable} // Disable editing if not editable
           sx={{
             marginTop: 2,
             "& .MuiInputBase-input": {

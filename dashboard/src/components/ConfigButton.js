@@ -81,16 +81,16 @@ export default function ConfigButton({ config, saveConfig }) {
         actions={
           <>
             <IButton
-              color={isEditable ? "secondary" : "default"}
-              Icon={EditIcon} // Use the corrected Edit icon
-              onClick={toggleEditability}
-              tooltip={isEditable ? "Disable Editing" : "Enable Editing"}
-            />
-            <IButton
               color="primary"
               Icon={SaveIcon}
               onClick={handleSave}
               tooltip="Save Configuration to Device"
+            />
+            <IButton
+              color={isEditable ? "secondary" : "default"}
+              Icon={EditIcon} // Use the corrected Edit icon
+              onClick={toggleEditability}
+              tooltip={isEditable ? "Disable Editing" : "Enable Editing"}
             />
           </>
         }

@@ -2,46 +2,40 @@
     "mode": "client",
     "mdns": "ESPWiFi",
     "client": {
-        "ssid": "YOUR_SSID",
-        "password": "YOUR_PASSWORD"
+        "ssid": "YOUR_WIFI_SSID",
+        "password": "YOUR_WIFI_PASSWORD"
     },
-    "accessPoint": {
+    "ap": {
         "ssid": "ESPWiFi-AP",
         "password": "abcd1234"
     },
     "power": {
-        "mode": "fast",
-        "wifiSleep": false,
-        "cpuFreq": 240
+        "mode": "full",
+        "wifiSleep": false
     },
     "modules": [
         {
             "type": "pin",
-            "name": "Cam Light",
-            "number": 4,
+            "number": 10,
+            "state": "low",
+            "name": "Light",
             "mode": "pwm",
             "inverted": false,
-            "remoteURL": "cam.local",
-            "state": "low",
-            "duty": 63
+            "remoteURL": "",
+            "dutyMin": 0,
+            "dutyMax": 255,
+            "key": 0,
+            "duty": 16
         },
         {
             "type": "webSocket",
-            "url": "/rssi",
-            "name": "WiFi RSSI",
+            "url": "espwifi.local/rssi",
+            "name": "RSSI",
             "payload": "text",
-            "fontSize": 14,
+            "fontSize": 66,
             "enableSending": false,
-            "connectionState": "disconnected"
-        },
-        {
-            "type": "pin",
-            "name": "ESPWiFi Light",
-            "number": 10,
-            "mode": "out",
-            "inverted": false,
-            "remoteURL": "",
-            "state": "low"
+            "connectionState": "disconnected",
+            "key": 1
         }
     ]
 }

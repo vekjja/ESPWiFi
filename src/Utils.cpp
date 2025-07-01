@@ -46,6 +46,10 @@ String ESPWiFi::getContentType(String filename) {
     return "application/x-gzip";
   else if (filename.endsWith(".mp3"))
     return "audio/mpeg";
+  else if (filename.endsWith(".wav"))
+    return "audio/wav";
+  else if (filename.endsWith(".json"))
+    return "application/json";
   // Add more MIME types here as needed
   return "text/plain";
 }
@@ -67,4 +71,4 @@ String ESPWiFi::bytesToHumanReadable(size_t bytes) {
   }
 }
 
-#endif // ESPWIFI_UTILS
+#endif  // ESPWIFI_UTILS

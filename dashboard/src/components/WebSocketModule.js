@@ -84,6 +84,13 @@ export default function WebSocketModule({
   const updateConnectionState = (newStatus) => {
     if (newStatus !== connectionStatus) {
       setConnectionStatus(newStatus);
+
+      // Save the updated connection state
+      const updatedWebSocket = {
+        ...websocketSettingsData,
+        connectionState: newStatus,
+      };
+      onUpdate(moduleKey, updatedWebSocket);
     }
   };
 
@@ -207,9 +214,8 @@ export default function WebSocketModule({
   };
 
   const handleSaveSettings = () => {
-    // Only copy relevant settings fields, do NOT include connectionState
+    // Include connectionState when saving settings
     const updatedWebSocket = {
-      // Only keep the fields that are actual settings
       type: initialProps.type,
       key: initialProps.key,
       url: websocketSettingsData.url,
@@ -217,7 +223,7 @@ export default function WebSocketModule({
       payload: websocketSettingsData.payload,
       fontSize: Number(websocketSettingsData.fontSize),
       enableSending: websocketSettingsData.enableSending,
-      // Do NOT include connectionState or other runtime state
+      connectionState: connectionStatus, // Save the current connection state
     };
 
     onUpdate(moduleKey, updatedWebSocket);

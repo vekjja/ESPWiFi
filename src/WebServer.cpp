@@ -46,7 +46,7 @@ void ESPWiFi::startWebServer() {
     jsonDoc["mac"] = WiFi.macAddress();
     jsonDoc["ap_ssid"] = WiFi.softAPSSID();
     if (WiFi.isConnected()) {
-      jsonDoc["ssid"] = WiFi.SSID();
+      jsonDoc["client_ssid"] = WiFi.SSID();
       jsonDoc["rssi"] = WiFi.RSSI();
     }
     jsonDoc["hostname"] = WiFi.getHostname();

@@ -12,18 +12,19 @@ void setup() {
   device.startCamera();
 #endif
   device.startWebServer();
+  device.applyPowerSettings();
 }
 
 void loop() {
   yield();
 
-  device.streamRssi();
+  device.streamRSSI();
 
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();
 #endif
 
 #ifdef ESP8266
-  device.mDSNUpdate();
+  device.updateMDNS();
 #endif
 }

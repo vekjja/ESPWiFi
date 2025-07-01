@@ -17,10 +17,10 @@ void ESPWiFi::applyPowerSettings() {
     if (modeStr == "full" || modeStr == "balanced" || modeStr == "saving") {
       powerMode = modeStr;
     } else {
-      log("⚠️  Invalid power mode config value, defaulting to full");
+      logError("Invalid power mode config value, defaulting to full");
     }
   } else {
-    log("⚠️  Missing or invalid power mode config, defaulting to full");
+    logError("Missing or invalid power mode config, defaulting to full");
   }
 
   // Validate wifiSleep configuration
@@ -39,12 +39,11 @@ void ESPWiFi::applyPowerSettings() {
   } else {
     // Default to false if invalid or missing
     wifiSleep = false;
-    log("⚠️  Invalid wifiSleep config value, defaulting to false");
+    logError("Invalid wifiSleep config value, defaulting to false");
   }
 
   log("⚡️ Applying Power Settings:");
   logf("\tMode: %s\n", powerMode.c_str());
-  logf("\tWiFi Sleep: %s\n", wifiSleep ? "Enabled" : "Disabled");
 
   if (powerMode == "full") {
 #ifdef ESP32
@@ -56,6 +55,7 @@ void ESPWiFi::applyPowerSettings() {
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
 #endif
   }
+  logf("\t");
   WiFi.setSleep(wifiSleep);
 }
 

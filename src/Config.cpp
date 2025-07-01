@@ -7,13 +7,13 @@ void ESPWiFi::saveConfig() {
   startLittleFS();
   File file = LittleFS.open(configFile, "w");
   if (!file) {
-    log("❌  Failed to open config file for writing");
+    logError(" Failed to open config file for writing");
     return;
   }
   size_t written = serializeJson(config, file);
   file.close();
   if (written == 0) {
-    log("❌  Failed to write config JSON to file");
+    logError(" Failed to write config JSON to file");
     return;
   }
   log("💾 Config Saved: " + configFile);
@@ -22,27 +22,35 @@ void ESPWiFi::saveConfig() {
 }
 
 void ESPWiFi::readConfig() {
+  if (config["mdns"].is<String>()) {
+    return;
+  }
+
   startLittleFS();
-  log("⚙️  Reading Config: " + configFile);
+  log("⚙️  Loading Config File: " + configFile);
   File file = LittleFS.open(configFile, "r");
   if (!file) {
-    log("⚠️  Failed to open config file");
+    logError("Failed to open config file");
     defaultConfig();
     return;
   }
 
   DeserializationError error = deserializeJson(config, file);
   if (error) {
-    log("⚠️  Failed to read config file: " + String(error.c_str()));
+    logError("Failed to read config file: " + String(error.c_str()));
     defaultConfig();
     file.close();
     return;
   }
 
+  printConfig();
+  file.close();
+}
+
+void ESPWiFi::printConfig() {
+  log("📜 Current Config:");
   serializeJsonPretty(config, Serial);
   log("\n");
-
-  file.close();
 }
 
 void ESPWiFi::defaultConfig() {

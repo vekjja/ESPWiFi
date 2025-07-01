@@ -25,7 +25,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
   const size_t MIN_FREE_SPACE = 102400;
 
   if (freeBytes < MIN_FREE_SPACE) {
-    log("⚠️  Low filesystem space detected:");
+    logError("Low filesystem space detected:");
     logf("\tFree space: %s", bytesToHumanReadable(freeBytes).c_str());
     logf("\tMinimum required: %s",
          bytesToHumanReadable(MIN_FREE_SPACE).c_str());
@@ -39,7 +39,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
     if (LittleFS.remove(logFile)) {
       log("🗑️  Log file deleted to free up space");
     } else {
-      log("❌  Failed to delete log file");
+      logError("Failed to delete log file");
     }
 
     // Reopen log file for new entries
@@ -54,7 +54,7 @@ void ESPWiFi::writeLog(String message) {
   if (logFileHandle) {
     checkAndCleanupLogFile();
     logFileHandle.print(message);
-    logFileHandle.flush(); // Ensure data is written immediately
+    logFileHandle.flush();  // Ensure data is written immediately
   } else {
     startLittleFS();
     logFileHandle = LittleFS.open(logFile, "a");
@@ -62,9 +62,14 @@ void ESPWiFi::writeLog(String message) {
   }
 }
 
+void ESPWiFi::logError(String message) {
+  String errMsg = "❌ Error: " + message;
+  log(errMsg);
+}
+
 void ESPWiFi::log(String message) {
   Serial.println(message);
-  Serial.flush(); // Ensure immediate output
+  Serial.flush();  // Ensure immediate output
   writeLog(message + "\n");
 }
 
@@ -87,4 +92,4 @@ void ESPWiFi::closeLog() {
   }
 }
 
-#endif // ESPWIFI_LOG
+#endif  // ESPWIFI_LOG

@@ -116,7 +116,7 @@ void ESPWiFi::startWebServer() {
               400, "application/json", "{\"error\":\"EmptyInput\"}");
           addCORS(response);
           request->send(response);
-          log("❌ /config HTTP_POST Error parsing JSON: EmptyInput");
+          logError("/config HTTP_POST Error parsing JSON: EmptyInput");
           return;
         }
 

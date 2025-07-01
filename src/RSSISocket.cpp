@@ -1,26 +1,29 @@
 #ifndef ESPWIFI_RSSI_SOCKET
 #define ESPWIFI_RSSI_SOCKET
 
-#include "ESPWiFi.h"
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
-static IntervalTimer rssiSocTimer(1000);
-static WebSocket *rssiWebSocket = nullptr;
+#include "ESPWiFi.h"
 
 // Method to send RSSI data (can be called from anywhere)
-void ESPWiFi::streamRssi() {
+void ESPWiFi::streamRSSI() {
+  static WebSocket *rssiWebSocket = nullptr;
+  static IntervalTimer *rssiTimer = nullptr;
+
   if (!rssiWebSocket) {
     rssiWebSocket = new WebSocket("/rssi", this);
-  } else {
-    if (rssiSocTimer.shouldRun()) {
-      // Static buffer to avoid repeated allocations
+  }
+
+  if (!rssiTimer) {
+    rssiTimer = new IntervalTimer(1000, [this]() {
       static char rssiBuffer[16];
       int rssi = WiFi.RSSI() | 0;
       snprintf(rssiBuffer, sizeof(rssiBuffer), "%d", rssi);
       rssiWebSocket->textAll(String(rssiBuffer));
-    }
+    });
   }
+  rssiTimer->run();
 }
 
-#endif // ESPWIFI_RSSI_SOCKET
+#endif  // ESPWIFI_RSSI_SOCKET

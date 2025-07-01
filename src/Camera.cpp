@@ -3,10 +3,10 @@
 #ifndef ESPWIFI_CAMERA
 #define ESPWIFI_CAMERA
 
-#include "ESPWiFi.h"
-#include "base64.h"
 #include <WebSocket.h>
 
+#include "ESPWiFi.h"
+#include "base64.h"
 #include "esp_camera.h"
 
 #define CAM_LED_PIN 4
@@ -14,11 +14,11 @@
 WebSocket *camSoc = nullptr;
 String camSocPath = "/camera";
 
-void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
-                          AwsEventType type, void *arg, uint8_t *data,
-                          size_t len, ESPWiFi *espWifi) {
+void cameraWebSocketEventHandler(AsyncWebSocket *server,
+                                 AsyncWebSocketClient *client,
+                                 AwsEventType type, void *arg, uint8_t *data,
+                                 size_t len, ESPWiFi *espWifi) {
   if (type == WS_EVT_DATA) {
-
     espWifi->log("🔌 WebSocket Data Received: 📨");
     espWifi->logf("\tClient ID: %d\n", client->id());
     espWifi->logf("\tData Length: %d bytes\n", len);
@@ -26,7 +26,7 @@ void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 
     // Convert received data to string
     String receivedData = String((char *)data, len);
-    receivedData.trim(); // Remove any whitespace
+    receivedData.trim();  // Remove any whitespace
 
     // Check if the text matches "light:on"
     if (receivedData == "light:on") {
@@ -43,7 +43,6 @@ void cameraWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 }
 
 void ESPWiFi::startCamera() {
-
   camera_config_t camConfig;
   camConfig.ledc_channel = LEDC_CHANNEL_0;
   camConfig.ledc_timer = LEDC_TIMER_0;
@@ -65,14 +64,14 @@ void ESPWiFi::startCamera() {
   camConfig.pin_reset = -1;
   camConfig.xclk_freq_hz = 20000000;
   camConfig.pixel_format = PIXFORMAT_JPEG;
-  camConfig.frame_size = FRAMESIZE_SVGA; // SVGA (800x600) is a good balance
-                                         // between quality and performance
+  camConfig.frame_size = FRAMESIZE_SVGA;  // SVGA (800x600) is a good balance
+                                          // between quality and performance
   camConfig.jpeg_quality = 30;
   camConfig.fb_count = 2;
 
   esp_err_t err = esp_camera_init(&camConfig);
   if (err != ESP_OK) {
-    logf("❌ Camera Init Failed: Error 0x%x\n", err);
+    logf("❤️‍🩹 Camera Init Failed: Error 0x%x\n", err);
     return;
   }
 
@@ -124,16 +123,14 @@ void ESPWiFi::startCamera() {
 
               if (fb == nullptr) {
                 fb = esp_camera_fb_get();
-                if (!fb)
-                  return 0;
+                if (!fb) return 0;
                 head = "--frame\r\nContent-Type: image/jpeg\r\n\r\n";
                 sent = 0;
                 totalLen = head.length() + fb->len + tail.length();
               }
 
               size_t toSend = totalLen - sent;
-              if (toSend > maxLen)
-                toSend = maxLen;
+              if (toSend > maxLen) toSend = maxLen;
 
               size_t bufPos = 0;
               size_t remain = toSend;
@@ -146,8 +143,7 @@ void ESPWiFi::startCamera() {
                 bufPos += copyLen;
                 sent += copyLen;
                 remain -= copyLen;
-                if (remain == 0)
-                  return bufPos;
+                if (remain == 0) return bufPos;
               }
 
               // Send JPEG
@@ -160,8 +156,7 @@ void ESPWiFi::startCamera() {
                 bufPos += copyLen;
                 sent += copyLen;
                 remain -= copyLen;
-                if (remain == 0)
-                  return bufPos;
+                if (remain == 0) return bufPos;
               }
 
               // Send tail
@@ -182,7 +177,7 @@ void ESPWiFi::startCamera() {
                 esp_camera_fb_return(fb);
                 fb = nullptr;
                 sent = 0;
-                delay(100); // ~10 fps
+                delay(100);  // ~10 fps
               }
               return bufPos;
             });
@@ -232,10 +227,10 @@ void ESPWiFi::startCamera() {
 
   logf("📷 Camera Started\n");
 
-  camSoc = new WebSocket(camSocPath, this, cameraWebSocketEvent);
+  camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
 
   if (!camSoc) {
-    log("❌ Failed to create Camera WebSocket");
+    logError(" Failed to create Camera WebSocket");
     return;
   }
 }
@@ -243,12 +238,12 @@ void ESPWiFi::startCamera() {
 void ESPWiFi::takeSnapshot(String filePath) {
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    log("❌ Camera Capture Failed");
+    logError(" Camera Capture Failed");
     return;
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
-    log("❌ Unsupported Pixel Format");
+    logError("Unsupported Pixel Format");
     esp_camera_fb_return(fb);
     return;
   }
@@ -256,11 +251,11 @@ void ESPWiFi::takeSnapshot(String filePath) {
   // save the image LittleFS
   File file = LittleFS.open(filePath, "w");
   if (!file) {
-    log("❌ Failed to open file for writing");
+    logError("Failed to open file for writing");
   } else {
     size_t written = file.write(fb->buf, fb->len);
     if (written != fb->len) {
-      log("❌ Failed to write complete image to file");
+      logError("Failed to write complete image to file");
     } else {
       log("📸 Snapshot Saved: " + filePath);
     }
@@ -271,26 +266,25 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!camSoc)
-    return; // Ensure WebSocket and clients exist
+  if (!camSoc) return;  // Ensure WebSocket and clients exist
 
-  static unsigned long lastFrame = 0;
-  unsigned long now = millis();
-  unsigned long interval = frameRate > 0
-                               ? (1000 / frameRate)
-                               : 500; // Default to 2 fps if frameRate is 0
-  if (now - lastFrame < interval)
+  unsigned long interval =
+      frameRate > 0 ? (1000 / frameRate)
+                    : 500;  // Default to 500ms if frameRate is 0 or negative
+
+  static IntervalTimer timer(1000);
+  if (!timer.shouldRun(interval)) {
     return;
-  lastFrame = now;
+  }
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    log("❌ Camera Capture Failed");
+    logError("Camera Capture Failed");
     return;
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
-    log("❌ Unsupported Pixel Format");
+    logError("Unsupported Pixel Format");
     esp_camera_fb_return(fb);
     return;
   }
@@ -299,12 +293,12 @@ void ESPWiFi::streamCamera(int frameRate) {
   if (fb->buf && fb->len > 0) {
     camSoc->binaryAll((const char *)fb->buf, fb->len);
   } else {
-    log("❌ Invalid camera buffer");
+    logError("Invalid camera buffer");
   }
 
   esp_camera_fb_return(fb);
-  delay(200); // Add delay to prevent queue overflow
+  delay(200);  // Add delay to prevent queue overflow
 }
 
-#endif // ESPWIFI_CAMERA
-#endif // ESPWiFi_CAMERA_ENABLED
+#endif  // ESPWIFI_CAMERA
+#endif  // ESPWiFi_CAMERA_ENABLED

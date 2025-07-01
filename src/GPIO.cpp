@@ -3,9 +3,9 @@
 
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
+#include <WebSocket.h>
 
 #include "ESPWiFi.h"
-#include <WebSocket.h>
 
 WebSocket *gpioSoc;
 String gpioSocPath = "/gpio/ws";
@@ -14,7 +14,6 @@ void gpioWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
                         AwsEventType type, void *arg, uint8_t *data, size_t len,
                         ESPWiFi *espWifi) {
   if (type == WS_EVT_DATA) {
-
     // Convert received data to string
     String receivedData;
     if (len > 0 && data) {
@@ -24,7 +23,7 @@ void gpioWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
       receivedData = String(buf);
       delete[] buf;
     }
-    receivedData.trim(); // Remove any whitespace
+    receivedData.trim();  // Remove any whitespace
 
     espWifi->log("📍 GPIO WS Data Received: 📨");
     espWifi->logf("\tClient ID: %d\n", client->id());
@@ -35,7 +34,7 @@ void gpioWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 void ESPWiFi::startGPIOWebSocket() {
   gpioSoc = new WebSocket(gpioSocPath, this, gpioWebSocketEvent);
   if (!gpioSoc) {
-    log("❌ Failed to create GPIO WebSocket");
+    logError("Failed to create GPIO WebSocket");
     return;
   }
 }
@@ -125,4 +124,4 @@ void ESPWiFi::startGPIO() {
   log("\tPOST /gpio");
 }
 
-#endif // ESPWIFI_GPIO
+#endif  // ESPWIFI_GPIO

@@ -21,14 +21,14 @@
 class WebSocket;
 
 class ESPWiFi {
-public:
+ public:
   JsonDocument config;
   String logFile = "/log.txt";
   bool loggingEnabled = false;
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
 
-  int connectTimeout = 15000; // 15 seconds
+  int connectTimeout = 15000;  // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {
@@ -37,7 +37,7 @@ public:
     }
     Serial.begin(baudRate);
     Serial.setDebugOutput(true);
-    delay(999); // wait for serial to start
+    delay(999);  // wait for serial to start
     logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
   }
 
@@ -48,7 +48,7 @@ public:
       return;
     }
     if (!LittleFS.begin()) {
-      log("❌  Failed to mount LittleFS");
+      logError("  Failed to mount LittleFS");
       return;
     }
     fsMounted = true;
@@ -87,16 +87,25 @@ public:
   void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);
+
+  void logError(String message);
+  void logError(IPAddress ip) { logError(ip.toString()); }
+  template <typename T>
+  void logError(T value) {
+    logError(String(value));
+  };
+
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T> void log(T value) {
-    String valueString = String(value);
-    log(valueString);
-  }
+  template <typename T>
+  void log(T value) {
+    log(String(value));
+  };
 
   // Config
   void saveConfig();
   void readConfig();
+  void printConfig();
   void defaultConfig();
 
   // WiFi
@@ -108,7 +117,7 @@ public:
   // mDNS
   void startMDNS();
 #ifdef ESP8266
-  void mDSNUpdate();
+  void updateMDNS();
 #endif
 
   // Web Server
@@ -128,7 +137,7 @@ public:
 #endif
 
   // RSSI
-  void streamRssi();
+  void streamRSSI();
   WebSocket *rssiWebSocket = nullptr;
 
   // Utils
@@ -138,8 +147,8 @@ public:
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
-private:
+ private:
   void handleCorsPreflight(AsyncWebServerRequest *request);
 };
 
-#endif // ESPWiFi
+#endif  // ESPWiFi

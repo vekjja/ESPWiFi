@@ -1,15 +1,16 @@
 #ifndef WEBSOCKET_H
 #define WEBSOCKET_H
 
-#include "ESPWiFi.h"
 #include <algorithm>
 #include <list>
 
-class WebSocket {
-private:
-  ESPWiFi *espWifi = nullptr; // Store ESPWiFi instance
+#include "ESPWiFi.h"
 
-public:
+class WebSocket {
+ private:
+  ESPWiFi *espWifi = nullptr;  // Store ESPWiFi instance
+
+ public:
   AsyncWebSocket *socket = nullptr;
 
   WebSocket() {}
@@ -18,13 +19,13 @@ public:
             void (*onWsEvent)(AsyncWebSocket *, AsyncWebSocketClient *,
                               AwsEventType, void *, uint8_t *, size_t,
                               ESPWiFi *espWifi) = nullptr) {
-    this->espWifi = espWifi; // Store the ESPWiFi instance
+    this->espWifi = espWifi;  // Store the ESPWiFi instance
 
     // Create WebSocket with error handling
     socket = new AsyncWebSocket(path.c_str());
     if (!socket) {
       if (espWifi) {
-        espWifi->log("❌ Failed to create WebSocket");
+        espWifi->logError(" Failed to create WebSocket");
       }
       return;
     }
@@ -34,7 +35,7 @@ public:
                                                AwsEventType type, void *arg,
                                                uint8_t *data, size_t len) {
       if (!espWifi || !client)
-        return; // Early return if no ESPWiFi instance or invalid client
+        return;  // Early return if no ESPWiFi instance or invalid client
 
       if (type == WS_EVT_CONNECT) {
         espWifi->logf("🔌 WebSocket Client Connected: 🔗\n");
@@ -52,8 +53,7 @@ public:
         espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
       }
 
-      if (onWsEvent)
-        onWsEvent(server, client, type, arg, data, len, espWifi);
+      if (onWsEvent) onWsEvent(server, client, type, arg, data, len, espWifi);
     });
 
     if (espWifi) {

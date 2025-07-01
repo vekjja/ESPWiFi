@@ -64,8 +64,8 @@ void ESPWiFi::startWebServer() {
     size_t totalBytes = fs_info.totalBytes;
     size_t usedBytes = fs_info.usedBytes;
 #elif defined(ESP32)
-    size_t totalBytes = LittleFSFS.totalBytes();
-    size_t usedBytes = LittleFSFS.usedBytes();
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
 #endif
     jsonDoc["littlefs_free"] = totalBytes - usedBytes;
     jsonDoc["littlefs_used"] = usedBytes;
@@ -147,7 +147,7 @@ void ESPWiFi::startWebServer() {
     request->send(response);
     delay(1000);
     log("🔄 Restarting...");
-    delay(1000); // Give time for response to send
+    delay(1000);  // Give time for response to send
     ESP.restart();
   });
 
@@ -170,8 +170,7 @@ void ESPWiFi::startWebServer() {
     String path = "/";
     if (request->hasParam("dir")) {
       path = request->getParam("dir")->value();
-      if (!path.startsWith("/"))
-        path = "/" + path;
+      if (!path.startsWith("/")) path = "/" + path;
     }
     File root = LittleFS.open(path, "r");
     if (!root || !root.isDirectory()) {
@@ -203,31 +202,25 @@ void ESPWiFi::startWebServer() {
       String displayName = fname;
       if (fname.startsWith(path) && path != "/") {
         displayName = fname.substring(path.length());
-        if (displayName.startsWith("/"))
-          displayName = displayName.substring(1);
+        if (displayName.startsWith("/")) displayName = displayName.substring(1);
       }
-      if (displayName == "")
-        displayName = fname;
+      if (displayName == "") displayName = fname;
       if (file.isDirectory()) {
         // Build subdirectory path for query string
         String subdirPath = path;
-        if (!subdirPath.endsWith("/"))
-          subdirPath += "/";
+        if (!subdirPath.endsWith("/")) subdirPath += "/";
         subdirPath += displayName;
         // Remove leading slash for query string
-        if (subdirPath.startsWith("/"))
-          subdirPath = subdirPath.substring(1);
+        if (subdirPath.startsWith("/")) subdirPath = subdirPath.substring(1);
         html += "<li class='folder'>📁 <a href='/files?dir=" + subdirPath +
                 "'>" + displayName + "/</a></li>";
       } else {
         // Build file path for link
         String filePath = path;
-        if (!filePath.endsWith("/"))
-          filePath += "/";
+        if (!filePath.endsWith("/")) filePath += "/";
         filePath += displayName;
         // Ensure single leading slash
-        if (!filePath.startsWith("/"))
-          filePath = "/" + filePath;
+        if (!filePath.startsWith("/")) filePath = "/" + filePath;
         html += "<li class='file'>📄 <a href='" + filePath +
                 "' target='_blank'>" + displayName + "</a></li>";
       }

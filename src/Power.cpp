@@ -10,7 +10,7 @@
 
 void ESPWiFi::applyPowerSettings() {
   // Validate power mode configuration
-  String powerMode = "fast"; // Default value
+  String powerMode = "fast";  // Default value
   if (config["power"]["mode"].is<String>()) {
     String modeStr = config["power"]["mode"].as<String>();
     modeStr.toLowerCase();
@@ -48,7 +48,8 @@ void ESPWiFi::applyPowerSettings() {
 
   if (powerMode == "full") {
 #ifdef ESP32
-    WiFi.setTxPower(WIFI_POWER_8_5dBm); // Maximum power for fastest performance
+    WiFi.setTxPower(
+        WIFI_POWER_8_5dBm);  // Maximum power for fastest performance
 #endif
   } else if (powerMode == "saving") {
 #ifdef ESP32
@@ -58,4 +59,4 @@ void ESPWiFi::applyPowerSettings() {
   WiFi.setSleep(wifiSleep);
 }
 
-#endif // ESPWIFI_POWER
+#endif  // ESPWIFI_POWER

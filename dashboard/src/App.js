@@ -107,7 +107,7 @@ function App() {
   const updateLocalConfig = (newConfig) => {
     const configWithAPI = { ...newConfig, apiURL };
     setLocalConfig(configWithAPI);
-    console.log("Local config updated:", configWithAPI);
+    // console.log("Local config updated:", configWithAPI);
   };
 
   // Save config from ConfigButton (updates local config and saves to device)

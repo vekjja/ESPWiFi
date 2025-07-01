@@ -4,7 +4,6 @@ import IButton from "./IButton";
 
 const OkayButton = ({ onClick, tooltip }) => {
   const handleClick = () => {
-    console.log("SaveButton clicked");
     if (onClick) {
       onClick();
     }

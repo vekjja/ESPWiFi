@@ -22,14 +22,14 @@
 class WebSocket;
 
 class ESPWiFi {
- public:
+public:
   JsonDocument config;
   String logFile = "/log.txt";
   bool loggingEnabled = false;
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
 
-  int connectTimeout = 15000;  // 15 seconds
+  int connectTimeout = 15000; // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
   void startSerial(int baudRate = 115200) {
@@ -38,7 +38,7 @@ class ESPWiFi {
     }
     Serial.begin(baudRate);
     Serial.setDebugOutput(true);
-    delay(999);  // wait for serial to start
+    delay(999); // wait for serial to start
     logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
   }
 
@@ -91,17 +91,11 @@ class ESPWiFi {
 
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }
-  template <typename T>
-  void logError(T value) {
-    logError(String(value));
-  };
+  template <typename T> void logError(T value) { logError(String(value)); };
 
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T>
-  void log(T value) {
-    log(String(value));
-  };
+  template <typename T> void log(T value) { log(String(value)); };
 
   // Config
   void saveConfig();
@@ -160,4 +154,4 @@ class ESPWiFi {
                      std::function<void()> functionToRun);
 };
 
-#endif  // ESPWiFi
+#endif // ESPWiFi

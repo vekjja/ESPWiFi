@@ -33,11 +33,11 @@ void ESPWiFi::startLEDMatrix() {
 }
 
 uint16_t XY(uint8_t x, uint8_t y) {
-  y = LED_HEIGHT - 1 - y;  // Adjust for orientation
+  y = LED_HEIGHT - 1 - y; // Adjust for orientation
   if (x % 2 == 0) {
-    return x * LED_HEIGHT + y;  // Even columns top to bottom
+    return x * LED_HEIGHT + y; // Even columns top to bottom
   } else {
-    return x * LED_HEIGHT + (LED_HEIGHT - 1 - y);  // Odd columns bottom to top
+    return x * LED_HEIGHT + (LED_HEIGHT - 1 - y); // Odd columns bottom to top
   }
 }
 
@@ -66,7 +66,7 @@ void testMatrix() {
     for (int y = 0; y < LED_HEIGHT; y++) {
       drawPixel(x, y, testColor);
       FastLED.show();
-      delay(10);
+      // delay(10);
       drawPixel(x, y, CRGB::Black);
     }
   }
@@ -74,27 +74,27 @@ void testMatrix() {
   int del = 100;
   // Test specific positions
   FastLED.clear();
-  drawPixel(0, 0, testColor);  // Bottom left
+  drawPixel(0, 0, testColor); // Bottom left
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(0, LED_HEIGHT - 1, testColor);  // Top left
+  drawPixel(0, LED_HEIGHT - 1, testColor); // Top left
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH - 1, LED_HEIGHT - 1, testColor);  // Top right
+  drawPixel(LED_WIDTH - 1, LED_HEIGHT - 1, testColor); // Top right
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH - 1, 0, testColor);  // Bottom right
+  drawPixel(LED_WIDTH - 1, 0, testColor); // Bottom right
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH / 2, LED_HEIGHT / 2, testColor);  // Center
+  drawPixel(LED_WIDTH / 2, LED_HEIGHT / 2, testColor); // Center
   FastLED.show();
   delay(del);
 
@@ -102,4 +102,4 @@ void testMatrix() {
   FastLED.show();
 }
 
-#endif  // LITBOX_LED_MATRIX_H
+#endif // LITBOX_LED_MATRIX_H

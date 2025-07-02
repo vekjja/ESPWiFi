@@ -135,6 +135,9 @@ public:
   // LED Matrix
   void startLEDMatrix();
 
+  // Spectral Analyzer
+  void startSpectralAnalyzer();
+
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();

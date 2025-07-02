@@ -5,7 +5,8 @@
 // Helper: Add CORS headers to a response
 void ESPWiFi::addCORS(AsyncWebServerResponse *response) {
   response->addHeader("Access-Control-Allow-Origin", "*");
-  response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  response->addHeader("Access-Control-Allow-Methods",
+                      "GET, POST, OPTIONS, PUT, DELETE");
   response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -69,8 +70,12 @@ void ESPWiFi::srvConfig() {
   });
 
   webServer->on("/config", HTTP_PUT, [this](AsyncWebServerRequest *request) {
+    handleCorsPreflight(request);
     saveConfig();
-    request->send(200, "application/json", config.as<String>());
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", config.as<String>());
+    addCORS(response);
+    request->send(response);
   });
 
   webServer->addHandler(new AsyncCallbackJsonWebHandler(

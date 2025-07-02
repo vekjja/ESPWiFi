@@ -17,8 +17,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
   log("💾 Config Saved: " + configFile);
-  serializeJsonPretty(config, Serial);
-  log("\n");
+  printConfig();
 }
 
 void ESPWiFi::readConfig() {
@@ -29,6 +28,7 @@ void ESPWiFi::readConfig() {
   startLittleFS();
   log("⚙️  Config Loading:");
   logf("\tFile: %s\n", configFile.c_str());
+
   File file = LittleFS.open(configFile, "r");
   if (!file) {
     logError("Failed to open config file");
@@ -49,8 +49,9 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  log("📜 Current Config:");
-  serializeJsonPretty(config, Serial);
+  String prettyConfig;
+  serializeJsonPretty(config, prettyConfig);
+  log(prettyConfig);
   log("\n");
 }
 
@@ -71,8 +72,7 @@ void ESPWiFi::defaultConfig() {
   config["power"]["mode"] = "full";  // "full", "balanced", "saving"
   config["power"]["wifiSleep"] = false;
 
-  serializeJsonPretty(config, Serial);
-  log("\n");
+  printConfig();
 }
 
 #endif  // ESPWIFI_CONFIG

@@ -105,13 +105,12 @@ void ESPWiFi::srvConfig() {
 
 void ESPWiFi::srvRestart() {
   initWebServer();
-  // /restart endpoint
   webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
     AsyncWebServerResponse *response =
         request->beginResponse(200, "text/plain", "Restarting...");
     addCORS(response);
     request->send(response);
-    delay(1000);  // Give time for response to be sent
+    delay(1000);
     ESP.restart();
   });
 }
@@ -121,13 +120,15 @@ void ESPWiFi::srvLog() {
   // /log endpoint
   webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (LittleFS.exists(logFile)) {
-      AsyncWebServerResponse *response =
-          request->beginResponse(LittleFS, logFile, "text/plain");
+      AsyncWebServerResponse *response = request->beginResponse(
+          LittleFS, logFile,
+          "text/plain; charset=utf-8");  // Set UTF-8 encoding
       addCORS(response);
       request->send(response);
     } else {
       AsyncWebServerResponse *response =
-          request->beginResponse(404, "text/plain", "Log file not found");
+          request->beginResponse(404, "text/plain; charset=utf-8",
+                                 "Log file not found");  // Set UTF-8 encoding
       addCORS(response);
       request->send(response);
     }

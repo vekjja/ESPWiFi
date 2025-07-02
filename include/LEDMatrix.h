@@ -8,6 +8,8 @@
 // #define FASTLED_RMT5_RECYCLE 1
 // #define FASTLED_RMT_CHANNEL 1
 
+#include "ESPWiFi.h"
+
 // LED Matrix Config
 #define LED_PIN 2
 #define LED_WIDTH 32
@@ -21,13 +23,13 @@ const uint8_t minBrightness = 3;
 const uint8_t maxBrightness = 255;
 uint8_t brightness = 9;
 
-void initializeMatrix() {
+void ESPWiFi::startLEDMatrix() {
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setCorrection(TypicalLEDStrip);
   FastLED.setBrightness(brightness);
   FastLED.clear();
   FastLED.show();
-  Serial.println("🌈 LED Matrix Initialized");
+  log("🌈 LED Matrix Initialized");
 }
 
 uint16_t XY(uint8_t x, uint8_t y) {

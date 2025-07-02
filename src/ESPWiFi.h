@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
+#include <FastLED.h>
 #include <IntervalTimer.h>
 #include <LittleFS.h>
 #include <WiFiClient.h>
@@ -136,6 +137,9 @@ class ESPWiFi {
   // GPIO
   void startGPIO();
   void startGPIOWebSocket();
+
+  // LED Matrix
+  void startLEDMatrix();
 
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED

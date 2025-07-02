@@ -22,8 +22,21 @@ void ESPWiFi::initWebServer() {
 }
 
 void ESPWiFi::startWebServer() {
+  static bool webServerStarted = false;
+  if (webServerStarted) {
+    return;
+  }
   initWebServer();
-  // Serve the root file
+  webServer->begin();
+  webServerStarted = true;
+  log("🗄️  HTTP Web Server Started:");
+  logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
+  logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
+}
+
+void ESPWiFi::srvRoot() {
+  initWebServer();
+  // Serve index.html at root
   webServer->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (LittleFS.exists("/index.html")) {
       AsyncWebServerResponse *response =
@@ -37,7 +50,87 @@ void ESPWiFi::startWebServer() {
       request->send(response);
     }
   });
+}
 
+void ESPWiFi::srvConfig() {
+  initWebServer();
+  // /config endpoint
+  webServer->on(
+      "/config", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String responseStr;
+    serializeJson(config, responseStr);
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", responseStr);
+    addCORS(response);
+    request->send(response);
+  });
+
+  webServer->on("/config", HTTP_PUT, [this](AsyncWebServerRequest *request) {
+    saveConfig();
+    request->send(200, "application/json", config.as<String>());
+  });
+
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
+      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (json.isNull()) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"EmptyInput\"}");
+          addCORS(response);
+          request->send(response);
+          logError("/config HTTP_POST Error parsing JSON: EmptyInput");
+          return;
+        }
+
+        // Merge posted JSON into config
+        for (JsonPair kv : json.as<JsonObject>()) {
+          config[kv.key()] = kv.value();
+        }
+
+        String responseStr;
+        serializeJson(config, responseStr);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", responseStr);
+        addCORS(response);
+        request->send(response);
+      }));
+}
+
+void ESPWiFi::srvRestart() {
+  initWebServer();
+  // /restart endpoint
+  webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "text/plain", "Restarting...");
+    addCORS(response);
+    request->send(response);
+    delay(1000);  // Give time for response to be sent
+    ESP.restart();
+  });
+}
+
+void ESPWiFi::srvLog() {
+  initWebServer();
+  // /log endpoint
+  webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (LittleFS.exists(logFile)) {
+      AsyncWebServerResponse *response =
+          request->beginResponse(LittleFS, logFile, "text/plain");
+      addCORS(response);
+      request->send(response);
+    } else {
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/plain", "Log file not found");
+      addCORS(response);
+      request->send(response);
+    }
+  });
+}
+
+void ESPWiFi::srvInfo() {
+  initWebServer();
   // Device info endpoint
   webServer->on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
     JsonDocument jsonDoc;
@@ -79,6 +172,10 @@ void ESPWiFi::startWebServer() {
     addCORS(response);
     request->send(response);
   });
+}
+
+void ESPWiFi::srvFiles() {
+  initWebServer();
 
   // Generic file requests
   webServer->onNotFound([this](AsyncWebServerRequest *request) {
@@ -95,60 +192,6 @@ void ESPWiFi::startWebServer() {
       addCORS(response);
       request->send(response);
     }
-  });
-
-  // /config endpoint
-  webServer->on(
-      "/config", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String responseStr;
-    serializeJson(config, responseStr);
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", responseStr);
-    addCORS(response);
-    request->send(response);
-  });
-  webServer->addHandler(new AsyncCallbackJsonWebHandler(
-      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (json.isNull()) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"EmptyInput\"}");
-          addCORS(response);
-          request->send(response);
-          logError("/config HTTP_POST Error parsing JSON: EmptyInput");
-          return;
-        }
-
-        // Merge posted JSON into config
-        for (JsonPair kv : json.as<JsonObject>()) {
-          config[kv.key()] = kv.value();
-        }
-
-        // Save config to file
-        saveConfig();
-
-        String responseStr;
-        serializeJson(config, responseStr);
-        AsyncWebServerResponse *response =
-            request->beginResponse(200, "application/json", responseStr);
-        addCORS(response);
-        request->send(response);
-      }));
-
-  // /restart endpoint
-  webServer->on(
-      "/restart", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-  webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", "{\"success\":true}");
-    addCORS(response);
-    request->send(response);
-    delay(1000);
-    log("🔄 Restarting...");
-    delay(1000);  // Give time for response to send
-    ESP.restart();
   });
 
   // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
@@ -232,9 +275,14 @@ void ESPWiFi::startWebServer() {
     addCORS(response);
     request->send(response);
   });
+}
 
-  webServer->begin();
-  log("🗄️  HTTP Web Server Started:");
-  logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
-  logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
+void ESPWiFi::srvAll() {
+  srvLog();
+  srvRoot();
+  srvInfo();
+  srvFiles();
+  srvConfig();
+  srvRestart();
+  initWebServer();
 }

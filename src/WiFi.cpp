@@ -66,7 +66,7 @@ void ESPWiFi::startClient() {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    log("\n❤️‍🩹 Failed to connect to WiFi");
+    logError("Failed to connect to WiFi");
     config["mode"] = "accessPoint";
     startAP();
     return;
@@ -77,8 +77,8 @@ void ESPWiFi::startClient() {
 }
 
 int ESPWiFi::selectBestChannel() {
-  int channels[14] = {
-      0};  // Array to hold channel usage counts, 14 for 2.4 GHz band
+  // client count for each channel, 14 for 2.4 GHz band
+  int channels[14] = {0};
   int numNetworks = WiFi.scanNetworks();
   for (int i = 0; i < numNetworks; i++) {
     int channel = WiFi.channel(i);

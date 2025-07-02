@@ -120,10 +120,18 @@ class ESPWiFi {
   void updateMDNS();
 #endif
 
-  // Web Server
+  // WebServer
+  void srvAll();
+  void srvLog();
+  void srvRoot();
+  void srvInfo();
+  void srvFiles();
+  void srvConfig();
+  void srvRestart();
   void initWebServer();
   void startWebServer();
   void addCORS(AsyncWebServerResponse *response);
+  void handleCorsPreflight(AsyncWebServerRequest *request);
 
   // GPIO
   void startGPIO();
@@ -146,9 +154,6 @@ class ESPWiFi {
   String bytesToHumanReadable(size_t bytes);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
-
- private:
-  void handleCorsPreflight(AsyncWebServerRequest *request);
 };
 
 #endif  // ESPWiFi

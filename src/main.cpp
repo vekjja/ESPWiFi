@@ -11,6 +11,7 @@ void setup() {
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.startCamera();
 #endif
+  device.srvAll();
   device.startWebServer();
   device.applyPowerSettings();
 }

@@ -6,7 +6,7 @@
 // Audio Device Configuration
 #define AUDIO_PIN 4
 const int maxInput = 4095;
-const uint16_t audioSamples = 256; // This value MUST be a power of 2
+const uint16_t audioSamples = 128; // This value MUST be a power of 2
 const int usableSamples = (audioSamples / 2);
 double vReal[audioSamples];
 double vImaginary[audioSamples];
@@ -21,7 +21,9 @@ const int minSensitivity = 1;
 const int maxSensitivity = 100;
 int sensitivity = 9;
 
-double *smoothedSpectralData = nullptr; // For smoothing
+double *smoothedSpectralData = nullptr;  // For smoothing
+const double smoothing = 0.6;            // 0 = no smoothing, 1 = very slow
+const double minActivityThreshold = 1.0; // Only show bars above this value
 
 void ESPWiFi::startSpectralAnalyzer() {
   pinMode(AUDIO_PIN, INPUT); // Set audio pin as input
@@ -31,6 +33,12 @@ void ESPWiFi::startSpectralAnalyzer() {
 void spectralAnalyzer(int matrixWidth, int matrixHeight) {
   if (spectralData == nullptr) {
     spectralData = new int[matrixWidth]; // Allocate for matrix width
+  }
+
+  if (smoothedSpectralData == nullptr) {
+    smoothedSpectralData = new double[matrixWidth];
+    for (int i = 0; i < matrixWidth; i++)
+      smoothedSpectralData[i] = 0;
   }
 
   // Read audio samples
@@ -65,9 +73,15 @@ void spectralAnalyzer(int matrixWidth, int matrixHeight) {
     for (int bin = startBin; bin < endBin && bin < usableSamples; bin++) {
       peak = max(peak, vReal[bin]);
     }
-    int mapped = map(peak, 0, maxInput, 0, matrixHeight);
-    mapped = constrain(mapped, 0, matrixHeight);
-    spectralData[x] = mapped;
+    int mapped = map(peak, 0, maxInput, 0, matrixHeight + 1);
+    mapped = constrain(mapped, 0, matrixHeight + 1);
+    smoothedSpectralData[x] =
+        smoothing * smoothedSpectralData[x] + (1.0 - smoothing) * mapped;
+    if (smoothedSpectralData[x] < minActivityThreshold) {
+      spectralData[x] = 0;
+    } else {
+      spectralData[x] = (int)smoothedSpectralData[x];
+    }
   }
 }
 

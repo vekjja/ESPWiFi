@@ -19,9 +19,9 @@
 CRGB leds[NUM_LEDS];
 
 // Brightness
+uint8_t brightness = 9;
 const uint8_t minBrightness = 3;
 const uint8_t maxBrightness = 255;
-uint8_t brightness = 9;
 
 void ESPWiFi::startLEDMatrix() {
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
@@ -66,8 +66,7 @@ void fillMatrix(CRGB color) {
   }
 }
 
-void testMatrix() {
-  CRGB testColor = CRGB::White;
+void testMatrix(CRGB testColor = CRGB::White) {
 
   // Light up all LEDs one by one
   for (int x = 0; x < LED_WIDTH; x++) {

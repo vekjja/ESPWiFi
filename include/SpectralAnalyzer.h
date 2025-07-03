@@ -6,7 +6,7 @@
 // Audio Device Configuration
 #define AUDIO_PIN 4
 const int maxInput = 4095;
-const uint16_t audioSamples = 128; // This value MUST be a power of 2
+const uint16_t audioSamples = 256; // This value MUST be a power of 2
 const int usableSamples = (audioSamples / 2);
 double vReal[audioSamples];
 double vImaginary[audioSamples];

@@ -55,25 +55,12 @@ void ESPWiFi::srvRoot() {
 
 void ESPWiFi::srvConfig() {
   initWebServer();
-  // /config endpoint
-  webServer->on(
-      "/config", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
 
   webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String responseStr;
     serializeJson(config, responseStr);
     AsyncWebServerResponse *response =
         request->beginResponse(200, "application/json", responseStr);
-    addCORS(response);
-    request->send(response);
-  });
-
-  webServer->on("/config", HTTP_PUT, [this](AsyncWebServerRequest *request) {
-    handleCorsPreflight(request);
-    saveConfig();
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", config.as<String>());
     addCORS(response);
     request->send(response);
   });
@@ -85,13 +72,15 @@ void ESPWiFi::srvConfig() {
               400, "application/json", "{\"error\":\"EmptyInput\"}");
           addCORS(response);
           request->send(response);
-          logError("/config HTTP_POST Error parsing JSON: EmptyInput");
+          logError("/config Error parsing JSON: EmptyInput");
           return;
         }
 
-        // Merge posted JSON into config
-        for (JsonPair kv : json.as<JsonObject>()) {
-          config[kv.key()] = kv.value();
+        JsonObject jsonObject = json.as<JsonObject>();
+        mergeConfig(jsonObject);
+
+        if (request->method() == HTTP_PUT) {
+          saveConfig();
         }
 
         String responseStr;
@@ -207,14 +196,16 @@ void ESPWiFi::srvFiles() {
         "Files</title>";
     html +=
         "<style>body{font-family:sans-serif;background:#181a1b;color:#e8eaed;"
-        "margin:0;padding:2em;}h2{color:#7FF9E9;}ul{background:#23272a;border-"
+        "margin:0;padding:2em;}h2{color:#7FF9E9;}ul{background:#23272a;"
+        "border-"
         "radius:8px;box-shadow:0 2px 8px "
         "#0008;max-width:700px;margin:auto;padding:1em;}li{margin:0.5em "
         "0;}a{color:#7FF9E9;text-decoration:none;font-weight:bold;}a:hover{"
         "text-decoration:underline;} "
         ".folder{color:#7FF9E9;}::-webkit-scrollbar{background:#23272a;}::-"
         "webkit-scrollbar-thumb{background:#333;border-radius:8px;} "
-        ".folder{font-weight:bold;} .file{color:#e8eaed;}</style></head><body>";
+        ".folder{font-weight:bold;} "
+        ".file{color:#e8eaed;}</style></head><body>";
     html += "<h2>📁 ESPWiFi Files</h2>";
     String path = "/";
     if (request->hasParam("dir")) {

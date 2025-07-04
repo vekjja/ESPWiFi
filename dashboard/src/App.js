@@ -118,7 +118,8 @@ function App() {
 
     // Then save to device
     setSaving(true);
-    const { apiURL: _apiURL, ...configToSave } = configWithAPI;
+    const configToSave = { ...configWithAPI };
+    delete configToSave.apiURL; // Remove the apiURL key entirely
 
     fetch(apiURL + "/config", {
       method: "PUT",
@@ -126,7 +127,8 @@ function App() {
       body: JSON.stringify(configToSave),
     })
       .then((response) => {
-        if (!response.ok) throw new Error("Failed to save configuration");
+        if (!response.ok)
+          throw new Error("Failed to save configuration to Device");
         return response.json();
       })
       .then((savedConfig) => {
@@ -137,8 +139,8 @@ function App() {
         setSaving(false);
       })
       .catch((error) => {
-        console.error("Error saving configuration to ESP32:", error);
-        alert("Failed to save configuration to ESP32");
+        console.error("Error saving configuration to Device:", error);
+        alert("Failed to save configuration to Device");
         setSaving(false);
       });
   };

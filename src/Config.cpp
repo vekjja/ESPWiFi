@@ -55,10 +55,16 @@ void ESPWiFi::printConfig() {
   log("\n");
 }
 
+void ESPWiFi::mergeConfig(JsonObject &json) {
+  for (JsonPair kv : json) {
+    config[kv.key()] = kv.value();
+  }
+}
+
 void ESPWiFi::defaultConfig() {
   log("🛠️  Using Default Config:");
   config["mode"] = "accessPoint";
-#ifdef ESP8266
+#if CONFIG_IDF_TARGET_ESP8266
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.hostname());
 #else
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.getHostname());

@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_WIFI
-#define ESPWIFI_WIFI
+#ifndef ESPWiFi_WIFI
+#define ESPWiFi_WIFI
 
 #include <WebSocket.h>
 #include <WiFiClient.h>
@@ -141,4 +141,4 @@ void ESPWiFi::updateMDNS() {
 }
 #endif
 
-#endif  // ESPWIFI_WIFI
+#endif  // ESPWiFi_WIFI

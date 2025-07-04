@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_RSSI_SOCKET
-#define ESPWIFI_RSSI_SOCKET
+#ifndef ESPWiFi_RSSI_SOCKET
+#define ESPWiFi_RSSI_SOCKET
 
 #include <IntervalTimer.h>
 #include <WebSocket.h>
@@ -26,4 +26,4 @@ void ESPWiFi::streamRSSI() {
   rssiTimer->run();
 }
 
-#endif  // ESPWIFI_RSSI_SOCKET
+#endif  // ESPWiFi_RSSI_SOCKET

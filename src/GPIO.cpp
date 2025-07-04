@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_GPIO
-#define ESPWIFI_GPIO
+#ifndef ESPWiFi_GPIO
+#define ESPWiFi_GPIO
 
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
@@ -80,4 +80,4 @@ void ESPWiFi::startGPIO() {
   log("\tGET POST PUT /gpio");
 }
 
-#endif  // ESPWIFI_GPIO
+#endif  // ESPWiFi_GPIO

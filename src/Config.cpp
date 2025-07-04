@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_CONFIG
-#define ESPWIFI_CONFIG
+#ifndef ESPWiFi_CONFIG
+#define ESPWiFi_CONFIG
 
 #include "ESPWiFi.h"
 
@@ -81,4 +81,4 @@ void ESPWiFi::defaultConfig() {
   printConfig();
 }
 
-#endif  // ESPWIFI_CONFIG
+#endif  // ESPWiFi_CONFIG

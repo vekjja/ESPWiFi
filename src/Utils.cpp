@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_UTILS
-#define ESPWIFI_UTILS
+#ifndef ESPWiFi_UTILS
+#define ESPWiFi_UTILS
 
 #include "ESPWiFi.h"
 
@@ -71,4 +71,4 @@ String ESPWiFi::bytesToHumanReadable(size_t bytes) {
   }
 }
 
-#endif  // ESPWIFI_UTILS
+#endif  // ESPWiFi_UTILS

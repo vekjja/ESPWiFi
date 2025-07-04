@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_INTERVALTIMER
-#define ESPWIFI_INTERVALTIMER
+#ifndef ESPWiFi_INTERVALTIMER
+#define ESPWiFi_INTERVALTIMER
 #include <Arduino.h>
 
 #include <functional>  // Include for std::function
@@ -36,4 +36,4 @@ class IntervalTimer {
   void run(unsigned int ms = 0) { shouldRun(ms); }
 };
 
-#endif  // ESPWIFI_INTERVALTIMER
+#endif  // ESPWiFi_INTERVALTIMER

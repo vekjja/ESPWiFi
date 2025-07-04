@@ -1,5 +1,5 @@
-#ifndef ESPWIFI_LOG
-#define ESPWIFI_LOG
+#ifndef ESPWiFi_LOG
+#define ESPWiFi_LOG
 
 #include <stdarg.h>
 
@@ -110,4 +110,4 @@ void ESPWiFi::closeLog() {
   }
 }
 
-#endif  // ESPWIFI_LOG
+#endif  // ESPWiFi_LOG

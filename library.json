@@ -1,7 +1,7 @@
 {
     "name": "ESPWiFi",
     "version": "0.0.1",
-    "description": "ESP8266 and ESP32 Lightweight and easy to use management library.",
+    "description": "Lightweight and Easy to Use Management library for ESP8266, ESP32-C3, and ESP32-S3 devices.",
     "keywords": [
         "wifi",
         "esp32",

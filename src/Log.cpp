@@ -8,6 +8,14 @@
 // Global file handle for logging
 static File logFileHandle;
 
+void ESPWiFi::startLog(String logFile) {
+  startSerial();
+  startLittleFS();
+  this->logFile = logFile;
+  log("🔍 Logging started:");
+  logf("\tFile: %s\n", logFile.c_str());
+}
+
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::checkAndCleanupLogFile() {
 #ifdef ESP8266
@@ -45,7 +53,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
     // Reopen log file for new entries
     logFileHandle = LittleFS.open(logFile, "a");
     if (logFileHandle) {
-      log("✅  New log file created");
+      log("🪵  New log file created");
     }
   }
 }

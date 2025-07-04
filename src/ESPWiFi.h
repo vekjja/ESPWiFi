@@ -26,50 +26,26 @@
 class WebSocket;
 
 class ESPWiFi {
+ private:
+  bool sdCardEnabled = false;
+  bool littleFsEnabled = false;
+
  public:
   JsonDocument config;
+  int connectTimeout = 15000;
   String logFile = "/log.txt";
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
-
-  int connectTimeout = 15000;  // 15 seconds
   void (*connectSubroutine)() = nullptr;
 
-  void startSerial(int baudRate = 115200) {
-    if (Serial) {
-      return;
-    }
-    Serial.begin(baudRate);
-    Serial.setDebugOutput(true);
-    delay(999);  // wait for serial to start
-    logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
-  }
-
-  void startLittleFS() {
-    // Check if LittleFS is already mounted using a static flag
-    static bool fsMounted = false;
-    if (fsMounted) {
-      return;
-    }
-    if (!LittleFS.begin()) {
-      logError("  Failed to mount LittleFS");
-      return;
-    }
-    fsMounted = true;
-    log("💾 LittleFS mounted:");
-#if CONFIG_IDF_TARGET_ESP8266
-    FSInfo fs_info;
-    LittleFS.info(fs_info);
-    size_t totalBytes = fs_info.totalBytes;
-    size_t usedBytes = fs_info.usedBytes;
-#elif CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3
-    size_t totalBytes = LittleFS.totalBytes();
-    size_t usedBytes = LittleFS.usedBytes();
-#endif
-    logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
-    logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-    logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
-  }
+  // File System
+  void startSDCard();
+  void startLittleFS();
+  void listFiles(FS &fs);
+  void readFile(FS &fs, const String &filePath);
+  void deleteFile(FS &fs, const String &filePath);
+  void writeFile(FS &fs, const String &filePath, const String &content);
+  void appendToFile(FS &fs, const String &filePath, const String &content);
 
   // Power Management
   void stopSleep();
@@ -82,6 +58,7 @@ class ESPWiFi {
   void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);
+  void startSerial(int baudRate = 115200);
   void startLog(String logFile = "/log.txt");
 
   void logError(String message);
@@ -132,7 +109,6 @@ class ESPWiFi {
 
   // GPIO
   void startGPIO();
-  void startGPIOWebSocket();
 
   // LED Matrix
   void startLEDMatrix();
@@ -150,7 +126,6 @@ class ESPWiFi {
 
   // RSSI
   void streamRSSI();
-  WebSocket *rssiWebSocket = nullptr;
 
   // Utils
   String getContentType(String filename);

@@ -1,3 +1,5 @@
+#ifndef ESPWiFi_WEB_SERVER_H
+#define ESPWiFi_WEB_SERVER_H
 #include <AsyncJson.h>
 
 #include "ESPWiFi.h"
@@ -281,3 +283,5 @@ void ESPWiFi::srvAll() {
   srvConfig();
   srvRestart();
 }
+
+#endif  // ESPWiFi_WEB_SERVER_H

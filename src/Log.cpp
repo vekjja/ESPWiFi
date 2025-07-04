@@ -8,6 +8,16 @@
 // Global file handle for logging
 static File logFileHandle;
 
+void ESPWiFi::startSerial(int baudRate = 115200) {
+  if (Serial) {
+    return;
+  }
+  Serial.begin(baudRate);
+  Serial.setDebugOutput(true);
+  delay(999);  // wait for serial to start
+  logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
+}
+
 void ESPWiFi::startLog(String logFile) {
   startSerial();
   startLittleFS();

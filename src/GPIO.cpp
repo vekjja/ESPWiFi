@@ -77,7 +77,7 @@ void ESPWiFi::startGPIO() {
         log(logMsg);
       }));
   log("📍 GPIO Started:");
-  log("\tGET POST PUT /gpio");
+  log("\tPOST /gpio");
 }
 
 #endif  // ESPWiFi_GPIO

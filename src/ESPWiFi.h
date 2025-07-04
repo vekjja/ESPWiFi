@@ -8,6 +8,7 @@
 #include <FastLED.h>
 #include <IntervalTimer.h>
 #include <LittleFS.h>
+#include <SD.h>
 #include <WiFiClient.h>
 
 #if CONFIG_IDF_TARGET_ESP8266
@@ -27,8 +28,9 @@ class WebSocket;
 
 class ESPWiFi {
  private:
-  bool sdCardEnabled = false;
-  bool littleFsEnabled = false;
+  bool sdCardStarted = false;
+  bool loggingStarted = false;
+  bool littleFsStarted = false;
 
  public:
   JsonDocument config;
@@ -55,6 +57,7 @@ class ESPWiFi {
 
   // Log
   void closeLog();
+  String timestamp();
   void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);

@@ -7,15 +7,15 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::startLittleFS() {
-  if (littleFsEnabled) {
+  if (littleFsStarted) {
     return;
   }
   if (!LittleFS.begin()) {
     logError("  Failed to mount LittleFS");
     return;
   }
-  littleFsEnabled = true;
-  log("💾 LittleFS mounted:");
+  littleFsStarted = true;
+  log("💾 LittleFS Started:");
 #if CONFIG_IDF_TARGET_ESP8266
   FSInfo fs_info;
   LittleFS.info(fs_info);
@@ -31,25 +31,34 @@ void ESPWiFi::startLittleFS() {
 }
 
 void ESPWiFi::startSDCard() {
-  if (sdCardEnabled) {
+  if (sdCardStarted) {
     return;
   }
+  sdCardStarted = true;
+
 #if CONFIG_IDF_TARGET_ESP32S3
   if (!SD.begin(21)) {
-#else
-  if (!SD.begin()) {
-#endif
     logError("Failed to initialize SD card");
+    sdCardStarted = false;
     return;
   }
-  sdCardEnabled = true;
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP8266
+  if (!SD.begin()) {
+    logError("Failed to initialize SD card");
+    sdCardStarted = false;
+    return;
+  }
+#endif
+
   uint64_t totalBytes = SD.totalBytes();
   uint64_t usedBytes = SD.usedBytes();
-  log("📂 SD Card initialized:");
-  logf("\tCard Type: %s", SD.cardType());
-  logf("\tTotal Size: %s", bytesToHumanReadable(totalBytes).c_str());
-  logf("\tUsed Size: %s", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree Size: %s", bytesToHumanReadable(totalBytes - usedBytes).c_str());
+  log("📂 SD Card Started:");
+  logf("\tTotal Size: %s\n", bytesToHumanReadable(totalBytes).c_str());
+  logf("\tUsed Size: %s\n", bytesToHumanReadable(usedBytes).c_str());
+  logf("\tFree Size: %s\n",
+       bytesToHumanReadable(totalBytes - usedBytes).c_str());
 }
 
 void ESPWiFi::listFiles(FS &fs) {

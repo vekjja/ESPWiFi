@@ -48,7 +48,7 @@ void ESPWiFi::startClient() {
   log("\tSSID: " + ssid);
   log("\tPassword: " + password);
   logf("\tMAC: %s\n", WiFi.macAddress().c_str());
-  logf("\t");
+  Serial.print("\t");
 
   WiFi.disconnect(true);       // Ensure clean start
   delay(100);                  // Allow time for disconnect
@@ -61,9 +61,10 @@ void ESPWiFi::startClient() {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
-    logf(".");
+    Serial.print(".");
     delay(30);  // Wait for connection
   }
+  Serial.print("\n");
 
   if (WiFi.status() != WL_CONNECTED) {
     logError("Failed to connect to WiFi");
@@ -71,9 +72,8 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  log("\n🛜  WiFi Connected:");
-  logf("\tIP Address: ");
-  log(WiFi.localIP().toString());
+  log("🛜  WiFi Connected:");
+  logf("\tIP Address: %s\n", WiFi.localIP().toString());
 }
 
 int ESPWiFi::selectBestChannel() {

@@ -1,6 +1,9 @@
 #ifndef ESPWiFi_LOG
 #define ESPWiFi_LOG
 
+#include <FS.h>
+#include <LittleFS.h>
+#include <SD.h>
 #include <stdarg.h>
 
 #include "ESPWiFi.h"
@@ -8,75 +11,84 @@
 // Global file handle for logging
 static File logFileHandle;
 
-void ESPWiFi::startSerial(int baudRate = 115200) {
+void ESPWiFi::startSerial(int baudRate) {
   if (Serial) {
     return;
   }
   Serial.begin(baudRate);
   Serial.setDebugOutput(true);
   delay(999);  // wait for serial to start
-  logf("⛓️  Serial Started:\n\tBaud: %d\n", baudRate);
+  log("⛓️  Serial Started:");
+  logf("\tBaud: %d\n", baudRate);
 }
 
 void ESPWiFi::startLog(String logFile) {
+  static bool loggingStarted = false;
+  if (loggingStarted) {
+    return;
+  }
+
   startSerial();
   startLittleFS();
+  startSDCard();
   this->logFile = logFile;
-  log("📝 Logging started:");
-  logf("\tFile: %s\n", logFile.c_str());
+
+  closeLog();  // Close any existing log file before starting a new one
+
+  if (sdCardStarted) {
+    logFileHandle = SD.open(logFile, FILE_APPEND);
+    if (!logFileHandle) {
+      logError("Failed to open log file on SD card");
+      sdCardStarted = false;
+    }
+  } else if (littleFsStarted) {
+    logFileHandle = LittleFS.open(logFile, "a");
+    if (!logFileHandle) {
+      logError("Failed to open log file on LittleFS");
+      littleFsStarted = false;
+    }
+  } else {
+    logError("No filesystem available for logging");
+    return;
+  }
+  loggingStarted = true;
+  log("\n📝 Logging started:");
+  logf("\tFile Name: %s\n", logFile.c_str());
+  logf("\tFile System: %s\n", sdCardStarted ? "SD Card" : "LittleFS");
 }
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::checkAndCleanupLogFile() {
-#ifdef ESP8266
-  FSInfo fs_info;
-  LittleFS.info(fs_info);
-  size_t totalBytes = fs_info.totalBytes;
-  size_t usedBytes = fs_info.usedBytes;
-#elif defined(ESP32)
-  size_t totalBytes = LittleFS.totalBytes();
-  size_t usedBytes = LittleFS.usedBytes();
-#endif
-  size_t freeBytes = totalBytes - usedBytes;
+  if (logFileHandle) {
+    size_t logFileSize = logFileHandle.size();
 
-  // 100KB = 102400 bytes
-  const size_t MIN_FREE_SPACE = 102400;
+    // 600KB = 614400 bytes
+    const size_t MAX_LOG_FILE_SIZE = 614400;
 
-  if (freeBytes < MIN_FREE_SPACE) {
-    logError("Low filesystem space detected:");
-    logf("\tFree space: %s", bytesToHumanReadable(freeBytes).c_str());
-    logf("\tMinimum required: %s",
-         bytesToHumanReadable(MIN_FREE_SPACE).c_str());
-
-    // Close log file if it's open
-    if (logFileHandle) {
+    if (logFileSize > MAX_LOG_FILE_SIZE) {
       logFileHandle.close();
-    }
 
-    // Delete the log file to free up space
-    if (LittleFS.remove(logFile)) {
-      log("🗑️  Log file deleted to free up space");
-    } else {
-      logError("Failed to delete log file");
-    }
+      // Delete the log file to free up space
+      fs::FS *fs = sdCardStarted ? static_cast<fs::FS *>(&SD)
+                                 : static_cast<fs::FS *>(&LittleFS);
+      if (fs->remove(logFile)) {
+        log("🗑️  Log file deleted to free up space");
+      } else {
+        logError("Failed to delete log file");
+      }
 
-    // Reopen log file for new entries
-    logFileHandle = LittleFS.open(logFile, "a");
-    if (logFileHandle) {
-      log("📝 New log file created");
+      logFileHandle = fs->open(logFile, FILE_APPEND);
+      if (logFileHandle) {
+        log("📝 New log file created");
+      }
     }
   }
 }
 
 void ESPWiFi::writeLog(String message) {
   if (logFileHandle) {
-    checkAndCleanupLogFile();
     logFileHandle.print(message);
     logFileHandle.flush();  // Ensure data is written immediately
-  } else {
-    startLittleFS();
-    logFileHandle = LittleFS.open(logFile, "a");
-    writeLog(message);
   }
 }
 
@@ -85,10 +97,23 @@ void ESPWiFi::logError(String message) {
   log(errMsg);
 }
 
+String ESPWiFi::timestamp() {
+  unsigned long milliseconds = millis();
+  unsigned long seconds = milliseconds / 1000;
+  unsigned long days = seconds / 86400;
+  unsigned long minutes = (seconds % 86400) / 60;
+  seconds = seconds % 60;
+  milliseconds = milliseconds % 1000;
+
+  return "[" + String(days) + ":" + String(minutes) + ":" + String(seconds) +
+         ":" + String(milliseconds) + "] ";
+}
+
 void ESPWiFi::log(String message) {
-  Serial.println(message);
+  String ts = timestamp();
+  Serial.println(ts + message);
   Serial.flush();  // Ensure immediate output
-  writeLog(message + "\n");
+  writeLog(ts + message + "\n");
 }
 
 void ESPWiFi::logf(const char *format, ...) {
@@ -98,9 +123,10 @@ void ESPWiFi::logf(const char *format, ...) {
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
 
-  Serial.print(buffer);
-  Serial.flush();
-  writeLog(buffer);
+  String ts = timestamp();
+  Serial.print(ts + buffer);
+  Serial.flush();  // Ensure immediate output
+  writeLog(ts + buffer);
 }
 
 // Add a method to close the log file (call this in setup or when needed)

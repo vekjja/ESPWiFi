@@ -24,7 +24,6 @@
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "build:uploadfs": "npm run build && (cd .. && pio run --target uploadfs --environment $PIO_ENV)",
     "build:uploadfs:esp8266": "PIO_ENV=esp8266 npm run build:uploadfs",
-    "build:uploadfs:esp8266-pro": "PIO_ENV=esp8266-pro npm run build:uploadfs",
     "build:uploadfs:esp32-cam": "PIO_ENV=esp32-cam npm run build:uploadfs",
     "build:uploadfs:esp32-s3": "PIO_ENV=esp32-s3 npm run build:uploadfs",
     "build:uploadfs:esp32-c3": "PIO_ENV=esp32-c3 npm run build:uploadfs",

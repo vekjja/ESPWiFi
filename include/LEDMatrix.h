@@ -2,16 +2,28 @@
 #define LITBOX_LED_MATRIX_H
 
 #include <FastLED.h>
-// #define FASTLED_ALLOW_INTERRUPTS 0
-// #define FASTLED_SHOW_CORE 0
-// #define FASTLED_ESP32_I2S
-// #define FASTLED_RMT5_RECYCLE 1
-// #define FASTLED_RMT_CHANNEL 1
+
+// FastLED configuration for ESP32-S3
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+#define FASTLED_ESP32_I2S 1
+#define FASTLED_RMT_CHANNEL 1
+#define FASTLED_RMT5_RECYCLE 1
+#else
+// For other ESP32 variants
+#define FASTLED_RMT_CHANNEL 1
+#endif
+
+#define FASTLED_ALLOW_INTERRUPTS 0
+#define FASTLED_SHOW_CORE 0
 
 #include "ESPWiFi.h"
 
 // LED Matrix Config
-#define LED_PIN 2
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+#define LED_PIN 48 // ESP32-S3 Sense alternative LED pin (GPIO48)
+#else
+#define LED_PIN 2 // Default LED pin for other boards
+#endif
 #define LED_WIDTH 32
 #define LED_HEIGHT 8
 #define NUM_LEDS (LED_WIDTH * LED_HEIGHT)

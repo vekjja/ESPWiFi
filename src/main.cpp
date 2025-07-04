@@ -25,7 +25,7 @@ void loop() {
   device.streamCamera();
 #endif
 
-#ifdef ESP8266
+#if CONFIG_IDF_TARGET_ESP8266
   device.updateMDNS();
 #endif
 }

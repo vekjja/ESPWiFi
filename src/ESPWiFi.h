@@ -10,12 +10,16 @@
 #include <LittleFS.h>
 #include <WiFiClient.h>
 
-#ifdef ESP8266
+#if CONFIG_IDF_TARGET_ESP8266
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
-#elif defined(ESP32)
+#elif CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#endif
+
+#ifdef ESPWiFi_CAMERA_ENABLED
+#include <esp_camera.h>
 #endif
 
 // Forward declaration
@@ -54,12 +58,12 @@ public:
     }
     fsMounted = true;
     log("💾 LittleFS mounted:");
-#ifdef ESP8266
+#if CONFIG_IDF_TARGET_ESP8266
     FSInfo fs_info;
     LittleFS.info(fs_info);
     size_t totalBytes = fs_info.totalBytes;
     size_t usedBytes = fs_info.usedBytes;
-#elif defined(ESP32)
+#elif CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3
     size_t totalBytes = LittleFS.totalBytes();
     size_t usedBytes = LittleFS.usedBytes();
 #endif
@@ -111,7 +115,7 @@ public:
 
   // mDNS
   void startMDNS();
-#ifdef ESP8266
+#if CONFIG_IDF_TARGET_ESP8266
   void updateMDNS();
 #endif
 
@@ -141,6 +145,7 @@ public:
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
+  camera_config_t getCamConfig();
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshot.jpg");
 #endif

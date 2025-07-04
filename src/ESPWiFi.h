@@ -29,7 +29,6 @@ class ESPWiFi {
  public:
   JsonDocument config;
   String logFile = "/log.txt";
-  bool loggingEnabled = false;
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
 
@@ -72,15 +71,6 @@ class ESPWiFi {
     logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
   }
 
-  void startLog(String logFile = "/log.txt") {
-    startSerial();
-    startLittleFS();
-    loggingEnabled = true;
-    this->logFile = logFile;
-    log("🔍 Logging started:");
-    logf("\tFile: %s\n", logFile.c_str());
-  }
-
   // Power Management
   void stopSleep();
   void enablePowerSaving();
@@ -92,6 +82,7 @@ class ESPWiFi {
   void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);
+  void startLog(String logFile = "/log.txt");
 
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }

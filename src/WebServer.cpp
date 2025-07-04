@@ -290,5 +290,4 @@ void ESPWiFi::srvAll() {
   srvFiles();
   srvConfig();
   srvRestart();
-  initWebServer();
 }

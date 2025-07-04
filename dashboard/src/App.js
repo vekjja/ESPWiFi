@@ -121,7 +121,7 @@ function App() {
     const { apiURL: _apiURL, ...configToSave } = configWithAPI;
 
     fetch(apiURL + "/config", {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(configToSave),
     })

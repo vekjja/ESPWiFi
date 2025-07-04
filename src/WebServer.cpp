@@ -189,7 +189,6 @@ void ESPWiFi::srvFiles() {
     }
   });
 
-  // /files endpoint (robust, dark mode, correct subdir links, parent dir nav)
   webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String html =
         "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>ESPWiFi "

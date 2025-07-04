@@ -13,11 +13,10 @@ class IntervalTimer {
  public:
   void reset() { lastRun = millis(); }
   void setInterval(unsigned int ms) { interval = ms; }
+  void setCallback(std::function<void()> callback) { runFunc = callback; }
 
   IntervalTimer(unsigned int ms, std::function<void()> callback = nullptr)
       : interval(ms), runFunc(callback) {}
-
-  void setCallback(std::function<void()> callback) { runFunc = callback; }
 
   bool shouldRun(unsigned int ms = 0) {
     if (ms > 0) {
@@ -34,7 +33,7 @@ class IntervalTimer {
     return false;
   }
 
-  void run() { shouldRun(); }
+  void run(unsigned int ms = 0) { shouldRun(ms); }
 };
 
 #endif  // ESPWIFI_INTERVALTIMER

@@ -5,6 +5,8 @@
     "keywords": [
         "wifi",
         "esp32",
+        "esp32-c3",
+        "esp32-s3",
         "esp8266",
         "network"
     ],

@@ -12,7 +12,7 @@ void ESPWiFi::startLog(String logFile) {
   startSerial();
   startLittleFS();
   this->logFile = logFile;
-  log("🔍 Logging started:");
+  log("📝 Logging started:");
   logf("\tFile: %s\n", logFile.c_str());
 }
 
@@ -53,7 +53,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
     // Reopen log file for new entries
     logFileHandle = LittleFS.open(logFile, "a");
     if (logFileHandle) {
-      log("🪵  New log file created");
+      log("📝 New log file created");
     }
   }
 }

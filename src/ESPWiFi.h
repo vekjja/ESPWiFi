@@ -28,6 +28,7 @@ class WebSocket;
 
 class ESPWiFi {
 private:
+  FS *fs;
   bool sdCardStarted = false;
   bool loggingStarted = false;
   bool littleFsStarted = false;

@@ -38,33 +38,18 @@ void ESPWiFi::startLog(String logFile) {
 
   startSerial();
   startLittleFS();
-  // startSDCard();
   this->logFile = logFile;
 
   closeLog(); // Close any existing log file before starting a new one
 
-  if (sdCardStarted) {
-#ifdef ESP8266
-    logFileHandle = SD.open(logFile, FILE_WRITE);
-#elif defined(ESP32)
-    logFileHandle = SD.open(logFile, FILE_APPEND);
-#endif
-    if (!logFileHandle) {
-      logError("Failed to open log file on SD card");
-      sdCardStarted = false;
-    }
-  } else if (littleFsStarted) {
-    logFileHandle = LittleFS.open(logFile, "a");
-    if (!logFileHandle) {
-      logError("Failed to open log file on LittleFS");
-      littleFsStarted = false;
-    }
-  } else {
-    logError("No filesystem available for logging");
+  logFileHandle = fs->open(logFile, "a");
+  if (!logFileHandle) {
+    logError("Failed to open log file");
     return;
   }
+
   loggingStarted = true;
-  log("\n📝 Logging started:");
+  log("📝 Logging started:");
   logf("\tFile Name: %s\n", logFile.c_str());
   logf("\tFile System: %s\n", sdCardStarted ? "SD Card" : "LittleFS");
 }

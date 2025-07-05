@@ -115,9 +115,9 @@ void ESPWiFi::srvLog() {
   initWebServer();
   // /log endpoint
   webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (littleFsStarted && LittleFS.exists(logFile)) {
+    if (fs && fs->exists(logFile)) {
       AsyncWebServerResponse *response = request->beginResponse(
-          LittleFS, logFile,
+          *fs, logFile,
           "text/plain; charset=utf-8"); // Set UTF-8 encoding
       addCORS(response);
       request->send(response);
@@ -153,6 +153,7 @@ void ESPWiFi::srvInfo() {
 #endif
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
+
 #ifdef ESP8266
     FSInfo fs_info;
     LittleFS.info(fs_info);

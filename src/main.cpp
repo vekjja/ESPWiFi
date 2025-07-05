@@ -13,7 +13,6 @@ void setup() {
 #endif
   device.srvAll();
   device.startWebServer();
-  device.applyPowerSettings();
 }
 
 void loop() {

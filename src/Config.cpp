@@ -64,7 +64,7 @@ void ESPWiFi::mergeConfig(JsonObject &json) {
 void ESPWiFi::defaultConfig() {
   log("🛠️  Using Default Config:");
   config["mode"] = "accessPoint";
-#if CONFIG_IDF_TARGET_ESP8266
+#ifdef ESP8266
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.hostname());
 #else
   config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.getHostname());
@@ -75,10 +75,10 @@ void ESPWiFi::defaultConfig() {
   config["client"]["password"] = "";
 
   // Power management settings
-  config["power"]["mode"] = "full";  // "full", "balanced", "saving"
+  config["power"]["mode"] = "full"; // "full", "balanced", "saving"
   config["power"]["wifiSleep"] = false;
 
   printConfig();
 }
 
-#endif  // ESPWiFi_CONFIG
+#endif // ESPWiFi_CONFIG

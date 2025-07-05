@@ -1,12 +1,20 @@
 #ifndef ESPWiFi_LOG
 #define ESPWiFi_LOG
 
+// Platform-specific includes
+#ifdef ESP8266
 #include <FS.h>
 #include <LittleFS.h>
 #include <SD.h>
-#include <stdarg.h>
+#elif defined(ESP32)
+#include <FS.h>
+#include <LittleFS.h>
+#include <SD.h>
+#include <SPI.h>
+#endif
 
 #include "ESPWiFi.h"
+#include <stdarg.h>
 
 // Global file handle for logging
 static File logFileHandle;
@@ -17,7 +25,7 @@ void ESPWiFi::startSerial(int baudRate) {
   }
   Serial.begin(baudRate);
   Serial.setDebugOutput(true);
-  delay(999);  // wait for serial to start
+  delay(999); // wait for serial to start
   log("⛓️  Serial Started:");
   logf("\tBaud: %d\n", baudRate);
 }
@@ -30,13 +38,17 @@ void ESPWiFi::startLog(String logFile) {
 
   startSerial();
   startLittleFS();
-  startSDCard();
+  // startSDCard();
   this->logFile = logFile;
 
-  closeLog();  // Close any existing log file before starting a new one
+  closeLog(); // Close any existing log file before starting a new one
 
   if (sdCardStarted) {
+#ifdef ESP8266
+    logFileHandle = SD.open(logFile, FILE_WRITE);
+#elif defined(ESP32)
     logFileHandle = SD.open(logFile, FILE_APPEND);
+#endif
     if (!logFileHandle) {
       logError("Failed to open log file on SD card");
       sdCardStarted = false;
@@ -69,15 +81,25 @@ void ESPWiFi::checkAndCleanupLogFile() {
       logFileHandle.close();
 
       // Delete the log file to free up space
-      fs::FS *fs = sdCardStarted ? static_cast<fs::FS *>(&SD)
-                                 : static_cast<fs::FS *>(&LittleFS);
-      if (fs->remove(logFile)) {
-        log("🗑️  Log file deleted to free up space");
+      if (sdCardStarted) {
+        if (SD.remove(logFile)) {
+          log("🗑️  Log file deleted to free up space");
+        } else {
+          logError("Failed to delete log file");
+        }
+#ifdef ESP8266
+        logFileHandle = SD.open(logFile, FILE_WRITE);
+#elif defined(ESP32)
+        logFileHandle = SD.open(logFile, FILE_APPEND);
+#endif
       } else {
-        logError("Failed to delete log file");
+        if (LittleFS.remove(logFile)) {
+          log("🗑️  Log file deleted to free up space");
+        } else {
+          logError("Failed to delete log file");
+        }
+        logFileHandle = LittleFS.open(logFile, "a");
       }
-
-      logFileHandle = fs->open(logFile, FILE_APPEND);
       if (logFileHandle) {
         log("📝 New log file created");
       }
@@ -88,7 +110,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
 void ESPWiFi::writeLog(String message) {
   if (logFileHandle) {
     logFileHandle.print(message);
-    logFileHandle.flush();  // Ensure data is written immediately
+    logFileHandle.flush(); // Ensure data is written immediately
   }
 }
 
@@ -112,7 +134,7 @@ String ESPWiFi::timestamp() {
 void ESPWiFi::log(String message) {
   String ts = timestamp();
   Serial.println(ts + message);
-  Serial.flush();  // Ensure immediate output
+  Serial.flush(); // Ensure immediate output
   writeLog(ts + message + "\n");
 }
 
@@ -125,7 +147,7 @@ void ESPWiFi::logf(const char *format, ...) {
 
   String ts = timestamp();
   Serial.print(ts + buffer);
-  Serial.flush();  // Ensure immediate output
+  Serial.flush(); // Ensure immediate output
   writeLog(ts + buffer);
 }
 
@@ -136,4 +158,4 @@ void ESPWiFi::closeLog() {
   }
 }
 
-#endif  // ESPWiFi_LOG
+#endif // ESPWiFi_LOG

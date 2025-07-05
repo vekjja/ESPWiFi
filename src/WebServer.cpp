@@ -115,15 +115,6 @@ void ESPWiFi::srvLog() {
   initWebServer();
   // /log endpoint
   webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (sdCardStarted && SD.exists(logFile)) {
-      // Serve log file from SD card
-      AsyncWebServerResponse *response = request->beginResponse(
-          SD, logFile,
-          "text/plain; charset=utf-8"); // Set UTF-8 encoding
-      addCORS(response);
-      request->send(response);
-      return;
-    }
     if (littleFsStarted && LittleFS.exists(logFile)) {
       AsyncWebServerResponse *response = request->beginResponse(
           LittleFS, logFile,

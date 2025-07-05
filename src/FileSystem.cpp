@@ -16,54 +16,27 @@ void ESPWiFi::startLittleFS() {
   }
   littleFsStarted = true;
   log("💾 LittleFS Started:");
-#if CONFIG_IDF_TARGET_ESP8266
+
+  size_t totalBytes, usedBytes;
+
+#ifdef ESP8266
   FSInfo fs_info;
   LittleFS.info(fs_info);
-  size_t totalBytes = fs_info.totalBytes;
-  size_t usedBytes = fs_info.usedBytes;
-#elif CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3
-  size_t totalBytes = LittleFS.totalBytes();
-  size_t usedBytes = LittleFS.usedBytes();
+  totalBytes = fs_info.totalBytes;
+  usedBytes = fs_info.usedBytes;
+#elif defined(ESP32)
+  totalBytes = LittleFS.totalBytes();
+  usedBytes = LittleFS.usedBytes();
 #endif
+
   logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
   logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
   logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
 }
 
-void ESPWiFi::startSDCard() {
-  if (sdCardStarted) {
-    return;
-  }
-  sdCardStarted = true;
-
-#if CONFIG_IDF_TARGET_ESP32S3
-  if (!SD.begin(21)) {
-    logError("Failed to initialize SD card");
-    sdCardStarted = false;
-    return;
-  }
-#endif
-
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP8266
-  if (!SD.begin()) {
-    logError("Failed to initialize SD card");
-    sdCardStarted = false;
-    return;
-  }
-#endif
-
-  uint64_t totalBytes = SD.totalBytes();
-  uint64_t usedBytes = SD.usedBytes();
-  log("📂 SD Card Started:");
-  logf("\tTotal Size: %s\n", bytesToHumanReadable(totalBytes).c_str());
-  logf("\tUsed Size: %s\n", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree Size: %s\n",
-       bytesToHumanReadable(totalBytes - usedBytes).c_str());
-}
-
 void ESPWiFi::listFiles(FS &fs) {
   log("📂 Listing Files:");
-  File root = fs.open("/");
+  File root = fs.open("/", "r");
   if (!root) {
     logError("Failed to open root directory");
     return;
@@ -79,7 +52,7 @@ void ESPWiFi::listFiles(FS &fs) {
 }
 
 void ESPWiFi::readFile(FS &fs, const String &filePath) {
-  File file = fs.open(filePath);
+  File file = fs.open(filePath, "r");
   if (!file) {
     logError("Failed to open file: " + filePath);
     return;
@@ -94,7 +67,7 @@ void ESPWiFi::readFile(FS &fs, const String &filePath) {
 }
 
 void ESPWiFi::writeFile(FS &fs, const String &filePath, const String &data) {
-  File file = fs.open(filePath, FILE_WRITE);
+  File file = fs.open(filePath, "w");
   if (!file) {
     logError("Failed to open file for writing: " + filePath);
     return;
@@ -106,7 +79,7 @@ void ESPWiFi::writeFile(FS &fs, const String &filePath, const String &data) {
 }
 
 void ESPWiFi::appendToFile(FS &fs, const String &filePath, const String &data) {
-  File file = fs.open(filePath, FILE_APPEND);
+  File file = fs.open(filePath, "a");
   if (!file) {
     logError("Failed to open file for appending: " + filePath);
     return;
@@ -125,4 +98,4 @@ void ESPWiFi::deleteFile(FS &fs, const String &filePath) {
   }
 }
 
-#endif  // ESPWiFi_FileSystem
+#endif // ESPWiFi_FileSystem

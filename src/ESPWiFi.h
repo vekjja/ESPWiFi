@@ -11,10 +11,10 @@
 #include <SD.h>
 #include <WiFiClient.h>
 
-#if CONFIG_IDF_TARGET_ESP8266
+#ifdef ESP8266
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
-#elif CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3
+#elif defined(ESP32)
 #include <ESPmDNS.h>
 #include <WiFi.h>
 #endif
@@ -27,12 +27,12 @@
 class WebSocket;
 
 class ESPWiFi {
- private:
+private:
   bool sdCardStarted = false;
   bool loggingStarted = false;
   bool littleFsStarted = false;
 
- public:
+public:
   JsonDocument config;
   int connectTimeout = 15000;
   String logFile = "/log.txt";
@@ -66,17 +66,11 @@ class ESPWiFi {
 
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }
-  template <typename T>
-  void logError(T value) {
-    logError(String(value));
-  };
+  template <typename T> void logError(T value) { logError(String(value)); };
 
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T>
-  void log(T value) {
-    log(String(value));
-  };
+  template <typename T> void log(T value) { log(String(value)); };
 
   // Config
   void saveConfig();
@@ -93,7 +87,7 @@ class ESPWiFi {
 
   // mDNS
   void startMDNS();
-#if CONFIG_IDF_TARGET_ESP8266
+#ifdef ESP8266
   void updateMDNS();
 #endif
 
@@ -138,4 +132,4 @@ class ESPWiFi {
                      std::function<void()> functionToRun);
 };
 
-#endif  // ESPWiFi
+#endif // ESPWiFi

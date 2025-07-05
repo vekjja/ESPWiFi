@@ -22,14 +22,16 @@
   "scripts": {
     "start": "BROWSER=none react-scripts start",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
-    "build:uploadfs": "npm run build && (cd .. && pio run --target uploadfs --environment $PIO_ENV)",
-    "build:uploadfs:esp8266": "PIO_ENV=esp8266 npm run build:uploadfs",
-    "build:uploadfs:esp32-cam": "PIO_ENV=esp32-cam npm run build:uploadfs",
-    "build:uploadfs:esp32-s3": "PIO_ENV=esp32-s3 npm run build:uploadfs",
-    "build:uploadfs:esp32-c3": "PIO_ENV=esp32-c3 npm run build:uploadfs",
-    "pio:clean": "cd .. && pio run --target clean",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "pio:clean": "cd .. && pio run --target clean",
+    "pio:uploadfs": "cd .. && pio run --target uploadfs --environment ${PIO_ENV:-esp32-s3}",
+    "pio:upload": "cd .. && pio run --target upload --environment ${PIO_ENV:-esp32-s3}",
+    "pio:monitor": "cd .. && pio device monitor",
+    "pio:build": "cd .. && pio run --environment ${PIO_ENV:-esp32-s3}",
+    "build:uploadfs": "npm run build && npm run pio:uploadfs",
+    "build:uploadfs:monitor": "npm run build && npm run pio:uploadfs && npm run pio:monitor",
+    "build:uploadfs:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:upload && npm run pio:monitor"
   },
   "eslintConfig": {
     "rules": {

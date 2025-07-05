@@ -13,8 +13,10 @@ export default function ConfigButton({ config, saveConfig }) {
   const [isEditable, setIsEditable] = useState(false); // State to control editability
 
   const handleOpenModal = () => {
-    // Format the config as pretty JSON when opening the modal
-    setJsonConfig(JSON.stringify(config, null, 2));
+    // Format the config as pretty JSON when opening the modal, excluding apiURL
+    const configWithoutAPI = { ...config };
+    delete configWithoutAPI.apiURL;
+    setJsonConfig(JSON.stringify(configWithoutAPI, null, 2));
     setJsonError("");
     setIsModalOpen(true);
   };
@@ -34,6 +36,9 @@ export default function ConfigButton({ config, saveConfig }) {
         setJsonError("Configuration must include 'mdns' field");
         return;
       }
+
+      // Ensure apiURL is not included in the saved configuration
+      delete parsedConfig.apiURL;
 
       setJsonError("");
       saveConfig(parsedConfig);

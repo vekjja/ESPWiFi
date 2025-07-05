@@ -94,7 +94,7 @@ void ESPWiFi::startCamera() {
       });
 
   webServer->on(
-      "/camera/stream/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      "/camera/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String deviceName = config["mdns"];
         String html =
             "<!DOCTYPE html><html><head><title>" + deviceName +
@@ -194,7 +194,7 @@ void ESPWiFi::startCamera() {
       });
 
   webServer->on(
-      "/camera/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
+      "/camera/ws/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
         String deviceName = config["mdns"];
         String html =
             "<!DOCTYPE html><html><head><title>" + deviceName +
@@ -308,7 +308,6 @@ void ESPWiFi::streamCamera(int frameRate) {
   }
 
   esp_camera_fb_return(fb);
-  delay(200); // Add delay to prevent queue overflow
 }
 
 #endif // ESPWiFi_CAMERA

@@ -98,106 +98,6 @@ void ESPWiFi::startCamera() {
         String deviceName = config["mdns"];
         String html =
             "<!DOCTYPE html><html><head><title>" + deviceName +
-            " Stream</title>"
-            "<style>body{background:#181a1b;color:#e8eaed;font-family:sans-"
-            "serif;"
-            "text-align:center;}"
-            "img{max-width:100vw;max-height:90vh;border-radius:8px;box-shadow:"
-            "0 "
-            "2px 8px #0008;margin-top:2em;}</style>"
-            "</head><body>"
-            "<h2>&#128247; " +
-            deviceName +
-            " Live Stream</h2>"
-            "<img src='/camera/stream/mjpeg' id='stream' alt='Camera Stream'>"
-            "</body></html>";
-        request->send(200, "text/html", html);
-      });
-
-  webServer->on(
-      "/camera/stream/mjpeg", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginChunkedResponse(
-            "multipart/x-mixed-replace; boundary=frame",
-            [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-              // Static variables to keep state between calls
-              static camera_fb_t *fb = nullptr;
-              static size_t sent = 0;
-              static String head;
-              static String tail = "\r\n";
-              static size_t totalLen = 0;
-
-              if (fb == nullptr) {
-                fb = esp_camera_fb_get();
-                if (!fb)
-                  return 0;
-                head = "--frame\r\nContent-Type: image/jpeg\r\n\r\n";
-                sent = 0;
-                totalLen = head.length() + fb->len + tail.length();
-              }
-
-              size_t toSend = totalLen - sent;
-              if (toSend > maxLen)
-                toSend = maxLen;
-
-              size_t bufPos = 0;
-              size_t remain = toSend;
-
-              // Send head
-              if (sent < head.length()) {
-                size_t headRemain = head.length() - sent;
-                size_t copyLen = (remain < headRemain) ? remain : headRemain;
-                memcpy(buffer, head.c_str() + sent, copyLen);
-                bufPos += copyLen;
-                sent += copyLen;
-                remain -= copyLen;
-                if (remain == 0)
-                  return bufPos;
-              }
-
-              // Send JPEG
-              size_t jpegStart =
-                  (sent > head.length()) ? sent - head.length() : 0;
-              if (sent >= head.length() && sent < head.length() + fb->len) {
-                size_t jpegRemain = fb->len - jpegStart;
-                size_t copyLen = (remain < jpegRemain) ? remain : jpegRemain;
-                memcpy(buffer + bufPos, fb->buf + jpegStart, copyLen);
-                bufPos += copyLen;
-                sent += copyLen;
-                remain -= copyLen;
-                if (remain == 0)
-                  return bufPos;
-              }
-
-              // Send tail
-              size_t tailStart = (sent > head.length() + fb->len)
-                                     ? sent - head.length() - fb->len
-                                     : 0;
-              if (sent >= head.length() + fb->len && sent < totalLen) {
-                size_t tailRemain = tail.length() - tailStart;
-                size_t copyLen = (remain < tailRemain) ? remain : tailRemain;
-                memcpy(buffer + bufPos, tail.c_str() + tailStart, copyLen);
-                bufPos += copyLen;
-                sent += copyLen;
-                remain -= copyLen;
-              }
-
-              // If finished sending this frame, clean up and prepare for next
-              if (sent >= totalLen) {
-                esp_camera_fb_return(fb);
-                fb = nullptr;
-                sent = 0;
-                delay(100); // ~10 fps
-              }
-              return bufPos;
-            });
-        request->send(response);
-      });
-
-  webServer->on(
-      "/camera/ws/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        String deviceName = config["mdns"];
-        String html =
-            "<!DOCTYPE html><html><head><title>" + deviceName +
             " WebSocket Stream</title>"
             "<style>body{background:#181a1b;color:#e8eaed;font-family:sans-"
             "serif;text-align:center;}"
@@ -257,8 +157,14 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  // save the image LittleFS
-  File file = LittleFS.open(filePath, "w");
+  // save the image using ESPWiFi::fs
+  if (!fs) {
+    logError("No file system available");
+    esp_camera_fb_return(fb);
+    return;
+  }
+
+  File file = fs->open(filePath, "w");
   if (!file) {
     logError("Failed to open file for writing");
   } else {

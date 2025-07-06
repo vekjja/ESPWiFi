@@ -5,15 +5,17 @@
 
 // Audio Config
 #define AUDIO_PIN 4
+int sensitivity = 9;
+
 const int maxInput = 4095; // ESP32-C3 has 12-bit ADC (0-4095)
 int *spectralData = nullptr;
+
 const uint16_t audioSamples = 128; // must be a power of 2
 const int usableSamples = (audioSamples / 2);
 
-int sensitivity = 9;
-const double samplingFrequency = 16000; // Hz
 double vReal[audioSamples];
 double vImage[audioSamples];
+const double samplingFrequency = 16000; // Hz
 ArduinoFFT<double> FFT =
     ArduinoFFT<double>(vReal, vImage, audioSamples, samplingFrequency);
 

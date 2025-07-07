@@ -9,9 +9,9 @@
 DFRobot_BMI160 bmi160;
 
 const int bmi160_i2c_addr = 0x69;
-const float bmi160_scale_factor = 16384.0;  // Scale Factor for ±2g
+const float bmi160_scale_factor = 16384.0; // Scale Factor for ±2g
 const float bmi160_raw_data_conversion =
-    32768.0;  // Raw data conversion factor for BMI160
+    32768.0; // Raw data conversion factor for BMI160
 
 float convertRawGyro(int gRaw) {
   // convert the raw gyro data to degrees/second
@@ -89,4 +89,4 @@ void ESPWiFi::readAccelerometer(float &x, float &y, float &z) {
 //   return tempC;
 // }
 
-#endif  // ESPWiFi_BMI160_H
+#endif // ESPWiFi_BMI160_H

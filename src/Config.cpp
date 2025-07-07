@@ -26,8 +26,6 @@ void ESPWiFi::readConfig() {
   }
 
   startLittleFS();
-  log("⚙️  Config Loading:");
-  logf("\tFile: %s\n", configFile.c_str());
 
   File file = LittleFS.open(configFile, "r");
   if (!file) {
@@ -43,6 +41,9 @@ void ESPWiFi::readConfig() {
     file.close();
     return;
   }
+
+  log("⚙️  Config Loaded:");
+  logf("\tFile: %s\n", configFile.c_str());
 
   printConfig();
   file.close();

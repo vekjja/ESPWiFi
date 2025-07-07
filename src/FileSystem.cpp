@@ -36,28 +36,28 @@ void ESPWiFi::startLittleFS() {
   logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
 }
 
-void ESPWiFi::startSDCard() {
-  if (sdCardStarted) {
-    return;
-  }
+// void ESPWiFi::startSDCard() {
+//   if (sdCardStarted) {
+//     return;
+//   }
 
-  // Initialize SD card
-  if (!SD.begin()) {
-    logError("Failed to mount SD card");
-    return;
-  }
+//   // Initialize SD card
+//   if (!SD.begin()) {
+//     logError("Failed to mount SD card");
+//     return;
+//   }
 
-  fs = &SD;
-  sdCardStarted = true;
-  log("💾 SD Card Started:");
+//   fs = &SD;
+//   sdCardStarted = true;
+//   log("💾 SD Card Started:");
 
-  size_t totalBytes = SD.totalBytes();
-  size_t usedBytes = SD.usedBytes();
+//   size_t totalBytes = SD.totalBytes();
+//   size_t usedBytes = SD.usedBytes();
 
-  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
-}
+//   logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
+//   logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
+//   logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
+// }
 
 void ESPWiFi::listFiles(FS &fs) {
   log("📂 Listing Files:");

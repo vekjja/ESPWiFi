@@ -13,13 +13,12 @@
 #define FASTLED_RMT_CHANNEL 1
 #endif
 
-#define FASTLED_ALLOW_INTERRUPTS 0
 #define FASTLED_SHOW_CORE 0
 
 #include "ESPWiFi.h"
 
 // LED Matrix Config
-#define LED_PIN 2 // Default LED pin for other boards
+#define LED_PIN 2  // Default LED pin for other boards
 #define LED_WIDTH 32
 #define LED_HEIGHT 8
 #define NUM_LEDS (LED_WIDTH * LED_HEIGHT)
@@ -41,11 +40,11 @@ void ESPWiFi::startLEDMatrix() {
 }
 
 uint16_t XY(uint8_t x, uint8_t y) {
-  y = LED_HEIGHT - 1 - y; // Adjust for orientation
+  y = LED_HEIGHT - 1 - y;  // Adjust for orientation
   if (x % 2 == 0) {
-    return x * LED_HEIGHT + y; // Even columns top to bottom
+    return x * LED_HEIGHT + y;  // Even columns top to bottom
   } else {
-    return x * LED_HEIGHT + (LED_HEIGHT - 1 - y); // Odd columns bottom to top
+    return x * LED_HEIGHT + (LED_HEIGHT - 1 - y);  // Odd columns bottom to top
   }
 }
 
@@ -75,7 +74,6 @@ void fillMatrix(CRGB color) {
 }
 
 void testMatrix(CRGB testColor = CRGB::White) {
-
   // Light up all LEDs one by one
   for (int x = 0; x < LED_WIDTH; x++) {
     for (int y = 0; y < LED_HEIGHT; y++) {
@@ -89,27 +87,27 @@ void testMatrix(CRGB testColor = CRGB::White) {
   int del = 100;
   // Test specific positions
   FastLED.clear();
-  drawPixel(0, 0, testColor); // Bottom left
+  drawPixel(0, 0, testColor);  // Bottom left
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(0, LED_HEIGHT - 1, testColor); // Top left
+  drawPixel(0, LED_HEIGHT - 1, testColor);  // Top left
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH - 1, LED_HEIGHT - 1, testColor); // Top right
+  drawPixel(LED_WIDTH - 1, LED_HEIGHT - 1, testColor);  // Top right
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH - 1, 0, testColor); // Bottom right
+  drawPixel(LED_WIDTH - 1, 0, testColor);  // Bottom right
   FastLED.show();
   delay(del);
 
   FastLED.clear();
-  drawPixel(LED_WIDTH / 2, LED_HEIGHT / 2, testColor); // Center
+  drawPixel(LED_WIDTH / 2, LED_HEIGHT / 2, testColor);  // Center
   FastLED.show();
   delay(del);
 
@@ -117,4 +115,4 @@ void testMatrix(CRGB testColor = CRGB::White) {
   FastLED.show();
 }
 
-#endif // LITBOX_LED_MATRIX_H
+#endif  // LITBOX_LED_MATRIX_H

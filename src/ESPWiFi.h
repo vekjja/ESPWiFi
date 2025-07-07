@@ -27,13 +27,13 @@
 class WebSocket;
 
 class ESPWiFi {
-private:
+ private:
   FS *fs;
   bool sdCardStarted = false;
   bool loggingStarted = false;
   bool littleFsStarted = false;
 
-public:
+ public:
   JsonDocument config;
   int connectTimeout = 15000;
   String logFile = "/log.txt";
@@ -67,11 +67,17 @@ public:
 
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }
-  template <typename T> void logError(T value) { logError(String(value)); };
+  template <typename T>
+  void logError(T value) {
+    logError(String(value));
+  };
 
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T> void log(T value) { log(String(value)); };
+  template <typename T>
+  void log(T value) {
+    log(String(value));
+  };
 
   // Config
   void saveConfig();
@@ -114,6 +120,17 @@ public:
   // Spectral Analyzer
   void startSpectralAnalyzer();
 
+  // I2C
+  void scanI2CDevices();
+  bool checkI2CDevice(uint8_t address);
+
+  // BMI160
+  int8_t readGyro(int16_t *gyroData);
+  bool startBMI160(uint8_t address = 0x69);
+  int8_t readAccelerometer(int16_t *accelData);
+  void readGyro(float &x, float &y, float &z);
+  void readAccelerometer(float &x, float &y, float &z);
+
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
@@ -133,4 +150,4 @@ public:
                      std::function<void()> functionToRun);
 };
 
-#endif // ESPWiFi
+#endif  // ESPWiFi

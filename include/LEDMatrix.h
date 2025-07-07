@@ -19,11 +19,7 @@
 #include "ESPWiFi.h"
 
 // LED Matrix Config
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-#define LED_PIN 48 // ESP32-S3 Sense alternative LED pin (GPIO48)
-#else
 #define LED_PIN 2 // Default LED pin for other boards
-#endif
 #define LED_WIDTH 32
 #define LED_HEIGHT 8
 #define NUM_LEDS (LED_WIDTH * LED_HEIGHT)
@@ -32,7 +28,7 @@ CRGB leds[NUM_LEDS];
 
 // Brightness
 uint8_t brightness = 9;
-const uint8_t minBrightness = 3;
+const uint8_t minBrightness = 1;
 const uint8_t maxBrightness = 255;
 
 void ESPWiFi::startLEDMatrix() {

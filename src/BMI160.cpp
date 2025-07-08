@@ -74,19 +74,41 @@ void ESPWiFi::readAccelerometer(float &x, float &y, float &z) {
   z = convertRawAccel(accelData[2], defaultOffset);
 }
 
-// float getTemperature(String unit) {
-//   if (!BMI160Initialized)
-//     return 0;
-//   int16_t rawTemp = BMI160.getTemperature(); // returns a 16-bit integer
-//   // The temperature data is a signed 16-bit value where 0x0000 corresponds
-//   // 23°C, and each least significant bit (LSB) represents approximately
-//   // 0.00195°C.
-//   float tempC = 23.0 + ((float)rawTemp) * 0.00195;
-//   if (unit == "F") {
-//     float tempF = tempC * 9.0 / 5.0 + 32.0; // Convert to Fahrenheit
-//     return tempF;
-//   }
-//   return tempC;
-// }
+float ESPWiFi::getTemperature(String unit) {
+  // Read temperature data directly from BMI160 using Wire library
+  // Temperature data is available at registers 0x20 and 0x21
+  uint8_t tempData[2];
+  int16_t rawTemp;
+
+  // Read temperature registers (0x20 and 0x21) using Wire library
+  Wire.beginTransmission(bmi160_i2c_addr);
+  Wire.write(0x20); // Temperature register address
+  if (Wire.endTransmission() == 0) {
+    if (Wire.requestFrom(bmi160_i2c_addr, 2) == 2) {
+      tempData[0] = Wire.read(); // LSB
+      tempData[1] = Wire.read(); // MSB
+
+      // Combine the two bytes into a 16-bit signed integer
+      rawTemp = (int16_t)((tempData[1] << 8) | tempData[0]);
+    } else {
+      // If reading fails, return a default value
+      return 23.0; // Default temperature
+    }
+  } else {
+    // If communication fails, return a default value
+    return 23.0; // Default temperature
+  }
+
+  // The temperature data is a signed 16-bit value where 0x0000 corresponds
+  // 23°C, and each least significant bit (LSB) represents approximately
+  // 0.00195°C.
+  float tempC = 23.0 + ((float)rawTemp) * 0.00195;
+
+  if (unit == "F") {
+    float tempF = tempC * 9.0 / 5.0 + 32.0; // Convert to Fahrenheit
+    return tempF;
+  }
+  return tempC;
+}
 
 #endif // ESPWiFi_BMI160_H

@@ -120,10 +120,10 @@ public:
 
   // BMI160
   float getTemperature(String unit = "C");
-  int8_t readGyro(int16_t *gyroData);
+  int8_t readGyroscope(int16_t *gyroData);
   bool startBMI160(uint8_t address = 0x69);
   int8_t readAccelerometer(int16_t *accelData);
-  void readGyro(float &x, float &y, float &z);
+  void readGyroscope(float &x, float &y, float &z);
   void readAccelerometer(float &x, float &y, float &z);
 
   // Camera

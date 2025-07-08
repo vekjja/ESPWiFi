@@ -47,7 +47,7 @@ bool ESPWiFi::startBMI160(uint8_t address) {
   }
 }
 
-int8_t ESPWiFi::readGyro(int16_t *gyroData) {
+int8_t ESPWiFi::readGyroscope(int16_t *gyroData) {
   return bmi160.getGyroData(gyroData);
 }
 
@@ -55,9 +55,9 @@ int8_t ESPWiFi::readAccelerometer(int16_t *accelData) {
   return bmi160.getAccelData(accelData);
 }
 
-void ESPWiFi::readGyro(float &x, float &y, float &z) {
+void ESPWiFi::readGyroscope(float &x, float &y, float &z) {
   int16_t gyroData[3];
-  readGyro(gyroData);
+  readGyroscope(gyroData);
   // Convert raw values to degrees per second (dps)
   x = convertRawGyro(gyroData[0]);
   y = convertRawGyro(gyroData[1]);

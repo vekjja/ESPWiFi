@@ -294,9 +294,79 @@ void ESPWiFi::srvFiles() {
   });
 }
 
+void ESPWiFi::srvOTA() {
+  initWebServer();
+
+  // Firmware update endpoint
+  webServer->on(
+      "/update", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleOTAUpdate(request, filename, index, data, len, final);
+      });
+
+  // Filesystem update endpoint
+  webServer->on(
+      "/fsupdate", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleFSUpdate(request, filename, index, data, len, final);
+      });
+
+  // OTA status endpoint
+  webServer->on(
+      "/ota/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument jsonDoc;
+        jsonDoc["firmware_size"] = ESP.getSketchSize();
+        jsonDoc["free_space"] = ESP.getFreeSketchSpace();
+        jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
+        jsonDoc["chip_model"] = String(ESP.getChipModel());
+        jsonDoc["update_url"] =
+            "http://" + WiFi.localIP().toString() + "/update";
+        jsonDoc["fs_update_url"] =
+            "http://" + WiFi.localIP().toString() + "/fsupdate";
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", jsonResponse);
+        addCORS(response);
+        request->send(response);
+      });
+
+  // OTA update page endpoint
+  webServer->on("/ota", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/ota.html")) {
+      AsyncWebServerResponse *response =
+          request->beginResponse(LittleFS, "/ota.html", "text/html");
+      addCORS(response);
+      request->send(response);
+    } else {
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/plain", "OTA page not found");
+      addCORS(response);
+      request->send(response);
+    }
+  });
+
+  log("🚀 OTA Update System Ready");
+  logf("\tWeb Interface: http://%s/ota\n", WiFi.localIP().toString().c_str());
+  logf("\tFirmware Update: http://%s/update\n",
+       WiFi.localIP().toString().c_str());
+  logf("\tFilesystem Update: http://%s/fsupdate\n",
+       WiFi.localIP().toString().c_str());
+}
+
 void ESPWiFi::srvAll() {
   srvLog();
   srvRoot();
+  srvOTA();
   srvInfo();
   srvFiles();
   srvConfig();

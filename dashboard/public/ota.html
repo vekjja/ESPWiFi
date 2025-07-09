@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ESPWiFi OTA Update</title>
+        <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .content {
+            padding: 40px;
+        }
+        .update-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+        .update-section h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 1.5em;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-weight: 500;
+        }
+        .file-label:hover {
+            background: #5a6fd8;
+        }
+        .selected-file {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .upload-btn {
+            margin-top: 15px;
+            padding: 12px 30px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .upload-btn:hover {
+            background: #218838;
+        }
+        .upload-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .progress {
+            margin-top: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .device-info {
+            background: #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .device-info h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .info-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            color: #333;
+            font-family: monospace;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #ffeaa7;
+            margin-bottom: 20px;
+        }
+        .warning strong {
+            color: #d63031;
+        }
+    </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🚀 ESPWiFi OTA Update</h1>
+                <p>Over-the-Air Firmware and Filesystem Updates</p>
+            </div>
+
+            <div class="content">
+                <div class="warning">
+                    <strong>⚠️ Important:</strong> Do not power off the device
+                    during updates.
+                    Firmware updates will automatically restart the device when
+                    complete.
+                </div>
+
+                <div class="device-info">
+                    <h3>📱 Device Information</h3>
+                    <div class="info-grid" id="deviceInfo">
+                        <div class="info-item">
+                            <div class="info-label">Chip Model</div>
+                            <div class="info-value"
+                                id="chipModel">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">SDK Version</div>
+                            <div class="info-value"
+                                id="sdkVersion">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Firmware Size</div>
+                            <div class="info-value"
+                                id="firmwareSize">Loading...</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Free Space</div>
+                            <div class="info-value"
+                                id="freeSpace">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="update-section">
+                    <h2>📦 Firmware Update</h2>
+                    <p>Upload a new firmware binary (.bin file) to update the
+                        device firmware.</p>
+                    <input type="file" id="firmwareFile" class="file-input"
+                        accept=".bin">
+                    <label for="firmwareFile" class="file-label">Choose Firmware
+                        File</label>
+                    <div id="firmwareFileName" class="selected-file"
+                        style="display: none;"></div>
+                    <button id="uploadFirmware" class="upload-btn"
+                        disabled>Upload Firmware</button>
+                    <div id="firmwareProgress" class="progress">
+                        <div id="firmwareProgressBar"
+                            class="progress-bar">0%</div>
+                    </div>
+                    <div id="firmwareStatus" class="status"></div>
+                </div>
+
+                <div class="update-section">
+                    <h2>📁 Filesystem Update</h2>
+                    <p>Upload individual files to update the device
+                        filesystem.</p>
+                    <input type="file" id="fsFile" class="file-input">
+                    <label for="fsFile" class="file-label">Choose File</label>
+                    <div id="fsFileName" class="selected-file"
+                        style="display: none;"></div>
+                    <button id="uploadFS" class="upload-btn" disabled>Upload
+                        File</button>
+                    <div id="fsProgress" class="progress">
+                        <div id="fsProgressBar" class="progress-bar">0%</div>
+                    </div>
+                    <div id="fsStatus" class="status"></div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        // Load device information
+        async function loadDeviceInfo() {
+            try {
+                const response = await fetch('/ota/status');
+                const data = await response.json();
+                
+                document.getElementById('chipModel').textContent = data.chip_model || 'Unknown';
+                document.getElementById('sdkVersion').textContent = data.sdk_version || 'Unknown';
+                document.getElementById('firmwareSize').textContent = formatBytes(data.firmware_size || 0);
+                document.getElementById('freeSpace').textContent = formatBytes(data.free_space || 0);
+            } catch (error) {
+                console.error('Failed to load device info:', error);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // File selection handlers
+        document.getElementById('firmwareFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('firmwareFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
+                document.getElementById('firmwareFileName').style.display = 'block';
+                document.getElementById('uploadFirmware').disabled = false;
+            }
+        });
+
+        document.getElementById('fsFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('fsFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
+                document.getElementById('fsFileName').style.display = 'block';
+                document.getElementById('uploadFS').disabled = false;
+            }
+        });
+
+        // Upload handlers
+        document.getElementById('uploadFirmware').addEventListener('click', function() {
+            const file = document.getElementById('firmwareFile').files[0];
+            if (file) {
+                uploadFile(file, '/update', 'firmware');
+            }
+        });
+
+        document.getElementById('uploadFS').addEventListener('click', function() {
+            const file = document.getElementById('fsFile').files[0];
+            if (file) {
+                uploadFile(file, '/fsupdate', 'filesystem');
+            }
+        });
+
+        function uploadFile(file, url, type) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const xhr = new XMLHttpRequest();
+            let progressBar, progress, status;
+            
+            if (type === 'firmware') {
+                progressBar = document.getElementById('firmwareProgressBar');
+                progress = document.getElementById('firmwareProgress');
+                status = document.getElementById('firmwareStatus');
+            } else if (type === 'filesystem') {
+                progressBar = document.getElementById('fsProgressBar');
+                progress = document.getElementById('fsProgress');
+                status = document.getElementById('fsStatus');
+            }
+
+            // Show progress
+            if (progress) progress.style.display = 'block';
+            if (status) status.style.display = 'none';
+
+            xhr.upload.addEventListener('progress', function(e) {
+                if (e.lengthComputable && progressBar) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                    progressBar.textContent = Math.round(percentComplete) + '%';
+                }
+            });
+
+            xhr.addEventListener('load', function() {
+                if (xhr.status === 200) {
+                    showStatus(type, 'success', 'Update completed successfully!');
+                    if (type === 'firmware') {
+                        setTimeout(() => {
+                            showStatus(type, 'info', 'Device will restart in 5 seconds...');
+                        }, 2000);
+                    }
+                } else {
+                    showStatus(type, 'error', 'Update failed: ' + xhr.responseText);
+                }
+            });
+
+            xhr.addEventListener('error', function() {
+                showStatus(type, 'error', 'Upload failed. Please try again.');
+            });
+
+            xhr.open('POST', url);
+            xhr.send(formData);
+        }
+
+        function showStatus(type, level, message) {
+            let status;
+            if (type === 'firmware') {
+                status = document.getElementById('firmwareStatus');
+            } else if (type === 'filesystem') {
+                status = document.getElementById('fsStatus');
+            }
+            
+            if (status) {
+                status.className = 'status ' + level;
+                status.textContent = message;
+                status.style.display = 'block';
+            }
+        }
+
+        // Load device info on page load
+        document.addEventListener('DOMContentLoaded', loadDeviceInfo);
+    </script>
+    </body>
+</html>

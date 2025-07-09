@@ -9,6 +9,7 @@
 #include <IntervalTimer.h>
 #include <LittleFS.h>
 #include <SD.h>
+#include <Update.h>
 #include <WiFiClient.h>
 
 #ifdef ESP8266
@@ -100,6 +101,7 @@ public:
   void srvFiles();
   void srvConfig();
   void srvRestart();
+  void srvOTA();
   void initWebServer();
   void startWebServer();
   void addCORS(AsyncWebServerResponse *response);
@@ -143,6 +145,13 @@ public:
   String bytesToHumanReadable(size_t bytes);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
+
+  // OTA
+  void startOTA();
+  void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
+                       size_t index, uint8_t *data, size_t len, bool final);
+  void handleFSUpdate(AsyncWebServerRequest *request, String filename,
+                      size_t index, uint8_t *data, size_t len, bool final);
 };
 
 #endif // ESPWiFi

@@ -1,33 +1,35 @@
 # ESPWiFi
 
-**ESPWiFi** is a lightweight library for easily connecting ESP8266 and ESP32 boards to WiFi networks. It supports both Station (STA) and Access Point (AP) modes, includes configuration storage via LittleFS, and is designed for use with the Arduino and PlatformIO frameworks.
+**ESPWiFi** is a modern, extensible library and dashboard for easily connecting ESP8266 and ESP32 boards to WiFi networks, managing device settings, and controlling hardware modules via a web interface. It supports both Station (STA) and Access Point (AP) modes, JSON-based configuration with LittleFS, a built-in web server, and a drag-and-drop dashboard for live device management.
 
 ---
 
 ## ✨ Features
 
-- 📶 Easy connection to WiFi networks
+- 📶 Easy WiFi connection (STA/AP modes)
 - 📡 Auto or manual AP mode fallback
 - 💾 JSON-based configuration stored on LittleFS
-- 🔌 Works on both ESP8266 and ESP32
-- 🔧 Web server interface for settings
-- 🔁 Utility functions for scheduled tasks
+- 🖥️ Web dashboard for live device/module management
+- 📡 mDNS support for easy device discovery
+- 🔌 GPIO, PWM, and remote pin control
+- 🔧 Web server API for settings, logs, and file management
+- 🔁 WebSocket endpoints for live data (RSSI, camera, custom)
+- 📷 Camera and spectral analyzer support (ESP32)
+- 🧩 Modular: add pins, WebSockets, and more via dashboard
+- 🛠️ PlatformIO and Arduino IDE compatible
 
 ---
 
 ## 🛠 Installation
 
 ### PlatformIO
-
 Add to `platformio.ini`:
-
 ```ini
 lib_deps = 
   https://github.com/vekjja/ESPWiFi.git
 ```
 
 ### Arduino IDE
-
 1. Download or clone this repo
 2. Move the folder into your Arduino `libraries/` directory
 
@@ -39,17 +41,17 @@ lib_deps =
 ESPWiFi/
 ├── src/
 │   └── ESPWiFi.h / .cpp
-├── data/
-│   └── config.json       # optional, example config
+├── dashboard/           # React web dashboard
+├── include/             # Hardware, sensors, camera, etc.
 ├── examples/
-│   └── BasicUsage/       # coming soon
+│   └── config.json      # Example config
 ├── library.json
 └── README.md
 ```
 
 ---
 
-## 🔧 Usage
+## 🔧 Firmware Usage (C++/Arduino)
 
 ```cpp
 #include <ESPWiFi.h>
@@ -57,31 +59,107 @@ ESPWiFi/
 ESPWiFi wifi;
 
 void setup() {
-  wifi.start();  // Initializes FS, reads config, connects or starts AP
+  wifi.startLog();
+  wifi.startWiFi();
+  wifi.startMDNS();
+  wifi.startGPIO();
+  wifi.srvAll();
+  wifi.startWebServer();
 }
 
 void loop() {
-  wifi.handleClient();  // Handles web requests if AP/web server is active
+  yield();
+  wifi.streamRSSI();
 }
+```
+
+### Example `config.json`
+```json
+{
+  "mode": "client", // or "ap"
+  "mdns": "esp32",
+  "client": {
+    "ssid": "YourWiFi",
+    "password": "YourPassword"
+  },
+  "ap": {
+    "ssid": "ESPWiFi-AP",
+    "password": "abcd1234"
+  },
+  "modules": [
+    {
+      "type": "pin",
+      "number": 5,
+      "mode": "out",
+      "state": "low",
+      "name": "LED"
+    },
+    {
+      "type": "webSocket",
+      "url": "/rssi",
+      "payload": "text",
+      "name": "RSSI"
+    }
+  ]
+}
+```
+
+> **Note:** When building the dashboard, place your desired `config.json` in `./dashboard/public` so it is included in the build output. Alternatively, you can manually add `config.json` to the root of the `data` directory before uploading to the ESP device.
+
+Upload config with:
+```bash
+pio run --target uploadfs
 ```
 
 ---
 
-## 📁 Configuration (`config.json`)
+## 🖥️ Dashboard (Web UI)
 
-```json
-{
-  "ssid": "YourWiFi",
-  "password": "YourPassword",
-  "mode": "sta"   // or "ap"
-}
-```
+The dashboard (in `dashboard/`) is a React app for live device management:
+- Add/remove/reorder Pin and WebSocket modules
+- Edit device/network settings
+- Drag-and-drop UI, Material UI theme
+- Edit and sync JSON config
 
-Place this in `/data/config.json` and upload using:
-
+### Quick Start
 ```bash
-pio run --target uploadfs
+cd dashboard
+npm install
+npm start
+# Open http://localhost:3000
 ```
+
+### Build for ESP device
+```bash
+npm run build:uploadfs
+```
+
+> **Tip:** When developing, you can create a `.env` file in the root of the `dashboard/` directory to set the API endpoint for your ESP device. For example:
+> ```env
+> REACT_APP_API_HOST=espwifi.local
+> REACT_APP_API_PORT=80
+> ```
+> This allows the dashboard to connect to your device on the local network during development.
+
+---
+
+## 🧩 Hardware & Sensors
+- **GPIO/PWM**: Control pins, set modes, invert, remote control
+- **WebSocket**: Live RSSI, camera, or custom data
+- **Camera**: ESP32-CAM/ESP32-S3 support (see `include/Camera.h`)
+- **Spectral Analyzer**: Audio FFT (see `include/SpectralAnalyzer.h`)
+- **BMI160**: Accelerometer/gyroscope (see `include/BMI160/`)
+- **LED Matrix**: FastLED support (see `include/LEDMatrix.h`)
+
+---
+
+## 📚 API Endpoints
+- `/config` — GET/PUT device config (JSON)
+- `/gpio` — POST pin control
+- `/rssi` — WebSocket for live RSSI
+- `/camera/live` — Camera stream (ESP32)
+- `/log` — Device logs
+- `/restart` — Reboot device
 
 ---
 

@@ -142,7 +142,8 @@ int8_t DFRobot_BMI160::setSensConf(struct bmi160Dev *dev) {
     if (rslt == BMI160_OK) {
       /* write power mode for accel and gyro */
       rslt = DFRobot_BMI160::setPowerMode(dev);
-      if (rslt == BMI160_OK) rslt = DFRobot_BMI160::checkInvalidSettg(dev);
+      if (rslt == BMI160_OK)
+        rslt = DFRobot_BMI160::checkInvalidSettg(dev);
     }
   }
 
@@ -257,7 +258,8 @@ int8_t DFRobot_BMI160::setGyroConf(struct bmi160Dev *dev) {
       delay(BMI160_ONE_MS_DELAY);
       // Write gyro range
       rslt = DFRobot_BMI160::setRegs(BMI160_GYRO_RANGE_ADDR, &data[1], 1, dev);
-      if (rslt == BMI160_OK) dev->prevGyroCfg.range = dev->gyroCfg.range;
+      if (rslt == BMI160_OK)
+        dev->prevGyroCfg.range = dev->gyroCfg.range;
     }
   }
 
@@ -582,35 +584,36 @@ int8_t DFRobot_BMI160::getSensorData(uint8_t select_sensor,
   sen_sel = select_sensor & BMI160_SEN_SEL_MASK;
   time_sel = ((sen_sel & BMI160_TIME_SEL) >> 2);
   sen_sel = sen_sel & (BMI160_ACCEL_SEL | BMI160_GYRO_SEL);
-  if (time_sel == 1) len = 3;
+  if (time_sel == 1)
+    len = 3;
 
   /* Null-pointer check */
   if (dev != NULL) {
     switch (sen_sel) {
-      case eBmi160AccelOnly:
-        /* Null-pointer check */
-        if (accel == NULL)
-          rslt = BMI160_E_NULL_PTR;
-        else
-          rslt = DFRobot_BMI160::getAccelData(len, accel, dev);
-        break;
-      case eBmi160GyroOnly:
-        /* Null-pointer check */
-        if (gyro == NULL)
-          rslt = BMI160_E_NULL_PTR;
-        else
-          rslt = DFRobot_BMI160::getGyroData(len, gyro, dev);
-        break;
-      case eBmi160BothAccelAndGyro:
-        /* Null-pointer check */
-        if ((gyro == NULL) || (accel == NULL))
-          rslt = BMI160_E_NULL_PTR;
-        else
-          rslt = DFRobot_BMI160::getAccelGyroData(len, accel, gyro, dev);
-        break;
-      default:
-        rslt = BMI160_E_INVALID_INPUT;
-        break;
+    case eBmi160AccelOnly:
+      /* Null-pointer check */
+      if (accel == NULL)
+        rslt = BMI160_E_NULL_PTR;
+      else
+        rslt = DFRobot_BMI160::getAccelData(len, accel, dev);
+      break;
+    case eBmi160GyroOnly:
+      /* Null-pointer check */
+      if (gyro == NULL)
+        rslt = BMI160_E_NULL_PTR;
+      else
+        rslt = DFRobot_BMI160::getGyroData(len, gyro, dev);
+      break;
+    case eBmi160BothAccelAndGyro:
+      /* Null-pointer check */
+      if ((gyro == NULL) || (accel == NULL))
+        rslt = BMI160_E_NULL_PTR;
+      else
+        rslt = DFRobot_BMI160::getAccelGyroData(len, accel, gyro, dev);
+      break;
+    default:
+      rslt = BMI160_E_INVALID_INPUT;
+      break;
     }
   } else {
     rslt = BMI160_E_NULL_PTR;
@@ -852,7 +855,8 @@ int8_t DFRobot_BMI160::setRegs(uint8_t reg_addr, uint8_t *data, uint16_t len,
     }
     delay(1);
 
-    if (rslt != BMI160_OK) rslt = BMI160_E_COM_FAIL;
+    if (rslt != BMI160_OK)
+      rslt = BMI160_E_COM_FAIL;
   }
 
   return rslt;
@@ -918,26 +922,26 @@ int8_t DFRobot_BMI160::setInt(struct bmi160Dev *dev, int intNum) {
 
   /* Select the Interrupt type */
   intConfig.intType =
-      BMI160_STEP_DETECT_INT;  // Choosing Step Detector interrupt
+      BMI160_STEP_DETECT_INT; // Choosing Step Detector interrupt
   /* Select the interrupt channel/pin settings */
   intConfig.intPinSettg.outputEn =
-      BMI160_ENABLE;  // Enabling interrupt pins to act as output pin
+      BMI160_ENABLE; // Enabling interrupt pins to act as output pin
   intConfig.intPinSettg.outputMode =
-      BMI160_DISABLE;  // Choosing push-pull mode for interrupt pin
+      BMI160_DISABLE; // Choosing push-pull mode for interrupt pin
   intConfig.intPinSettg.outputType =
-      BMI160_ENABLE;  // Choosing active High output
+      BMI160_ENABLE; // Choosing active High output
   intConfig.intPinSettg.edgeCtrl =
-      BMI160_ENABLE;  // Choosing edge triggered output
+      BMI160_ENABLE; // Choosing edge triggered output
   intConfig.intPinSettg.inputEn =
-      BMI160_DISABLE;  // Disabling interrupt pin to act as input
-  intConfig.intPinSettg.latchDur = BMI160_LATCH_DUR_NONE;  // non-latched output
+      BMI160_DISABLE; // Disabling interrupt pin to act as input
+  intConfig.intPinSettg.latchDur = BMI160_LATCH_DUR_NONE; // non-latched output
 
   /* Select the Step Detector interrupt parameters, Kindly use the recommended
    * settings for step detector */
   intConfig.intTypeCfg.accStepDetectInt.stepDetectorMode =
       BMI160_STEP_DETECT_NORMAL;
   intConfig.intTypeCfg.accStepDetectInt.stepDetectorEn =
-      BMI160_ENABLE;  // 1-enable, 0-disable the step detector
+      BMI160_ENABLE; // 1-enable, 0-disable the step detector
   rslt = DFRobot_BMI160::setIntConfig(&intConfig, dev);
   return rslt;
 }
@@ -946,57 +950,57 @@ int8_t DFRobot_BMI160::setIntConfig(struct bmi160IntSettg *intConfig,
                                     struct bmi160Dev *dev) {
   int8_t rslt = BMI160_OK;
   switch (intConfig->intType) {
-    case BMI160_ACC_ANY_MOTION_INT:
-      /*Any-motion  interrupt*/
-      // rslt = set_accel_any_motion_int(intConfig, dev);
-      break;
-    case BMI160_ACC_SIG_MOTION_INT:
-      /* Significant motion interrupt */
-      // rslt = set_accel_sig_motion_int(intConfig, dev);
-      break;
-    case BMI160_ACC_SLOW_NO_MOTION_INT:
-      /* Slow or no motion interrupt */
-      // rslt = set_accel_no_motion_int(intConfig, dev);
-      break;
-    case BMI160_ACC_DOUBLE_TAP_INT:
-    case BMI160_ACC_SINGLE_TAP_INT:
-      /* Double tap and single tap Interrupt */
-      // rslt = set_accel_tap_int(intConfig, dev);
-      break;
-    case BMI160_STEP_DETECT_INT:
-      /* Step detector interrupt */
-      rslt = setAccelStepDetectInt(intConfig, dev);
-      break;
-    case BMI160_ACC_ORIENT_INT:
-      /* Orientation interrupt */
-      // rslt = set_accel_orientation_int(intConfig, dev);
-      break;
-    case BMI160_ACC_FLAT_INT:
-      /* Flat detection interrupt */
-      // rslt = set_accel_flat_detect_int(intConfig, dev);
-      break;
-    case BMI160_ACC_LOW_G_INT:
-      /* Low-g interrupt */
-      // rslt = set_accel_low_g_int(intConfig, dev);
-      break;
-    case BMI160_ACC_HIGH_G_INT:
-      /* High-g interrupt */
-      // rslt = set_accel_high_g_int(intConfig, dev);
-      break;
-    case BMI160_ACC_GYRO_DATA_RDY_INT:
-      /* Data ready interrupt */
-      // rslt = set_accel_gyro_data_ready_int(intConfig, dev);
-      break;
-    case BMI160_ACC_GYRO_FIFO_FULL_INT:
-      /* Fifo full interrupt */
-      // rslt = set_fifo_full_int(intConfig, dev);
-      break;
-    case BMI160_ACC_GYRO_FIFO_WATERMARK_INT:
-      /* Fifo water-mark interrupt */
-      // rslt = set_fifo_watermark_int(intConfig, dev);
-      break;
-    default:
-      break;
+  case BMI160_ACC_ANY_MOTION_INT:
+    /*Any-motion  interrupt*/
+    // rslt = set_accel_any_motion_int(intConfig, dev);
+    break;
+  case BMI160_ACC_SIG_MOTION_INT:
+    /* Significant motion interrupt */
+    // rslt = set_accel_sig_motion_int(intConfig, dev);
+    break;
+  case BMI160_ACC_SLOW_NO_MOTION_INT:
+    /* Slow or no motion interrupt */
+    // rslt = set_accel_no_motion_int(intConfig, dev);
+    break;
+  case BMI160_ACC_DOUBLE_TAP_INT:
+  case BMI160_ACC_SINGLE_TAP_INT:
+    /* Double tap and single tap Interrupt */
+    // rslt = set_accel_tap_int(intConfig, dev);
+    break;
+  case BMI160_STEP_DETECT_INT:
+    /* Step detector interrupt */
+    rslt = setAccelStepDetectInt(intConfig, dev);
+    break;
+  case BMI160_ACC_ORIENT_INT:
+    /* Orientation interrupt */
+    // rslt = set_accel_orientation_int(intConfig, dev);
+    break;
+  case BMI160_ACC_FLAT_INT:
+    /* Flat detection interrupt */
+    // rslt = set_accel_flat_detect_int(intConfig, dev);
+    break;
+  case BMI160_ACC_LOW_G_INT:
+    /* Low-g interrupt */
+    // rslt = set_accel_low_g_int(intConfig, dev);
+    break;
+  case BMI160_ACC_HIGH_G_INT:
+    /* High-g interrupt */
+    // rslt = set_accel_high_g_int(intConfig, dev);
+    break;
+  case BMI160_ACC_GYRO_DATA_RDY_INT:
+    /* Data ready interrupt */
+    // rslt = set_accel_gyro_data_ready_int(intConfig, dev);
+    break;
+  case BMI160_ACC_GYRO_FIFO_FULL_INT:
+    /* Fifo full interrupt */
+    // rslt = set_fifo_full_int(intConfig, dev);
+    break;
+  case BMI160_ACC_GYRO_FIFO_WATERMARK_INT:
+    /* Fifo water-mark interrupt */
+    // rslt = set_fifo_watermark_int(intConfig, dev);
+    break;
+  default:
+    break;
   }
   return rslt;
 }
@@ -1055,7 +1059,8 @@ int8_t DFRobot_BMI160::setIntrPinConfig(struct bmi160IntSettg *intConfig,
 
   /* configure the behavioural settings of interrupt pin */
   rslt = configIntOutCtrl(intConfig, dev);
-  if (rslt == BMI160_OK) rslt = configIntLatch(intConfig, dev);
+  if (rslt == BMI160_OK)
+    rslt = configIntLatch(intConfig, dev);
 
   return rslt;
 }
@@ -1176,26 +1181,27 @@ int8_t DFRobot_BMI160::mapFeatureInterrupt(struct bmi160IntSettg *intConfig,
     temp[2] = data[2] & ~int_mask_lookup_table[intConfig->intType];
 
     switch (intConfig->intChannel) {
-      case BMI160_INT_CHANNEL_NONE:
-        data[0] = temp[0];
-        data[2] = temp[2];
-        break;
-      case BMI160_INT_CHANNEL_1:
-        data[0] = temp[0] | int_mask_lookup_table[intConfig->intType];
-        data[2] = temp[2];
-        break;
-      case BMI160_INT_CHANNEL_2:
-        data[2] = temp[2] | int_mask_lookup_table[intConfig->intType];
-        data[0] = temp[0];
-        break;
-      case BMI160_INT_CHANNEL_BOTH:
-        data[0] = temp[0] | int_mask_lookup_table[intConfig->intType];
-        data[2] = temp[2] | int_mask_lookup_table[intConfig->intType];
-        break;
-      default:
-        rslt = BMI160_E_OUT_OF_RANGE;
+    case BMI160_INT_CHANNEL_NONE:
+      data[0] = temp[0];
+      data[2] = temp[2];
+      break;
+    case BMI160_INT_CHANNEL_1:
+      data[0] = temp[0] | int_mask_lookup_table[intConfig->intType];
+      data[2] = temp[2];
+      break;
+    case BMI160_INT_CHANNEL_2:
+      data[2] = temp[2] | int_mask_lookup_table[intConfig->intType];
+      data[0] = temp[0];
+      break;
+    case BMI160_INT_CHANNEL_BOTH:
+      data[0] = temp[0] | int_mask_lookup_table[intConfig->intType];
+      data[2] = temp[2] | int_mask_lookup_table[intConfig->intType];
+      break;
+    default:
+      rslt = BMI160_E_OUT_OF_RANGE;
     }
-    if (rslt == BMI160_OK) rslt = setRegs(BMI160_INT_MAP_0_ADDR, data, 3, dev);
+    if (rslt == BMI160_OK)
+      rslt = setRegs(BMI160_INT_MAP_0_ADDR, data, 3, dev);
   }
 
   return rslt;
@@ -1283,7 +1289,8 @@ int8_t DFRobot_BMI160::setStepPowerMode(uint8_t model, struct bmi160Dev *dev) {
     if (rslt == BMI160_OK) {
       /* write power mode for accel and gyro */
       rslt = DFRobot_BMI160::setPowerMode(dev);
-      if (rslt == BMI160_OK) rslt = DFRobot_BMI160::checkInvalidSettg(dev);
+      if (rslt == BMI160_OK)
+        rslt = DFRobot_BMI160::checkInvalidSettg(dev);
     }
   }
 
@@ -1291,7 +1298,7 @@ int8_t DFRobot_BMI160::setStepPowerMode(uint8_t model, struct bmi160Dev *dev) {
 }
 
 int8_t DFRobot_BMI160::setStepCounter() {
-  uint8_t step_enable = 1;  // enable the step counter
+  uint8_t step_enable = 1; // enable the step counter
   return DFRobot_BMI160::setStepCounter(step_enable, Obmi160);
 }
 

@@ -3,7 +3,7 @@
 
 #include <Wire.h>
 
-#include "BMI160/DFRobot_BMI160.h"
+#include "DFRobot_BMI160.h"
 #include "ESPWiFi.h"
 
 DFRobot_BMI160 bmi160;

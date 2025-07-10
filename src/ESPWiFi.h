@@ -96,12 +96,12 @@ public:
   // WebServer
   void srvAll();
   void srvLog();
+  void srvOTA();
   void srvRoot();
   void srvInfo();
   void srvFiles();
   void srvConfig();
   void srvRestart();
-  void srvOTA();
   void initWebServer();
   void startWebServer();
   void addCORS(AsyncWebServerResponse *response);

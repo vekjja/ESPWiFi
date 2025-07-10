@@ -1,3 +1,4 @@
+#ifdef ESPWiFi_BMI160_ENABLED
 /*!
  * @file DFRobot_BMI160.cpp
  * @brief Define the basic structure of class DFRobot_BMI160
@@ -1358,3 +1359,5 @@ int8_t DFRobot_BMI160::readStepCounter(uint16_t *stepVal,
 
   return rslt;
 }
+
+#endif // ESPWiFi_BMI160_ENABLED

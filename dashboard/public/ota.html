@@ -80,7 +80,7 @@
         .upload-btn {
             margin-top: 15px;
             padding: 12px 30px;
-            background: #17EB9D;
+            background: #94BEAE;
             color: #1a1a2e;
             border: none;
             border-radius: 6px;
@@ -239,12 +239,10 @@
                         device firmware.</p>
                     <input type="file" id="firmwareFile" class="file-input"
                         accept=".bin">
-                    <label for="firmwareFile" class="file-label">Choose Firmware
-                        File</label>
+                    <button id="firmwareBtn" class="upload-btn">Choose Firmware
+                        File</button>
                     <div id="firmwareFileName" class="selected-file"
                         style="display: none;"></div>
-                    <button id="uploadFirmware" class="upload-btn"
-                        disabled>Upload Firmware</button>
 
                     <!-- Upload Progress -->
                     <div class="progress-section">
@@ -273,11 +271,9 @@
                     <p>Upload individual files to update the device
                         filesystem.</p>
                     <input type="file" id="fsFile" class="file-input">
-                    <label for="fsFile" class="file-label">Choose File</label>
+                    <button id="fsBtn" class="upload-btn">Choose File</button>
                     <div id="fsFileName" class="selected-file"
                         style="display: none;"></div>
-                    <button id="uploadFS" class="upload-btn" disabled>Upload
-                        File</button>
                     <div id="fsProgress" class="progress">
                         <div id="fsProgressBar" class="progress-bar">0%</div>
                     </div>
@@ -310,37 +306,60 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
+        let firmwareFile = null;
+        let fsFile = null;
+
         // File selection handlers
         document.getElementById('firmwareFile').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                document.getElementById('firmwareFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
-                document.getElementById('firmwareFileName').style.display = 'block';
-                document.getElementById('uploadFirmware').disabled = false;
+            firmwareFile = e.target.files[0];
+            const btn = document.getElementById('firmwareBtn');
+            const fileName = document.getElementById('firmwareFileName');
+            
+            if (firmwareFile) {
+                fileName.textContent = firmwareFile.name + ' (' + formatBytes(firmwareFile.size) + ')';
+                fileName.style.display = 'block';
+                btn.textContent = 'Upload Firmware';
+            } else {
+                fileName.style.display = 'none';
+                btn.textContent = 'Choose Firmware File';
             }
         });
 
         document.getElementById('fsFile').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                document.getElementById('fsFileName').textContent = file.name + ' (' + formatBytes(file.size) + ')';
-                document.getElementById('fsFileName').style.display = 'block';
-                document.getElementById('uploadFS').disabled = false;
+            fsFile = e.target.files[0];
+            const btn = document.getElementById('fsBtn');
+            const fileName = document.getElementById('fsFileName');
+            
+            if (fsFile) {
+                fileName.textContent = fsFile.name + ' (' + formatBytes(fsFile.size) + ')';
+                fileName.style.display = 'block';
+                btn.textContent = 'Upload File';
+            } else {
+                fileName.style.display = 'none';
+                btn.textContent = 'Choose File';
             }
         });
 
-        // Upload handlers
-        document.getElementById('uploadFirmware').addEventListener('click', function() {
-            const file = document.getElementById('firmwareFile').files[0];
-            if (file) {
-                uploadFirmware(file);
+        // Button click handlers
+        document.getElementById('firmwareBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (firmwareFile) {
+                uploadFirmware(firmwareFile);
+            } else {
+                document.getElementById('firmwareFile').click();
             }
         });
 
-        document.getElementById('uploadFS').addEventListener('click', function() {
-            const file = document.getElementById('fsFile').files[0];
-            if (file) {
-                uploadFile(file, '/ota/fsupload', 'filesystem');
+        document.getElementById('fsBtn').addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            if (fsFile) {
+                uploadFile(fsFile, '/ota/fsupload', 'filesystem');
+            } else {
+                document.getElementById('fsFile').click();
             }
         });
 
@@ -418,7 +437,11 @@
                                     }
                                 }
                             } catch (error) {
-                                // Ignore polling errors
+                                // Connection lost - device might be restarting
+                                if (pollCount > 10) { // Only stop after some initial polls
+                                    clearInterval(progressPolling);
+                                    progressPolling = null;
+                                }
                             }
                         }, 1000); // Poll every second
                     }, 500); // Wait 500ms for OTA to initialize
@@ -428,6 +451,7 @@
                     // Stop polling
                     if (progressPolling) {
                         clearInterval(progressPolling);
+                        progressPolling = null;
                     }
                     
                     if (xhr.status === 200) {
@@ -436,9 +460,19 @@
                         firmwareProgressBar.textContent = '100%';
                         
                         showStatus('firmware', 'success', 'Firmware update completed successfully!');
+                        
+                        // Wait a bit then show restart message
                         setTimeout(() => {
-                            showStatus('firmware', 'info', 'Device will restart in 5 seconds...');
-                        }, 2000);
+                            showStatus('firmware', 'info', 'Device will restart in 3 seconds...');
+                        }, 1000);
+                        
+                        // Stop polling after a short delay to let the device restart
+                        setTimeout(() => {
+                            if (progressPolling) {
+                                clearInterval(progressPolling);
+                                progressPolling = null;
+                            }
+                        }, 3000);
                     } else {
                         showStatus('firmware', 'error', 'Update failed: ' + xhr.responseText);
                     }
@@ -448,8 +482,15 @@
                     // Stop polling
                     if (progressPolling) {
                         clearInterval(progressPolling);
+                        progressPolling = null;
                     }
-                    showStatus('firmware', 'error', 'Upload failed. Please try again.');
+                    
+                    // Check if this might be a successful restart
+                    if (uploadProgressBar.textContent === '100%') {
+                        showStatus('firmware', 'success', 'Upload completed! Device is restarting...');
+                    } else {
+                        showStatus('firmware', 'error', 'Upload failed. Please try again.');
+                    }
                 });
 
                 xhr.open('POST', '/ota/upload');

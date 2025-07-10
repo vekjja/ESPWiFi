@@ -1,3 +1,4 @@
+#ifdef ESPWiFi_BMI160_ENABLED
 #ifndef ESPWiFi_BMI160_H
 #define ESPWiFi_BMI160_H
 
@@ -112,3 +113,4 @@ float ESPWiFi::getTemperature(String unit) {
 }
 
 #endif // ESPWiFi_BMI160_H
+#endif // ESPWiFi_BMI160_ENABLED

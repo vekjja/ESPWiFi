@@ -121,12 +121,14 @@ public:
   bool checkI2CDevice(uint8_t address);
 
   // BMI160
+#ifdef ESPWiFi_BMI160_ENABLED
   float getTemperature(String unit = "C");
   int8_t readGyroscope(int16_t *gyroData);
   bool startBMI160(uint8_t address = 0x69);
   int8_t readAccelerometer(int16_t *accelData);
   void readGyroscope(float &x, float &y, float &z);
   void readAccelerometer(float &x, float &y, float &z);
+#endif // ESPWiFi_BMI160_ENABLED
 
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
@@ -148,10 +150,12 @@ public:
 
   // OTA
   void startOTA();
+  void handleOTAStart(AsyncWebServerRequest *request);
   void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                        size_t index, uint8_t *data, size_t len, bool final);
   void handleFSUpdate(AsyncWebServerRequest *request, String filename,
                       size_t index, uint8_t *data, size_t len, bool final);
+  void resetOTAState();
 };
 
 #endif // ESPWiFi

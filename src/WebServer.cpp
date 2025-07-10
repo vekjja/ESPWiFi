@@ -297,7 +297,29 @@ void ESPWiFi::srvFiles() {
 void ESPWiFi::srvOTA() {
   initWebServer();
 
-  // Firmware update endpoint
+  // OTA start endpoint (initialize update)
+  webServer->on("/ota/start", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    handleOTAStart(request);
+  });
+
+  // OTA reset endpoint (reset stuck updates)
+  webServer->on("/ota/reset", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    resetOTAState();
+    request->send(200, "text/plain", "OTA state reset");
+  });
+
+  // OTA upload endpoint (actual file upload)
+  webServer->on(
+      "/ota/upload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleOTAUpdate(request, filename, index, data, len, final);
+      });
+
+  // Legacy firmware update endpoint (for backward compatibility)
   webServer->on(
       "/update", HTTP_POST,
       [this](AsyncWebServerRequest *request) {
@@ -327,6 +349,10 @@ void ESPWiFi::srvOTA() {
         jsonDoc["free_space"] = ESP.getFreeSketchSpace();
         jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
         jsonDoc["chip_model"] = String(ESP.getChipModel());
+        jsonDoc["ota_start_url"] =
+            "http://" + WiFi.localIP().toString() + "/ota/start";
+        jsonDoc["ota_upload_url"] =
+            "http://" + WiFi.localIP().toString() + "/ota/upload";
         jsonDoc["update_url"] =
             "http://" + WiFi.localIP().toString() + "/update";
         jsonDoc["fs_update_url"] =
@@ -357,7 +383,10 @@ void ESPWiFi::srvOTA() {
 
   log("🚀 OTA Update System Ready");
   logf("\tWeb Interface: http://%s/ota\n", WiFi.localIP().toString().c_str());
-  logf("\tFirmware Update: http://%s/update\n",
+  logf("\tOTA Start: http://%s/ota/start\n", WiFi.localIP().toString().c_str());
+  logf("\tOTA Upload: http://%s/ota/upload\n",
+       WiFi.localIP().toString().c_str());
+  logf("\tLegacy Update: http://%s/update\n",
        WiFi.localIP().toString().c_str());
   logf("\tFilesystem Update: http://%s/fsupdate\n",
        WiFi.localIP().toString().c_str());

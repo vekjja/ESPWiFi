@@ -22,7 +22,7 @@
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #47FFF0 0%, #FF4186 100%);
+            background: linear-gradient(135deg, #47FFF0 0%, #545454 100%);
             color: #1a1a2e;
             padding: 30px;
             text-align: center;
@@ -306,7 +306,7 @@
         document.getElementById('uploadFirmware').addEventListener('click', function() {
             const file = document.getElementById('firmwareFile').files[0];
             if (file) {
-                uploadFile(file, '/update', 'firmware');
+                uploadFirmware(file);
             }
         });
 
@@ -316,6 +316,62 @@
                 uploadFile(file, '/fsupdate', 'filesystem');
             }
         });
+
+        async function uploadFirmware(file) {
+            const progressBar = document.getElementById('firmwareProgressBar');
+            const progress = document.getElementById('firmwareProgress');
+            const status = document.getElementById('firmwareStatus');
+
+            // Show progress
+            progress.style.display = 'block';
+            status.style.display = 'none';
+
+            try {
+                // Step 1: Start OTA update
+                showStatus('firmware', 'info', 'Initializing firmware update...');
+                const startResponse = await fetch('/ota/start?mode=firmware');
+                if (!startResponse.ok) {
+                    const errorText = await startResponse.text();
+                    throw new Error('Failed to start OTA: ' + errorText);
+                }
+
+                // Step 2: Upload firmware file
+                showStatus('firmware', 'info', 'Uploading firmware...');
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const xhr = new XMLHttpRequest();
+                
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable && progressBar) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        progressBar.style.width = percentComplete + '%';
+                        progressBar.textContent = Math.round(percentComplete) + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', function() {
+                    if (xhr.status === 200) {
+                        showStatus('firmware', 'success', 'Firmware update completed successfully!');
+                        setTimeout(() => {
+                            showStatus('firmware', 'info', 'Device will restart in 5 seconds...');
+                        }, 2000);
+                    } else {
+                        showStatus('firmware', 'error', 'Update failed: ' + xhr.responseText);
+                    }
+                });
+
+                xhr.addEventListener('error', function() {
+                    showStatus('firmware', 'error', 'Upload failed. Please try again.');
+                });
+
+                xhr.open('POST', '/ota/upload');
+                xhr.send(formData);
+
+            } catch (error) {
+                showStatus('firmware', 'error', 'Update failed: ' + error.message);
+            }
+        }
 
         function uploadFile(file, url, type) {
             const formData = new FormData();

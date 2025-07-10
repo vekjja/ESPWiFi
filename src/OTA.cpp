@@ -1,59 +1,147 @@
 #include "ESPWiFi.h"
 
-void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
-                              size_t index, uint8_t *data, size_t len,
-                              bool final) {
-  static size_t totalSize = 0;
-  static size_t currentSize = 0;
+// Global variables for OTA state management
+static bool otaInProgress = false;
+static size_t otaCurrentSize = 0;
+static String otaErrorString = "";
 
-  if (index == 0) {
-    // Start of update
-    currentSize = 0;
+void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
+  // Reset OTA state
+  otaCurrentSize = 0;
+  otaErrorString = "";
+  otaInProgress = true;
 
-    // Get total size from Content-Length header
-    if (request->hasHeader("Content-Length")) {
-      totalSize = request->getHeader("Content-Length")->value().toInt();
-    } else {
-      // Fallback to available space
-      totalSize = ESP.getFreeSketchSpace();
-    }
+  // Get mode from parameter (firmware or filesystem)
+  String mode = "firmware";
+  if (request->hasParam("mode")) {
+    mode = request->getParam("mode")->value();
+  }
 
-    if (Update.begin(totalSize)) {
-      logf("📦 Starting firmware update: %s (%d bytes)", filename.c_str(),
-           totalSize);
-    } else {
-      logError("Failed to start firmware update");
-      request->send(400, "text/plain", "Update failed to start");
+  // Get MD5 hash if provided
+  if (request->hasParam("hash")) {
+    String hash = request->getParam("hash")->value();
+    logf("📦 OTA MD5 Hash: %s", hash.c_str());
+    if (!Update.setMD5(hash.c_str())) {
+      logError("Invalid MD5 hash provided");
+      otaInProgress = false;
+      request->send(400, "text/plain", "MD5 parameter invalid");
       return;
     }
   }
 
-  if (Update.write(data, len) != len) {
-    logError("ailed to write firmware data");
-    request->send(400, "text/plain", "Update write failed");
+  // Start update process based on mode
+  if (mode == "fs" || mode == "filesystem") {
+    log("📁 Starting filesystem update");
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+      StreamString str;
+      Update.printError(str);
+      otaErrorString = str.c_str();
+      logError("Failed to start filesystem update");
+      logError(otaErrorString);
+      otaInProgress = false;
+      request->send(400, "text/plain", otaErrorString);
+      return;
+    }
+  } else {
+    log("📦 Starting firmware update");
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+      StreamString str;
+      Update.printError(str);
+      otaErrorString = str.c_str();
+      logError("Failed to start firmware update");
+      logError(otaErrorString);
+      otaInProgress = false;
+      request->send(400, "text/plain", otaErrorString);
+      return;
+    }
+  }
+
+  log("✅ OTA update initialized successfully");
+  request->send(200, "text/plain", "OK");
+}
+
+void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
+                              size_t index, uint8_t *data, size_t len,
+                              bool final) {
+  // Check if OTA is in progress
+  if (!otaInProgress) {
+    logError("OTA update not in progress");
+    request->send(400, "text/plain", "OTA update not in progress");
     return;
   }
 
-  currentSize += len;
+  if (index == 0) {
+    // Reset progress on first chunk
+    otaCurrentSize = 0;
+    logf("📦 Starting upload: %s", filename.c_str());
+  }
+
+  // Write chunked data
+  if (len > 0) {
+    if (Update.write(data, len) != len) {
+      StreamString str;
+      Update.printError(str);
+      otaErrorString = str.c_str();
+      logError("Failed to write firmware data");
+      logError(otaErrorString);
+      Update.abort();
+      otaInProgress = false;
+      request->send(400, "text/plain", "Failed to write chunked data");
+      return;
+    }
+    otaCurrentSize += len;
+
+    // Progress update every 10%
+    if (request->contentLength() > 0) {
+      int progress = (otaCurrentSize * 100) / request->contentLength();
+      if (progress % 10 == 0) {
+        logf("📦 Upload progress: %d%%\n", progress);
+      }
+    }
+  }
 
   if (final) {
-    if (Update.end()) {
-      log("✅ Firmware update completed successfully");
-      log("🔄 Restarting device...");
-      request->send(200, "text/plain",
-                    "Update successful! Device will restart.");
-      delay(1000);
+    // Finalize the update
+    if (Update.end(true)) {
+      log("✅ OTA update completed successfully");
+      otaInProgress = false;
+
+      // Send success response
+      AsyncWebServerResponse *response =
+          request->beginResponse(200, "text/plain", "OK");
+      response->addHeader("Connection", "close");
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
+
+      // Restart device after a short delay
+      log("🔄 Restarting device in 2 seconds...");
+      delay(2000);
       ESP.restart();
     } else {
-      logError("❌ Firmware update failed to complete");
-      request->send(400, "text/plain", "Update failed to complete");
+      StreamString str;
+      Update.printError(str);
+      otaErrorString = str.c_str();
+      logError("❌ OTA update failed to complete");
+      logError(otaErrorString);
+      Update.abort();
+      otaInProgress = false;
+
+      AsyncWebServerResponse *response =
+          request->beginResponse(400, "text/plain", otaErrorString);
+      response->addHeader("Connection", "close");
+      response->addHeader("Access-Control-Allow-Origin", "*");
+      request->send(response);
     }
-  } else {
-    // Progress update
-    int progress = (currentSize * 100) / totalSize;
-    if (progress % 10 == 0) { // Log every 10%
-      logf("📦 Firmware update progress: %d%%", progress);
-    }
+  }
+}
+
+// Reset OTA state (can be called externally if needed)
+void ESPWiFi::resetOTAState() {
+  otaInProgress = false;
+  otaCurrentSize = 0;
+  otaErrorString = "";
+  if (Update.isRunning()) {
+    Update.abort();
   }
 }
 
@@ -67,7 +155,7 @@ void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
   if (index == 0) {
     // Start of filesystem update
     if (!LittleFS.begin()) {
-      logError("❌ Failed to start LittleFS");
+      log("❌ Failed to start LittleFS");
       request->send(400, "text/plain", "Filesystem not available");
       return;
     }
@@ -110,7 +198,7 @@ void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
       if (totalSize > 0) {
         int progress = (currentSize * 100) / totalSize;
         if (progress % 10 == 0) { // Log every 10%
-          logf("📁 Filesystem update progress: %d%%", progress);
+          logf("📁 Filesystem update progress: %d%%\n", progress);
         }
       }
     }

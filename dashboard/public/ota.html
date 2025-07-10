@@ -11,7 +11,7 @@
             margin: 0;
             padding: 20px;
             min-height: 100vh;
-            color: #47FFF0;
+            color: #67E4DA;
         }
         .container {
             max-width: 800px;
@@ -22,7 +22,7 @@
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #47FFF0 0%, #545454 100%);
+            background: linear-gradient(135deg, #545454 0%, #67E4DA  100%);
             color: #1a1a2e;
             padding: 30px;
             text-align: center;
@@ -45,11 +45,11 @@
             border-radius: 8px;
             padding: 25px;
             margin-bottom: 30px;
-            border-left: 4px solid #47FFF0;
+            border-left: 4px solid #67E4DA;
         }
         .update-section h2 {
             margin: 0 0 15px 0;
-            color: #47FFF0;
+            color: #67E4DA;
             font-size: 1.5em;
         }
         .file-input {
@@ -58,7 +58,7 @@
         .file-label {
             display: inline-block;
             padding: 12px 24px;
-            background: #47FFF0;
+            background: #67E4DA;
             color: #1a1a2e;
             border-radius: 6px;
             cursor: pointer;
@@ -75,7 +75,7 @@
             border-radius: 4px;
             font-family: monospace;
             font-size: 0.9em;
-            color: #47FFF0;
+            color: #67E4DA;
         }
         .upload-btn {
             margin-top: 15px;
@@ -106,7 +106,7 @@
         }
         .progress-bar {
             height: 20px;
-            background: linear-gradient(90deg, #47FFF0, #FF4186);
+            background: linear-gradient(90deg,#8B8B8B, #67E4DA);
             width: 0%;
             transition: width 0.3s;
             display: flex;
@@ -134,8 +134,19 @@
         }
         .status.info {
             background: #1e3a3a;
-            color: #47FFF0;
+            color: #67E4DA;
             border: 1px solid #2d5a5a;
+        }
+        
+        .progress-section {
+            margin-top: 15px;
+        }
+        
+        .progress-label {
+            font-size: 0.9em;
+            color: #67E4DA;
+            margin-bottom: 5px;
+            font-weight: 500;
         }
         .device-info {
             background: #2a2a3e;
@@ -145,7 +156,7 @@
         }
         .device-info h3 {
             margin: 0 0 15px 0;
-            color: #47FFF0;
+            color: #67E4DA;
         }
         .info-grid {
             display: grid;
@@ -156,16 +167,16 @@
             background: #3a3a4e;
             padding: 15px;
             border-radius: 6px;
-            border-left: 3px solid #47FFF0;
+            border-left: 3px solid #67E4DA;
         }
         .info-label {
             font-weight: 600;
-            color: #FF4186;
+            color: #9B9B9B;
             font-size: 0.9em;
             margin-bottom: 5px;
         }
         .info-value {
-            color: #47FFF0;
+            color: #67E4DA;
             font-family: monospace;
         }
         .warning {
@@ -189,12 +200,12 @@
             </div>
 
             <div class="content">
-                <div class="warning">
+                <!-- <div class="warning">
                     <strong>⚠️ Important:</strong> Do not power off the device
                     during updates.
                     Firmware updates will automatically restart the device when
                     complete.
-                </div>
+                </div> -->
 
                 <div class="device-info">
                     <h3>📱 Device Information</h3>
@@ -234,10 +245,26 @@
                         style="display: none;"></div>
                     <button id="uploadFirmware" class="upload-btn"
                         disabled>Upload Firmware</button>
-                    <div id="firmwareProgress" class="progress">
-                        <div id="firmwareProgressBar"
-                            class="progress-bar">0%</div>
+
+                    <!-- Upload Progress -->
+                    <div class="progress-section">
+                        <div class="progress-label">📤 Upload Progress:</div>
+                        <div id="uploadProgress" class="progress">
+                            <div id="uploadProgressBar"
+                                class="progress-bar">0%</div>
+                        </div>
                     </div>
+
+                    <!-- Firmware Update Progress -->
+                    <div class="progress-section">
+                        <div class="progress-label">📦 Firmware Update
+                            Progress:</div>
+                        <div id="firmwareProgress" class="progress">
+                            <div id="firmwareProgressBar"
+                                class="progress-bar">0%</div>
+                        </div>
+                    </div>
+
                     <div id="firmwareStatus" class="status"></div>
                 </div>
 
@@ -313,18 +340,27 @@
         document.getElementById('uploadFS').addEventListener('click', function() {
             const file = document.getElementById('fsFile').files[0];
             if (file) {
-                uploadFile(file, '/fsupdate', 'filesystem');
+                uploadFile(file, '/ota/fsupload', 'filesystem');
             }
         });
 
         async function uploadFirmware(file) {
-            const progressBar = document.getElementById('firmwareProgressBar');
-            const progress = document.getElementById('firmwareProgress');
+            const uploadProgressBar = document.getElementById('uploadProgressBar');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const firmwareProgressBar = document.getElementById('firmwareProgressBar');
+            const firmwareProgress = document.getElementById('firmwareProgress');
             const status = document.getElementById('firmwareStatus');
 
-            // Show progress
-            progress.style.display = 'block';
+            // Show both progress bars
+            uploadProgress.style.display = 'block';
+            firmwareProgress.style.display = 'block';
             status.style.display = 'none';
+
+            // Reset progress bars
+            uploadProgressBar.style.width = '0%';
+            uploadProgressBar.textContent = '0%';
+            firmwareProgressBar.style.width = '0%';
+            firmwareProgressBar.textContent = '0%';
 
             try {
                 // Step 1: Start OTA update
@@ -342,16 +378,63 @@
 
                 const xhr = new XMLHttpRequest();
                 
+                // Track upload progress
                 xhr.upload.addEventListener('progress', function(e) {
-                    if (e.lengthComputable && progressBar) {
+                    if (e.lengthComputable) {
                         const percentComplete = (e.loaded / e.total) * 100;
-                        progressBar.style.width = percentComplete + '%';
-                        progressBar.textContent = Math.round(percentComplete) + '%';
+                        uploadProgressBar.style.width = percentComplete + '%';
+                        uploadProgressBar.textContent = Math.round(percentComplete) + '%';
                     }
                 });
 
+                // Start polling for server-side progress when upload starts
+                let progressPolling = null;
+                let pollingTimeout = null;
+                xhr.upload.addEventListener('loadstart', function() {
+                    // Wait a bit for the first chunk to arrive and OTA to initialize
+                    setTimeout(() => {
+                        let pollCount = 0;
+                        const maxPolls = 120; // Stop after 2 minutes
+                        
+                        progressPolling = setInterval(async () => {
+                            pollCount++;
+                            if (pollCount > maxPolls) {
+                                clearInterval(progressPolling);
+                                progressPolling = null;
+                                return;
+                            }
+                            
+                            try {
+                                const response = await fetch('/ota/progress');
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.in_progress && data.progress !== undefined) {
+                                        firmwareProgressBar.style.width = data.progress + '%';
+                                        firmwareProgressBar.textContent = Math.round(data.progress) + '%';
+                                    } else if (!data.in_progress) {
+                                        // OTA not in progress, stop polling
+                                        clearInterval(progressPolling);
+                                        progressPolling = null;
+                                    }
+                                }
+                            } catch (error) {
+                                // Ignore polling errors
+                            }
+                        }, 1000); // Poll every second
+                    }, 500); // Wait 500ms for OTA to initialize
+                });
+
                 xhr.addEventListener('load', function() {
+                    // Stop polling
+                    if (progressPolling) {
+                        clearInterval(progressPolling);
+                    }
+                    
                     if (xhr.status === 200) {
+                        // Set firmware progress to 100% when upload completes
+                        firmwareProgressBar.style.width = '100%';
+                        firmwareProgressBar.textContent = '100%';
+                        
                         showStatus('firmware', 'success', 'Firmware update completed successfully!');
                         setTimeout(() => {
                             showStatus('firmware', 'info', 'Device will restart in 5 seconds...');
@@ -362,6 +445,10 @@
                 });
 
                 xhr.addEventListener('error', function() {
+                    // Stop polling
+                    if (progressPolling) {
+                        clearInterval(progressPolling);
+                    }
                     showStatus('firmware', 'error', 'Upload failed. Please try again.');
                 });
 

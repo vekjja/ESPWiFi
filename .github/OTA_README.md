@@ -25,12 +25,16 @@ This project now includes Over-The-Air (OTA) update functionality for both firmw
 
 #### Firmware Update
 ```bash
-curl -X POST -F "file=@firmware.bin" http://[device-ip]/update
+# Step 1: Start OTA update
+curl "http://[device-ip]/ota/start?mode=firmware"
+
+# Step 2: Upload firmware file
+curl -X POST -F "file=@firmware.bin" http://[device-ip]/ota/upload
 ```
 
-#### Filesystem Update
+#### Filesystem Upload
 ```bash
-curl -X POST -F "file=@myfile.txt" http://[device-ip]/fsupdate
+curl -X POST -F "file=@myfile.txt" http://[device-ip]/ota/fsupload
 ```
 
 #### Device Status
@@ -86,8 +90,11 @@ data/
 |----------|--------|-------------|
 | `/ota` | GET | OTA web interface |
 | `/ota/status` | GET | Device status and OTA info |
-| `/update` | POST | Firmware update endpoint |
-| `/fsupdate` | POST | Filesystem update endpoint |
+| `/ota/start` | GET | Initialize OTA update |
+| `/ota/upload` | POST | Upload firmware file |
+| `/ota/progress` | GET | Get OTA progress |
+| `/ota/reset` | GET | Reset OTA state |
+| `/ota/fsupload` | POST | Filesystem upload endpoint |
 
 ## Security Considerations
 

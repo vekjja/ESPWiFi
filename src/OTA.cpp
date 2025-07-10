@@ -1,13 +1,15 @@
 #include "ESPWiFi.h"
 
 // Global variables for OTA state management
-static bool otaInProgress = false;
-static size_t otaCurrentSize = 0;
-static String otaErrorString = "";
+bool otaInProgress = false;
+size_t otaCurrentSize = 0;
+size_t otaTotalSize = 0;
+String otaErrorString = "";
 
 void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   // Reset OTA state
   otaCurrentSize = 0;
+  otaTotalSize = 0;
   otaErrorString = "";
   otaInProgress = true;
 
@@ -65,15 +67,22 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                               bool final) {
   // Check if OTA is in progress
   if (!otaInProgress) {
-    logError("OTA update not in progress");
-    request->send(400, "text/plain", "OTA update not in progress");
+    // This can happen during polling before OTA starts, handle gracefully
+    request->send(200, "application/json",
+                  "{\"in_progress\":false,\"progress\":0}");
     return;
   }
 
   if (index == 0) {
     // Reset progress on first chunk
     otaCurrentSize = 0;
-    logf("📦 Starting upload: %s", filename.c_str());
+
+    // Get total size from Content-Length header for progress tracking
+    if (request->hasHeader("Content-Length")) {
+      otaTotalSize = request->getHeader("Content-Length")->value().toInt();
+    }
+
+    logf("📦 Starting upload: %s (%d bytes)\n", filename.c_str(), otaTotalSize);
   }
 
   // Write chunked data
@@ -139,6 +148,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
 void ESPWiFi::resetOTAState() {
   otaInProgress = false;
   otaCurrentSize = 0;
+  otaTotalSize = 0;
   otaErrorString = "";
   if (Update.isRunning()) {
     Update.abort();
@@ -191,7 +201,7 @@ void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
 
     if (final) {
       fsFile.close();
-      logf("✅ Filesystem update completed: %s", filename.c_str());
+      logf("✅ Filesystem update completed: %s\n", filename.c_str());
       request->send(200, "text/plain", "Filesystem update successful!");
     } else {
       // Progress update

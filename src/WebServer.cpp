@@ -308,6 +308,30 @@ void ESPWiFi::srvOTA() {
     request->send(200, "text/plain", "OTA state reset");
   });
 
+  // OTA progress endpoint
+  webServer->on(
+      "/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument jsonDoc;
+        jsonDoc["in_progress"] = otaInProgress;
+        jsonDoc["current_size"] = otaCurrentSize;
+        jsonDoc["total_size"] = otaTotalSize;
+        jsonDoc["progress"] = 0; // Will be calculated below
+
+        // Calculate progress percentage if we have total size and OTA is in
+        // progress
+        if (otaInProgress && otaTotalSize > 0) {
+          int progress = (otaCurrentSize * 100) / otaTotalSize;
+          jsonDoc["progress"] = progress;
+        }
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", jsonResponse);
+        addCORS(response);
+        request->send(response);
+      });
+
   // OTA upload endpoint (actual file upload)
   webServer->on(
       "/ota/upload", HTTP_POST,
@@ -319,20 +343,9 @@ void ESPWiFi::srvOTA() {
         handleOTAUpdate(request, filename, index, data, len, final);
       });
 
-  // Legacy firmware update endpoint (for backward compatibility)
-  webServer->on(
-      "/update", HTTP_POST,
-      [this](AsyncWebServerRequest *request) {
-        // This will be handled by the upload handler
-      },
-      [this](AsyncWebServerRequest *request, String filename, size_t index,
-             uint8_t *data, size_t len, bool final) {
-        handleOTAUpdate(request, filename, index, data, len, final);
-      });
-
   // Filesystem update endpoint
   webServer->on(
-      "/fsupdate", HTTP_POST,
+      "/ota/fsupload", HTTP_POST,
       [this](AsyncWebServerRequest *request) {
         // This will be handled by the upload handler
       },
@@ -353,10 +366,8 @@ void ESPWiFi::srvOTA() {
             "http://" + WiFi.localIP().toString() + "/ota/start";
         jsonDoc["ota_upload_url"] =
             "http://" + WiFi.localIP().toString() + "/ota/upload";
-        jsonDoc["update_url"] =
-            "http://" + WiFi.localIP().toString() + "/update";
         jsonDoc["fs_update_url"] =
-            "http://" + WiFi.localIP().toString() + "/fsupdate";
+            "http://" + WiFi.localIP().toString() + "/ota/fsupload";
 
         String jsonResponse;
         serializeJson(jsonDoc, jsonResponse);
@@ -386,9 +397,10 @@ void ESPWiFi::srvOTA() {
   logf("\tOTA Start: http://%s/ota/start\n", WiFi.localIP().toString().c_str());
   logf("\tOTA Upload: http://%s/ota/upload\n",
        WiFi.localIP().toString().c_str());
-  logf("\tLegacy Update: http://%s/update\n",
+  logf("\tOTA Progress: http://%s/ota/progress\n",
        WiFi.localIP().toString().c_str());
-  logf("\tFilesystem Update: http://%s/fsupdate\n",
+  logf("\tOTA Reset: http://%s/ota/reset\n", WiFi.localIP().toString().c_str());
+  logf("\tFilesystem Upload: http://%s/ota/fsupload\n",
        WiFi.localIP().toString().c_str());
 }
 

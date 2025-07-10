@@ -156,6 +156,12 @@ public:
   void handleFSUpdate(AsyncWebServerRequest *request, String filename,
                       size_t index, uint8_t *data, size_t len, bool final);
   void resetOTAState();
+
+  // OTA state variables (externally accessible)
+  bool otaInProgress;
+  size_t otaCurrentSize;
+  size_t otaTotalSize;
+  String otaErrorString;
 };
 
 #endif // ESPWiFi

@@ -100,7 +100,7 @@ void ESPWiFi::writeLog(String message) {
 }
 
 void ESPWiFi::logError(String message) {
-  String errMsg = "💔 Error: " + message;
+  String errMsg = "❗️ Error: " + message;
   log(errMsg);
 }
 

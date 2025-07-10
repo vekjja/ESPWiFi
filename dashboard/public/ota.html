@@ -308,6 +308,7 @@
 
         let firmwareFile = null;
         let fsFile = null;
+        let restartTimeout = null;
 
         // File selection handlers
         document.getElementById('firmwareFile').addEventListener('change', function(e) {
@@ -471,7 +472,11 @@
                         showStatus('firmware', 'success', 'Firmware update completed successfully!');
                         
                         // Wait a bit then show restart message
-                        setTimeout(() => {
+                        if (restartTimeout) {
+                            clearTimeout(restartTimeout);
+                            restartTimeout = null;
+                        }
+                        restartTimeout = setTimeout(() => {
                             showStatus('firmware', 'info', 'Device will restart in 5 seconds...');
                         }, 1000);
                         
@@ -572,7 +577,12 @@
             } else if (type === 'filesystem') {
                 status = document.getElementById('fsStatus');
             }
-            
+
+            // Prevent overwriting a success message with a restart/info message
+            if (status && status.className.includes('success') && level === 'info') {
+                return;
+            }
+
             if (status) {
                 status.className = 'status ' + level;
                 status.textContent = message;
@@ -585,8 +595,16 @@
             try {
                 const response = await fetch('/ota/status');
                 if (response.ok) {
+                    // Clear any pending restart message timeout
+                    if (restartTimeout) {
+                        clearTimeout(restartTimeout);
+                        restartTimeout = null;
+                    }
                     showStatus('firmware', 'success', 'Device is back online! Update completed successfully.');
-                    // Reload device info to show updated firmware info
+                    // Set progress bar to 100% when device is back online
+                    const firmwareProgressBar = document.getElementById('firmwareProgressBar');
+                    firmwareProgressBar.style.width = '100%';
+                    firmwareProgressBar.textContent = '100%';
                     loadDeviceInfo();
                 }
             } catch (error) {

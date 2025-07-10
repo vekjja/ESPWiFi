@@ -80,7 +80,7 @@
         .upload-btn {
             margin-top: 15px;
             padding: 12px 30px;
-            background: #94BEAE;
+            background: #9D9D9D;
             color: #1a1a2e;
             border: none;
             border-radius: 6px;
@@ -90,7 +90,7 @@
             transition: background 0.3s;
         }
         .upload-btn:hover {
-            background: #14D18A;
+            background: #26D995;
         }
         .upload-btn:disabled {
             background: #4a4a5e;
@@ -441,6 +441,15 @@
                                 if (pollCount > 10) { // Only stop after some initial polls
                                     clearInterval(progressPolling);
                                     progressPolling = null;
+                                    
+                                    // If upload was 100% complete, this is likely a successful restart
+                                    if (uploadProgressBar.textContent === '100%') {
+                                        showStatus('firmware', 'info', 'Device is restarting... Please wait.');
+                                        // Start checking for device to come back online
+                                        setTimeout(() => {
+                                            checkDeviceStatus();
+                                        }, 3000);
+                                    }
                                 }
                             }
                         }, 1000); // Poll every second
@@ -463,16 +472,16 @@
                         
                         // Wait a bit then show restart message
                         setTimeout(() => {
-                            showStatus('firmware', 'info', 'Device will restart in 3 seconds...');
+                            showStatus('firmware', 'info', 'Device will restart in 5 seconds...');
                         }, 1000);
                         
-                        // Stop polling after a short delay to let the device restart
+                        // Continue polling for a bit longer to detect successful restart
                         setTimeout(() => {
                             if (progressPolling) {
                                 clearInterval(progressPolling);
                                 progressPolling = null;
                             }
-                        }, 3000);
+                        }, 8000); // Poll for 8 seconds total to catch restart
                     } else {
                         showStatus('firmware', 'error', 'Update failed: ' + xhr.responseText);
                     }
@@ -488,6 +497,11 @@
                     // Check if this might be a successful restart
                     if (uploadProgressBar.textContent === '100%') {
                         showStatus('firmware', 'success', 'Upload completed! Device is restarting...');
+                        
+                        // Try to detect when device comes back online
+                        setTimeout(() => {
+                            checkDeviceStatus();
+                        }, 3000);
                     } else {
                         showStatus('firmware', 'error', 'Upload failed. Please try again.');
                     }
@@ -563,6 +577,23 @@
                 status.className = 'status ' + level;
                 status.textContent = message;
                 status.style.display = 'block';
+            }
+        }
+
+        // Check if device is back online after restart
+        async function checkDeviceStatus() {
+            try {
+                const response = await fetch('/ota/status');
+                if (response.ok) {
+                    showStatus('firmware', 'success', 'Device is back online! Update completed successfully.');
+                    // Reload device info to show updated firmware info
+                    loadDeviceInfo();
+                }
+            } catch (error) {
+                // Device still restarting, try again in a few seconds
+                setTimeout(() => {
+                    checkDeviceStatus();
+                }, 2000);
             }
         }
 

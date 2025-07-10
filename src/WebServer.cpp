@@ -394,14 +394,6 @@ void ESPWiFi::srvOTA() {
 
   log("🚀 OTA Update System Ready");
   logf("\tWeb Interface: http://%s/ota\n", WiFi.localIP().toString().c_str());
-  logf("\tOTA Start: http://%s/ota/start\n", WiFi.localIP().toString().c_str());
-  logf("\tOTA Upload: http://%s/ota/upload\n",
-       WiFi.localIP().toString().c_str());
-  logf("\tOTA Progress: http://%s/ota/progress\n",
-       WiFi.localIP().toString().c_str());
-  logf("\tOTA Reset: http://%s/ota/reset\n", WiFi.localIP().toString().c_str());
-  logf("\tFilesystem Upload: http://%s/ota/fsupload\n",
-       WiFi.localIP().toString().c_str());
 }
 
 void ESPWiFi::srvAll() {

@@ -121,10 +121,10 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
       response->addHeader("Connection", "close");
       response->addHeader("Access-Control-Allow-Origin", "*");
       request->send(response);
+      delay(3000);
 
-      // Restart device after a short delay
-      log("🔄 Restarting device in 2 seconds...");
-      delay(2000);
+      // Restart device after a longer delay to allow UI to receive response
+      log("🔄 Restarting Device...");
       ESP.restart();
     } else {
       StreamString str;

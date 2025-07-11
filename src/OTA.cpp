@@ -1,3 +1,6 @@
+#ifndef ESPWiFi_OTA_H
+#define ESPWiFi_OTA_H
+
 #include "ESPWiFi.h"
 
 // Global variables for OTA state management
@@ -207,10 +210,23 @@ void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
       // Progress update
       if (totalSize > 0) {
         int progress = (currentSize * 100) / totalSize;
-        if (progress % 10 == 0) { // Log every 10%
+        if (progress % 10 == 0) {  // Log every 10%
           logf("📁 Filesystem update progress: %d%%\n", progress);
         }
       }
     }
   }
 }
+
+void ESPWiFi::handleOTAHtml(AsyncWebServerRequest *request) {
+  if (LittleFS.exists("/ota.html")) {
+    AsyncWebServerResponse *response =
+        request->beginResponse(LittleFS, "/ota.html", "text/html");
+    response->addHeader("Content-Type", "text/html; charset=UTF-8");
+    addCORS(response);
+    request->send(response);
+  } else {
+    request->send(404, "text/plain", "OTA HTML file not found");
+  }
+}
+#endif  // ESPWiFi_OTA_H

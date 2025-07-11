@@ -1,23 +1,22 @@
-#ifndef TEXT_H
-#define TEXT_H
+#ifndef LED_TEXT_H
+#define LED_TEXT_H
 
 #include "Colors.h"
-#include "LEDMatrix.h"
+#include "Matrix.h"
 
 // Global matrix instance
 FastLED_NeoMatrix matrix(leds, LED_WIDTH, LED_HEIGHT);
 
-const int maxLen = 200;
+const int espTextMaxLen = 200;
 
 // Text configuration
-char textContent[maxLen] = "*.*. Lit Box .*.*"; // 40 chars max + null
+char textContent[espTextMaxLen] = "*.*. Lit Box .*.*";  // 40 chars max + null
 char textAnimation[16] = "scroll";
 bool textRequested = false;
 int textSpeed = 75;
 int textSize = 1;
 
 void scrollText(const char *text) {
-
   matrix.setTextSize(textSize);
   matrix.setTextColor(crgbTo16bit(pixelColor));
 

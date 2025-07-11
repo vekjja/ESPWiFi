@@ -28,7 +28,7 @@ void ESPWiFi::startWiFi() {
     startAP();
   } else {
     log("⚠️  Invalid Mode: " + mode);
-    config["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
+    config["mode"] = "accessPoint";  // Ensure mode is set to accesspoint
     startAP();
   }
 }
@@ -50,10 +50,10 @@ void ESPWiFi::startClient() {
   logf("\tMAC: %s\n", WiFi.macAddress().c_str());
   Serial.print("\t");
 
-  WiFi.disconnect(true);      // Ensure clean start
-  delay(100);                 // Allow time for disconnect
-  WiFi.mode(WIFI_STA);        // Station mode only
-  WiFi.begin(ssid, password); // Start connection
+  WiFi.disconnect(true);       // Ensure clean start
+  delay(100);                  // Allow time for disconnect
+  WiFi.mode(WIFI_STA);         // Station mode only
+  WiFi.begin(ssid, password);  // Start connection
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED &&
@@ -62,7 +62,7 @@ void ESPWiFi::startClient() {
       connectSubroutine();
     }
     Serial.print(".");
-    delay(30); // Wait for connection
+    delay(30);  // Wait for connection
   }
   Serial.print("\n");
 
@@ -83,11 +83,11 @@ int ESPWiFi::selectBestChannel() {
   for (int i = 0; i < numNetworks; i++) {
     int channel = WiFi.channel(i);
     if (channel > 0 &&
-        channel <= 13) { // Ensure the channel is within a valid range
+        channel <= 13) {  // Ensure the channel is within a valid range
       channels[channel]++;
     }
   }
-  int leastCongestedChannel = 1; // Default to channel 1
+  int leastCongestedChannel = 1;  // Default to channel 1
   for (int i = 1; i <= 13; i++) {
     if (channels[i] < channels[leastCongestedChannel]) {
       leastCongestedChannel = i;
@@ -100,7 +100,7 @@ void ESPWiFi::startAP() {
   readConfig();
   String ssid = config["ap"]["ssid"];
   String password = config["ap"]["password"];
-  log("\n📡 Starting Access Point:");
+  log("📡 Starting Access Point:");
   log("\tSSID: " + ssid);
   log("\tPassword: " + password);
   int bestChannel = selectBestChannel();
@@ -116,7 +116,7 @@ void ESPWiFi::startAP() {
   log(WiFi.softAPIP());
 #ifdef LED_BUILTIN
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW); // Turn on LED to indicate AP mode
+  digitalWrite(LED_BUILTIN, LOW);  // Turn on LED to indicate AP mode
 #endif
 }
 
@@ -143,4 +143,4 @@ void ESPWiFi::updateMDNS() {
 }
 #endif
 
-#endif // ESPWiFi_WIFI
+#endif  // ESPWiFi_WIFI

@@ -28,13 +28,13 @@
 class WebSocket;
 
 class ESPWiFi {
-private:
+ private:
   FS *fs;
   bool sdCardStarted = false;
   bool loggingStarted = false;
   bool littleFsStarted = false;
 
-public:
+ public:
   JsonDocument config;
   int connectTimeout = 15000;
   String logFile = "/log.txt";
@@ -68,11 +68,17 @@ public:
 
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }
-  template <typename T> void logError(T value) { logError(String(value)); };
+  template <typename T>
+  void logError(T value) {
+    logError(String(value));
+  };
 
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T> void log(T value) { log(String(value)); };
+  template <typename T>
+  void log(T value) {
+    log(String(value));
+  };
 
   // Config
   void saveConfig();
@@ -128,7 +134,7 @@ public:
   int8_t readAccelerometer(int16_t *accelData);
   void readGyroscope(float &x, float &y, float &z);
   void readAccelerometer(float &x, float &y, float &z);
-#endif // ESPWiFi_BMI160_ENABLED
+#endif  // ESPWiFi_BMI160_ENABLED
 
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
@@ -150,6 +156,7 @@ public:
 
   // OTA
   void startOTA();
+  void handleOTAHtml(AsyncWebServerRequest *request);
   void handleOTAStart(AsyncWebServerRequest *request);
   void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                        size_t index, uint8_t *data, size_t len, bool final);
@@ -164,4 +171,4 @@ public:
   String otaErrorString;
 };
 
-#endif // ESPWiFi
+#endif  // ESPWiFi

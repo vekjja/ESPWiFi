@@ -90,6 +90,10 @@ void ESPWiFi::srvConfig() {
           saveConfig();
         }
 
+        if (configUpdateCallback) {
+          configUpdateCallback();
+        }
+
         String responseStr;
         serializeJson(config, responseStr);
         AsyncWebServerResponse *response =
@@ -118,13 +122,13 @@ void ESPWiFi::srvLog() {
     if (fs && fs->exists(logFile)) {
       AsyncWebServerResponse *response = request->beginResponse(
           *fs, logFile,
-          "text/plain; charset=utf-8");  // Set UTF-8 encoding
+          "text/plain; charset=utf-8"); // Set UTF-8 encoding
       addCORS(response);
       request->send(response);
     } else {
       AsyncWebServerResponse *response =
           request->beginResponse(404, "text/plain; charset=utf-8",
-                                 "Log file not found");  // Set UTF-8 encoding
+                                 "Log file not found"); // Set UTF-8 encoding
       addCORS(response);
       request->send(response);
     }
@@ -223,7 +227,8 @@ void ESPWiFi::srvFiles() {
     String path = "/";
     if (request->hasParam("dir")) {
       path = request->getParam("dir")->value();
-      if (!path.startsWith("/")) path = "/" + path;
+      if (!path.startsWith("/"))
+        path = "/" + path;
     }
     File root = LittleFS.open(path, "r");
     if (!root || !root.isDirectory()) {
@@ -255,25 +260,31 @@ void ESPWiFi::srvFiles() {
       String displayName = fname;
       if (fname.startsWith(path) && path != "/") {
         displayName = fname.substring(path.length());
-        if (displayName.startsWith("/")) displayName = displayName.substring(1);
+        if (displayName.startsWith("/"))
+          displayName = displayName.substring(1);
       }
-      if (displayName == "") displayName = fname;
+      if (displayName == "")
+        displayName = fname;
       if (file.isDirectory()) {
         // Build subdirectory path for query string
         String subdirPath = path;
-        if (!subdirPath.endsWith("/")) subdirPath += "/";
+        if (!subdirPath.endsWith("/"))
+          subdirPath += "/";
         subdirPath += displayName;
         // Remove leading slash for query string
-        if (subdirPath.startsWith("/")) subdirPath = subdirPath.substring(1);
+        if (subdirPath.startsWith("/"))
+          subdirPath = subdirPath.substring(1);
         html += "<li class='folder'>📁 <a href='/files?dir=" + subdirPath +
                 "'>" + displayName + "/</a></li>";
       } else {
         // Build file path for link
         String filePath = path;
-        if (!filePath.endsWith("/")) filePath += "/";
+        if (!filePath.endsWith("/"))
+          filePath += "/";
         filePath += displayName;
         // Ensure single leading slash
-        if (!filePath.startsWith("/")) filePath = "/" + filePath;
+        if (!filePath.startsWith("/"))
+          filePath = "/" + filePath;
         html += "<li class='file'>📄 <a href='" + filePath +
                 "' target='_blank'>" + displayName + "</a></li>";
       }
@@ -308,7 +319,7 @@ void ESPWiFi::srvOTA() {
         jsonDoc["in_progress"] = otaInProgress;
         jsonDoc["current_size"] = otaCurrentSize;
         jsonDoc["total_size"] = otaTotalSize;
-        jsonDoc["progress"] = 0;  // Will be calculated below
+        jsonDoc["progress"] = 0; // Will be calculated below
 
         // Calculate progress percentage if we have total size and OTA is in
         // progress
@@ -374,9 +385,6 @@ void ESPWiFi::srvOTA() {
   webServer->on("/ota", HTTP_GET, [this](AsyncWebServerRequest *request) {
     handleOTAHtml(request);
   });
-
-  log("🚀 OTA Update System Ready");
-  logf("\tWeb Interface: http://%s/ota\n", WiFi.localIP().toString().c_str());
 }
 
 void ESPWiFi::srvAll() {
@@ -389,4 +397,4 @@ void ESPWiFi::srvAll() {
   srvRestart();
 }
 
-#endif  // ESPWiFi_WEB_SERVER_H
+#endif // ESPWiFi_WEB_SERVER_H

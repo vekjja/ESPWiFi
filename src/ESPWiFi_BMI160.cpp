@@ -29,13 +29,12 @@ float convertRawAccel(int raw, int offset) {
 }
 
 bool ESPWiFi::startBMI160(uint8_t address) {
-  scanI2CDevices();
   if (checkI2CDevice(address)) {
     // Initialize BMI160 using DFRobot library
     int8_t rslt = bmi160.I2cInit(address);
 
     if (rslt == BMI160_OK) {
-      log("📲 BMI160 Started");
+      log("🎛️  BMI160 Started");
       return true;
     } else {
       logError("BMI160 Failed to Start!");

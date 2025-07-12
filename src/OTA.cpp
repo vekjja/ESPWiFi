@@ -210,7 +210,7 @@ void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
       // Progress update
       if (totalSize > 0) {
         int progress = (currentSize * 100) / totalSize;
-        if (progress % 10 == 0) {  // Log every 10%
+        if (progress % 10 == 0) { // Log every 10%
           logf("📁 Filesystem update progress: %d%%\n", progress);
         }
       }
@@ -229,4 +229,4 @@ void ESPWiFi::handleOTAHtml(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "OTA HTML file not found");
   }
 }
-#endif  // ESPWiFi_OTA_H
+#endif // ESPWiFi_OTA_H

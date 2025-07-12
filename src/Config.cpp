@@ -21,9 +21,6 @@ void ESPWiFi::saveConfig() {
 }
 
 void ESPWiFi::readConfig() {
-  if (config["mdns"].is<String>()) {
-    return;
-  }
 
   startLittleFS();
 

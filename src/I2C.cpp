@@ -28,7 +28,7 @@ void ESPWiFi::scanI2CDevices() {
     error = Wire.endTransmission();
 
     if (error == 0) {
-      log("📲 I2C device found at address 0x" +
+      log("🎛️ I2C device found at address 0x" +
           (address < 16 ? "0" : String(address, HEX)));
 
       nDevices++;

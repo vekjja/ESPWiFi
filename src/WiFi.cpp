@@ -7,17 +7,17 @@
 #include "ESPWiFi.h"
 
 #ifdef ESP8266
-#include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #else
 #include <ESPmDNS.h>
-#include <HTTPClient.h>
 #include <WiFi.h>
 #endif
 
 void ESPWiFi::startWiFi() {
-  readConfig();
+  if (config["mode"].isNull()) {
+    readConfig();
+  }
 
   String mode = config["mode"];
   mode.toLowerCase();
@@ -28,13 +28,17 @@ void ESPWiFi::startWiFi() {
     startAP();
   } else {
     log("⚠️  Invalid Mode: " + mode);
-    config["mode"] = "accessPoint";  // Ensure mode is set to accesspoint
+    config["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
     startAP();
   }
 }
 
 void ESPWiFi::startClient() {
-  readConfig();
+  if (config["client"]["ssid"].isNull() ||
+      config["client"]["password"].isNull()) {
+    readConfig();
+  }
+
   String ssid = config["client"]["ssid"];
   String password = config["client"]["password"];
 
@@ -50,10 +54,10 @@ void ESPWiFi::startClient() {
   logf("\tMAC: %s\n", WiFi.macAddress().c_str());
   Serial.print("\t");
 
-  WiFi.disconnect(true);       // Ensure clean start
-  delay(100);                  // Allow time for disconnect
-  WiFi.mode(WIFI_STA);         // Station mode only
-  WiFi.begin(ssid, password);  // Start connection
+  WiFi.disconnect(true);      // Ensure clean start
+  delay(100);                 // Allow time for disconnect
+  WiFi.mode(WIFI_STA);        // Station mode only
+  WiFi.begin(ssid, password); // Start connection
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED &&
@@ -62,7 +66,7 @@ void ESPWiFi::startClient() {
       connectSubroutine();
     }
     Serial.print(".");
-    delay(30);  // Wait for connection
+    delay(30); // Wait for connection
   }
   Serial.print("\n");
 
@@ -83,11 +87,11 @@ int ESPWiFi::selectBestChannel() {
   for (int i = 0; i < numNetworks; i++) {
     int channel = WiFi.channel(i);
     if (channel > 0 &&
-        channel <= 13) {  // Ensure the channel is within a valid range
+        channel <= 13) { // Ensure the channel is within a valid range
       channels[channel]++;
     }
   }
-  int leastCongestedChannel = 1;  // Default to channel 1
+  int leastCongestedChannel = 1; // Default to channel 1
   for (int i = 1; i <= 13; i++) {
     if (channels[i] < channels[leastCongestedChannel]) {
       leastCongestedChannel = i;
@@ -97,7 +101,10 @@ int ESPWiFi::selectBestChannel() {
 }
 
 void ESPWiFi::startAP() {
-  readConfig();
+  if (config["ap"]["ssid"].isNull() || config["ap"]["password"].isNull()) {
+    readConfig();
+  }
+
   String ssid = config["ap"]["ssid"];
   String password = config["ap"]["password"];
   log("📡 Starting Access Point:");
@@ -116,12 +123,14 @@ void ESPWiFi::startAP() {
   log(WiFi.softAPIP());
 #ifdef LED_BUILTIN
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);  // Turn on LED to indicate AP mode
+  digitalWrite(LED_BUILTIN, LOW); // Turn on LED to indicate AP mode
 #endif
 }
 
 void ESPWiFi::startMDNS() {
-  readConfig();
+  if (config["mdns"].isNull()) {
+    readConfig();
+  }
 
   String domain = config["mdns"];
   if (!MDNS.begin(domain)) {
@@ -136,6 +145,10 @@ void ESPWiFi::startMDNS() {
 
 #ifdef ESP8266
 void ESPWiFi::updateMDNS() {
+  if (config["mdns"].isNull()) {
+    readConfig();
+  }
+
   static IntervalTimer mDNSUpdateTimer(1000);
   if (mDNSUpdateTimer.shouldRun()) {
     MDNS.update();
@@ -143,4 +156,4 @@ void ESPWiFi::updateMDNS() {
 }
 #endif
 
-#endif  // ESPWiFi_WIFI
+#endif // ESPWiFi_WIFI

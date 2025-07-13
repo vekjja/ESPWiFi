@@ -50,7 +50,7 @@ void ESPWiFi::printConfig() {
   String prettyConfig;
   serializeJsonPretty(config, prettyConfig);
   log(prettyConfig);
-  log("\n");
+  // log("\n");
 }
 
 void ESPWiFi::mergeConfig(JsonObject &json) {

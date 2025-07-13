@@ -217,6 +217,7 @@ export default function AddModule({ config, saveConfig }) {
   return (
     <>
       <Fab
+        size="small"
         color="primary"
         aria-label="add module"
         onClick={handleOpenMenu}

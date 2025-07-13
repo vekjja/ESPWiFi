@@ -334,7 +334,33 @@ export default function WebSocketModule({
           connectionStatus === "connected" ? "primary.main" : "secondary.main",
         maxWidth: "200px",
       }}
+      bottomContent={
+        connectionStatus === "connected" &&
+        initialProps.enableSending !== false && (
+          <Box sx={{ mt: 1, mb: 1, px: 1, display: "flex", gap: 1 }}>
+            <TextField
+              label="Send message"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              variant="outlined"
+              size="small"
+              fullWidth
+              placeholder="Type a message..."
+            />
+            <Button
+              onClick={handleSend}
+              variant="contained"
+              size="small"
+              disabled={!inputText || !inputText.trim()}
+            >
+              Send
+            </Button>
+          </Box>
+        )
+      }
     >
+      {/* Main content only, no input/send area here */}
       {connectionStatus === "connecting" ? (
         <div
           style={{
@@ -417,31 +443,6 @@ export default function WebSocketModule({
           </Typography>
         </Box>
       )}
-
-      {connectionStatus === "connected" &&
-        initialProps.enableSending !== false && (
-          <Box sx={{ marginTop: 2, display: "flex", gap: 1 }}>
-            <TextField
-              label="Send message"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              variant="outlined"
-              size="small"
-              fullWidth
-              placeholder="Type a message..."
-            />
-            <Button
-              onClick={handleSend}
-              variant="contained"
-              size="small"
-              disabled={!inputText || !inputText.trim()}
-            >
-              Send
-            </Button>
-          </Box>
-        )}
-
       <WebSocketSettingsModal
         open={openModal}
         onClose={handleCloseModal}

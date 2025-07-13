@@ -5,6 +5,9 @@ import SettingsButton from "./SettingsButton";
 import { RestartAlt } from "@mui/icons-material";
 import { Card, CardContent, Typography } from "@mui/material";
 
+// Height in px for bottom controls (input/send + buttons)
+const BOTTOM_CONTROLS_HEIGHT = 88;
+
 export default function Module({
   title,
   children,
@@ -17,6 +20,7 @@ export default function Module({
   reconnectIcon = RestartAlt,
   reconnectColor = "secondary",
   sx = {},
+  bottomContent, // Add new prop
 }) {
   return (
     <Card
@@ -48,8 +52,12 @@ export default function Module({
           flex: "1 1 auto",
           overflowY: "auto",
           padding: 0,
-          paddingBottom: 0,
+          paddingBottom: `${BOTTOM_CONTROLS_HEIGHT}px`,
           "&:last-child": { paddingBottom: 0 },
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "flex-start",
         }}
       >
         <Typography variant="body1" align="center">
@@ -57,61 +65,78 @@ export default function Module({
         </Typography>
         {children}
       </CardContent>
+      {/* Stack bottomContent and action buttons in a flex column at the bottom */}
       <div
         style={{
           width: "100%",
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          position: "absolute",
-          bottom: 8,
-          left: 0,
-          zIndex: 2,
-          pointerEvents: "none",
+          flexDirection: "column",
+          gap: 4,
+          marginTop: "auto",
         }}
       >
-        <div style={{ pointerEvents: "auto" }}>
-          {onSettings && (
-            <SettingsButton
-              color="default"
-              onClick={onSettings}
-              tooltip={settingsTooltip}
-              tooltipPlacement="bottom"
-              sx={{ pointerEvents: "auto" }}
-            />
-          )}
-        </div>
+        {bottomContent && (
+          <div style={{ width: "100%", zIndex: 1 }}>{bottomContent}</div>
+        )}
         <div
           style={{
+            width: "100%",
             display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
-            pointerEvents: "auto",
+            // Remove absolute positioning
+            // position: "absolute",
+            // bottom: 8,
+            // left: 0,
+            zIndex: 2,
+            pointerEvents: "none",
+            paddingBottom: 8,
+            paddingTop: 2,
           }}
         >
-          {onDelete && (
-            <DeleteButton
-              onClick={onDelete}
-              tooltip={deleteTooltip}
-              sx={{
-                marginLeft: 8,
-                marginRight: 8,
-                pointerEvents: "auto",
-              }}
-            />
-          )}
-          {onReconnect && (
-            <IButton
-              onClick={(e) => {
-                e.stopPropagation();
-                onReconnect();
-              }}
-              tooltip={reconnectTooltip}
-              Icon={reconnectIcon}
-              color={reconnectColor}
-              tooltipPlacement="bottom"
-              sx={{ pointerEvents: "auto", mr: 1 }}
-            />
-          )}
+          <div style={{ pointerEvents: "auto" }}>
+            {onSettings && (
+              <SettingsButton
+                color="default"
+                onClick={onSettings}
+                tooltip={settingsTooltip}
+                tooltipPlacement="bottom"
+                sx={{ pointerEvents: "auto" }}
+              />
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              pointerEvents: "auto",
+            }}
+          >
+            {onDelete && (
+              <DeleteButton
+                onClick={onDelete}
+                tooltip={deleteTooltip}
+                sx={{
+                  marginLeft: 8,
+                  marginRight: 8,
+                  pointerEvents: "auto",
+                }}
+              />
+            )}
+            {onReconnect && (
+              <IButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReconnect();
+                }}
+                tooltip={reconnectTooltip}
+                Icon={reconnectIcon}
+                color={reconnectColor}
+                tooltipPlacement="bottom"
+                sx={{ pointerEvents: "auto", mr: 1 }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </Card>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
-import CombinedSettingsModal from "./components/CombinedSettingsModal";
+import NetworkSettingsModal from "./components/NetworkSettingsModal";
 import AddModule from "./components/AddModule";
 import Modules from "./components/Modules";
 
@@ -180,7 +180,7 @@ function App() {
 
       {localConfig && (
         <Container>
-          <CombinedSettingsModal
+          <NetworkSettingsModal
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}

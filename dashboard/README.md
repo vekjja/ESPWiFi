@@ -102,7 +102,7 @@ The dashboard fetches device configuration from `/config` and displays the mDNS 
 #### Example: Open Settings Modal
 
 ```jsx
-<CombinedSettingsModal
+<NetworkSettingsModal
   config={config}
   saveConfig={setConfig}
   saveConfigToDevice={saveConfigToDevice}

@@ -11,11 +11,15 @@ import {
   Tab,
   Box,
   Alert,
+  InputAdornment,
+  IconButton,
 } from "@mui/material";
 import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import SaveIcon from "@mui/icons-material/SaveAs";
 import EditIcon from "@mui/icons-material/Edit";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 
@@ -34,7 +38,7 @@ function TabPanel({ children, value, index, ...other }) {
   );
 }
 
-export default function CombinedSettingsModal({
+export default function NetworkSettingsModal({
   config,
   saveConfig,
   saveConfigToDevice,
@@ -49,6 +53,10 @@ export default function CombinedSettingsModal({
   const [apSsid, setApSsid] = useState("");
   const [apPassword, setApPassword] = useState("");
   const [mode, setMode] = useState("client");
+
+  // Password visibility state
+  const [showPassword, setShowPassword] = useState(false);
+  const [showApPassword, setShowApPassword] = useState(false);
 
   // JSON editing state
   const [jsonConfig, setJsonConfig] = useState("");
@@ -138,6 +146,14 @@ export default function CombinedSettingsModal({
 
   const handleMDNSChange = (event) => {
     setMdns(event.target.value);
+  };
+
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
+
+  const handleToggleApPasswordVisibility = () => {
+    setShowApPassword((prev) => !prev);
   };
 
   const isValidHostname = (hostname) => {
@@ -304,7 +320,7 @@ export default function CombinedSettingsModal({
             }}
           >
             <Tab label="Network Settings" />
-            <Tab label="JSON Configuration" />
+            <Tab label="JSON" />
           </Tabs>
         </Box>
 
@@ -339,12 +355,29 @@ export default function CombinedSettingsModal({
                 fullWidth
               />
               <TextField
+                type={showPassword ? "text" : "password"}
                 label="Password"
                 value={password}
                 onChange={handlePasswordChange}
                 variant="outlined"
                 fullWidth
                 sx={{ marginTop: 1 }}
+                slots={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleTogglePasswordVisibility}
+                        edge="end"
+                      >
+                        {showPassword ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             </FormControl>
           ) : (
@@ -357,12 +390,29 @@ export default function CombinedSettingsModal({
                 fullWidth
               />
               <TextField
+                type={showApPassword ? "text" : "password"}
                 label="Password"
                 value={apPassword}
                 onChange={handleApPasswordChange}
                 variant="outlined"
                 fullWidth
                 sx={{ marginTop: 1 }}
+                slots={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={handleToggleApPasswordVisibility}
+                        edge="end"
+                      >
+                        {showApPassword ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             </FormControl>
           )}

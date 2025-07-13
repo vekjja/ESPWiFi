@@ -29,12 +29,11 @@
     "pio:upload": "cd .. && pio run --target upload --environment ${PIO_ENV:-esp32-s3}",
     "pio:monitor": "cd .. && pio device monitor",
     "pio:uploadfs": "cd .. && pio run --target uploadfs --environment ${PIO_ENV:-esp32-s3}",
-    "pio:build:upload": "npm run pio:build && npm run pio:upload",
     "pio:build:monitor": "npm run pio:build && npm run pio:monitor",
-    "pio:build:upload:monitor": "npm run pio:build && npm run pio:upload && npm run pio:monitor",
+    "pio:upload:monitor": "npm run pio:upload && npm run pio:monitor",
     "build:uploadfs": "npm run build && npm run pio:uploadfs",
     "build:uploadfs:monitor": "npm run build && npm run pio:uploadfs && npm run pio:monitor",
-    "build:uploadfs:pio:build:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:build && npm run pio:upload && npm run pio:monitor"
+    "build:uploadfs:pio:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:build && npm run pio:upload && npm run pio:monitor"
   },
   "eslintConfig": {
     "rules": {

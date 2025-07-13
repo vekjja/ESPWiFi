@@ -117,7 +117,6 @@ void ESPWiFi::srvRestart() {
 
 void ESPWiFi::srvLog() {
   initWebServer();
-  // /log endpoint
   webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (fs && fs->exists(logFile)) {
       AsyncWebServerResponse *response = request->beginResponse(

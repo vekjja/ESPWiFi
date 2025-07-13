@@ -38,9 +38,10 @@ void ESPWiFi::startLog(String logFile) {
 
   startSerial();
   startLittleFS();
+  startSDCard();
   this->logFile = logFile;
 
-  closeLog(); // Close any existing log file before starting a new one
+  closeLog(); // Close any existing log file
 
   logFileHandle = fs->open(logFile, "a");
   if (!logFileHandle) {

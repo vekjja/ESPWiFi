@@ -28,6 +28,7 @@ export default function WebSocketSettingsModal({
     payload = "text",
     fontSize = 14,
     enableSending = true,
+    imageRotation = 0,
   } = websocketData;
 
   const handleSave = () => {
@@ -75,18 +76,42 @@ export default function WebSocketSettingsModal({
         </Select>
       </FormControl>
 
-      <TextField
-        label="Font Size (px)"
-        type="number"
-        value={fontSize}
-        onChange={(e) =>
-          onWebSocketDataChange({ fontSize: parseInt(e.target.value) || 14 })
-        }
-        variant="outlined"
-        fullWidth
-        sx={{ marginBottom: 2 }}
-        data-no-dnd="true"
-      />
+      {payload === "binary" && (
+        <FormControl fullWidth sx={{ marginBottom: 2 }}>
+          <InputLabel id="websocket-rotation-select-label">
+            Image Rotation
+          </InputLabel>
+          <Select
+            labelId="websocket-rotation-select-label"
+            value={imageRotation}
+            label="Image Rotation"
+            onChange={(e) =>
+              onWebSocketDataChange({ imageRotation: e.target.value })
+            }
+            data-no-dnd="true"
+          >
+            <MenuItem value={0}>0° (No Rotation)</MenuItem>
+            <MenuItem value={90}>90° (Rotate Right)</MenuItem>
+            <MenuItem value={180}>180° (Flip)</MenuItem>
+            <MenuItem value={270}>270° (Rotate Left)</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+
+      {payload === "text" && (
+        <TextField
+          label="Font Size (px)"
+          type="number"
+          value={fontSize}
+          onChange={(e) =>
+            onWebSocketDataChange({ fontSize: parseInt(e.target.value) || 14 })
+          }
+          variant="outlined"
+          fullWidth
+          sx={{ marginBottom: 2 }}
+          data-no-dnd="true"
+        />
+      )}
 
       <FormControlLabel
         control={

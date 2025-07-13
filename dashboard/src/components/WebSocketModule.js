@@ -29,6 +29,7 @@ export default function WebSocketModule({
     payload: initialProps.payload || "text",
     fontSize: initialProps.fontSize || 14,
     enableSending: initialProps.enableSending !== false,
+    imageRotation: initialProps.imageRotation || 0,
   });
 
   // Use ref to store WebSocket instance
@@ -196,6 +197,7 @@ export default function WebSocketModule({
       payload: initialProps.payload || "text",
       fontSize: initialProps.fontSize || 14,
       enableSending: initialProps.enableSending !== false,
+      imageRotation: initialProps.imageRotation || 0,
     });
     setOpenModal(true);
   };
@@ -223,6 +225,7 @@ export default function WebSocketModule({
       payload: websocketSettingsData.payload,
       fontSize: Number(websocketSettingsData.fontSize),
       enableSending: websocketSettingsData.enableSending,
+      imageRotation: Number(websocketSettingsData.imageRotation),
       connectionState: connectionStatus, // Save the current connection state
     };
 
@@ -275,6 +278,7 @@ export default function WebSocketModule({
       payload: initialProps.payload || "text",
       fontSize: initialProps.fontSize || 14,
       enableSending: initialProps.enableSending !== false,
+      imageRotation: initialProps.imageRotation || 0,
     });
 
     // Restore message from ref if it exists
@@ -382,6 +386,7 @@ export default function WebSocketModule({
               marginTop: "10px",
               maxHeight: "120px",
               objectFit: "contain",
+              transform: `rotate(${initialProps.imageRotation || 0}deg)`,
             }}
           />
         ) : (

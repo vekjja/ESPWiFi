@@ -21,7 +21,7 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
                                  size_t len, ESPWiFi *espWifi) {
   if (type == WS_EVT_DATA) {
     String receivedData = String((char *)data, len);
-    receivedData.trim();  // Remove any whitespace
+    receivedData.trim(); // Remove any whitespace
     espWifi->log("🔌 WebSocket Data Received: 📨");
     espWifi->logf("\tClient ID: %d\n", client->id());
     espWifi->logf("\tData Length: %d bytes\n", len);
@@ -50,19 +50,19 @@ camera_config_t ESPWiFi::getCamConfig() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;  // for streaming
+  config.pixel_format = PIXFORMAT_JPEG; // for streaming
 
   // ESP32-CAM optimized settings
   if (psramFound()) {
     // With PSRAM - can use higher resolution
-    config.frame_size = FRAMESIZE_VGA;  // 640x480
+    config.frame_size = FRAMESIZE_VGA; // 640x480
     config.jpeg_quality = 20;
     config.fb_count = 2;
     config.fb_location = CAMERA_FB_IN_PSRAM;
     config.grab_mode = CAMERA_GRAB_LATEST;
   } else {
     // Without PSRAM - use smaller resolution to avoid memory issues
-    config.frame_size = FRAMESIZE_QVGA;  // 320x240
+    config.frame_size = FRAMESIZE_QVGA; // 320x240
     config.jpeg_quality = 30;
     config.fb_count = 1;
     config.fb_location = CAMERA_FB_IN_DRAM;
@@ -84,11 +84,18 @@ void ESPWiFi::startCamera() {
   initWebServer();
   webServer->on(
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        takeSnapshot();
+        String snapshotDir = "/snapshots";
+        if (fs) {
+          if (!dirExists(fs, snapshotDir)) {
+            mkDir(fs, snapshotDir);
+          }
+        }
+        String filePath = snapshotDir + "/snapshot_" + timestamp() + ".jpg";
+        takeSnapshot(filePath);
         AsyncWebServerResponse *response =
-            request->beginResponse(LittleFS, "/snapshot.jpg", "image/jpeg");
+            request->beginResponse(LittleFS, filePath, "image/jpeg");
         response->addHeader("Content-Disposition",
-                            "inline; filename=snapshot.jpg");
+                            "inline; filename=" + filePath);
         addCORS(response);
         request->send(response);
       });
@@ -134,7 +141,7 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
-  logf("📷 Camera Started\n");
+  logf("📷 Camera Live Stream Started\n");
 
   camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
 
@@ -181,11 +188,12 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!camSoc || camSoc->numClients() == 0) return;  // No clients connected
+  if (!camSoc || camSoc->numClients() == 0)
+    return; // No clients connected
 
   unsigned long interval =
       frameRate > 0 ? (1000 / frameRate)
-                    : 500;  // Default to 500ms if frameRate is 0 or negative
+                    : 500; // Default to 500ms if frameRate is 0 or negative
 
   static IntervalTimer timer(1000);
   if (!timer.shouldRun(interval)) {
@@ -214,5 +222,5 @@ void ESPWiFi::streamCamera(int frameRate) {
   esp_camera_fb_return(fb);
 }
 
-#endif  // ESPWiFi_CAMERA
-#endif  // ESPWiFi_CAMERA_ENABLED
+#endif // ESPWiFi_CAMERA
+#endif // ESPWiFi_CAMERA_ENABLED

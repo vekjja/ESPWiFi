@@ -43,6 +43,11 @@ void ESPWiFi::startLog(String logFile) {
 
   closeLog(); // Close any existing log file
 
+  if (!fs) {
+    logError("No file system available for logging");
+    return;
+  }
+
   logFileHandle = fs->open(logFile, "a");
   if (!logFileHandle) {
     logError("Failed to open log file");

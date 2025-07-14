@@ -192,7 +192,7 @@ void ESPWiFi::srvFiles() {
     }
 
     String path = request->url();
-    if (LittleFS.exists(path)) {
+    if (fs && fileExists(fs, path)) {
       String contentType = getContentType(path);
       AsyncWebServerResponse *response =
           request->beginResponse(LittleFS, path, contentType);

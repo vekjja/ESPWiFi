@@ -71,4 +71,4 @@ String ESPWiFi::bytesToHumanReadable(size_t bytes) {
   }
 }
 
-#endif  // ESPWiFi_UTILS
+#endif // ESPWiFi_UTILS

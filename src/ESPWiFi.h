@@ -45,11 +45,14 @@ public:
   // File System
   void startSDCard();
   void startLittleFS();
-  void listFiles(FS &fs);
-  void readFile(FS &fs, const String &filePath);
-  void deleteFile(FS &fs, const String &filePath);
-  void writeFile(FS &fs, const String &filePath, const String &content);
-  void appendToFile(FS &fs, const String &filePath, const String &content);
+  void listFiles(FS *fs);
+  void readFile(FS *fs, const String &filePath);
+  void deleteFile(FS *fs, const String &filePath);
+  void writeFile(FS *fs, const String &filePath, const String &content);
+  void appendToFile(FS *fs, const String &filePath, const String &content);
+  bool fileExists(FS *fs, const String &filePath);
+  bool dirExists(FS *fs, const String &dirPath);
+  bool mkDir(FS *fs, const String &dirPath);
 
   // Power Management
   void stopSleep();

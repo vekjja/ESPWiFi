@@ -31,6 +31,9 @@ export default function PinSettingsModal({
     remoteURL = "",
     dutyMin = 0,
     dutyMax = 255,
+    size = "medium",
+    width = 240,
+    height = 240,
   } = pinData;
 
   const handleSave = () => {
@@ -124,6 +127,46 @@ export default function PinSettingsModal({
             data-no-dnd="true"
           />
         </>
+      )}
+
+      <FormControl fullWidth variant="outlined" sx={{ marginBottom: 2 }}>
+        <InputLabel id="size-select-label">Size</InputLabel>
+        <Select
+          labelId="size-select-label"
+          value={size}
+          label="Size"
+          onChange={(e) => onPinDataChange({ size: e.target.value })}
+          data-no-dnd="true"
+        >
+          <MenuItem value="small">Small</MenuItem>
+          <MenuItem value="medium">Medium</MenuItem>
+          <MenuItem value="large">Large</MenuItem>
+          <MenuItem value="custom">Custom</MenuItem>
+        </Select>
+      </FormControl>
+      {size === "custom" && (
+        <Box sx={{ display: "flex", gap: 2, marginBottom: 2 }}>
+          <TextField
+            label="Width (px)"
+            type="number"
+            value={width}
+            onChange={(e) => onPinDataChange({ width: Number(e.target.value) })}
+            variant="outlined"
+            sx={{ flex: 1 }}
+            data-no-dnd="true"
+          />
+          <TextField
+            label="Height (px)"
+            type="number"
+            value={height}
+            onChange={(e) =>
+              onPinDataChange({ height: Number(e.target.value) })
+            }
+            variant="outlined"
+            sx={{ flex: 1 }}
+            data-no-dnd="true"
+          />
+        </Box>
       )}
     </>
   );

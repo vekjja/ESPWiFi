@@ -29,6 +29,9 @@ export default function WebSocketSettingsModal({
     fontSize = 14,
     enableSending = true,
     imageRotation = 0,
+    size = "medium",
+    width = 240,
+    height = 240,
   } = websocketData;
 
   const handleSave = () => {
@@ -111,6 +114,48 @@ export default function WebSocketSettingsModal({
           sx={{ marginBottom: 2 }}
           data-no-dnd="true"
         />
+      )}
+
+      <FormControl fullWidth sx={{ marginBottom: 2 }}>
+        <InputLabel id="size-select-label">Size</InputLabel>
+        <Select
+          labelId="size-select-label"
+          value={size}
+          label="Size"
+          onChange={(e) => onWebSocketDataChange({ size: e.target.value })}
+          data-no-dnd="true"
+        >
+          <MenuItem value="small">Small</MenuItem>
+          <MenuItem value="medium">Medium</MenuItem>
+          <MenuItem value="large">Large</MenuItem>
+          <MenuItem value="custom">Custom</MenuItem>
+        </Select>
+      </FormControl>
+      {size === "custom" && (
+        <Box sx={{ display: "flex", gap: 2, marginBottom: 2 }}>
+          <TextField
+            label="Width (px)"
+            type="number"
+            value={width}
+            onChange={(e) =>
+              onWebSocketDataChange({ width: Number(e.target.value) })
+            }
+            variant="outlined"
+            sx={{ flex: 1 }}
+            data-no-dnd="true"
+          />
+          <TextField
+            label="Height (px)"
+            type="number"
+            value={height}
+            onChange={(e) =>
+              onWebSocketDataChange({ height: Number(e.target.value) })
+            }
+            variant="outlined"
+            sx={{ flex: 1 }}
+            data-no-dnd="true"
+          />
+        </Box>
       )}
 
       <FormControlLabel

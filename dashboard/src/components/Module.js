@@ -27,10 +27,9 @@ export default function Module({
       sx={{
         padding: "10px",
         margin: "10px",
-        minWidth: "200px",
-        minHeight: "200px",
-        maxWidth: "200px",
-        maxHeight: "200px",
+        // minWidth: "200px",
+        // maxWidth: "400px",
+        // Removed minHeight and maxHeight to allow natural height expansion
         border: "1px solid",
         borderColor: "primary.main",
         borderRadius: "5px",
@@ -43,14 +42,13 @@ export default function Module({
         "&:active": {
           cursor: "grabbing",
         },
-        ...sx,
+        ...sx, // Sizing is now controlled by sx from parent modules
       }}
     >
       <CardContent
         sx={{
           width: "100%",
           flex: "1 1 auto",
-          overflowY: "auto",
           padding: 0,
           paddingBottom: `${BOTTOM_CONTROLS_HEIGHT}px`,
           "&:last-child": { paddingBottom: 0 },
@@ -58,6 +56,7 @@ export default function Module({
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "flex-start",
+          minHeight: "120px", // Ensure minimum height for all modules
         }}
       >
         <Typography variant="body1" align="center">

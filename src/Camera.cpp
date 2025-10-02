@@ -202,7 +202,7 @@ void ESPWiFi::streamCamera(int frameRate) {
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    logError("Camera Capture Failed");
+    logError("Camera Capture for Streaming Failed");
     return;
   }
 

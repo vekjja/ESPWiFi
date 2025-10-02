@@ -20,9 +20,8 @@ export default function WebSocketModule({
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [openModal, setOpenModal] = useState(false);
   const [inputText, setInputText] = useState("");
-  const [manuallyDisconnected, setManuallyDisconnected] = useState(false);
 
-  // WebSocket settings data for the modal
+  // WebSocket settings data for the modal (only for editing)
   const [websocketSettingsData, setWebSocketSettingsData] = useState({
     name: initialProps.name || "",
     url: initialProps.url || "",
@@ -30,6 +29,9 @@ export default function WebSocketModule({
     fontSize: initialProps.fontSize || 14,
     enableSending: initialProps.enableSending !== false,
     imageRotation: initialProps.imageRotation || 0,
+    size: initialProps.size || "medium",
+    width: initialProps.width || 240,
+    height: initialProps.height || 240,
   });
 
   // Use ref to store WebSocket instance
@@ -59,27 +61,27 @@ export default function WebSocketModule({
   }, []);
 
   // Auto-connect if previously connected (only on initial mount)
-  useEffect(() => {
-    // Only auto-connect if explicitly set to connected in initialProps and no socket exists
-    if (
-      initialProps.connectionState === "connected" &&
-      !socketRef.current &&
-      !manuallyDisconnected
-    ) {
-      // Small delay to ensure component is fully mounted
-      const timer = setTimeout(() => {
-        // Double-check that we still need to connect
-        if (
-          initialProps.connectionState === "connected" &&
-          !socketRef.current &&
-          !manuallyDisconnected
-        ) {
-          createWebSocketConnection();
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, []); // Empty dependency array - only run on mount
+  // useEffect(() => {
+  //   // Only auto-connect if explicitly set to connected in initialProps and no socket exists
+  //   if (
+  //     initialProps.connectionState === "connected" &&
+  //     !socketRef.current &&
+  //     !manuallyDisconnected
+  //   ) {
+  //     // Small delay to ensure component is fully mounted
+  //     const timer = setTimeout(() => {
+  //       // Double-check that we still need to connect
+  //       if (
+  //         initialProps.connectionState === "connected" &&
+  //         !socketRef.current &&
+  //         !manuallyDisconnected
+  //       ) {
+  //         createWebSocketConnection();
+  //       }
+  //     }, 100);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, []); // Empty dependency array - only run on mount
 
   // Local connection state update (no config save)
   const updateConnectionState = (newStatus) => {
@@ -190,6 +192,7 @@ export default function WebSocketModule({
     }
   };
 
+  // Only sync modal state from props when opening the modal
   const handleSettingsClick = () => {
     setWebSocketSettingsData({
       name: initialProps.name || "",
@@ -198,6 +201,9 @@ export default function WebSocketModule({
       fontSize: initialProps.fontSize || 14,
       enableSending: initialProps.enableSending !== false,
       imageRotation: initialProps.imageRotation || 0,
+      size: initialProps.size || "medium",
+      width: initialProps.width || 240,
+      height: initialProps.height || 240,
     });
     setOpenModal(true);
   };
@@ -227,6 +233,9 @@ export default function WebSocketModule({
       enableSending: websocketSettingsData.enableSending,
       imageRotation: Number(websocketSettingsData.imageRotation),
       connectionState: connectionStatus, // Save the current connection state
+      size: websocketSettingsData.size,
+      width: websocketSettingsData.width,
+      height: websocketSettingsData.height,
     };
 
     onUpdate(moduleKey, updatedWebSocket);
@@ -234,12 +243,10 @@ export default function WebSocketModule({
   };
 
   const handleConnect = () => {
-    setManuallyDisconnected(false); // Reset manual disconnect flag
     createWebSocketConnection();
   };
 
   const handleDisconnect = () => {
-    setManuallyDisconnected(true); // Set manual disconnect flag
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
@@ -271,21 +278,7 @@ export default function WebSocketModule({
     }
   };
 
-  useEffect(() => {
-    setWebSocketSettingsData({
-      name: initialProps.name || "",
-      url: initialProps.url || "",
-      payload: initialProps.payload || "text",
-      fontSize: initialProps.fontSize || 14,
-      enableSending: initialProps.enableSending !== false,
-      imageRotation: initialProps.imageRotation || 0,
-    });
-
-    // Restore message from ref if it exists
-    if (messageRef.current && messageRef.current !== message) {
-      setMessage(messageRef.current);
-    }
-  }, [initialProps]);
+  // Remove the useEffect that syncs websocketSettingsData from initialProps on every prop change
 
   // Determine icon and tooltip based on connection status
   const getConnectionIcon = () => {
@@ -314,6 +307,20 @@ export default function WebSocketModule({
     }
   };
 
+  // Size mapping
+  const sizeMap = {
+    small: { width: 180, height: 180 },
+    medium: { width: 240, height: 240 },
+    large: { width: 320, height: 320 },
+  };
+  const effectiveSize =
+    websocketSettingsData.size === "custom"
+      ? {
+          width: websocketSettingsData.width,
+          height: websocketSettingsData.height,
+        }
+      : sizeMap[websocketSettingsData.size] || sizeMap.medium;
+
   return (
     <Module
       title={initialProps.name || "WebSocket" + moduleKey}
@@ -332,33 +339,11 @@ export default function WebSocketModule({
             : "secondary.dark",
         borderColor:
           connectionStatus === "connected" ? "primary.main" : "secondary.main",
-        maxWidth: "200px",
+        minWidth: effectiveSize.width,
+        maxWidth: effectiveSize.width,
+        minHeight: effectiveSize.height,
+        maxHeight: effectiveSize.height,
       }}
-      bottomContent={
-        connectionStatus === "connected" &&
-        initialProps.enableSending !== false && (
-          <Box sx={{ mt: 1, mb: 1, px: 1, display: "flex", gap: 1 }}>
-            <TextField
-              label="Send message"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              variant="outlined"
-              size="small"
-              fullWidth
-              placeholder="Type a message..."
-            />
-            <Button
-              onClick={handleSend}
-              variant="contained"
-              size="small"
-              disabled={!inputText || !inputText.trim()}
-            >
-              Send
-            </Button>
-          </Box>
-        )
-      }
     >
       {/* Main content only, no input/send area here */}
       {connectionStatus === "connecting" ? (
@@ -426,7 +411,8 @@ export default function WebSocketModule({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            height: "120px",
+            // Remove height: "120px"
+            minHeight: "60px", // Optional: just to keep a little space
           }}
         >
           <Typography
@@ -443,6 +429,34 @@ export default function WebSocketModule({
           </Typography>
         </Box>
       )}
+
+      {/* Show send input and button below main content if enabled and connected */}
+      {connectionStatus === "connected" &&
+        initialProps.enableSending !== false && (
+          <Box
+            sx={{ mt: 1, mb: 1, px: 1, display: "flex", gap: 1, width: "100%" }}
+          >
+            <TextField
+              label="Send message"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              variant="outlined"
+              size="small"
+              fullWidth
+              placeholder="Type a message..."
+            />
+            <Button
+              onClick={handleSend}
+              variant="contained"
+              size="small"
+              disabled={!inputText || !inputText.trim()}
+            >
+              Send
+            </Button>
+          </Box>
+        )}
+
       <WebSocketSettingsModal
         open={openModal}
         onClose={handleCloseModal}

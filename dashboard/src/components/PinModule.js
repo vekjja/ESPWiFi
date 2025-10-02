@@ -29,6 +29,9 @@ export default function PinModule({
     remoteURL: initialProps.remoteURL || "",
     dutyMin: initialProps.dutyMin || 0,
     dutyMax: initialProps.dutyMax || 255,
+    size: initialProps.size || "medium",
+    width: initialProps.width || 240,
+    height: initialProps.height || 240,
   });
 
   const dutyMin = initialProps.dutyMin || 0;
@@ -189,6 +192,9 @@ export default function PinModule({
       remoteURL: newRemoteURL,
       state: isOn ? "high" : "low",
       number: newPinNum,
+      size: pinSettingsData.size,
+      width: pinSettingsData.width,
+      height: pinSettingsData.height,
     };
 
     // Only include duty for PWM mode pins
@@ -231,6 +237,17 @@ export default function PinModule({
       ? `${name || currentPinNum}`
       : name || currentPinNum;
 
+  // Size mapping
+  const sizeMap = {
+    small: { width: 180, height: 180 },
+    medium: { width: 240, height: 240 },
+    large: { width: 320, height: 320 },
+  };
+  const effectiveSize =
+    pinSettingsData.size === "custom"
+      ? { width: pinSettingsData.width, height: pinSettingsData.height }
+      : sizeMap[pinSettingsData.size] || sizeMap.medium;
+
   return (
     <Module
       title={moduleTitle}
@@ -240,8 +257,6 @@ export default function PinModule({
           ? `Pin Settings (Remote: ${remoteURL})`
           : "Pin Settings"
       }
-      initialWidth={initialProps.width || 200}
-      initialHeight={initialProps.height || 200}
       sx={{
         backgroundColor: effectiveIsOn ? "secondary.light" : "secondary.dark",
         borderColor: effectiveIsOn ? "primary.main" : "secondary.main",
@@ -249,6 +264,10 @@ export default function PinModule({
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
+        minWidth: effectiveSize.width,
+        maxWidth: effectiveSize.width,
+        minHeight: effectiveSize.height,
+        maxHeight: effectiveSize.height,
       }}
     >
       <Box

@@ -84,16 +84,35 @@ void ESPWiFi::startCamera() {
   initWebServer();
   webServer->on(
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Ensure file system is initialized
+        if (!fs) {
+          startLittleFS();
+          startSDCard();
+        }
+
         String snapshotDir = "/snapshots";
         if (fs) {
           if (!dirExists(fs, snapshotDir)) {
-            mkDir(fs, snapshotDir);
+            if (!mkDir(fs, snapshotDir)) {
+              logError("Failed to create snapshots directory");
+              request->send(500, "text/plain",
+                            "Failed to create snapshots directory");
+              return;
+            }
           }
+        } else {
+          logError("No file system available for snapshots");
+          request->send(500, "text/plain", "No file system available");
+          return;
         }
-        String filePath = snapshotDir + "/snapshot_" + timestamp() + ".jpg";
+
+        String filePath =
+            snapshotDir + "/snapshot_" + timestampForFilename() + ".jpg";
         takeSnapshot(filePath);
+
+        // Use the fs pointer which points to the correct file system
         AsyncWebServerResponse *response =
-            request->beginResponse(LittleFS, filePath, "image/jpeg");
+            request->beginResponse(*fs, filePath, "image/jpeg");
         response->addHeader("Content-Disposition",
                             "inline; filename=" + filePath);
         addCORS(response);

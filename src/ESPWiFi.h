@@ -63,6 +63,7 @@ public:
   // Log
   void closeLog();
   String timestamp();
+  String timestampForFilename();
   void checkAndCleanupLogFile();
   void writeLog(String message);
   void logf(const char *format, ...);

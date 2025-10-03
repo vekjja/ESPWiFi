@@ -122,6 +122,18 @@ String ESPWiFi::timestamp() {
          ":" + String(milliseconds) + "] ";
 }
 
+String ESPWiFi::timestampForFilename() {
+  unsigned long milliseconds = millis();
+  unsigned long seconds = milliseconds / 1000;
+  unsigned long days = seconds / 86400;
+  unsigned long minutes = (seconds % 86400) / 60;
+  seconds = seconds % 60;
+  milliseconds = milliseconds % 1000;
+
+  return String(days) + "_" + String(minutes) + "_" + String(seconds) + "_" +
+         String(milliseconds);
+}
+
 void ESPWiFi::log(String message) {
   String ts = timestamp();
   Serial.println(ts + message);

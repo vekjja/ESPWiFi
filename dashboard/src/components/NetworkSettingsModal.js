@@ -267,7 +267,7 @@ export default function NetworkSettingsModal({
             color={isEditable ? "secondary" : "default"}
             Icon={EditIcon}
             onClick={toggleEditability}
-            tooltip={isEditable ? "Disable Editing" : "Enable Editing"}
+            tooltip={isEditable ? "Stop Editing" : "Edit"}
           />
         </>
       );

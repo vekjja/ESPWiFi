@@ -124,7 +124,7 @@ void ESPWiFi::startCamera() {
         String deviceName = config["mdns"];
         String html =
             "<!DOCTYPE html><html><head><title>" + deviceName +
-            " WebSocket Stream</title>"
+            " Live Stream</title>"
             "<style>body{background:#181a1b;color:#e8eaed;font-family:sans-"
             "serif;text-align:center;}"
             "img{max-width:100vw;max-height:90vh;border-radius:8px;box-shadow:"
@@ -134,7 +134,7 @@ void ESPWiFi::startCamera() {
             "</head><body>"
             "<h2>&#128247; " +
             deviceName +
-            " WebSocket Live Stream</h2>"
+            " Live Stream</h2>"
             "<div id='status'>Connecting...</div>"
             "<img id='stream' alt='Camera Stream'/>"
             "<script>\n"

@@ -105,8 +105,7 @@ void ESPWiFi::startCamera() {
           return;
         }
 
-        String filePath =
-            snapshotDir + "/snapshot_" + timestampForFilename() + ".jpg";
+        String filePath = snapshotDir + "/" + timestampForFilename() + ".jpg";
         takeSnapshot(filePath);
 
         // Use the fs pointer which points to the correct file system

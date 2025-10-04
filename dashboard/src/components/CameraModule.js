@@ -162,7 +162,7 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
 
   return (
     <Module
-      title="📷 Camera"
+      title={`${config?.["mdns"] || window.location.hostname} Camera`}
       sx={{
         minWidth: "300px",
         maxWidth: "400px",

@@ -168,6 +168,13 @@ export default function CameraSettingsModal({
               📷 Camera will be started when settings are saved. A camera module
               will be added to the dashboard for live streaming.
             </Typography>
+            <Typography
+              variant="caption"
+              sx={{ marginTop: 1, color: "primary.main", display: "block" }}
+            >
+              WebSocket URL: ws://{window.location.hostname}:
+              {window.location.port || 80}/camera
+            </Typography>
           </Box>
         )}
       </SettingsModal>

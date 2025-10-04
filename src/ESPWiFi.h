@@ -138,6 +138,7 @@ public:
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
+  void cameraConfigHandler();
   WebSocket *camSoc = nullptr;
   camera_config_t getCamConfig();
   void streamCamera(int frameRate = 10);

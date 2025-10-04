@@ -94,22 +94,7 @@ void ESPWiFi::srvConfig() {
           configUpdateCallback();
         }
 
-        // Handle camera start/stop based on enabled state
-        bool cameraEnabled = config["camera"]["enabled"];
-        bool cameraCurrentlyRunning = (camSoc != nullptr);
-
-        if (cameraEnabled && !cameraCurrentlyRunning) {
-          // Camera should be enabled but not running - start it
-          startCamera();
-          log("📷 Camera Started via config update");
-        } else if (!cameraEnabled && cameraCurrentlyRunning) {
-          // Camera should be disabled but still running - stop it
-          if (camSoc) {
-            delete camSoc;
-            camSoc = nullptr;
-          }
-          log("📷 Camera Stopped via config update");
-        }
+        cameraConfigHandler();
 
         String responseStr;
         serializeJson(config, responseStr);

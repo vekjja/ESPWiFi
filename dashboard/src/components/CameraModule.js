@@ -122,8 +122,32 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
   };
 
   const handleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
+    if (!isFullscreen) {
+      // Enter fullscreen
+      if (imgRef.current && imgRef.current.requestFullscreen) {
+        imgRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      }
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
   };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -138,29 +162,20 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
     };
   }, []);
 
-  const handleSettings = () => {
-    // Camera module settings could be expanded here
-    console.log("Camera settings clicked");
-  };
-
   return (
     <Module
       title="📷 Camera"
-      onSettings={handleSettings}
-      onDelete={onDelete}
-      settingsTooltip="Camera Settings"
-      deleteTooltip="Remove Camera Module"
       sx={{
-        minWidth: isFullscreen ? "80vw" : "300px",
-        maxWidth: isFullscreen ? "90vw" : "400px",
-        minHeight: isFullscreen ? "60vh" : "250px",
-        maxHeight: isFullscreen ? "80vh" : "400px",
+        minWidth: "300px",
+        maxWidth: "400px",
+        minHeight: "250px",
+        maxHeight: "400px",
       }}
     >
       <Box
         sx={{
           width: "100%",
-          height: isFullscreen ? "calc(100% - 100px)" : "200px",
+          height: "200px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -199,48 +214,8 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
             <Typography variant="body2">
               Click play to start streaming
             </Typography>
-            <Typography
-              variant="caption"
-              sx={{ marginTop: 1, color: "primary.main" }}
-            >
-              WebSocket URL: {streamUrl}
-            </Typography>
           </Box>
         )}
-
-        {/* Stream controls overlay */}
-        <Box
-          sx={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            display: "flex",
-            gap: 1,
-            backgroundColor: "rgba(0, 0, 0, 0.7)",
-            borderRadius: 1,
-            padding: 0.5,
-          }}
-        >
-          <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
-            <IconButton
-              size="small"
-              onClick={isStreaming ? handleStopStream : handleStartStream}
-              sx={{ color: "white" }}
-            >
-              {isStreaming ? <Pause /> : <PlayArrow />}
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
-            <IconButton
-              size="small"
-              onClick={handleFullscreen}
-              sx={{ color: "white" }}
-            >
-              {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-            </IconButton>
-          </Tooltip>
-        </Box>
 
         {/* Stream status indicator */}
         <Box
@@ -268,6 +243,35 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
             {isStreaming ? "Live" : "Offline"}
           </Typography>
         </Box>
+      </Box>
+
+      {/* Camera controls at the bottom */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+          padding: 1,
+          backgroundColor: "rgba(0, 0, 0, 0.1)",
+          borderRadius: 1,
+          marginTop: 1,
+        }}
+      >
+        <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
+          <IconButton
+            onClick={isStreaming ? handleStopStream : handleStartStream}
+            sx={{ color: "primary.main" }}
+          >
+            {isStreaming ? <Pause /> : <PlayArrow />}
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
+          <IconButton onClick={handleFullscreen} sx={{ color: "primary.main" }}>
+            {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+          </IconButton>
+        </Tooltip>
       </Box>
     </Module>
   );

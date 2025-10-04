@@ -240,5 +240,24 @@ void ESPWiFi::streamCamera(int frameRate) {
   esp_camera_fb_return(fb);
 }
 
+void ESPWiFi::cameraConfigHandler() {
+  // Handle camera start/stop based on enabled state
+  bool cameraEnabled = config["camera"]["enabled"];
+  bool cameraCurrentlyRunning = (camSoc != nullptr);
+
+  if (cameraEnabled && !cameraCurrentlyRunning) {
+    // Camera should be enabled but not running - start it
+    startCamera();
+    log("📷 Camera Started via config update");
+  } else if (!cameraEnabled && cameraCurrentlyRunning) {
+    // Camera should be disabled but still running - stop it
+    if (camSoc) {
+      delete camSoc;
+      camSoc = nullptr;
+    }
+    log("📷 Camera Stopped via config update");
+  }
+}
+
 #endif // ESPWiFi_CAMERA
 #endif // ESPWiFi_CAMERA_ENABLED

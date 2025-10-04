@@ -11,44 +11,65 @@ char rssiBuffer[16];
 
 // Method to send RSSI data (can be called from anywhere)
 void ESPWiFi::streamRSSI() {
-
-  if (rssiWebSocket == nullptr) {
+  if (rssiWebSocket == nullptr || !config["rssi"]["enabled"]) {
     return;
   }
 
-  if (!rssiTimer) {
+  // Only create timer if it doesn't exist
+  if (rssiTimer == nullptr) {
     rssiTimer = new IntervalTimer(1000, [this]() {
-      int rssi = WiFi.RSSI() | 0;
-      snprintf(rssiBuffer, sizeof(rssiBuffer), "%d", rssi);
-      rssiWebSocket->textAll(String(rssiBuffer));
+      // Check if WebSocket still exists before sending
+      if (rssiWebSocket != nullptr) {
+        int rssi = WiFi.RSSI() | 0;
+        snprintf(rssiBuffer, sizeof(rssiBuffer), "%d", rssi);
+        rssiWebSocket->textAll(String(rssiBuffer));
+      }
     });
   }
-  rssiTimer->run();
+
+  // Only run timer if it exists
+  if (rssiTimer != nullptr) {
+    rssiTimer->run();
+  }
 }
 
 void ESPWiFi::rssiConfigHandler() {
-  if (config["rssi"]["enabled"]) {
+
+  bool rssiEnabled = config["rssi"]["enabled"];
+  bool rssiWebSocketExists = rssiWebSocket != nullptr;
+
+  if (rssiEnabled && !rssiWebSocketExists) {
     rssiWebSocket = new WebSocket("/rssi", this);
     log("🔗 RSSI WebSocket Started");
-  } else {
+
+  } else if (!rssiEnabled && rssiWebSocketExists) {
     // Stop and clean up the timer first
     if (rssiTimer) {
-      delete rssiTimer;
-      rssiTimer = nullptr;
+      rssiTimer = nullptr; // Just set to nullptr, don't delete
     }
 
-    // Properly close and clean up the WebSocket
+    // Store reference to socket before cleanup
+    AsyncWebSocket *socketToRemove = nullptr;
+    if (rssiWebSocket && rssiWebSocket->socket) {
+      socketToRemove = rssiWebSocket->socket;
+
+      // Close all client connections first
+      socketToRemove->closeAll();
+
+      // Remove the AsyncWebSocket handler from the server
+      webServer->removeHandler(socketToRemove);
+
+      // Clear the socket reference to prevent destructor from deleting it
+      rssiWebSocket->socket = nullptr;
+    }
+
+    // Delete the WebSocket wrapper object
     if (rssiWebSocket) {
-      // Close all client connections
-      if (rssiWebSocket->socket) {
-        rssiWebSocket->socket->closeAll();
-      }
-      // Delete the WebSocket instance
       delete rssiWebSocket;
       rssiWebSocket = nullptr;
     }
 
-    log("🔗 RSSI WebSocket Stopped");
+    log("⛓️‍💥 RSSI WebSocket Stopped");
   }
 }
 

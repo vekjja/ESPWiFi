@@ -251,6 +251,22 @@ void ESPWiFi::cameraConfigHandler() {
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
     // Camera should be disabled but still running - stop it
     if (camSoc) {
+      // Store reference to socket before cleanup
+      AsyncWebSocket *socketToRemove = nullptr;
+      if (camSoc->socket) {
+        socketToRemove = camSoc->socket;
+
+        // Close all client connections first
+        socketToRemove->closeAll();
+
+        // Remove the AsyncWebSocket handler from the server
+        webServer->removeHandler(socketToRemove);
+
+        // Clear the socket reference to prevent destructor from deleting it
+        camSoc->socket = nullptr;
+      }
+
+      // Delete the WebSocket wrapper object
       delete camSoc;
       camSoc = nullptr;
     }

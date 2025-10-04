@@ -97,10 +97,11 @@ export default function RSSISettingsModal({
           setIsConnected(false);
           wsRef.current = null;
 
-          // If it's not a normal closure, try to reconnect after a delay
-          if (event.code !== 1000 && savedEnabled) {
+          // Only retry if RSSI is still enabled and it's not a normal closure
+          if (event.code !== 1000 && savedEnabled && configSaved) {
             setTimeout(() => {
-              if (savedEnabled && !wsRef.current) {
+              // Double-check that RSSI is still enabled before retrying
+              if (savedEnabled && configSaved && !wsRef.current) {
                 // Retry connection
                 const retryWs = new WebSocket(wsUrl);
                 wsRef.current = retryWs;
@@ -148,6 +149,16 @@ export default function RSSISettingsModal({
       setRssiValue(null);
     }
   }, [savedEnabled, configSaved]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, []);
 
   // Get appropriate RSSI icon based on signal strength
   const getRSSIIcon = (rssi) => {

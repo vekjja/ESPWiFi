@@ -17,9 +17,6 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
 
-  console.log("📷 CameraModule rendered with config:", config);
-  console.log("📷 CameraModule apiURL:", config?.apiURL);
-
   useEffect(() => {
     // Convert relative path to absolute URL like WebSocketModule does
     let wsUrl = "/camera";
@@ -33,7 +30,6 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
     }
 
     setStreamUrl(wsUrl);
-    console.log("Camera WebSocket URL:", wsUrl);
   }, []); // Empty dependency array - only run once on mount
 
   const handleStartStream = () => {
@@ -56,8 +52,6 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
       return;
     }
 
-    console.log("🔌 Camera WebSocket connecting:", streamUrl);
-
     try {
       const ws = new WebSocket(streamUrl);
       ws.binaryType = "arraybuffer";
@@ -66,12 +60,10 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
       setIsStreaming(false); // Set to connecting state
 
       ws.onopen = () => {
-        console.log("✅ Camera WebSocket connected successfully");
         setIsStreaming(true);
       };
 
       ws.onmessage = (event) => {
-        console.log("📷 Received camera frame, size:", event.data.byteLength);
         if (event.data instanceof ArrayBuffer) {
           const blob = new Blob([event.data], { type: "image/jpeg" });
           const objectURL = URL.createObjectURL(blob);
@@ -92,12 +84,6 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
       };
 
       ws.onclose = (event) => {
-        console.log(
-          "❌ Camera WebSocket disconnected. Code:",
-          event.code,
-          "Reason:",
-          event.reason
-        );
         setIsStreaming(false);
         wsRef.current = null;
       };
@@ -168,14 +154,18 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
       sx={{
         minWidth: "300px",
         maxWidth: "400px",
-        minHeight: "250px",
+        minHeight: "auto",
         maxHeight: "400px",
+        "& .MuiCardContent-root": {
+          minHeight: "auto",
+          paddingBottom: "0px !important",
+        },
       }}
     >
       <Box
         sx={{
           width: "100%",
-          height: "200px",
+          height: "160px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -252,10 +242,10 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
           alignItems: "center",
           justifyContent: "center",
           gap: 2,
-          padding: 1,
+          padding: 0.5,
           backgroundColor: "rgba(0, 0, 0, 0.1)",
           borderRadius: 1,
-          marginTop: 1,
+          marginTop: 0.5,
         }}
       >
         <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>

@@ -249,13 +249,11 @@ export default function Modules({ config, saveConfig }) {
           frameRate: config.camera?.frameRate || 10,
         };
         modulesArray.push(cameraModule);
-        console.log("📷 Adding camera module to modules array");
       } else if (!cameraEnabled && hasCameraModule) {
         // Remove camera module
         modulesArray = modulesArray.filter(
           (module) => module.type !== "camera"
         );
-        console.log("📷 Removing camera module from modules array");
       }
 
       setModules(modulesArray);
@@ -352,7 +350,6 @@ export default function Modules({ config, saveConfig }) {
             }}
           >
             {moduleItems.map((module) => {
-              console.log("Rendering module:", module.type, module.key);
               if (module.type === "pin") {
                 return (
                   <SortablePinModule
@@ -373,7 +370,6 @@ export default function Modules({ config, saveConfig }) {
                   />
                 );
               } else if (module.type === "camera") {
-                console.log("📷 Rendering camera module");
                 return (
                   <SortableCameraModule
                     key={`camera-${module.key}`}

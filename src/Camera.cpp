@@ -248,14 +248,14 @@ void ESPWiFi::cameraConfigHandler() {
   if (cameraEnabled && !cameraCurrentlyRunning) {
     // Camera should be enabled but not running - start it
     startCamera();
-    log("📷 Camera Started via config update");
+    log("📷 Camera Started");
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
     // Camera should be disabled but still running - stop it
     if (camSoc) {
       delete camSoc;
       camSoc = nullptr;
     }
-    log("📷 Camera Stopped via config update");
+    log("📷 Camera Stopped");
   }
 }
 

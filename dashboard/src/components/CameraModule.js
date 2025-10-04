@@ -6,6 +6,7 @@ import {
   Pause,
   Fullscreen,
   FullscreenExit,
+  CameraAlt,
 } from "@mui/icons-material";
 
 export default function CameraModule({ config, onUpdate, onDelete }) {
@@ -121,6 +122,17 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
         setIsFullscreen(false);
       }
     }
+  };
+
+  const handleSnapshot = () => {
+    // Get the base URL from the current window location
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const snapshotUrl = `${protocol}//${hostname}${port}/camera/snapshot`;
+
+    // Open the snapshot in a new tab
+    window.open(snapshotUrl, "_blank");
   };
 
   // Listen for fullscreen changes
@@ -260,6 +272,12 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
         <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
           <IconButton onClick={handleFullscreen} sx={{ color: "primary.main" }}>
             {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Take Snapshot">
+          <IconButton onClick={handleSnapshot} sx={{ color: "primary.main" }}>
+            <CameraAlt />
           </IconButton>
         </Tooltip>
       </Box>

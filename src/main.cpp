@@ -8,9 +8,6 @@ void setup() {
   device.startWiFi();
   device.startMDNS();
   device.startGPIO();
-#ifdef ESPWiFi_CAMERA_ENABLED
-  // device.startCamera();
-#endif
   // device.startMicrophone();
   device.srvAll();
   // device.startWebServer();

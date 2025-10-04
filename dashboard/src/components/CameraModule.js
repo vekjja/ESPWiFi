@@ -238,7 +238,7 @@ export default function CameraModule({ config, onUpdate, onDelete }) {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              backgroundColor: isStreaming ? "success.main" : "error.main",
+              backgroundColor: isStreaming ? "primary.main" : "error.main",
             }}
           />
           <Typography variant="caption" sx={{ color: "white" }}>

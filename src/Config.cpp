@@ -80,6 +80,10 @@ void ESPWiFi::defaultConfig() {
   config["camera"]["enabled"] = false;
   config["camera"]["frameRate"] = 10;
 
+  // RSSI settings
+  config["rssi"]["enabled"] = false;
+  config["rssi"]["displayMode"] = "numbers"; // "icon", "numbers", "both"
+
   // XIAO ESP32S3 Sense PDM Microphone settings
   config["microphone"]["enabled"] = false;
   config["microphone"]["sampleRate"] = 16000; // 8000, 16000, 44100

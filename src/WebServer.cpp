@@ -95,6 +95,7 @@ void ESPWiFi::srvConfig() {
         }
 
         cameraConfigHandler();
+        rssiConfigHandler();
 
         String responseStr;
         serializeJson(config, responseStr);

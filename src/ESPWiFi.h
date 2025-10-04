@@ -151,6 +151,7 @@ public:
 
   // RSSI
   WebSocket *rssiWebSocket = nullptr;
+  void rssiConfigHandler();
   void streamRSSI();
 
   // Utils

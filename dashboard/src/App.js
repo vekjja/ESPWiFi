@@ -4,6 +4,7 @@ import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
 import NetworkSettingsModal from "./components/NetworkSettingsModal";
 import CameraSettingsModal from "./components/CameraSettingsModal";
+import RSSISettingsModal from "./components/RSSISettingsModal";
 import MicrophoneSettings from "./components/MicrophoneSettings";
 import AddModule from "./components/AddModule";
 import Modules from "./components/Modules";
@@ -188,6 +189,11 @@ function App() {
             saveConfigToDevice={saveConfigFromButton}
           />
           <CameraSettingsModal
+            config={localConfig}
+            saveConfig={updateLocalConfig}
+            saveConfigToDevice={saveConfigFromButton}
+          />
+          <RSSISettingsModal
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}

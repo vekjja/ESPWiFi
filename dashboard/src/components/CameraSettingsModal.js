@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Container,
   Fab,
@@ -26,12 +26,73 @@ export default function CameraSettingsModal({
   const [enabled, setEnabled] = useState(false);
   const [frameRate, setFrameRate] = useState(10);
 
+  // Camera status state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const wsRef = useRef(null);
+
   useEffect(() => {
     if (config?.camera) {
       setEnabled(config.camera.enabled || false);
       setFrameRate(config.camera.frameRate || 10);
     }
   }, [config]);
+
+  // WebSocket connection to monitor camera status
+  useEffect(() => {
+    if (enabled && configSaved) {
+      // Add a delay to allow the backend to start the camera service
+      const connectTimeout = setTimeout(() => {
+        // Construct WebSocket URL
+        let wsUrl = "/camera";
+        if (wsUrl.startsWith("/")) {
+          const protocol =
+            window.location.protocol === "https:" ? "wss:" : "ws:";
+          const hostname = window.location.hostname;
+          const port = window.location.port ? `:${window.location.port}` : "";
+          wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
+        }
+
+        // Connect to Camera WebSocket to monitor status
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setIsStreaming(true);
+        };
+
+        ws.onmessage = (event) => {
+          // Camera is sending data, so it's streaming
+          setIsStreaming(true);
+        };
+
+        ws.onerror = (error) => {
+          console.error("Camera WebSocket error:", error);
+          setIsStreaming(false);
+        };
+
+        ws.onclose = () => {
+          setIsStreaming(false);
+          wsRef.current = null;
+        };
+      }, 1000); // 1 second delay
+
+      return () => {
+        clearTimeout(connectTimeout);
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+      };
+    } else {
+      // Disconnect if disabled or config not saved
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      setIsStreaming(false);
+    }
+  }, [enabled, configSaved]);
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
@@ -49,6 +110,14 @@ export default function CameraSettingsModal({
     setFrameRate(newValue);
   };
 
+  // Get camera button color based on state
+  const getCameraColor = () => {
+    if (!enabled) return "text.disabled";
+    if (!configSaved) return "primary.main";
+    if (isStreaming) return "success.main";
+    return "warning.main";
+  };
+
   const handleSave = () => {
     const configToSave = {
       ...config,
@@ -61,6 +130,10 @@ export default function CameraSettingsModal({
     // Save to device (not just local config)
     // The backend will automatically start/stop camera based on enabled state
     saveConfigToDevice(configToSave);
+
+    // Mark config as saved so WebSocket can connect
+    setConfigSaved(true);
+
     handleCloseModal();
   };
 
@@ -72,7 +145,17 @@ export default function CameraSettingsModal({
         justifyContent: "center",
       }}
     >
-      <Tooltip title={"Camera Settings"}>
+      <Tooltip
+        title={
+          enabled
+            ? configSaved
+              ? `Camera Settings - ${
+                  isStreaming ? "Streaming" : "Connected, not streaming"
+                }`
+              : "Camera Settings - Save config to start"
+            : "Camera Settings - Disabled"
+        }
+      >
         <Fab
           size="small"
           color="primary"
@@ -82,6 +165,13 @@ export default function CameraSettingsModal({
             position: "fixed",
             top: "20px",
             left: "80px", // Position next to network settings button
+            color: getCameraColor(),
+            backgroundColor: enabled ? "action.hover" : "action.disabled",
+            "&:hover": {
+              backgroundColor: enabled
+                ? "action.selected"
+                : "action.disabledBackground",
+            },
           }}
         >
           <CameraAltIcon />

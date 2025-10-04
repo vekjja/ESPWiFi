@@ -8,9 +8,7 @@ void setup() {
   device.startWiFi();
   device.startMDNS();
   device.startGPIO();
-  // device.startMicrophone();
   device.srvAll();
-  // device.startWebServer();
 }
 
 void loop() {
@@ -18,7 +16,6 @@ void loop() {
 
   device.streamRSSI();
   // device.streamMicrophone();
-
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();
 #endif

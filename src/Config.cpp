@@ -76,6 +76,13 @@ void ESPWiFi::defaultConfig() {
   config["power"]["mode"] = "full"; // "full", "balanced", "saving"
   config["power"]["wifiSleep"] = false;
 
+  // XIAO ESP32S3 Sense PDM Microphone settings
+  config["microphone"]["enabled"] = false;
+  config["microphone"]["sampleRate"] = 16000; // 8000, 16000, 44100
+  config["microphone"]["gain"] = 1.0;         // 0.1 to 10.0
+  config["microphone"]["autoGain"] = true;
+  config["microphone"]["noiseReduction"] = true;
+
   printConfig();
 }
 

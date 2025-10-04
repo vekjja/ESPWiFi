@@ -3,6 +3,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
 import NetworkSettingsModal from "./components/NetworkSettingsModal";
+import MicrophoneSettings from "./components/MicrophoneSettings";
 import AddModule from "./components/AddModule";
 import Modules from "./components/Modules";
 
@@ -184,6 +185,10 @@ function App() {
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
+          />
+          <MicrophoneSettings
+            config={localConfig}
+            saveConfig={updateLocalConfig}
           />
           <AddModule config={localConfig} saveConfig={updateLocalConfig} />
           <Modules config={localConfig} saveConfig={updateLocalConfig} />

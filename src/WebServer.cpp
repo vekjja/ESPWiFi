@@ -475,6 +475,7 @@ void ESPWiFi::srvAll() {
   srvFiles();
   srvConfig();
   srvRestart();
+  startWebServer();
 }
 
 #endif // ESPWiFi_WEB_SERVER_H

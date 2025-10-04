@@ -11,14 +11,16 @@ void setup() {
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.startCamera();
 #endif
+  device.startMicrophone();
   device.srvAll();
-  device.startWebServer();
+  // device.startWebServer();
 }
 
 void loop() {
   yield();
 
   device.streamRSSI();
+  device.streamMicrophone();
 
 #ifdef ESPWiFi_CAMERA_ENABLED
   device.streamCamera();

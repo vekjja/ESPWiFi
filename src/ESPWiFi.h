@@ -140,8 +140,12 @@ public:
   void startCamera();
   camera_config_t getCamConfig();
   void streamCamera(int frameRate = 10);
-  void takeSnapshot(String filePath = "/snapshot.jpg");
+  void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
 #endif
+
+  // Microphone
+  void startMicrophone();
+  void streamMicrophone();
 
   // RSSI
   void streamRSSI();

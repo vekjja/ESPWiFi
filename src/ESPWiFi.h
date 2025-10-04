@@ -138,6 +138,7 @@ public:
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
+  WebSocket *camSoc = nullptr;
   camera_config_t getCamConfig();
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
@@ -148,6 +149,7 @@ public:
   void streamMicrophone();
 
   // RSSI
+  WebSocket *rssiWebSocket = nullptr;
   void streamRSSI();
 
   // Utils

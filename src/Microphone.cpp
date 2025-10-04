@@ -16,7 +16,7 @@ uint8_t audioBuffer[AUDIO_BUFFER_SIZE];
 
 void ESPWiFi::startMicrophone() {
   if (!config["microphone"]["enabled"].as<bool>()) {
-    log("🎤 Microphone disabled in configuration");
+    log("🎤 Microphone Disabled");
     return;
   }
 

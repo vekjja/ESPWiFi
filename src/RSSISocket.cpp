@@ -6,7 +6,6 @@
 
 #include "ESPWiFi.h"
 
-WebSocket *rssiWebSocket = nullptr;
 IntervalTimer *rssiTimer = nullptr;
 char rssiBuffer[16];
 

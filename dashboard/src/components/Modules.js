@@ -16,6 +16,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import PinModule from "./PinModule";
 import WebSocketModule from "./WebSocketModule";
+import CameraModule from "./CameraModule";
 
 // Sortable wrapper component for Pin modules
 function SortablePinModule({ module, config, onUpdate, onDelete }) {
@@ -74,6 +75,31 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
         onUpdate={onUpdate}
         onDelete={onDelete}
       />
+    </div>
+  );
+}
+
+// Sortable wrapper component for Camera modules
+function SortableCameraModule({ module, config, onUpdate, onDelete }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `module-${module.key}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <CameraModule config={config} onUpdate={onUpdate} onDelete={onDelete} />
     </div>
   );
 }
@@ -208,6 +234,30 @@ export default function Modules({ config, saveConfig }) {
         });
       }
 
+      // Handle camera module - add/remove based on camera.enabled setting
+      const hasCameraModule = modulesArray.some(
+        (module) => module.type === "camera"
+      );
+      const cameraEnabled = config.camera?.enabled || false;
+
+      if (cameraEnabled && !hasCameraModule) {
+        // Add camera module
+        const cameraModule = {
+          type: "camera",
+          key: "camera-module",
+          name: "Camera",
+          frameRate: config.camera?.frameRate || 10,
+        };
+        modulesArray.push(cameraModule);
+        console.log("📷 Adding camera module to modules array");
+      } else if (!cameraEnabled && hasCameraModule) {
+        // Remove camera module
+        modulesArray = modulesArray.filter(
+          (module) => module.type !== "camera"
+        );
+        console.log("📷 Removing camera module from modules array");
+      }
+
       setModules(modulesArray);
     }
   }, [config]);
@@ -302,6 +352,7 @@ export default function Modules({ config, saveConfig }) {
             }}
           >
             {moduleItems.map((module) => {
+              console.log("Rendering module:", module.type, module.key);
               if (module.type === "pin") {
                 return (
                   <SortablePinModule
@@ -317,6 +368,17 @@ export default function Modules({ config, saveConfig }) {
                   <SortableWebSocketModule
                     key={`websocket-${module.key}`}
                     module={module}
+                    onUpdate={updateModule}
+                    onDelete={deleteModule}
+                  />
+                );
+              } else if (module.type === "camera") {
+                console.log("📷 Rendering camera module");
+                return (
+                  <SortableCameraModule
+                    key={`camera-${module.key}`}
+                    module={module}
+                    config={config}
                     onUpdate={updateModule}
                     onDelete={deleteModule}
                   />

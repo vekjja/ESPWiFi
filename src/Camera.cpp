@@ -12,7 +12,6 @@
 #include "ESPWiFi.h"
 #include "base64.h"
 
-WebSocket *camSoc = nullptr;
 String camSocPath = "/camera";
 
 void cameraWebSocketEventHandler(AsyncWebSocket *server,
@@ -142,7 +141,7 @@ void ESPWiFi::startCamera() {
             "const status = document.getElementById('status');\n"
             "let ws = new WebSocket((location.protocol === 'https:' ? 'wss://' "
             ": 'ws://') + location.host + '" +
-            camSoc->socket->url() +
+            this->camSoc->socket->url() +
             "');\n"
             "ws.binaryType = 'arraybuffer';\n"
             "ws.onopen = () => { status.textContent = 'Connected!'; };\n"
@@ -162,9 +161,9 @@ void ESPWiFi::startCamera() {
 
   logf("📷 Camera Live Stream Started\n");
 
-  camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
+  this->camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
 
-  if (!camSoc) {
+  if (!this->camSoc) {
     logError(" Failed to create Camera WebSocket");
     return;
   }
@@ -207,7 +206,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!camSoc || camSoc->numClients() == 0)
+  if (!this->camSoc || this->camSoc->numClients() == 0)
     return; // No clients connected
 
   unsigned long interval =
@@ -233,7 +232,7 @@ void ESPWiFi::streamCamera(int frameRate) {
 
   // Validate buffer before sending
   if (fb->buf && fb->len > 0) {
-    camSoc->binaryAll((const char *)fb->buf, fb->len);
+    this->camSoc->binaryAll((const char *)fb->buf, fb->len);
   } else {
     logError("Invalid camera buffer");
   }

@@ -81,13 +81,17 @@ bool ESPWiFi::initCamera() {
 }
 
 void ESPWiFi::deinitCamera() {
+  // Check if camera is actually initialized before trying to deactivate
+  sensor_t *s = esp_camera_sensor_get();
+  if (s == NULL) {
+    return; // Camera not initialized, nothing to deactivate
+  }
+
   // Properly deactivate the camera hardware
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
     String errMsg = String(err);
     logError("Camera Deactivation Failed: " + errMsg);
-  } else {
-    log("❌📷 Camera Hardware Deactivated");
   }
 }
 
@@ -107,8 +111,8 @@ void ESPWiFi::startCamera() {
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
         // Ensure file system is initialized
         if (!fs) {
-          startLittleFS();
-          startSDCard();
+          initLittleFS();
+          initSDCard();
         }
 
         String snapshotDir = "/snapshots";
@@ -296,7 +300,7 @@ void ESPWiFi::cameraConfigHandler() {
 
     // Properly deactivate the camera hardware
     deinitCamera();
-    log("📷 Camera Stopped");
+    log("📷 Camera Deactivated");
   }
 }
 

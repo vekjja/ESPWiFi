@@ -30,14 +30,14 @@ void ESPWiFi::startSerial(int baudRate) {
   logf("\tBaud: %d\n", baudRate);
 }
 
-void ESPWiFi::startLog(String filePath) {
+void ESPWiFi::startLogging(String filePath) {
   if (loggingStarted) {
     return;
   }
 
   startSerial();
-  startLittleFS();
-  startSDCard();
+  initLittleFS();
+  initSDCard();
   this->logFilePath = filePath;
 
   closeLog(); // Close any existing log file
@@ -56,7 +56,7 @@ void ESPWiFi::startLog(String filePath) {
   loggingStarted = true;
   log("📝 Logging started:");
   logf("\tFile Name: %s\n", logFilePath.c_str());
-  logf("\tFile System: %s\n", sdCardStarted ? "SD Card" : "LittleFS");
+  logf("\tFile System: %s\n", sdCardInitialized ? "SD Card" : "LittleFS");
 }
 
 // Function to check filesystem space and delete log if needed
@@ -71,7 +71,7 @@ void ESPWiFi::checkAndCleanupLogFile() {
       logFileHandle.close();
 
       // Delete the log file to free up space
-      if (sdCardStarted) {
+      if (sdCardInitialized) {
         if (SD.remove(logFilePath)) {
           log("🗑️  Log file deleted to free up space");
         } else {

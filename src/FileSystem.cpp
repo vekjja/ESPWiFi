@@ -6,8 +6,8 @@
 
 #include "ESPWiFi.h"
 
-void ESPWiFi::startLittleFS() {
-  if (littleFsStarted) {
+void ESPWiFi::initLittleFS() {
+  if (littleFsInitialized) {
     return;
   }
   if (!LittleFS.begin()) {
@@ -16,8 +16,8 @@ void ESPWiFi::startLittleFS() {
   }
 
   fs = &LittleFS;
-  littleFsStarted = true;
-  log("💾 LittleFS Started:");
+  littleFsInitialized = true;
+  log("💾 LittleFS Initialized:");
 
   size_t totalBytes, usedBytes;
 
@@ -36,8 +36,8 @@ void ESPWiFi::startLittleFS() {
   logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
 }
 
-void ESPWiFi::startSDCard() {
-  if (sdCardStarted) {
+void ESPWiFi::initSDCard() {
+  if (sdCardInitialized) {
     return;
   }
 
@@ -65,8 +65,8 @@ void ESPWiFi::startSDCard() {
   size_t usedBytes = SD.usedBytes();
 #endif
 
-  sdCardStarted = true;
-  log("💾 SD Card Started:");
+  sdCardInitialized = true;
+  log("💾 SD Card Initialized:");
 
   logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
   logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());

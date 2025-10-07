@@ -4,7 +4,7 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::saveConfig() {
-  startLittleFS();
+  initLittleFS();
   File file = LittleFS.open(configFile, "w");
   if (!file) {
     logError(" Failed to open config file for writing");
@@ -22,7 +22,7 @@ void ESPWiFi::saveConfig() {
 
 void ESPWiFi::readConfig() {
 
-  startLittleFS();
+  initLittleFS();
 
   File file = LittleFS.open(configFile, "r");
   if (!file) {
@@ -72,10 +72,6 @@ void ESPWiFi::defaultConfig() {
   config["client"]["ssid"] = "";
   config["client"]["password"] = "";
 
-  // Power management settings
-  config["power"]["mode"] = "full"; // "full", "balanced", "saving"
-  config["power"]["wifiSleep"] = false;
-
   // Camera settings
   config["camera"]["enabled"] = false;
   config["camera"]["frameRate"] = 10;
@@ -84,7 +80,7 @@ void ESPWiFi::defaultConfig() {
   config["rssi"]["enabled"] = false;
   config["rssi"]["displayMode"] = "numbers"; // "icon", "numbers", "both"
 
-  // XIAO ESP32S3 Sense PDM Microphone settings
+  // Microphone settings
   config["microphone"]["enabled"] = false;
   config["microphone"]["sampleRate"] = 16000; // 8000, 16000, 44100
   config["microphone"]["gain"] = 1.0;         // 0.1 to 10.0

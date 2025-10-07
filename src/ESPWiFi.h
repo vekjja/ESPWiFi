@@ -36,13 +36,17 @@ public:
   AsyncWebServer *webServer = nullptr;
   void (*connectSubroutine)() = nullptr;
 
+  // Device
+  void start();
+  void runSystem();
+
   // File System
   FS *fs;
-  void startSDCard();
-  void startLittleFS();
+  void initSDCard();
+  void initLittleFS();
   void listFiles(FS *fs);
-  bool sdCardStarted = false;
-  bool littleFsStarted = false;
+  bool sdCardInitialized = false;
+  bool littleFsInitialized = false;
   void readFile(FS *fs, const String &filePath);
   void deleteFile(FS *fs, const String &filePath);
   void writeFile(FS *fs, const String &filePath, const String &content);
@@ -57,7 +61,7 @@ public:
   void logf(const char *format, ...);
   String logFilePath = "/log.txt";
   bool loggingStarted = false;
-  void startLog(String filePath = "/log.txt");
+  void startLogging(String filePath = "/log.txt");
   void startSerial(int baudRate = 115200);
   String timestamp();
   String timestampForFilename();
@@ -96,16 +100,15 @@ public:
   void srvOTA();
   void srvRoot();
   void srvInfo();
+  void srvGPIO();
   void srvFiles();
   void srvConfig();
   void srvRestart();
   void initWebServer();
   void startWebServer();
+  bool webServerStarted = false;
   void addCORS(AsyncWebServerResponse *response);
   void handleCorsPreflight(AsyncWebServerRequest *request);
-
-  // GPIO
-  void startGPIO();
 
   // LED Matrix
   void startLEDMatrix();
@@ -139,10 +142,6 @@ public:
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
 #endif
-
-  // Microphone
-  void startMicrophone();
-  void streamMicrophone();
 
   // RSSI
   WebSocket *rssiWebSocket = nullptr;

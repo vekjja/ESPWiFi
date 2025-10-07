@@ -9,7 +9,8 @@ void setup() {
   device.startMDNS();
   device.startGPIO();
   device.srvAll();
-  device.startCamera();
+  device.cameraConfigHandler();
+  device.rssiConfigHandler();
 }
 
 void loop() {

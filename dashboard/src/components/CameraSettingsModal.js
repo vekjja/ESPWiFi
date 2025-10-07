@@ -19,7 +19,7 @@ export default function CameraSettingsModal({
   // Get camera button color based on state
   const getCameraColor = () => {
     if (!enabled) return "text.disabled";
-    return "success.main"; // Green when enabled
+    return "primary.main"; // Green when enabled
   };
 
   const handleToggleCamera = () => {

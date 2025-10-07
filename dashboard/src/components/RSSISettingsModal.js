@@ -63,8 +63,14 @@ export default function RSSISettingsModal({
         if (wsUrl.startsWith("/")) {
           const protocol =
             window.location.protocol === "https:" ? "wss:" : "ws:";
-          const hostname = window.location.hostname;
-          const port = window.location.port ? `:${window.location.port}` : "";
+          const mdnsHostname = config?.mdns;
+          const hostname = mdnsHostname
+            ? `${mdnsHostname}.local`
+            : window.location.hostname;
+          const port =
+            window.location.port && !mdnsHostname
+              ? `:${window.location.port}`
+              : "";
           wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
         }
 
@@ -244,7 +250,7 @@ export default function RSSISettingsModal({
                       : "Connected, waiting for data..."
                     : "Connecting..."
                 }`
-              : "RSSI - Save config to start"
+              : "RSSI - Enable to start"
             : "RSSI - Disabled"
         }
       >

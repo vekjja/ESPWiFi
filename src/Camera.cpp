@@ -86,7 +86,7 @@ void ESPWiFi::startCamera() {
 
   // Check if camera initialization failed in getCamConfig
   if (camConfig.pin_d0 == 0 && camConfig.pin_d1 == 0) {
-    logError("Camera initialization failed - invalid config returned");
+    logError("Skipping Camera Startup: Camera Initialization Failed");
     return;
   }
 

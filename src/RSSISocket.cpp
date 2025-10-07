@@ -27,10 +27,7 @@ void ESPWiFi::streamRSSI() {
     });
   }
 
-  // Only run timer if it exists
-  if (rssiTimer != nullptr) {
-    rssiTimer->run();
-  }
+  rssiTimer->run();
 }
 
 void ESPWiFi::rssiConfigHandler() {

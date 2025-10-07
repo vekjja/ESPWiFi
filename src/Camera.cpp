@@ -26,7 +26,7 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
   }
 }
 
-bool ESPWiFi::initializeCamera() {
+bool ESPWiFi::initCamera() {
   // Check if camera is already initialized
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
@@ -80,13 +80,24 @@ bool ESPWiFi::initializeCamera() {
   return true;
 }
 
+void ESPWiFi::deinitCamera() {
+  // Properly deactivate the camera hardware
+  esp_err_t err = esp_camera_deinit();
+  if (err != ESP_OK) {
+    String errMsg = String(err);
+    logError("Camera Deactivation Failed: " + errMsg);
+  } else {
+    log("❌📷 Camera Hardware Deactivated");
+  }
+}
+
 void ESPWiFi::startCamera() {
   if (!config["camera"]["enabled"]) {
     return;
   }
 
   // Initialize camera hardware
-  if (!initializeCamera()) {
+  if (!initCamera()) {
     logError("Skipping Camera Startup: Camera Initialization Failed");
     return;
   }
@@ -282,6 +293,9 @@ void ESPWiFi::cameraConfigHandler() {
       delete camSoc;
       camSoc = nullptr;
     }
+
+    // Properly deactivate the camera hardware
+    deinitCamera();
     log("📷 Camera Stopped");
   }
 }

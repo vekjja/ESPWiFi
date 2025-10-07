@@ -5,24 +5,24 @@ ESPWiFi device;
 
 void setup() {
   device.startLog();
-  device.startWiFi();
-  device.startMDNS();
-  device.startGPIO();
-  device.srvAll();
-  device.cameraConfigHandler();
-  device.rssiConfigHandler();
+  // device.startWiFi();
+  // device.startMDNS();
+  // device.startGPIO();
+  // device.srvAll();
+  // device.cameraConfigHandler();
+  // device.rssiConfigHandler();
 }
 
 void loop() {
   yield();
 
-  device.streamRSSI();
-  // device.streamMicrophone();
-#ifdef ESPWiFi_CAMERA_ENABLED
-  device.streamCamera();
-#endif
+  //   device.streamRSSI();
+  //   // device.streamMicrophone();
+  // #ifdef ESPWiFi_CAMERA_ENABLED
+  //   device.streamCamera();
+  // #endif
 
-#ifdef ESP8266
-  device.updateMDNS();
-#endif
+  // #ifdef ESP8266
+  //   device.updateMDNS();
+  // #endif
 }

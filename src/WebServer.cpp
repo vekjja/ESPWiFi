@@ -121,9 +121,9 @@ void ESPWiFi::srvRestart() {
 void ESPWiFi::srvLog() {
   initWebServer();
   webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (fs && fs->exists(logFile)) {
+    if (fs && fs->exists(logFilePath)) {
       AsyncWebServerResponse *response = request->beginResponse(
-          *fs, logFile,
+          *fs, logFilePath,
           "text/plain; charset=utf-8"); // Set UTF-8 encoding
       addCORS(response);
       request->send(response);

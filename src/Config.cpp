@@ -94,4 +94,9 @@ void ESPWiFi::defaultConfig() {
   printConfig();
 }
 
+void ESPWiFi::handleConfig() {
+  cameraConfigHandler();
+  rssiConfigHandler();
+}
+
 #endif // ESPWiFi_CONFIG

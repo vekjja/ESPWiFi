@@ -30,8 +30,7 @@ void ESPWiFi::startSerial(int baudRate) {
   logf("\tBaud: %d\n", baudRate);
 }
 
-void ESPWiFi::startLog(String logFile) {
-  static bool loggingStarted = false;
+void ESPWiFi::startLog(String filePath) {
   if (loggingStarted) {
     return;
   }
@@ -39,7 +38,7 @@ void ESPWiFi::startLog(String logFile) {
   startSerial();
   startLittleFS();
   startSDCard();
-  this->logFile = logFile;
+  this->logFilePath = filePath;
 
   closeLog(); // Close any existing log file
 
@@ -48,7 +47,7 @@ void ESPWiFi::startLog(String logFile) {
     return;
   }
 
-  logFileHandle = fs->open(logFile, "a");
+  logFileHandle = fs->open(logFilePath, "a");
   if (!logFileHandle) {
     logError("Failed to open log file");
     return;
@@ -56,7 +55,7 @@ void ESPWiFi::startLog(String logFile) {
 
   loggingStarted = true;
   log("📝 Logging started:");
-  logf("\tFile Name: %s\n", logFile.c_str());
+  logf("\tFile Name: %s\n", logFilePath.c_str());
   logf("\tFile System: %s\n", sdCardStarted ? "SD Card" : "LittleFS");
 }
 
@@ -73,23 +72,23 @@ void ESPWiFi::checkAndCleanupLogFile() {
 
       // Delete the log file to free up space
       if (sdCardStarted) {
-        if (SD.remove(logFile)) {
+        if (SD.remove(logFilePath)) {
           log("🗑️  Log file deleted to free up space");
         } else {
           logError("Failed to delete log file");
         }
 #ifdef ESP8266
-        logFileHandle = SD.open(logFile, FILE_WRITE);
+        logFileHandle = SD.open(logFilePath, FILE_WRITE);
 #elif defined(ESP32)
-        logFileHandle = SD.open(logFile, FILE_APPEND);
+        logFileHandle = SD.open(logFilePath, FILE_APPEND);
 #endif
       } else {
-        if (LittleFS.remove(logFile)) {
+        if (LittleFS.remove(logFilePath)) {
           log("🗑️  Log file deleted to free up space");
         } else {
           logError("Failed to delete log file");
         }
-        logFileHandle = LittleFS.open(logFile, "a");
+        logFileHandle = LittleFS.open(logFilePath, "a");
       }
       if (logFileHandle) {
         log("📝 New log file created");

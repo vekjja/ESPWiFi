@@ -55,7 +55,6 @@ void ESPWiFi::startSDCard() {
   int sdCardPin = 21;
 #endif
 
-  Serial.println("💾 Initializing SD Card for ESP32-S3");
   if (!SD.begin(sdCardPin)) {
     log("⚠️  Failed to mount SD card");
     return;

@@ -29,23 +29,20 @@ class WebSocket;
 
 class ESPWiFi {
 private:
-  FS *fs;
-  bool sdCardStarted = false;
-  bool loggingStarted = false;
-  bool littleFsStarted = false;
-
 public:
   JsonDocument config;
   int connectTimeout = 15000;
-  String logFile = "/log.txt";
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;
   void (*connectSubroutine)() = nullptr;
 
   // File System
+  FS *fs;
   void startSDCard();
   void startLittleFS();
   void listFiles(FS *fs);
+  bool sdCardStarted = false;
+  bool littleFsStarted = false;
   void readFile(FS *fs, const String &filePath);
   void deleteFile(FS *fs, const String &filePath);
   void writeFile(FS *fs, const String &filePath, const String &content);
@@ -54,26 +51,20 @@ public:
   bool dirExists(FS *fs, const String &dirPath);
   bool mkDir(FS *fs, const String &dirPath);
 
-  // Power Management
-  void stopSleep();
-  void enablePowerSaving();
-  void applyPowerSettings();
-  void optimizeForFastResponse();
-
-  // Log
+  // Logging
+  void checkAndCleanupLogFile();
   void closeLog();
+  void logf(const char *format, ...);
+  String logFilePath = "/log.txt";
+  bool loggingStarted = false;
+  void startLog(String filePath = "/log.txt");
+  void startSerial(int baudRate = 115200);
   String timestamp();
   String timestampForFilename();
-  void checkAndCleanupLogFile();
   void writeLog(String message);
-  void logf(const char *format, ...);
-  void startSerial(int baudRate = 115200);
-  void startLog(String logFile = "/log.txt");
-
   void logError(String message);
   void logError(IPAddress ip) { logError(ip.toString()); }
   template <typename T> void logError(T value) { logError(String(value)); };
-
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
   template <typename T> void log(T value) { log(String(value)); };
@@ -82,6 +73,7 @@ public:
   void saveConfig();
   void readConfig();
   void printConfig();
+  void handleConfig();
   void defaultConfig();
   void mergeConfig(JsonObject &json);
   void (*configUpdateCallback)() = nullptr;
@@ -138,7 +130,8 @@ public:
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
-  bool initializeCamera();
+  bool initCamera();
+  void deinitCamera();
   camera_config_t camConfig;
   void cameraConfigHandler();
   WebSocket *camSoc = nullptr;

@@ -138,9 +138,11 @@ public:
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
   void startCamera();
+  bool initializeCamera();
+  camera_config_t camConfig;
   void cameraConfigHandler();
   WebSocket *camSoc = nullptr;
-  camera_config_t getCamConfig();
+  String camSocPath = "/camera";
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
 #endif

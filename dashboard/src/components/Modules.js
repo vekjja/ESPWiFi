@@ -99,7 +99,12 @@ function SortableCameraModule({ module, config, onUpdate, onDelete }) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <CameraModule config={config} onUpdate={onUpdate} onDelete={onDelete} />
+      <CameraModule
+        config={module}
+        globalConfig={config}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+      />
     </div>
   );
 }
@@ -232,28 +237,6 @@ export default function Modules({ config, saveConfig }) {
             key: webSocket.key ?? webSocket.id ?? `ws-${idx}-${Date.now()}`,
           });
         });
-      }
-
-      // Handle camera module - add/remove based on camera.enabled setting
-      const hasCameraModule = modulesArray.some(
-        (module) => module.type === "camera"
-      );
-      const cameraEnabled = config.camera?.enabled || false;
-
-      if (cameraEnabled && !hasCameraModule) {
-        // Add camera module
-        const cameraModule = {
-          type: "camera",
-          key: "camera-module",
-          name: "Camera",
-          frameRate: config.camera?.frameRate || 10,
-        };
-        modulesArray.push(cameraModule);
-      } else if (!cameraEnabled && hasCameraModule) {
-        // Remove camera module
-        modulesArray = modulesArray.filter(
-          (module) => module.type !== "camera"
-        );
       }
 
       setModules(modulesArray);

@@ -1,8 +1,23 @@
 import React, { useState } from "react";
-import { Fab, Menu, MenuItem, ListItemIcon, ListItemText } from "@mui/material";
+import {
+  Fab,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Slider,
+  Typography,
+  Box,
+  Button,
+  TextField,
+} from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 
@@ -10,6 +25,7 @@ export default function AddModule({ config, saveConfig }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [pinData, setPinData] = useState({
     name: "",
     pinNumber: "",
@@ -25,6 +41,11 @@ export default function AddModule({ config, saveConfig }) {
     payload: "text",
     fontSize: 14,
     enableSending: true,
+  });
+  const [cameraData, setCameraData] = useState({
+    name: "",
+    url: "/camera",
+    frameRate: 10,
   });
 
   const handleOpenMenu = (event) => {
@@ -61,12 +82,26 @@ export default function AddModule({ config, saveConfig }) {
     handleCloseMenu();
   };
 
+  const handleOpenCameraModal = () => {
+    setCameraData({
+      name: "",
+      url: "/camera",
+      frameRate: 10,
+    });
+    setCameraModalOpen(true);
+    handleCloseMenu();
+  };
+
   const handleClosePinModal = () => {
     setPinModalOpen(false);
   };
 
   const handleCloseWebSocketModal = () => {
     setWebSocketModalOpen(false);
+  };
+
+  const handleCloseCameraModal = () => {
+    setCameraModalOpen(false);
   };
 
   // Helper function to generate unique key
@@ -214,6 +249,28 @@ export default function AddModule({ config, saveConfig }) {
     handleCloseWebSocketModal();
   };
 
+  const handleSaveCamera = () => {
+    if (!cameraData.url || cameraData.url.trim() === "") return;
+
+    const existingModules = config.modules || [];
+    const newCamera = {
+      type: "camera",
+      url: cameraData.url.trim(),
+      name:
+        cameraData.name ||
+        `Camera ${
+          existingModules.filter((m) => m.type === "camera").length + 1
+        }`,
+      frameRate: cameraData.frameRate,
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newCamera];
+    saveConfig({ ...config, modules: updatedModules });
+
+    handleCloseCameraModal();
+  };
+
   return (
     <>
       <Fab
@@ -256,6 +313,12 @@ export default function AddModule({ config, saveConfig }) {
           </ListItemIcon>
           <ListItemText>Add WebSocket</ListItemText>
         </MenuItem>
+        <MenuItem onClick={handleOpenCameraModal}>
+          <ListItemIcon>
+            <CameraAltIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Add Camera</ListItemText>
+        </MenuItem>
       </Menu>
 
       <PinSettingsModal
@@ -273,6 +336,115 @@ export default function AddModule({ config, saveConfig }) {
         websocketData={webSocketData}
         onWebSocketDataChange={handleWebSocketDataChange}
       />
+
+      <Dialog
+        open={cameraModalOpen}
+        onClose={handleCloseCameraModal}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add Camera Module</DialogTitle>
+        <DialogContent>
+          <Box sx={{ marginTop: 2 }}>
+            <TextField
+              fullWidth
+              label="Camera Name (optional)"
+              value={cameraData.name}
+              onChange={(e) =>
+                setCameraData({ ...cameraData, name: e.target.value })
+              }
+              sx={{ marginBottom: 3 }}
+            />
+
+            <TextField
+              fullWidth
+              label="Camera URL"
+              value={cameraData.url}
+              onChange={(e) =>
+                setCameraData({ ...cameraData, url: e.target.value })
+              }
+              placeholder="/camera"
+              helperText="WebSocket endpoint for camera stream"
+              sx={{ marginBottom: 3 }}
+            />
+
+            <Typography gutterBottom>
+              Frame Rate: {cameraData.frameRate} FPS
+            </Typography>
+            <Slider
+              value={cameraData.frameRate}
+              onChange={(e, newValue) =>
+                setCameraData({ ...cameraData, frameRate: newValue })
+              }
+              min={1}
+              max={30}
+              step={1}
+              marks={[
+                { value: 1, label: "1" },
+                { value: 5, label: "5" },
+                { value: 10, label: "10" },
+                { value: 15, label: "15" },
+                { value: 20, label: "20" },
+                { value: 25, label: "25" },
+                { value: 30, label: "30" },
+              ]}
+              valueLabelDisplay="auto"
+              sx={{
+                color: "primary.main",
+                "& .MuiSlider-thumb": {
+                  backgroundColor: "primary.main",
+                },
+                "& .MuiSlider-track": {
+                  backgroundColor: "primary.main",
+                },
+                "& .MuiSlider-rail": {
+                  backgroundColor: "rgba(255, 255, 255, 0.2)",
+                },
+                "& .MuiSlider-mark": {
+                  backgroundColor: "primary.main",
+                },
+                "& .MuiSlider-markLabel": {
+                  color: "primary.main",
+                },
+              }}
+            />
+          </Box>
+
+          <Box
+            sx={{
+              marginTop: 3,
+              padding: 2,
+              backgroundColor: "rgba(71, 255, 240, 0.1)",
+              borderRadius: 1,
+            }}
+          >
+            <Typography variant="body2" color="primary.main">
+              📷 Camera module will be added to the dashboard for live
+              streaming.
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              marginTop: 2,
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 2,
+            }}
+          >
+            <Button onClick={handleCloseCameraModal} color="inherit">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveCamera}
+              variant="contained"
+              color="primary"
+            >
+              Add Camera
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

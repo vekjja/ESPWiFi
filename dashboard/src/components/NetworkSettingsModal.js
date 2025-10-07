@@ -14,7 +14,7 @@ import {
   InputAdornment,
   IconButton,
 } from "@mui/material";
-import NetworkCheckIcon from "@mui/icons-material/NetworkCheck";
+import SettingsIcon from "@mui/icons-material/Settings";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import SaveIcon from "@mui/icons-material/SaveAs";
 import EditIcon from "@mui/icons-material/Edit";
@@ -244,7 +244,7 @@ export default function NetworkSettingsModal({
             color="primary"
             Icon={SaveIcon}
             onClick={handleNetworkSave}
-            tooltip={"Save Network Settings to Device"}
+            tooltip={"Save Settings to Device"}
           />
         </>
       );
@@ -294,7 +294,7 @@ export default function NetworkSettingsModal({
             left: "20px",
           }}
         >
-          <NetworkCheckIcon />
+          <SettingsIcon />
         </Fab>
       </Tooltip>
 

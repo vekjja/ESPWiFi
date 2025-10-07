@@ -78,7 +78,17 @@ camera_config_t ESPWiFi::getCamConfig() {
 }
 
 void ESPWiFi::startCamera() {
+  if (!config["camera"]["enabled"]) {
+    return;
+  }
+
   camera_config_t camConfig = getCamConfig();
+
+  // Check if camera initialization failed in getCamConfig
+  if (camConfig.pin_d0 == 0 && camConfig.pin_d1 == 0) {
+    logError("Camera initialization failed - invalid config returned");
+    return;
+  }
 
   initWebServer();
   webServer->on(
@@ -158,7 +168,7 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
-  logf("📷 Camera Live Stream Started\n");
+  logf("📷 Camera Started\n");
 
   this->camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
 
@@ -247,7 +257,6 @@ void ESPWiFi::cameraConfigHandler() {
   if (cameraEnabled && !cameraCurrentlyRunning) {
     // Camera should be enabled but not running - start it
     startCamera();
-    log("📷 Camera Started");
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
     // Camera should be disabled but still running - stop it
     if (camSoc) {

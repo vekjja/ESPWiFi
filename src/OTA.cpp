@@ -38,9 +38,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   if (mode == "fs" || mode == "filesystem") {
     log("📁 Starting filesystem update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
-      StreamString str;
-      Update.printError(str);
-      otaErrorString = str.c_str();
+      otaErrorString = "Update.begin failed: " + String(Update.getError());
       logError("Failed to start filesystem update");
       logError(otaErrorString);
       otaInProgress = false;
@@ -50,9 +48,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   } else {
     log("📦 Starting firmware update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-      StreamString str;
-      Update.printError(str);
-      otaErrorString = str.c_str();
+      otaErrorString = "Update.begin failed: " + String(Update.getError());
       logError("Failed to start firmware update");
       logError(otaErrorString);
       otaInProgress = false;
@@ -91,9 +87,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
   // Write chunked data
   if (len > 0) {
     if (Update.write(data, len) != len) {
-      StreamString str;
-      Update.printError(str);
-      otaErrorString = str.c_str();
+      otaErrorString = "Update.write failed: " + String(Update.getError());
       logError("Failed to write firmware data");
       logError(otaErrorString);
       Update.abort();
@@ -130,9 +124,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
       log("🔄 Restarting Device...");
       ESP.restart();
     } else {
-      StreamString str;
-      Update.printError(str);
-      otaErrorString = str.c_str();
+      otaErrorString = "Update.end failed: " + String(Update.getError());
       logError("❌ OTA update failed to complete");
       logError(otaErrorString);
       Update.abort();

@@ -358,11 +358,22 @@ export default function CameraModule({
               }}
             >
               <Typography variant="h6" gutterBottom>
-                📷 Camera {cameraStatus === "enabled" ? "Ready" : "Offline"}
+                📷 Camera{" "}
+                {isStreaming
+                  ? "Live"
+                  : cameraStatus === "enabled"
+                  ? "Ready"
+                  : cameraStatus === "disabled"
+                  ? "Disabled"
+                  : "Offline"}
               </Typography>
               <Typography variant="body2">
-                {cameraStatus === "enabled"
+                {isStreaming
+                  ? "Streaming in progress"
+                  : cameraStatus === "enabled"
                   ? "Click play to start streaming"
+                  : cameraStatus === "disabled"
+                  ? "Enable it in the device settings"
                   : "Camera is not available"}
               </Typography>
             </Box>
@@ -389,17 +400,21 @@ export default function CameraModule({
                 borderRadius: "50%",
                 backgroundColor: isStreaming
                   ? "success.main"
-                  : cameraStatus === "enabled"
-                  ? "primary.main"
-                  : "error.main",
+                  : cameraStatus === "unknown"
+                  ? "error.main"
+                  : cameraStatus === "disabled"
+                  ? "warning.main"
+                  : "primary.main",
               }}
             />
             <Typography variant="caption" sx={{ color: "white" }}>
               {isStreaming
                 ? "Live"
-                : cameraStatus === "enabled"
-                ? "Online"
-                : "Offline"}
+                : cameraStatus === "unknown"
+                ? "Offline"
+                : cameraStatus === "disabled"
+                ? "Disabled"
+                : "Online"}
             </Typography>
           </Box>
         </Box>

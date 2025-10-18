@@ -44,6 +44,7 @@ export default function CameraModule({
 
   // Function to check camera status from the API
   const checkCameraStatus = async () => {
+    console.log("🔍 Checking camera status...");
     try {
       const protocol = window.location.protocol;
       const mdnsHostname = globalConfig?.mdns;
@@ -69,16 +70,37 @@ export default function CameraModule({
       const url = new URL(cameraUrl);
       const statusUrl = `${url.protocol}//${url.host}/camera/status`;
 
-      const response = await fetch(statusUrl);
+      console.log("📡 Fetching from:", statusUrl);
+
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+      const response = await fetch(statusUrl, {
+        signal: controller.signal,
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
+        console.log("✅ Status response:", data.status);
         setCameraStatus(data.status || "unknown");
       } else {
+        console.log("❌ HTTP error:", response.status);
         setCameraStatus("unknown");
       }
     } catch (error) {
       // Camera is offline/unreachable - update status immediately
+      if (error.name === "AbortError") {
+        console.log("🚨 Camera timeout - treating as offline");
+      } else {
+        console.log("🚨 Camera offline error:", error.message);
+      }
       setCameraStatus("unknown");
     }
   };
@@ -112,6 +134,7 @@ export default function CameraModule({
 
   // Check camera status on mount and set up periodic polling
   useEffect(() => {
+    console.log("🎯 Status polling useEffect running!");
     // Initial status check
     checkCameraStatus();
 
@@ -122,12 +145,10 @@ export default function CameraModule({
       }
 
       const poll = () => {
-        if (!isStreaming) {
-          checkCameraStatus();
-          // Check every 2 seconds for fast updates
-          statusCheckIntervalRef.current = setTimeout(poll, 2000);
-        } else {
-        }
+        console.log("⏰ Polling camera status...");
+        checkCameraStatus();
+        // Check every 1 second for fast updates
+        statusCheckIntervalRef.current = setTimeout(poll, 1000);
       };
 
       // Start polling
@@ -142,7 +163,7 @@ export default function CameraModule({
         clearTimeout(statusCheckIntervalRef.current);
       }
     };
-  }, [isStreaming]); // Re-run when streaming status changes
+  }, [config?.url, globalConfig?.mdns]); // Re-run when config changes
 
   const handleStartStream = () => {
     if (!streamUrl) {

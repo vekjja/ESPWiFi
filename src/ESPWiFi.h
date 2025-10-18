@@ -132,6 +132,7 @@ public:
 
   // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
+  void recordCamera();
   void startCamera();
   bool initCamera();
   void deinitCamera();
@@ -141,6 +142,18 @@ public:
   String camSocPath = "/camera";
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
+
+  // Video Recording
+  void startVideoRecording(String filePath);
+  void stopVideoRecording();
+  void recordFrame();
+  void updateRecording();
+  bool isRecording = false;
+  String recordingFilePath;
+  File recordingFile;
+  unsigned long recordingStartTime;
+  int recordingFrameCount = 0;
+  int recordingFrameRate = 10; // frames per second
 #endif
 
   // RSSI

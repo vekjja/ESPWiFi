@@ -184,6 +184,112 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
+  // Video Recording Endpoints
+  webServer->on("/camera/record/start", HTTP_POST,
+                [this](AsyncWebServerRequest *request) {
+                  if (isRecording) {
+                    request->send(
+                        400, "application/json",
+                        "{\"error\":\"Recording already in progress\"}");
+                    return;
+                  }
+
+                  recordCamera();
+                  request->send(200, "application/json",
+                                "{\"status\":\"Recording started\"}");
+                });
+
+  webServer->on("/camera/record/stop", HTTP_POST,
+                [this](AsyncWebServerRequest *request) {
+                  if (!isRecording) {
+                    request->send(400, "application/json",
+                                  "{\"error\":\"No recording in progress\"}");
+                    return;
+                  }
+
+                  stopVideoRecording();
+                  request->send(200, "application/json",
+                                "{\"status\":\"Recording stopped\"}");
+                });
+
+  webServer->on("/camera/record/status", HTTP_GET,
+                [this](AsyncWebServerRequest *request) {
+                  String status = isRecording ? "recording" : "stopped";
+                  String response = "{\"status\":\"" + status + "\"";
+
+                  if (isRecording) {
+                    response += ",\"file\":\"" + recordingFilePath + "\"";
+                    response += ",\"frames\":" + String(recordingFrameCount);
+                    response += ",\"duration\":" +
+                                String(millis() - recordingStartTime);
+                  }
+
+                  response += "}";
+                  request->send(200, "application/json", response);
+                });
+
+  // Serve recordings directory with HTML interface
+  webServer->on(
+      "/camera/recordings", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String html = "<!DOCTYPE html><html><head><title>Recordings</title>";
+        html += "<style>body{font-family:sans-serif;margin:20px;}";
+        html += "video{max-width:100%;height:auto;border:1px solid #ccc;}";
+        html +=
+            ".recording{ margin:10px 0; padding:10px; border:1px solid #ddd; }";
+        html += "a{color:#0066cc; text-decoration:none;} "
+                "a:hover{text-decoration:underline;}";
+        html += "</style></head><body>";
+        html += "<h1>📹 Camera Recordings</h1>";
+
+        if (!fs) {
+          html += "<p>No file system available</p></body></html>";
+          request->send(200, "text/html", html);
+          return;
+        }
+
+        File root = fs->open("/recordings", "r");
+        if (!root || !root.isDirectory()) {
+          html += "<p>No recordings directory found</p></body></html>";
+          request->send(200, "text/html", html);
+          return;
+        }
+
+        html += "<p>Click on a recording to view it:</p>";
+
+        // Determine filesystem prefix based on which filesystem is being used
+        String fsPrefix = "";
+        if (sdCardInitialized && fs) {
+          fsPrefix = "/sd";
+        } else {
+          fsPrefix = "/littlefs";
+        }
+
+        File file = root.openNextFile();
+        while (file) {
+          if (!file.isDirectory()) {
+            String fileName = String(file.name());
+            if (fileName.endsWith(".mjpeg")) {
+              String fullPath = fsPrefix + "/recordings/" + fileName;
+              html += "<div class='recording'>";
+              html += "<h3><a href='" + fullPath + "' target='_blank'>" +
+                      fileName + "</a></h3>";
+              html += "<video controls preload='metadata'>";
+              html +=
+                  "<source src='" + fullPath + "' type='video/x-motion-jpeg'>";
+              html += "Your browser does not support the video tag.";
+              html += "</video>";
+              html += "<p>Size: " + String(file.size()) + " bytes</p>";
+              html += "</div>";
+            }
+          }
+          file = root.openNextFile();
+        }
+
+        root.close();
+        html += "</body></html>";
+        request->send(200, "text/html", html);
+      });
+
   logf("📷 Camera Started\n");
 
   this->camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
@@ -191,6 +297,151 @@ void ESPWiFi::startCamera() {
   if (!this->camSoc) {
     logError(" Failed to create Camera WebSocket");
     return;
+  }
+}
+
+void ESPWiFi::recordCamera() {
+  if (!config["camera"]["enabled"]) {
+    return;
+  }
+
+  if (!initCamera()) {
+    logError("Skipping Camera Recording: Camera Initialization Failed");
+    return;
+  }
+
+  // Ensure file system is initialized
+  if (!fs) {
+    initLittleFS();
+    initSDCard();
+  }
+
+  if (!fs) {
+    logError("No file system available for recording");
+    return;
+  }
+
+  // Create recordings directory if it doesn't exist
+  String recordingsDir = "/recordings";
+  if (!dirExists(fs, recordingsDir)) {
+    if (!mkDir(fs, recordingsDir)) {
+      logError("Failed to create recordings directory");
+      return;
+    }
+  }
+
+  // Generate filename with timestamp
+  String filePath = recordingsDir + "/" + timestampForFilename() + ".mjpeg";
+
+  // Log which filesystem is being used
+  String fsType = sdCardInitialized && fs ? "SD Card" : "LittleFS";
+  logf("📁 Using filesystem: %s\n", fsType.c_str());
+  logf("📁 Recording path: %s\n", filePath.c_str());
+
+  // Start recording
+  startVideoRecording(filePath);
+}
+
+void ESPWiFi::startVideoRecording(String filePath) {
+  if (isRecording) {
+    logError("Recording already in progress");
+    return;
+  }
+
+  recordingFile = fs->open(filePath, "w");
+  if (!recordingFile) {
+    logError("Failed to open recording file: " + filePath);
+    return;
+  }
+
+  // Write MJPEG header
+  recordingFile.print("HTTP/1.1 200 OK\r\n");
+  recordingFile.print(
+      "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n");
+  recordingFile.print("\r\n");
+
+  isRecording = true;
+  recordingFilePath = filePath;
+  recordingStartTime = millis();
+  recordingFrameCount = 0;
+
+  log("🎥 Started video recording: " + filePath);
+}
+
+void ESPWiFi::stopVideoRecording() {
+  if (!isRecording) {
+    return;
+  }
+
+  if (recordingFile) {
+    recordingFile.close();
+  }
+
+  isRecording = false;
+  unsigned long duration = millis() - recordingStartTime;
+
+  log("🎥 Stopped video recording: " + recordingFilePath);
+  logf("📊 Recording stats: %d frames, %lu ms duration\n", recordingFrameCount,
+       duration);
+
+  recordingFilePath = "";
+  recordingFrameCount = 0;
+}
+
+void ESPWiFi::recordFrame() {
+  if (!isRecording || !recordingFile) {
+    return;
+  }
+
+  // Check frame rate timing
+  static unsigned long lastFrameTime = 0;
+  unsigned long frameInterval =
+      1000 / recordingFrameRate; // Convert FPS to milliseconds
+
+  if (millis() - lastFrameTime < frameInterval) {
+    return; // Skip this frame to maintain frame rate
+  }
+  lastFrameTime = millis();
+
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    logError("Camera Capture for Recording Failed");
+    return;
+  }
+
+  if (fb->format != PIXFORMAT_JPEG) {
+    logError("Unsupported Pixel Format for Recording");
+    esp_camera_fb_return(fb);
+    return;
+  }
+
+  // Write frame boundary and headers
+  recordingFile.print("--frame\r\n");
+  recordingFile.print("Content-Type: image/jpeg\r\n");
+  recordingFile.print("Content-Length: " + String(fb->len) + "\r\n");
+  recordingFile.print("\r\n");
+
+  // Write frame data
+  size_t written = recordingFile.write(fb->buf, fb->len);
+  if (written != fb->len) {
+    logError("Failed to write complete frame to recording file");
+  } else {
+    recordingFrameCount++;
+  }
+
+  recordingFile.print("\r\n");
+
+  esp_camera_fb_return(fb);
+}
+
+void ESPWiFi::updateRecording() {
+  if (isRecording) {
+    recordFrame();
+
+    // Optional: Auto-stop recording after certain duration (e.g., 60 seconds)
+    if (millis() - recordingStartTime > 60000) {
+      stopVideoRecording();
+    }
   }
 }
 

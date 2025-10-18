@@ -16,6 +16,7 @@ void ESPWiFi::runSystem() {
 
 #ifdef ESPWiFi_CAMERA_ENABLED
   streamCamera();
+  updateRecording();
 #endif
 
 #ifdef ESP8266

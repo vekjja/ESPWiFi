@@ -103,6 +103,7 @@ public:
   void srvGPIO();
   void srvFiles();
   void srvConfig();
+  void srvStatus();
   void srvRestart();
   void initWebServer();
   void startWebServer();

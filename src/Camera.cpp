@@ -228,16 +228,6 @@ void ESPWiFi::startCamera() {
                   request->send(200, "application/json", response);
                 });
 
-  webServer->on(
-      "/camera/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        String status = config["camera"]["enabled"] ? "enabled" : "disabled";
-        String response = "{\"status\":\"" + status + "\"}";
-        AsyncWebServerResponse *responseObj =
-            request->beginResponse(200, "application/json", response);
-        addCORS(responseObj);
-        request->send(responseObj);
-      });
-
   logf("📷 Camera Started\n");
 
   this->camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);

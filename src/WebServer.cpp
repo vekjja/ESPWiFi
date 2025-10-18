@@ -137,6 +137,19 @@ void ESPWiFi::srvLog() {
   });
 }
 
+void ESPWiFi::srvStatus() {
+  initWebServer();
+  webServer->on(
+      "/camera/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String status = config["camera"]["enabled"] ? "enabled" : "disabled";
+        String response = "{\"status\":\"" + status + "\"}";
+        AsyncWebServerResponse *responseObj =
+            request->beginResponse(200, "application/json", response);
+        addCORS(responseObj);
+        request->send(responseObj);
+      });
+}
+
 void ESPWiFi::srvInfo() {
   initWebServer();
   // Device info endpoint
@@ -552,6 +565,7 @@ void ESPWiFi::srvAll() {
   srvGPIO();
   srvFiles();
   srvConfig();
+  srvStatus();
   srvRestart();
 }
 

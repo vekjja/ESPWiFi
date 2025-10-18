@@ -8,6 +8,7 @@ void ESPWiFi::start() {
   startWiFi();
   startMDNS();
   startWebServer();
+  handleConfig();
 }
 
 void ESPWiFi::runSystem() {

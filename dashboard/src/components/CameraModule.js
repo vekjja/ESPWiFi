@@ -31,6 +31,7 @@ export default function CameraModule({
   const [streamUrl, setStreamUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState("unknown"); // "enabled", "disabled", or "unknown"
   const [settingsData, setSettingsData] = useState({
     name: config?.name || "",
     url: config?.url || "/camera",
@@ -39,6 +40,48 @@ export default function CameraModule({
   const wsRef = useRef(null);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
+  const statusCheckIntervalRef = useRef(null);
+
+  // Function to check camera status from the API
+  const checkCameraStatus = async () => {
+    try {
+      const protocol = window.location.protocol;
+      const mdnsHostname = globalConfig?.mdns;
+      const hostname = mdnsHostname
+        ? `${mdnsHostname}.local`
+        : window.location.hostname;
+      const port =
+        window.location.port && !mdnsHostname ? `:${window.location.port}` : "";
+
+      // Convert camera URL to status endpoint URL
+      let cameraUrl = config?.url || "/camera";
+
+      // Normalize the camera URL to a proper URL format
+      if (cameraUrl.startsWith("/")) {
+        // Relative path - prepend current hostname
+        cameraUrl = `${protocol}//${hostname}${port}${cameraUrl}`;
+      } else if (!cameraUrl.startsWith("http") && !cameraUrl.startsWith("ws")) {
+        // Hostname + path format (like "solcam.local/camera") - prepend protocol
+        cameraUrl = `${protocol}//${cameraUrl}`;
+      }
+
+      // Parse the URL and construct status endpoint
+      const url = new URL(cameraUrl);
+      const statusUrl = `${url.protocol}//${url.host}/camera/status`;
+
+      const response = await fetch(statusUrl);
+
+      if (response.ok) {
+        const data = await response.json();
+        setCameraStatus(data.status || "unknown");
+      } else {
+        setCameraStatus("unknown");
+      }
+    } catch (error) {
+      // Camera is offline/unreachable - update status immediately
+      setCameraStatus("unknown");
+    }
+  };
 
   useEffect(() => {
     // Convert relative path to absolute URL like WebSocketModule does
@@ -66,6 +109,40 @@ export default function CameraModule({
 
     setStreamUrl(wsUrl);
   }, [config?.url, globalConfig?.mdns]); // Re-run if URL or mDNS changes
+
+  // Check camera status on mount and set up periodic polling
+  useEffect(() => {
+    // Initial status check
+    checkCameraStatus();
+
+    // Set up simple periodic status checking when not streaming
+    const startStatusPolling = () => {
+      if (statusCheckIntervalRef.current) {
+        clearTimeout(statusCheckIntervalRef.current);
+      }
+
+      const poll = () => {
+        if (!isStreaming) {
+          checkCameraStatus();
+          // Check every 2 seconds for fast updates
+          statusCheckIntervalRef.current = setTimeout(poll, 2000);
+        } else {
+        }
+      };
+
+      // Start polling
+      poll();
+    };
+
+    startStatusPolling();
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (statusCheckIntervalRef.current) {
+        clearTimeout(statusCheckIntervalRef.current);
+      }
+    };
+  }, [isStreaming]); // Re-run when streaming status changes
 
   const handleStartStream = () => {
     if (!streamUrl) {
@@ -218,6 +295,11 @@ export default function CameraModule({
         URL.revokeObjectURL(imageUrlRef.current);
       }
 
+      // Clean up status check timeout
+      if (statusCheckIntervalRef.current) {
+        clearTimeout(statusCheckIntervalRef.current);
+      }
+
       // Close connection
       handleStopStream();
     };
@@ -276,10 +358,12 @@ export default function CameraModule({
               }}
             >
               <Typography variant="h6" gutterBottom>
-                📷 Camera Offline
+                📷 Camera {cameraStatus === "enabled" ? "Ready" : "Offline"}
               </Typography>
               <Typography variant="body2">
-                Click play to start streaming
+                {cameraStatus === "enabled"
+                  ? "Click play to start streaming"
+                  : "Camera is not available"}
               </Typography>
             </Box>
           )}
@@ -303,11 +387,19 @@ export default function CameraModule({
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                backgroundColor: isStreaming ? "primary.main" : "error.main",
+                backgroundColor: isStreaming
+                  ? "success.main"
+                  : cameraStatus === "enabled"
+                  ? "primary.main"
+                  : "error.main",
               }}
             />
             <Typography variant="caption" sx={{ color: "white" }}>
-              {isStreaming ? "Live" : "Offline"}
+              {isStreaming
+                ? "Live"
+                : cameraStatus === "enabled"
+                ? "Online"
+                : "Offline"}
             </Typography>
           </Box>
         </Box>
@@ -326,12 +418,20 @@ export default function CameraModule({
           }}
         >
           <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
-            <IconButton
-              onClick={isStreaming ? handleStopStream : handleStartStream}
-              sx={{ color: "primary.main" }}
-            >
-              {isStreaming ? <Pause /> : <PlayArrow />}
-            </IconButton>
+            <span>
+              <IconButton
+                onClick={isStreaming ? handleStopStream : handleStartStream}
+                disabled={cameraStatus !== "enabled"}
+                sx={{
+                  color:
+                    cameraStatus === "enabled"
+                      ? "primary.main"
+                      : "text.disabled",
+                }}
+              >
+                {isStreaming ? <Pause /> : <PlayArrow />}
+              </IconButton>
+            </span>
           </Tooltip>
 
           <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>

@@ -228,66 +228,14 @@ void ESPWiFi::startCamera() {
                   request->send(200, "application/json", response);
                 });
 
-  // Serve recordings directory with HTML interface
   webServer->on(
-      "/camera/recordings", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        String html = "<!DOCTYPE html><html><head><title>Recordings</title>";
-        html += "<style>body{font-family:sans-serif;margin:20px;}";
-        html += "video{max-width:100%;height:auto;border:1px solid #ccc;}";
-        html +=
-            ".recording{ margin:10px 0; padding:10px; border:1px solid #ddd; }";
-        html += "a{color:#0066cc; text-decoration:none;} "
-                "a:hover{text-decoration:underline;}";
-        html += "</style></head><body>";
-        html += "<h1>📹 Camera Recordings</h1>";
-
-        if (!fs) {
-          html += "<p>No file system available</p></body></html>";
-          request->send(200, "text/html", html);
-          return;
-        }
-
-        File root = fs->open("/recordings", "r");
-        if (!root || !root.isDirectory()) {
-          html += "<p>No recordings directory found</p></body></html>";
-          request->send(200, "text/html", html);
-          return;
-        }
-
-        html += "<p>Click on a recording to view it:</p>";
-
-        // Determine filesystem prefix based on which filesystem is being used
-        String fsPrefix = "";
-        if (sdCardInitialized && fs) {
-          fsPrefix = "/sd";
-        } else {
-          fsPrefix = "/littlefs";
-        }
-
-        File file = root.openNextFile();
-        while (file) {
-          if (!file.isDirectory()) {
-            String fileName = String(file.name());
-            if (fileName.endsWith(".mjpeg")) {
-              String fullPath = fsPrefix + "/recordings/" + fileName;
-              html += "<div class='recording'>";
-              html += "<h3><a href='" + fullPath + "' target='_blank'>" +
-                      fileName + "</a></h3>";
-              html += "<video controls preload='metadata'>";
-              html +=
-                  "<source src='" + fullPath + "' type='video/x-motion-jpeg'>";
-              html += "Your browser does not support the video tag.";
-              html += "</video>";
-              html += "<p>Size: " + String(file.size()) + " bytes</p>";
-              html += "</div>";
-            }
-          }
-          file = root.openNextFile();
-        }
-
-        root.close();
-        html += "</body></html>";
-        request->send(200, "text/html", html);
+      "/camera/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String status = config["camera"]["enabled"] ? "enabled" : "disabled";
+        String response = "{\"status\":\"" + status + "\"}";
+        AsyncWebServerResponse *responseObj =
+            request->beginResponse(200, "application/json", response);
+        addCORS(responseObj);
+        request->send(responseObj);
       });
 
   logf("📷 Camera Started\n");

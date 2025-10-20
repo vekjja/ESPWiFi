@@ -5,7 +5,6 @@
 #include <ArduinoJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
-#include <FastLED.h>
 #include <IntervalTimer.h>
 #include <LittleFS.h>
 #include <SD.h>

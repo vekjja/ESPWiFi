@@ -90,12 +90,7 @@ void ESPWiFi::srvConfig() {
           saveConfig();
         }
 
-        if (configUpdateCallback) {
-          configUpdateCallback();
-        }
-
-        cameraConfigHandler();
-        rssiConfigHandler();
+        handleConfig();
 
         String responseStr;
         serializeJson(config, responseStr);
@@ -553,8 +548,6 @@ void ESPWiFi::srvGPIO() {
         }
         log(logMsg);
       }));
-  // log("📍 GPIO Started:");
-  // log("\tPOST /gpio");
 }
 
 void ESPWiFi::srvAll() {

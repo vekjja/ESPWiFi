@@ -81,7 +81,6 @@ public:
   void handleConfig();
   JsonDocument defaultConfig();
   void mergeConfig(JsonObject &json);
-  void (*configUpdateCallback)() = nullptr;
 
   // WiFi
   void startAP();

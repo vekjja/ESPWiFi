@@ -545,7 +545,6 @@ void ESPWiFi::srvAll() {
   srvGPIO();
   srvFiles();
   srvConfig();
-  srvStatus();
   srvRestart();
 }
 

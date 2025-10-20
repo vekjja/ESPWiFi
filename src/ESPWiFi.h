@@ -77,7 +77,7 @@ public:
   void readConfig();
   void printConfig();
   void handleConfig();
-  void defaultConfig();
+  JsonDocument defaultConfig();
   void mergeConfig(JsonObject &json);
   void (*configUpdateCallback)() = nullptr;
 

@@ -3,6 +3,31 @@
 
 #include "ESPWiFi.h"
 
+void ESPWiFi::readConfig() {
+
+  initLittleFS();
+
+  File file = LittleFS.open(configFile, "r");
+  if (!file) {
+    log("⚠️  Failed to open config file\nUsing default config");
+    config = defaultConfig();
+  }
+
+  DeserializationError error = deserializeJson(config, file);
+  if (error) {
+    log("⚠️  Failed to read config file: " + String(error.c_str()) +
+        "\nUsing default config");
+    config = defaultConfig();
+    file.close();
+  }
+
+  log("⚙️  Config Loaded:");
+  logf("\tFile: %s\n", configFile.c_str());
+
+  printConfig();
+  file.close();
+}
+
 void ESPWiFi::saveConfig() {
   initLittleFS();
   File file = LittleFS.open(configFile, "w");
@@ -20,37 +45,10 @@ void ESPWiFi::saveConfig() {
   printConfig();
 }
 
-void ESPWiFi::readConfig() {
-
-  initLittleFS();
-
-  File file = LittleFS.open(configFile, "r");
-  if (!file) {
-    logError("Failed to open config file");
-    defaultConfig();
-    return;
-  }
-
-  DeserializationError error = deserializeJson(config, file);
-  if (error) {
-    logError("Failed to read config file: " + String(error.c_str()));
-    defaultConfig();
-    file.close();
-    return;
-  }
-
-  log("⚙️  Config Loaded:");
-  logf("\tFile: %s\n", configFile.c_str());
-
-  printConfig();
-  file.close();
-}
-
 void ESPWiFi::printConfig() {
   String prettyConfig;
   serializeJsonPretty(config, prettyConfig);
   log(prettyConfig);
-  // log("\n");
 }
 
 void ESPWiFi::mergeConfig(JsonObject &json) {
@@ -59,35 +57,34 @@ void ESPWiFi::mergeConfig(JsonObject &json) {
   }
 }
 
-void ESPWiFi::defaultConfig() {
-  log("🛠️  Using Default Config:");
-  config["mode"] = "accessPoint";
+JsonDocument ESPWiFi::defaultConfig() {
+  JsonDocument defaultConfig;
+  String hostname;
+
 #ifdef ESP8266
-  config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.hostname());
+  hostname = String(WiFi.hostname());
 #else
-  config["ap"]["ssid"] = "ESPWiFi-" + String(WiFi.getHostname());
+  hostname = String(WiFi.getHostname());
 #endif
-  config["ap"]["password"] = "abcd1234";
-  config["mdns"] = "ESPWiFi";
-  config["client"]["ssid"] = "";
-  config["client"]["password"] = "";
+
+  defaultConfig["mode"] = "accessPoint";
+  defaultConfig["mdns"] = "ESPWiFi";
+
+  defaultConfig["ap"]["ssid"] = "ESPWiFi-" + hostname;
+  defaultConfig["ap"]["password"] = "abcd1234";
+
+  defaultConfig["client"]["ssid"] = "";
+  defaultConfig["client"]["password"] = "";
 
   // Camera settings
-  config["camera"]["enabled"] = false;
-  config["camera"]["frameRate"] = 10;
+  defaultConfig["camera"]["enabled"] = false;
+  defaultConfig["camera"]["frameRate"] = 10;
 
   // RSSI settings
-  config["rssi"]["enabled"] = false;
-  config["rssi"]["displayMode"] = "numbers"; // "icon", "numbers", "both"
+  defaultConfig["rssi"]["enabled"] = false;
+  defaultConfig["rssi"]["displayMode"] = "numbers";
 
-  // Microphone settings
-  config["microphone"]["enabled"] = false;
-  config["microphone"]["sampleRate"] = 16000; // 8000, 16000, 44100
-  config["microphone"]["gain"] = 1.0;         // 0.1 to 10.0
-  config["microphone"]["autoGain"] = true;
-  config["microphone"]["noiseReduction"] = true;
-
-  printConfig();
+  return defaultConfig;
 }
 
 void ESPWiFi::handleConfig() {

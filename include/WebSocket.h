@@ -48,8 +48,8 @@ public:
         espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
         espWifi->logf("\tID: %d\n", client->id());
         espWifi->logf("\tPath: %s\n", socket->url());
-        espWifi->logf("\tPort: %d\n", client->remotePort());
-        espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
+        // espWifi->logf("\tPort: %d\n", client->remotePort());
+        // espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
         espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
       }
 

@@ -53,21 +53,8 @@ export default function CameraModule({
       const port =
         window.location.port && !mdnsHostname ? `:${window.location.port}` : "";
 
-      // Convert camera URL to status endpoint URL
-      let cameraUrl = config?.url || "/camera";
-
-      // Normalize the camera URL to a proper URL format
-      if (cameraUrl.startsWith("/")) {
-        // Relative path - prepend current hostname
-        cameraUrl = `${protocol}//${hostname}${port}${cameraUrl}`;
-      } else if (!cameraUrl.startsWith("http") && !cameraUrl.startsWith("ws")) {
-        // Hostname + path format (like "solcam.local/camera") - prepend protocol
-        cameraUrl = `${protocol}//${cameraUrl}`;
-      }
-
-      // Parse the URL and construct status endpoint
-      const url = new URL(cameraUrl);
-      const statusUrl = `${url.protocol}//${url.host}/camera/status`;
+      // Use the new /status endpoint
+      const statusUrl = `${protocol}//${hostname}${port}/status`;
 
       // Create AbortController for timeout
       const controller = new AbortController();
@@ -85,7 +72,8 @@ export default function CameraModule({
 
       if (response.ok) {
         const data = await response.json();
-        setCameraStatus(data.status || "unknown");
+        // Check if camera is enabled in the config
+        setCameraStatus(data.camera?.enabled ? "enabled" : "disabled");
       } else {
         setCameraStatus("unknown");
       }

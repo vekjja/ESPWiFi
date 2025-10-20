@@ -25,6 +25,7 @@ export default function CameraModule({
   globalConfig,
   onUpdate,
   onDelete,
+  deviceOnline = true,
 }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -40,46 +41,85 @@ export default function CameraModule({
   const wsRef = useRef(null);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
-  const statusCheckIntervalRef = useRef(null);
 
-  // Function to check camera status from the API
-  const checkCameraStatus = async () => {
+  // Function to check if camera URL is for a remote device
+  const isRemoteCamera = () => {
+    const cameraUrl = config?.url || "/camera";
+    // If URL starts with http://, https://, or contains a hostname (not just a path)
+    return (
+      cameraUrl.startsWith("http://") ||
+      cameraUrl.startsWith("https://") ||
+      (!cameraUrl.startsWith("/") && cameraUrl.includes("."))
+    );
+  };
+
+  // Function to get the remote device's config endpoint URL
+  const getRemoteConfigUrl = () => {
+    const cameraUrl = config?.url || "/camera";
+
+    if (cameraUrl.startsWith("ws://")) {
+      // Convert ws://hostname:port/path to http://hostname:port/config
+      const url = new URL(cameraUrl);
+      return `${url.protocol.replace("ws", "http")}//${url.host}/config`;
+    } else if (cameraUrl.startsWith("wss://")) {
+      // Convert wss://hostname:port/path to https://hostname:port/config
+      const url = new URL(cameraUrl);
+      return `${url.protocol.replace("wss", "https")}//${url.host}/config`;
+    } else if (
+      cameraUrl.startsWith("http://") ||
+      cameraUrl.startsWith("https://")
+    ) {
+      // Extract hostname and port from HTTP URL
+      const url = new URL(cameraUrl);
+      return `${url.protocol}//${url.host}/config`;
+    } else if (!cameraUrl.startsWith("/") && cameraUrl.includes(".")) {
+      // Handle hostname without protocol
+      return `http://${cameraUrl.split("/")[0]}/config`;
+    }
+
+    return null;
+  };
+
+  // Function to poll remote camera status
+  const pollRemoteCameraStatus = async () => {
+    const remoteConfigUrl = getRemoteConfigUrl();
+    if (!remoteConfigUrl) return;
+
     try {
-      const protocol = window.location.protocol;
-      const mdnsHostname = globalConfig?.mdns;
-      const hostname = mdnsHostname
-        ? `${mdnsHostname}.local`
-        : window.location.hostname;
-      const port =
-        window.location.port && !mdnsHostname ? `:${window.location.port}` : "";
-
-      // Use the new /status endpoint
-      const statusUrl = `${protocol}//${hostname}${port}/status`;
-
-      // Create AbortController for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-      const response = await fetch(statusUrl, {
-        signal: controller.signal,
+      const response = await fetch(remoteConfigUrl, {
         method: "GET",
         headers: {
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(3000), // 3 second timeout
       });
-
-      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
-        // Check if camera is enabled in the config
         setCameraStatus(data.camera?.enabled ? "enabled" : "disabled");
       } else {
         setCameraStatus("unknown");
       }
     } catch (error) {
-      // Camera is offline/unreachable - update status immediately
+      console.error("Error polling remote camera status:", error);
       setCameraStatus("unknown");
+    }
+  };
+
+  // Function to update camera status based on global config and device online status
+  const updateCameraStatus = () => {
+    if (isRemoteCamera()) {
+      // For remote cameras, poll their status
+      pollRemoteCameraStatus();
+    } else {
+      // For local cameras, use global config
+      if (!deviceOnline) {
+        setCameraStatus("unknown");
+      } else if (globalConfig?.camera?.enabled) {
+        setCameraStatus("enabled");
+      } else {
+        setCameraStatus("disabled");
+      }
     }
   };
 
@@ -110,36 +150,28 @@ export default function CameraModule({
     setStreamUrl(wsUrl);
   }, [config?.url, globalConfig?.mdns]); // Re-run if URL or mDNS changes
 
-  // Check camera status on mount and set up periodic polling
+  // Update camera status when global config or device online status changes
   useEffect(() => {
+    updateCameraStatus();
+  }, [globalConfig?.camera?.enabled, deviceOnline]); // Re-run when camera enabled status or device online status changes
+
+  // Set up polling for remote cameras
+  useEffect(() => {
+    if (!isRemoteCamera()) return;
+
     // Initial status check
-    checkCameraStatus();
+    updateCameraStatus();
 
-    // Set up simple periodic status checking when not streaming
-    const startStatusPolling = () => {
-      if (statusCheckIntervalRef.current) {
-        clearTimeout(statusCheckIntervalRef.current);
-      }
+    // Set up polling every 3 seconds for remote cameras
+    const pollInterval = setInterval(() => {
+      updateCameraStatus();
+    }, 3000);
 
-      const poll = () => {
-        checkCameraStatus();
-        // Check every 1 second for fast updates
-        statusCheckIntervalRef.current = setTimeout(poll, 1000);
-      };
-
-      // Start polling
-      poll();
-    };
-
-    startStatusPolling();
-
-    // Cleanup timeout on unmount
+    // Cleanup interval on unmount
     return () => {
-      if (statusCheckIntervalRef.current) {
-        clearTimeout(statusCheckIntervalRef.current);
-      }
+      clearInterval(pollInterval);
     };
-  }, [config?.url, globalConfig?.mdns]); // Re-run when config changes
+  }, [config?.url]); // Re-run when camera URL changes
 
   const handleStartStream = () => {
     if (!streamUrl) {
@@ -292,11 +324,6 @@ export default function CameraModule({
         URL.revokeObjectURL(imageUrlRef.current);
       }
 
-      // Clean up status check timeout
-      if (statusCheckIntervalRef.current) {
-        clearTimeout(statusCheckIntervalRef.current);
-      }
-
       // Close connection
       handleStopStream();
     };
@@ -355,7 +382,7 @@ export default function CameraModule({
               }}
             >
               <Typography variant="h6" gutterBottom>
-                📷 Camera{" "}
+                📷 Camera {isRemoteCamera() && "🌐 "}
                 {isStreaming
                   ? "Live"
                   : cameraStatus === "enabled"
@@ -370,7 +397,11 @@ export default function CameraModule({
                   : cameraStatus === "enabled"
                   ? "Click play to start streaming"
                   : cameraStatus === "disabled"
-                  ? "Must be enabled from the device control panel"
+                  ? isRemoteCamera()
+                    ? "Camera disabled on remote device"
+                    : "Must be enabled from the device control panel"
+                  : isRemoteCamera()
+                  ? "Remote camera is not available"
                   : "Camera is not available"}
               </Typography>
             </Box>
@@ -408,9 +439,15 @@ export default function CameraModule({
               {isStreaming
                 ? "Live"
                 : cameraStatus === "unknown"
-                ? "Offline"
+                ? isRemoteCamera()
+                  ? "Remote Offline"
+                  : "Offline"
                 : cameraStatus === "disabled"
-                ? "Disabled"
+                ? isRemoteCamera()
+                  ? "Remote Disabled"
+                  : "Disabled"
+                : isRemoteCamera()
+                ? "Remote Online"
                 : "Online"}
             </Typography>
           </Box>

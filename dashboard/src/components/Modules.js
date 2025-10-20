@@ -80,7 +80,13 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
 }
 
 // Sortable wrapper component for Camera modules
-function SortableCameraModule({ module, config, onUpdate, onDelete }) {
+function SortableCameraModule({
+  module,
+  config,
+  onUpdate,
+  onDelete,
+  deviceOnline,
+}) {
   const {
     attributes,
     listeners,
@@ -104,12 +110,13 @@ function SortableCameraModule({ module, config, onUpdate, onDelete }) {
         globalConfig={config}
         onUpdate={onUpdate}
         onDelete={onDelete}
+        deviceOnline={deviceOnline}
       />
     </div>
   );
 }
 
-export default function Modules({ config, saveConfig }) {
+export default function Modules({ config, saveConfig, deviceOnline = true }) {
   const [modules, setModules] = useState([]);
 
   // Configure sensors for drag detection with activation constraints
@@ -360,6 +367,7 @@ export default function Modules({ config, saveConfig }) {
                     config={config}
                     onUpdate={updateModule}
                     onDelete={deleteModule}
+                    deviceOnline={deviceOnline}
                   />
                 );
               }

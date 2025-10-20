@@ -132,22 +132,6 @@ void ESPWiFi::srvLog() {
   });
 }
 
-void ESPWiFi::srvStatus() {
-  initWebServer();
-  webServer->on("/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    // Create a copy of config and remove modules
-    JsonDocument statusDoc = config;
-    statusDoc.remove("modules");
-
-    String response;
-    serializeJson(statusDoc, response);
-    AsyncWebServerResponse *responseObj =
-        request->beginResponse(200, "application/json", response);
-    addCORS(responseObj);
-    request->send(responseObj);
-  });
-}
-
 void ESPWiFi::srvInfo() {
   initWebServer();
   // Device info endpoint

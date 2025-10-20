@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
+import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import NetworkSettingsModal from "./components/NetworkSettingsModal";
 import CameraSettingsModal from "./components/CameraSettingsModal";
@@ -73,32 +74,48 @@ function App() {
   const [localConfig, setLocalConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deviceOnline, setDeviceOnline] = useState(true);
 
   const hostname = process.env.REACT_APP_API_HOST || "localhost";
   const port = process.env.REACT_APP_API_PORT || 80;
   const apiURL =
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
 
+  // Function to fetch config from device
+  const fetchConfig = async () => {
+    try {
+      const response = await fetch(apiURL + "/config");
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
+      const data = await response.json();
+      const configWithAPI = { ...data, apiURL };
+      setConfig(configWithAPI);
+      setLocalConfig(configWithAPI);
+      setDeviceOnline(true); // Device is online
+      return data;
+    } catch (error) {
+      console.error("Device offline:", error.message);
+      setDeviceOnline(false); // Device is offline
+      return null;
+    }
+  };
+
   useEffect(() => {
-    console.log("Fetching configuration from:", apiURL + "/config");
-    fetch(apiURL + "/config")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log("Fetched Configuration:", data);
-        const configWithAPI = { ...data, apiURL };
-        setConfig(configWithAPI);
-        setLocalConfig(configWithAPI);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error loading configuration:", error);
-        setLoading(false);
-      });
+    // Initial fetch
+    fetchConfig().then(() => {
+      setLoading(false);
+    });
+
+    // Set up polling every 3 seconds
+    const pollInterval = setInterval(() => {
+      fetchConfig();
+    }, 3000);
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(pollInterval);
+    };
   }, []);
 
   if (loading) {
@@ -166,8 +183,8 @@ function App() {
       <Container
         sx={{
           fontFamily: "Roboto Slab",
-          backgroundColor: "secondary.light",
-          color: "primary.main",
+          backgroundColor: deviceOnline ? "secondary.light" : "error.main",
+          color: deviceOnline ? "primary.main" : "white",
           fontSize: "3em",
           height: "9vh",
           zIndex: 1000,
@@ -176,9 +193,12 @@ function App() {
           alignItems: "center",
           justifyContent: "center",
           minWidth: "100%",
+          position: "relative",
         }}
       >
-        {localConfig?.["mdns"] || config?.["mdns"]}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {localConfig?.["mdns"] || config?.["mdns"]}
+        </Box>
       </Container>
 
       {localConfig && (
@@ -187,23 +207,35 @@ function App() {
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
+            deviceOnline={deviceOnline}
           />
           <CameraSettingsModal
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
+            deviceOnline={deviceOnline}
           />
           <RSSISettingsModal
             config={localConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
+            deviceOnline={deviceOnline}
           />
           <MicrophoneSettings
             config={localConfig}
             saveConfig={updateLocalConfig}
+            deviceOnline={deviceOnline}
           />
-          <AddModule config={localConfig} saveConfig={updateLocalConfig} />
-          <Modules config={localConfig} saveConfig={updateLocalConfig} />
+          <AddModule
+            config={localConfig}
+            saveConfig={updateLocalConfig}
+            deviceOnline={deviceOnline}
+          />
+          <Modules
+            config={localConfig}
+            saveConfig={updateLocalConfig}
+            deviceOnline={deviceOnline}
+          />
         </Container>
       )}
     </ThemeProvider>

@@ -382,7 +382,7 @@ export default function CameraModule({
                   : cameraStatus === "enabled"
                   ? "Click play to start streaming"
                   : cameraStatus === "disabled"
-                  ? "Enable it in the device settings"
+                  ? "Must be enabled from the device control panel"
                   : "Camera is not available"}
               </Typography>
             </Box>

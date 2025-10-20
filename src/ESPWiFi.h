@@ -55,7 +55,7 @@ public:
   bool mkDir(FS *fs, const String &dirPath);
 
   // Logging
-  int maxLogFileSize = 614400; // 600KB = 614400 bytes
+  int maxLogFileSize = 1024 * 1024 * 0.5; // 512KB = 524288 bytes
   void cleanLogFile();
   void closeLogFile();
   void openLogFile();

@@ -40,18 +40,9 @@ void ESPWiFi::startLogging(String filePath) {
   initSDCard();
   this->logFilePath = filePath;
 
-  closeLog(); // Close any existing log file
-
-  if (!fs) {
-    logError("No file system available for logging");
-    return;
-  }
-
-  logFileHandle = fs->open(logFilePath, "a");
-  if (!logFileHandle) {
-    logError("Failed to open log file");
-    return;
-  }
+  closeLogFile();
+  openLogFile();
+  cleanLogFile();
 
   loggingStarted = true;
   log("📝 Logging started:");
@@ -60,39 +51,18 @@ void ESPWiFi::startLogging(String filePath) {
 }
 
 // Function to check filesystem space and delete log if needed
-void ESPWiFi::checkAndCleanupLogFile() {
+void ESPWiFi::cleanLogFile() {
   if (logFileHandle) {
     size_t logFileSize = logFileHandle.size();
-
-    // 600KB = 614400 bytes
-    const size_t MAX_LOG_FILE_SIZE = 614400;
-
-    if (logFileSize > MAX_LOG_FILE_SIZE) {
-      logFileHandle.close();
-
-      // Delete the log file to free up space
-      if (sdCardInitialized) {
-        if (SD.remove(logFilePath)) {
-          log("🗑️  Log file deleted to free up space");
-        } else {
-          logError("Failed to delete log file");
-        }
-#ifdef ESP8266
-        logFileHandle = SD.open(logFilePath, FILE_WRITE);
-#elif defined(ESP32)
-        logFileHandle = SD.open(logFilePath, FILE_APPEND);
-#endif
+    if (logFileSize > maxLogFileSize) {
+      closeLogFile();
+      // Delete the log file to free up space using the fs member
+      if (fs && fs->remove(logFilePath)) {
+        log("🗑️  Log file deleted to free up space");
       } else {
-        if (LittleFS.remove(logFilePath)) {
-          log("🗑️  Log file deleted to free up space");
-        } else {
-          logError("Failed to delete log file");
-        }
-        logFileHandle = LittleFS.open(logFilePath, "a");
+        logError("Failed to delete log file");
       }
-      if (logFileHandle) {
-        log("📝 New log file created");
-      }
+      openLogFile();
     }
   }
 }
@@ -154,9 +124,23 @@ void ESPWiFi::logf(const char *format, ...) {
 }
 
 // Add a method to close the log file (call this in setup or when needed)
-void ESPWiFi::closeLog() {
+void ESPWiFi::closeLogFile() {
   if (logFileHandle) {
     logFileHandle.close();
+  }
+  loggingStarted = false;
+}
+
+void ESPWiFi::openLogFile() {
+  if (!fs) {
+    logError("No file system available for logging");
+    return;
+  }
+
+  logFileHandle = fs->open(logFilePath, "a");
+  if (!logFileHandle) {
+    logError("Failed to open log file");
+    return;
   }
 }
 

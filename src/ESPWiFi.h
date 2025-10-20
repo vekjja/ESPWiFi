@@ -55,12 +55,14 @@ public:
   bool mkDir(FS *fs, const String &dirPath);
 
   // Logging
-  void checkAndCleanupLogFile();
-  void closeLog();
+  int maxLogFileSize = 614400; // 600KB = 614400 bytes
+  void cleanLogFile();
+  void closeLogFile();
+  void openLogFile();
   void logf(const char *format, ...);
-  String logFilePath = "/log.txt";
+  String logFilePath = "/log";
   bool loggingStarted = false;
-  void startLogging(String filePath = "/log.txt");
+  void startLogging(String filePath = "/log");
   void startSerial(int baudRate = 115200);
   String timestamp();
   String timestampForFilename();

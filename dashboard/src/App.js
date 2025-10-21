@@ -14,16 +14,25 @@ import SettingsButtonBar from "./components/SettingsButtonBar";
 const theme = createTheme({
   typography: {
     fontFamily: [
+      "Roboto",
       "-apple-system",
       "BlinkMacSystemFont",
       '"Segoe UI"',
-      "Roboto Slab",
       '"Helvetica Neue"',
       "Arial",
       "sans-serif",
       '"Apple Color Emoji"',
       '"Segoe UI Emoji"',
       '"Segoe UI Symbol"',
+    ].join(","),
+    headerFontFamily: [
+      "Roboto",
+      "Source Code Pro",
+      "Menlo",
+      "Consolas",
+      "Liberation Mono",
+      "Courier New",
+      "monospace",
     ].join(","),
   },
   shape: {
@@ -270,7 +279,7 @@ function App() {
 
       <Container
         sx={{
-          fontFamily: "Roboto Slab",
+          fontFamily: theme.typography.headerFontFamily,
           backgroundColor: deviceOnline ? "secondary.light" : "error.main",
           color: deviceOnline ? "primary.main" : "white",
           fontSize: "3em",
@@ -281,7 +290,8 @@ function App() {
           alignItems: "center",
           justifyContent: "center",
           minWidth: "100%",
-          position: "relative",
+          position: "sticky",
+          top: 0,
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>

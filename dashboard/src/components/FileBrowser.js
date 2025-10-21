@@ -26,9 +26,7 @@ import {
   Link,
 } from "@mui/material";
 import {
-  FolderOpen,
   Storage,
-  Refresh,
   Upload,
   Delete,
   Edit,
@@ -302,52 +300,104 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   }
 
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {/* Header */}
-      <Paper sx={{ p: 2, mb: 2 }}>
+    <Box
+      sx={{
+        height: "calc(80vh - 120px)", // Account for modal title and padding
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        maxWidth: "100%",
+        "& .MuiPaper-root": {
+          p: { xs: 1, sm: 1.5 },
+        },
+      }}
+    >
+      {/* Header - Fixed */}
+      <Paper sx={{ flexShrink: 0, mb: 1 }}>
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            mb: 2,
+            justifyContent: "center",
+            mb: 1,
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 1.5, sm: 0 },
           }}
         >
-          <Typography
-            variant="h5"
-            sx={{ display: "flex", alignItems: "center", gap: 1 }}
+          <Box
+            sx={{
+              display: "flex",
+              gap: 1,
+              flexDirection: { xs: "column", sm: "row" },
+              width: { xs: "100%", sm: "auto" },
+            }}
           >
-            <FolderOpen color="primary" />
-          </Typography>
-          <Box sx={{ display: "flex", gap: 1 }}>
             <ToggleButtonGroup
               value={fileSystem}
               exclusive
               onChange={handleFileSystemChange}
               size="small"
+              sx={{
+                width: { xs: "100%", sm: "auto" },
+                flex: { xs: 1, sm: "none" },
+                "& .MuiToggleButton-root": {
+                  flex: 1,
+                  minWidth: "100px",
+                },
+              }}
             >
               <ToggleButton value="sd">
-                <Storage sx={{ mr: 1 }} />
-                SD Card
+                <Storage sx={{ mr: 0.5 }} />
+                <Box sx={{ display: { xs: "none", sm: "inline" } }}>
+                  SD Card
+                </Box>
+                <Box sx={{ display: { xs: "inline", sm: "none" } }}>SD</Box>
               </ToggleButton>
               <ToggleButton value="lfs">
-                <Storage sx={{ mr: 1 }} />
-                Internal
+                <Storage sx={{ mr: 0.5 }} />
+                <Box sx={{ display: { xs: "none", sm: "inline" } }}>
+                  Internal
+                </Box>
+                <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
               </ToggleButton>
             </ToggleButtonGroup>
             <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={() => fetchFiles(currentPath, fileSystem)}
+              variant="contained"
+              component="label"
+              startIcon={<Upload />}
               disabled={loading}
+              sx={{
+                width: { xs: "100%", sm: "auto" },
+                flex: { xs: 1, sm: "none" },
+                minWidth: "80px",
+                px: 1,
+              }}
             >
-              Refresh
+              <Box sx={{ display: { xs: "none", sm: "inline" } }}>Upload</Box>
+              <Box sx={{ display: { xs: "inline", sm: "none" } }}>Upload</Box>
+              <input type="file" hidden onChange={handleUpload} />
             </Button>
           </Box>
         </Box>
 
         {/* Breadcrumbs */}
-        <Breadcrumbs sx={{ mb: 2 }}>{generateBreadcrumbs()}</Breadcrumbs>
+        <Breadcrumbs
+          sx={{
+            mb: 1,
+            overflow: "hidden",
+            "& .MuiBreadcrumbs-ol": {
+              flexWrap: "nowrap",
+            },
+            "& .MuiBreadcrumbs-li": {
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              maxWidth: "200px",
+            },
+          }}
+        >
+          {generateBreadcrumbs()}
+        </Breadcrumbs>
 
         {/* Error Display */}
         {error && (
@@ -357,8 +407,16 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         )}
       </Paper>
 
-      {/* File List */}
-      <Paper sx={{ flex: 1, overflow: "hidden" }}>
+      {/* File List - Scrollable */}
+      <Paper
+        sx={{
+          flex: 1,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+        }}
+      >
         {loading ? (
           <Box
             sx={{
@@ -371,7 +429,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             <CircularProgress />
           </Box>
         ) : (
-          <List sx={{ height: "100%", overflow: "auto" }}>
+          <List sx={{ flex: 1, overflow: "auto", p: 0 }}>
             {/* Parent directory link */}
             {currentPath !== "/" && (
               <ListItem
@@ -414,6 +472,19 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                       ? "Folder"
                       : `${(file.size / 1024).toFixed(1)} KB`
                   }
+                  sx={{
+                    "& .MuiListItemText-primary": {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      maxWidth: "calc(100% - 60px)",
+                    },
+                    "& .MuiListItemText-secondary": {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    },
+                  }}
                 />
                 <ListItemSecondaryAction>
                   <IconButton
@@ -440,19 +511,6 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           </List>
         )}
       </Paper>
-
-      {/* Upload Button */}
-      <Box sx={{ mt: 2, display: "flex", justifyContent: "center" }}>
-        <Button
-          variant="contained"
-          component="label"
-          startIcon={<Upload />}
-          disabled={loading}
-        >
-          Upload File
-          <input type="file" hidden onChange={handleUpload} />
-        </Button>
-      </Box>
 
       {/* Context Menu */}
       <Menu

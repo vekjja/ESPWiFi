@@ -83,38 +83,50 @@ function App() {
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
 
   // Function to fetch config from device
-  const fetchConfig = useCallback(async () => {
-    try {
-      const response = await fetch(apiURL + "/config");
-      if (!response.ok) {
-        throw new Error("Network response was not ok");
+  const fetchConfig = useCallback(
+    async (forceUpdate = false) => {
+      try {
+        const response = await fetch(apiURL + "/config");
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+        const data = await response.json();
+        const configWithAPI = { ...data, apiURL };
+
+        // Only update state if config has actually changed
+        setConfig((prevConfig) => {
+          if (JSON.stringify(prevConfig) !== JSON.stringify(configWithAPI)) {
+            return configWithAPI;
+          }
+          return prevConfig;
+        });
+
+        // Only update localConfig if there are no unsaved changes or if forced
+        setLocalConfig((prevLocalConfig) => {
+          // Check if there are unsaved changes by comparing with the main config
+          const hasUnsavedChanges =
+            JSON.stringify(prevLocalConfig) !== JSON.stringify(config);
+
+          if (forceUpdate || !hasUnsavedChanges) {
+            if (
+              JSON.stringify(prevLocalConfig) !== JSON.stringify(configWithAPI)
+            ) {
+              return configWithAPI;
+            }
+          }
+          return prevLocalConfig;
+        });
+
+        setDeviceOnline(true); // Device is online
+        return data;
+      } catch (error) {
+        console.error("Device offline:", error.message);
+        setDeviceOnline(false); // Device is offline
+        return null;
       }
-      const data = await response.json();
-      const configWithAPI = { ...data, apiURL };
-
-      // Only update state if config has actually changed
-      setConfig((prevConfig) => {
-        if (JSON.stringify(prevConfig) !== JSON.stringify(configWithAPI)) {
-          return configWithAPI;
-        }
-        return prevConfig;
-      });
-
-      setLocalConfig((prevLocalConfig) => {
-        if (JSON.stringify(prevLocalConfig) !== JSON.stringify(configWithAPI)) {
-          return configWithAPI;
-        }
-        return prevLocalConfig;
-      });
-
-      setDeviceOnline(true); // Device is online
-      return data;
-    } catch (error) {
-      console.error("Device offline:", error.message);
-      setDeviceOnline(false); // Device is offline
-      return null;
-    }
-  }, [apiURL]);
+    },
+    [apiURL, config]
+  );
 
   useEffect(() => {
     // Initial fetch
@@ -122,10 +134,10 @@ function App() {
       setLoading(false);
     });
 
-    // Set up polling every 10 seconds (less aggressive)
+    // Set up polling every 5 seconds (frequent but smart)
     const pollInterval = setInterval(() => {
       fetchConfig();
-    }, 10000);
+    }, 5000);
 
     // Cleanup interval on unmount
     return () => {
@@ -171,6 +183,8 @@ function App() {
         setLocalConfig(configWithAPI);
         console.log("Configuration Saved to Device:", savedConfig);
         setSaving(false);
+        // Force a fresh fetch to ensure we have the latest config
+        fetchConfig(true);
       })
       .catch((error) => {
         console.error("Error saving configuration to Device:", error);

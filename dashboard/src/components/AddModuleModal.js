@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Box,
   Button,
   Dialog,
   DialogTitle,
@@ -20,6 +19,7 @@ import {
 } from "@mui/icons-material";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
+import CameraSettingsModal from "./CameraSettingsModal";
 
 export default function AddModuleModal({
   config,
@@ -117,6 +117,10 @@ export default function AddModuleModal({
 
   const handleWebSocketDataChange = (changes) => {
     setWebSocketData((prev) => ({ ...prev, ...changes }));
+  };
+
+  const handleCameraDataChange = (newData) => {
+    setCameraData(newData);
   };
 
   const handleSavePin = () => {
@@ -249,41 +253,13 @@ export default function AddModuleModal({
         onWebSocketDataChange={handleWebSocketDataChange}
       />
 
-      <Dialog
+      <CameraSettingsModal
         open={cameraModalOpen}
         onClose={handleCloseCameraModal}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Add Camera Module</DialogTitle>
-        <DialogContent>
-          <Box sx={{ marginTop: 2 }}>
-            <Typography gutterBottom>
-              Camera Name:{" "}
-              {cameraData.name ||
-                "Camera " +
-                  (config.modules?.filter((m) => m.type === "camera").length +
-                    1 || 1)}
-            </Typography>
-            <Typography gutterBottom>Camera URL: {cameraData.url}</Typography>
-            <Typography gutterBottom>
-              Frame Rate: {cameraData.frameRate} FPS
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCameraModal} color="inherit">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveCamera}
-            variant="contained"
-            color="primary"
-          >
-            Add Camera
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onSave={handleSaveCamera}
+        cameraData={cameraData}
+        onCameraDataChange={handleCameraDataChange}
+      />
     </>
   );
 }

@@ -1,77 +1,83 @@
 import React, { useState, useEffect } from "react";
-import { Container, Fab, Tooltip } from "@mui/material";
-import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import { TextField, Box } from "@mui/material";
+import SaveIcon from "@mui/icons-material/SaveAs";
+import IButton from "./IButton";
+import SettingsModal from "./SettingsModal";
 
 export default function CameraSettingsModal({
-  config,
-  saveConfig,
-  saveConfigToDevice,
-  open = false,
+  open,
   onClose,
+  onSave,
+  cameraData,
+  onCameraDataChange,
 }) {
-  // Camera settings state
-  const [enabled, setEnabled] = useState(false);
+  const [localData, setLocalData] = useState(cameraData);
 
   useEffect(() => {
-    if (config?.camera) {
-      setEnabled(config.camera.enabled || false);
+    setLocalData(cameraData);
+  }, [cameraData]);
+
+  const handleSave = () => {
+    if (onSave) {
+      onSave();
     }
-  }, [config]);
-
-  // Get camera button color based on state
-  const getCameraColor = () => {
-    if (!enabled) return "text.disabled";
-    return "primary.main"; // Green when enabled
   };
 
-  const handleToggleCamera = () => {
-    const newEnabledState = !enabled;
-    setEnabled(newEnabledState);
-
-    const configToSave = {
-      ...config,
-      camera: {
-        ...config.camera,
-        enabled: newEnabledState,
-        frameRate: config.camera?.frameRate || 10,
-      },
-    };
-
-    // Save to device immediately
-    saveConfigToDevice(configToSave);
-  };
-
-  // Handle camera toggle when modal is opened
-  const handleCameraToggle = () => {
-    handleToggleCamera();
-    if (onClose) onClose();
+  const handleDataChange = (field, value) => {
+    const newData = { ...localData, [field]: value };
+    setLocalData(newData);
+    if (onCameraDataChange) {
+      onCameraDataChange(newData);
+    }
   };
 
   return (
-    <Tooltip
-      title={
-        enabled
-          ? "Camera Hardware Enabled - Click to Disable"
-          : "Camera Hardware Disabled - Click to Enable"
+    <SettingsModal
+      open={open}
+      onClose={onClose}
+      title="Camera Settings"
+      actions={
+        <IButton
+          color="primary"
+          Icon={SaveIcon}
+          onClick={handleSave}
+          tooltip="Add Camera Module"
+        />
       }
     >
-      <Fab
-        size="small"
-        color="primary"
-        aria-label="camera-toggle"
-        onClick={handleCameraToggle}
-        sx={{
-          color: getCameraColor(),
-          backgroundColor: enabled ? "action.hover" : "action.disabled",
-          "&:hover": {
-            backgroundColor: enabled
-              ? "action.selected"
-              : "action.disabledBackground",
-          },
-        }}
-      >
-        <CameraAltIcon />
-      </Fab>
-    </Tooltip>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <TextField
+          label="Camera Name"
+          value={localData.name || ""}
+          onChange={(e) => handleDataChange("name", e.target.value)}
+          placeholder="Enter camera name"
+          fullWidth
+          variant="outlined"
+        />
+
+        <TextField
+          label="Camera URL"
+          value={localData.url || ""}
+          onChange={(e) => handleDataChange("url", e.target.value)}
+          placeholder="Enter camera URL (e.g., /camera)"
+          fullWidth
+          variant="outlined"
+          helperText="Use relative path (e.g., /camera) for same server, or full URL for external cameras"
+        />
+
+        <TextField
+          label="Frame Rate (FPS)"
+          type="number"
+          value={localData.frameRate || 10}
+          onChange={(e) =>
+            handleDataChange("frameRate", parseInt(e.target.value) || 10)
+          }
+          inputProps={{ min: 1, max: 60 }}
+          fullWidth
+          variant="outlined"
+          helperText="Frames per second (1-60)"
+        />
+      </Box>
+    </SettingsModal>
   );
 }

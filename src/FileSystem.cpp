@@ -767,7 +767,6 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
                                bool final) {
   // Static variables to maintain state across multiple calls (like OTA system)
   static File currentFile;
-  static size_t totalSize = 0;
   static size_t currentSize = 0;
   static String currentFs = "";
   static String currentPath = "";
@@ -796,11 +795,6 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
         currentPath + (currentPath.endsWith("/") ? "" : "/") + filename;
 
     logf("📁 Starting file upload: %s\n", filename.c_str());
-
-    // Get total size from Content-Length header
-    if (request->hasHeader("Content-Length")) {
-      totalSize = request->getHeader("Content-Length")->value().toInt();
-    }
 
     // Determine filesystem
     FS *filesystem = nullptr;
@@ -844,27 +838,18 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     if (currentSize % 8192 == 0) { // Every 8KB
       yield();
     }
-
-    // Log progress every 25% to reduce log spam
-    if (totalSize > 0) {
-      int progress = (currentSize * 100) / totalSize;
-      if (progress % 25 == 0) {
-        logf("📁 Upload progress: %d%%\n", progress);
-      }
-    }
   }
 
   if (final) {
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      logf("✅ File uploaded: %s (%d bytes)\n", filename.c_str(), currentSize);
+      logf("📁 File uploaded: %s (%d bytes)\n", filename.c_str(), currentSize);
     }
 
     // Reset static variables for next upload
     currentFs = "";
     currentPath = "";
-    totalSize = 0;
     currentSize = 0;
 
     AsyncWebServerResponse *response =

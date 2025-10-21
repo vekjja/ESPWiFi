@@ -840,6 +840,11 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     }
     currentSize += len;
 
+    // Yield control periodically for large files to prevent watchdog timeout
+    if (currentSize % 8192 == 0) { // Every 8KB
+      yield();
+    }
+
     // Log progress every 25% to reduce log spam
     if (totalSize > 0) {
       int progress = (currentSize * 100) / totalSize;

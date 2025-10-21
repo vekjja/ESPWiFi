@@ -332,7 +332,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               </ToggleButton>
               <ToggleButton value="lfs">
                 <Storage sx={{ mr: 1 }} />
-                On Board
+                Internal
               </ToggleButton>
             </ToggleButtonGroup>
             <Button

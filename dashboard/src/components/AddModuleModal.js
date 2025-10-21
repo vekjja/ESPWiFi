@@ -1,16 +1,13 @@
 import React, { useState } from "react";
 import {
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
   ListItemButton,
 } from "@mui/material";
+import SettingsModal from "./SettingsModal";
 import {
   Input as PinIcon,
   Wifi as WebSocketIcon,
@@ -190,48 +187,46 @@ export default function AddModuleModal({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Module</DialogTitle>
-        <DialogContent>
-          {/* <Typography variant="body1" sx={{ mb: 2 }}>
-            Add a module:
-          </Typography> */}
-          <List>
-            <ListItem disablePadding>
-              <ListItemButton onClick={handleOpenPinModal}>
-                <ListItemIcon>
-                  <PinIcon />
-                </ListItemIcon>
-                <ListItemText primary="Pin" secondary="Control GPIO pins" />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={handleOpenWebSocketModal}>
-                <ListItemIcon>
-                  <WebSocketIcon />
-                </ListItemIcon>
-                <ListItemText
-                  primary="WebSocket"
-                  secondary="Connect to WebSocket streams"
-                />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={handleOpenCameraModal}>
-                <ListItemIcon>
-                  <CameraAltIcon />
-                </ListItemIcon>
-                <ListItemText primary="Camera" secondary="Add camera module" />
-              </ListItemButton>
-            </ListItem>
-          </List>
-        </DialogContent>
-        <DialogActions>
+      <SettingsModal
+        open={open}
+        onClose={onClose}
+        title="Add Module"
+        actions={
           <Button onClick={onClose} color="inherit">
             Cancel
           </Button>
-        </DialogActions>
-      </Dialog>
+        }
+      >
+        <List>
+          <ListItem disablePadding>
+            <ListItemButton onClick={handleOpenPinModal}>
+              <ListItemIcon>
+                <PinIcon />
+              </ListItemIcon>
+              <ListItemText primary="Pin" secondary="Control GPIO pins" />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton onClick={handleOpenWebSocketModal}>
+              <ListItemIcon>
+                <WebSocketIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="WebSocket"
+                secondary="Connect to WebSocket streams"
+              />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton onClick={handleOpenCameraModal}>
+              <ListItemIcon>
+                <CameraAltIcon />
+              </ListItemIcon>
+              <ListItemText primary="Camera" secondary="Add camera module" />
+            </ListItemButton>
+          </ListItem>
+        </List>
+      </SettingsModal>
 
       <PinSettingsModal
         open={pinModalOpen}

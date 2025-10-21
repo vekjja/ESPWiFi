@@ -26,6 +26,9 @@ const theme = createTheme({
       '"Segoe UI Symbol"',
     ].join(","),
   },
+  shape: {
+    borderRadius: 3,
+  },
   palette: {
     mode: "dark",
     primary: {

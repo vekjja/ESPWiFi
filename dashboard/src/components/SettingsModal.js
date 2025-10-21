@@ -30,16 +30,14 @@ export default function SettingsModal({
       fullScreen={isMobile}
       PaperProps={{
         sx: {
-          bgcolor: "black",
+          bgcolor: "background.paper",
           margin: isMobile ? 0 : "auto",
           width: isMobile ? "auto" : "auto",
           height: isMobile ? "auto" : "auto",
-          minWidth: isMobile ? "90%" : "63%",
-          maxWidth: isMobile ? "90%" : "63%",
-          maxHeight: isMobile ? "90%" : "90vh",
-          outline: "1px solid",
-          outlineColor: "secondary.dark",
-          borderRadius: isMobile ? 0 : theme.shape.borderRadius,
+          minWidth: isMobile ? "90%" : "400px",
+          maxWidth: isMobile ? "90%" : "600px",
+          maxHeight: isMobile ? "90%" : "80vh",
+          borderRadius: theme.shape.borderRadius,
           display: "flex",
           flexDirection: "column",
         },
@@ -52,13 +50,12 @@ export default function SettingsModal({
     >
       <DialogTitle
         sx={{
-          borderBottom: "1px solid",
-          borderColor: "secondary.dark",
           pb: isMobile ? 2 : 1.5,
           pt: isMobile ? 3 : 2,
           px: isMobile ? 3 : 2,
           fontSize: isMobile ? "1.25rem" : "1.125rem",
           fontWeight: 600,
+          color: "text.primary",
         }}
       >
         {title}
@@ -91,8 +88,6 @@ export default function SettingsModal({
       {actions && (
         <DialogActions
           sx={{
-            borderTop: "1px solid",
-            borderColor: "secondary.dark",
             p: isMobile ? 3 : 2,
             pt: isMobile ? 2 : 1.5,
             gap: isMobile ? 2 : 1,

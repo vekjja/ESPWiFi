@@ -221,4 +221,93 @@ void ESPWiFi::handleOTAHtml(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "OTA HTML file not found");
   }
 }
+
+void ESPWiFi::srvOTA() {
+  initWebServer();
+
+  // OTA start endpoint (initialize update)
+  webServer->on("/ota/start", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    handleOTAStart(request);
+  });
+
+  // OTA reset endpoint (reset stuck updates)
+  webServer->on("/ota/reset", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    resetOTAState();
+    request->send(200, "text/plain", "OTA state reset");
+  });
+
+  // OTA progress endpoint
+  webServer->on(
+      "/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument jsonDoc;
+        jsonDoc["in_progress"] = otaInProgress;
+        jsonDoc["current_size"] = otaCurrentSize;
+        jsonDoc["total_size"] = otaTotalSize;
+        jsonDoc["progress"] = 0; // Will be calculated below
+
+        // Calculate progress percentage if we have total size and OTA is in
+        // progress
+        if (otaInProgress && otaTotalSize > 0) {
+          int progress = (otaCurrentSize * 100) / otaTotalSize;
+          jsonDoc["progress"] = progress;
+        }
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", jsonResponse);
+        addCORS(response);
+        request->send(response);
+      });
+
+  // OTA upload endpoint (actual file upload)
+  webServer->on(
+      "/ota/upload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleOTAUpdate(request, filename, index, data, len, final);
+      });
+
+  // Filesystem update endpoint
+  webServer->on(
+      "/ota/fsupload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleFSUpdate(request, filename, index, data, len, final);
+      });
+
+  // OTA status endpoint
+  webServer->on(
+      "/ota/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument jsonDoc;
+        jsonDoc["firmware_size"] = ESP.getSketchSize();
+        jsonDoc["free_space"] = ESP.getFreeSketchSpace();
+        jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
+        jsonDoc["chip_model"] = String(ESP.getChipModel());
+        jsonDoc["ota_start_url"] =
+            "http://" + WiFi.localIP().toString() + "/ota/start";
+        jsonDoc["ota_upload_url"] =
+            "http://" + WiFi.localIP().toString() + "/ota/upload";
+        jsonDoc["fs_update_url"] =
+            "http://" + WiFi.localIP().toString() + "/ota/fsupload";
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", jsonResponse);
+        addCORS(response);
+        request->send(response);
+      });
+
+  // OTA update page endpoint
+  webServer->on("/ota", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    handleOTAHtml(request);
+  });
+}
 #endif // ESPWiFi_OTA_H

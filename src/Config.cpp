@@ -57,6 +57,11 @@ void ESPWiFi::mergeConfig(JsonObject &json) {
   }
 }
 
+void ESPWiFi::handleConfig() {
+  cameraConfigHandler();
+  rssiConfigHandler();
+}
+
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
   String hostname;
@@ -87,9 +92,49 @@ JsonDocument ESPWiFi::defaultConfig() {
   return defaultConfig;
 }
 
-void ESPWiFi::handleConfig() {
-  cameraConfigHandler();
-  rssiConfigHandler();
-}
+void ESPWiFi::srvConfig() {
+  initWebServer();
 
+  // Add OPTIONS handler for /config endpoint
+  webServer->on(
+      "/config", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String responseStr;
+    serializeJson(config, responseStr);
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", responseStr);
+    addCORS(response);
+    request->send(response);
+  });
+
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
+      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (json.isNull()) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"EmptyInput\"}");
+          addCORS(response);
+          request->send(response);
+          logError("/config Error parsing JSON: EmptyInput");
+          return;
+        }
+
+        JsonObject jsonObject = json.as<JsonObject>();
+        mergeConfig(jsonObject);
+
+        if (request->method() == HTTP_PUT) {
+          saveConfig();
+        }
+
+        handleConfig();
+
+        String responseStr;
+        serializeJson(config, responseStr);
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", responseStr);
+        addCORS(response);
+        request->send(response);
+      }));
+}
 #endif // ESPWiFi_CONFIG

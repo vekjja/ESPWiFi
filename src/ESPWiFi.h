@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <AsyncJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
 #include <IntervalTimer.h>

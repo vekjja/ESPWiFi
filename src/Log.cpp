@@ -144,4 +144,22 @@ void ESPWiFi::openLogFile() {
   }
 }
 
+void ESPWiFi::srvLog() {
+  initWebServer();
+  webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (fs && fs->exists(logFilePath)) {
+      AsyncWebServerResponse *response = request->beginResponse(
+          *fs, logFilePath,
+          "text/plain; charset=utf-8"); // Set UTF-8 encoding
+      addCORS(response);
+      request->send(response);
+    } else {
+      AsyncWebServerResponse *response =
+          request->beginResponse(404, "text/plain; charset=utf-8",
+                                 "Log file not found"); // Set UTF-8 encoding
+      addCORS(response);
+      request->send(response);
+    }
+  });
+}
 #endif // ESPWiFi_LOG

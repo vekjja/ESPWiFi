@@ -399,7 +399,7 @@ export default function CameraModule({
                   : cameraStatus === "disabled"
                   ? isRemoteCamera()
                     ? "Camera disabled on remote device"
-                    : "Must be enabled from the device control panel"
+                    : "Enable from the device control panel"
                   : isRemoteCamera()
                   ? "Remote camera is not available"
                   : "Camera is not available"}

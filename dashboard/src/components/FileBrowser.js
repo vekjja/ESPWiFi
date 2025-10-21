@@ -217,12 +217,16 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     const file = event.target.files[0];
     if (!file) return;
 
+    // Create FormData with file and URL parameters for fs and path
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("fs", fileSystem);
-    formData.append("path", currentPath);
 
-    fetch(`${apiURL}/api/files/upload`, {
+    // Add fs and path as URL parameters like OTA does
+    const url = `${apiURL}/api/files/upload?fs=${encodeURIComponent(
+      fileSystem
+    )}&path=${encodeURIComponent(currentPath)}`;
+
+    fetch(url, {
       method: "POST",
       body: formData,
     })
@@ -328,7 +332,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               </ToggleButton>
               <ToggleButton value="lfs">
                 <Storage sx={{ mr: 1 }} />
-                LittleFS
+                On Board
               </ToggleButton>
             </ToggleButtonGroup>
             <Button

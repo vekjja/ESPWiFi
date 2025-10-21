@@ -601,65 +601,19 @@ void ESPWiFi::srvFiles() {
         }
       });
 
-  // API endpoint for file upload
+  // API endpoint for file upload using OTA pattern
   webServer->on(
-      "/api/files/upload", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      "/api/files/upload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
         if (request->method() == HTTP_OPTIONS) {
           handleCorsPreflight(request);
           return;
         }
-
-        String fsParam = request->getParam("fs")->value();
-        String path = request->getParam("path")->value();
-        if (!path.startsWith("/"))
-          path = "/" + path;
-
-        FS *filesystem = nullptr;
-        if (fsParam == "sd" && sdCardInitialized && fs) {
-          filesystem = fs;
-        } else if (fsParam == "lfs") {
-          filesystem = &LittleFS;
-        }
-
-        if (!filesystem) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              404, "application/json",
-              "{\"error\":\"File system not available\"}");
-          addCORS(response);
-          request->send(response);
-          return;
-        }
-
-        // Handle file upload
-        if (request->hasParam("file", true, true)) {
-          const AsyncWebParameter *fileParam =
-              request->getParam("file", true, true);
-          String fileName = fileParam->name();
-          String filePath = path + (path.endsWith("/") ? "" : "/") + fileName;
-
-          File file = filesystem->open(filePath, "w");
-          if (file) {
-            file.write((const uint8_t *)fileParam->value().c_str(),
-                       fileParam->value().length());
-            file.close();
-
-            AsyncWebServerResponse *response = request->beginResponse(
-                200, "application/json", "{\"success\":true}");
-            addCORS(response);
-            request->send(response);
-          } else {
-            AsyncWebServerResponse *response =
-                request->beginResponse(500, "application/json",
-                                       "{\"error\":\"Failed to create file\"}");
-            addCORS(response);
-            request->send(response);
-          }
-        } else {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"No file provided\"}");
-          addCORS(response);
-          request->send(response);
-        }
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleFileUpload(request, filename, index, data, len, final);
       });
 
   webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -800,6 +754,121 @@ void ESPWiFi::srvFiles() {
     addCORS(response);
     request->send(response);
   });
+}
+
+void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
+                               size_t index, uint8_t *data, size_t len,
+                               bool final) {
+  // Static variables to maintain state across multiple calls (like OTA system)
+  static File currentFile;
+  static size_t totalSize = 0;
+  static size_t currentSize = 0;
+  static String currentFs = "";
+  static String currentPath = "";
+
+  if (index == 0) {
+    // First chunk - get parameters and initialize (URL parameters like OTA)
+    if (request->hasParam("fs")) {
+      currentFs = request->getParam("fs")->value();
+    }
+    if (request->hasParam("path")) {
+      currentPath = request->getParam("path")->value();
+    }
+
+    // Debug logging
+    logf("📁 Upload parameters - fs: '%s', path: '%s'", currentFs.c_str(),
+         currentPath.c_str());
+
+    // Validate parameters
+    if (currentFs.length() == 0 || currentPath.length() == 0) {
+      logError("Missing fs or path parameters for file upload");
+      request->send(400, "application/json",
+                    "{\"error\":\"Missing parameters\"}");
+      return;
+    }
+
+    if (!currentPath.startsWith("/"))
+      currentPath = "/" + currentPath;
+
+    String filePath =
+        currentPath + (currentPath.endsWith("/") ? "" : "/") + filename;
+
+    logf("📁 Starting file upload: %s -> %s", filename.c_str(),
+         filePath.c_str());
+
+    // Get total size from Content-Length header
+    if (request->hasHeader("Content-Length")) {
+      totalSize = request->getHeader("Content-Length")->value().toInt();
+      logf("📁 Total file size: %d bytes", totalSize);
+    }
+
+    // Determine filesystem
+    FS *filesystem = nullptr;
+    if (currentFs == "sd" && sdCardInitialized && fs) {
+      filesystem = fs;
+    } else if (currentFs == "lfs") {
+      filesystem = &LittleFS;
+    }
+
+    if (filesystem) {
+      currentFile = filesystem->open(filePath, "w");
+      if (!currentFile) {
+        logError("Failed to create file for upload");
+        request->send(500, "application/json",
+                      "{\"error\":\"Failed to create file\"}");
+        return;
+      }
+    } else {
+      logError("File system not available");
+      request->send(404, "application/json",
+                    "{\"error\":\"File system not available\"}");
+      return;
+    }
+
+    currentSize = 0;
+  }
+
+  // Write data chunk
+  if (currentFile && len > 0) {
+    size_t bytesWritten = currentFile.write(data, len);
+    if (bytesWritten != len) {
+      logError("Failed to write all data to file");
+      currentFile.close();
+      request->send(500, "application/json",
+                    "{\"error\":\"File write failed\"}");
+      return;
+    }
+    currentSize += len;
+
+    // Log progress every 10%
+    if (totalSize > 0) {
+      int progress = (currentSize * 100) / totalSize;
+      if (progress % 10 == 0) {
+        logf("📁 Upload progress: %d%% (%d/%d bytes)", progress, currentSize,
+             totalSize);
+      }
+    }
+  }
+
+  if (final) {
+    // Last chunk - close file and send response
+    if (currentFile) {
+      currentFile.close();
+      logf("✅ File upload completed: %s (%d bytes)", filename.c_str(),
+           currentSize);
+    }
+
+    // Reset static variables for next upload
+    currentFs = "";
+    currentPath = "";
+    totalSize = 0;
+    currentSize = 0;
+
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", "{\"success\":true}");
+    addCORS(response);
+    request->send(response);
+  }
 }
 
 #endif // ESPWiFi_FileSystem

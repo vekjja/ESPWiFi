@@ -162,10 +162,10 @@ export default function CameraModule({
     // Initial status check
     updateCameraStatus();
 
-    // Set up polling every 3 seconds for remote cameras
+    // Set up polling every 10 seconds for remote cameras (less aggressive)
     const pollInterval = setInterval(() => {
       updateCameraStatus();
-    }, 3000);
+    }, 10000);
 
     // Cleanup interval on unmount
     return () => {

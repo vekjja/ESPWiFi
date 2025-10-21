@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
@@ -9,6 +9,7 @@ import RSSISettingsModal from "./components/RSSISettingsModal";
 import MicrophoneSettings from "./components/MicrophoneSettings";
 import AddModule from "./components/AddModule";
 import Modules from "./components/Modules";
+import FileBrowserButton from "./components/FileBrowserButton";
 
 // Define the theme
 const theme = createTheme({
@@ -82,7 +83,7 @@ function App() {
     process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
 
   // Function to fetch config from device
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     try {
       const response = await fetch(apiURL + "/config");
       if (!response.ok) {
@@ -90,8 +91,22 @@ function App() {
       }
       const data = await response.json();
       const configWithAPI = { ...data, apiURL };
-      setConfig(configWithAPI);
-      setLocalConfig(configWithAPI);
+
+      // Only update state if config has actually changed
+      setConfig((prevConfig) => {
+        if (JSON.stringify(prevConfig) !== JSON.stringify(configWithAPI)) {
+          return configWithAPI;
+        }
+        return prevConfig;
+      });
+
+      setLocalConfig((prevLocalConfig) => {
+        if (JSON.stringify(prevLocalConfig) !== JSON.stringify(configWithAPI)) {
+          return configWithAPI;
+        }
+        return prevLocalConfig;
+      });
+
       setDeviceOnline(true); // Device is online
       return data;
     } catch (error) {
@@ -99,7 +114,7 @@ function App() {
       setDeviceOnline(false); // Device is offline
       return null;
     }
-  };
+  }, [apiURL]);
 
   useEffect(() => {
     // Initial fetch
@@ -107,16 +122,16 @@ function App() {
       setLoading(false);
     });
 
-    // Set up polling every 3 seconds
+    // Set up polling every 10 seconds (less aggressive)
     const pollInterval = setInterval(() => {
       fetchConfig();
-    }, 3000);
+    }, 10000);
 
     // Cleanup interval on unmount
     return () => {
       clearInterval(pollInterval);
     };
-  }, []);
+  }, [fetchConfig]);
 
   if (loading) {
     return <LinearProgress color="inherit" />;
@@ -236,6 +251,7 @@ function App() {
             saveConfig={updateLocalConfig}
             deviceOnline={deviceOnline}
           />
+          <FileBrowserButton config={localConfig} deviceOnline={deviceOnline} />
         </Container>
       )}
     </ThemeProvider>

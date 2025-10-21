@@ -54,6 +54,7 @@ public:
   bool fileExists(FS *fs, const String &filePath);
   bool dirExists(FS *fs, const String &dirPath);
   bool mkDir(FS *fs, const String &dirPath);
+  bool deleteDirectoryRecursive(FS *fs, const String &dirPath);
 
   // Logging
   int maxLogFileSize = 1024 * 1024 * 0.5; // 512KB = 524288 bytes

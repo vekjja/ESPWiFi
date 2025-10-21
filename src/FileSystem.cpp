@@ -211,6 +211,74 @@ bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
   }
 }
 
+bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
+  if (!fs) {
+    logError("File system is null");
+    return false;
+  }
+
+  if (!dirExists(fs, dirPath)) {
+    logf("📁 Directory does not exist: %s", dirPath.c_str());
+    return true; // Directory doesn't exist, consider it "deleted"
+  }
+
+  File dir = fs->open(dirPath);
+  if (!dir || !dir.isDirectory()) {
+    logError("Failed to open directory: " + dirPath);
+    return false;
+  }
+
+  int fileCount = 0;
+  const int MAX_FILES_PER_BATCH =
+      50; // Process files in batches to prevent memory issues
+
+  // List all files and directories in the directory
+  File file = dir.openNextFile();
+  while (file) {
+    String filePath = file.path();
+    if (file.isDirectory()) {
+      // Recursively delete subdirectory
+      if (!deleteDirectoryRecursive(fs, filePath)) {
+        file.close();
+        dir.close();
+        return false;
+      }
+    } else {
+      // Delete file
+      if (!fs->remove(filePath)) {
+        logError("Failed to delete file: " + filePath);
+        file.close();
+        dir.close();
+        return false;
+      }
+      fileCount++;
+
+      // Log every 10th file to reduce log spam
+      if (fileCount % 10 == 0) {
+        logf("🗑️ Deleted %d files from: %s", fileCount, dirPath.c_str());
+      }
+
+      // Yield control every batch to prevent watchdog timeout
+      if (fileCount % MAX_FILES_PER_BATCH == 0) {
+        delay(10); // Small delay to yield control
+        yield();   // Allow other tasks to run
+      }
+    }
+    file.close();
+    file = dir.openNextFile();
+  }
+  dir.close();
+
+  // Now remove the empty directory
+  if (fs->rmdir(dirPath)) {
+    logf("🗑️ Deleted directory: %s (%d files)", dirPath.c_str(), fileCount);
+    return true;
+  } else {
+    logError("Failed to delete directory: " + dirPath);
+    return false;
+  }
+}
+
 void ESPWiFi::srvFiles() {
   initWebServer();
 
@@ -269,6 +337,330 @@ void ESPWiFi::srvFiles() {
       request->send(response);
     }
   });
+
+  // API endpoint for file browser JSON data
+  webServer->on("/api/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    // Handle CORS preflight requests
+    if (request->method() == HTTP_OPTIONS) {
+      handleCorsPreflight(request);
+      return;
+    }
+
+    String fsParam = "sd";
+    String path = "/";
+
+    if (request->hasParam("fs")) {
+      fsParam = request->getParam("fs")->value();
+    }
+    if (request->hasParam("path")) {
+      path = request->getParam("path")->value();
+      if (!path.startsWith("/"))
+        path = "/" + path;
+    }
+
+    FS *filesystem = nullptr;
+    if (fsParam == "sd" && sdCardInitialized && fs) {
+      filesystem = fs;
+    } else if (fsParam == "lfs") {
+      filesystem = &LittleFS;
+    }
+
+    if (!filesystem) {
+      AsyncWebServerResponse *response = request->beginResponse(
+          404, "application/json", "{\"error\":\"File system not available\"}");
+      addCORS(response);
+      request->send(response);
+      return;
+    }
+
+    File root = filesystem->open(path, "r");
+    if (!root || !root.isDirectory()) {
+      AsyncWebServerResponse *response = request->beginResponse(
+          404, "application/json", "{\"error\":\"Directory not found\"}");
+      addCORS(response);
+      request->send(response);
+      return;
+    }
+
+    JsonDocument jsonDoc;
+    JsonArray filesArray = jsonDoc["files"].to<JsonArray>();
+
+    File file = root.openNextFile();
+    int fileCount = 0;
+    const int maxFiles = 1000; // Prevent infinite loops
+
+    while (file && fileCount < maxFiles) {
+      try {
+        JsonObject fileObj = filesArray.add<JsonObject>();
+        fileObj["name"] = file.name();
+        fileObj["path"] = path + (path.endsWith("/") ? "" : "/") + file.name();
+        fileObj["isDirectory"] = file.isDirectory();
+        fileObj["size"] = file.size();
+        fileObj["modified"] = file.getLastWrite();
+        fileCount++;
+      } catch (...) {
+        // Skip problematic files
+        break;
+      }
+      file = root.openNextFile();
+    }
+
+    root.close();
+
+    String jsonResponse;
+    serializeJson(jsonDoc, jsonResponse);
+    AsyncWebServerResponse *response =
+        request->beginResponse(200, "application/json", jsonResponse);
+    addCORS(response);
+    request->send(response);
+  });
+
+  // API endpoint for file rename
+  webServer->on(
+      "/api/files/rename", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        // Get parameters from URL
+        String fsParam = "";
+        String oldPath = "";
+        String newName = "";
+
+        if (request->hasParam("fs")) {
+          fsParam = request->getParam("fs")->value();
+        }
+        if (request->hasParam("oldPath")) {
+          oldPath = request->getParam("oldPath")->value();
+        }
+        if (request->hasParam("newName")) {
+          newName = request->getParam("newName")->value();
+        }
+
+        // Validate parameters
+        if (fsParam.length() == 0 || oldPath.length() == 0 ||
+            newName.length() == 0) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"Missing parameters\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        FS *filesystem = nullptr;
+        if (fsParam == "sd" && sdCardInitialized && fs) {
+          filesystem = fs;
+        } else if (fsParam == "lfs") {
+          filesystem = &LittleFS;
+        }
+
+        if (!filesystem) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              404, "application/json",
+              "{\"error\":\"File system not available\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Get directory path and construct new path
+        String dirPath = oldPath.substring(0, oldPath.lastIndexOf('/'));
+        String newPath = dirPath + "/" + newName;
+
+        if (filesystem->rename(oldPath, newPath)) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              200, "application/json", "{\"success\":true}");
+          addCORS(response);
+          request->send(response);
+        } else {
+          AsyncWebServerResponse *response = request->beginResponse(
+              500, "application/json", "{\"error\":\"Failed to rename file\"}");
+          addCORS(response);
+          request->send(response);
+        }
+      });
+
+  // API endpoint for file deletion
+  webServer->on(
+      "/api/files/delete", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        // Get parameters from URL
+        String fsParam = "";
+        String filePath = "";
+
+        if (request->hasParam("fs")) {
+          fsParam = request->getParam("fs")->value();
+        }
+        if (request->hasParam("path")) {
+          filePath = request->getParam("path")->value();
+        }
+
+        // Validate parameters
+        if (fsParam.length() == 0 || filePath.length() == 0) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"Missing parameters\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Validate file path length
+        if (filePath.length() > 255) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"Invalid file path\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        FS *filesystem = nullptr;
+        if (fsParam == "sd" && sdCardInitialized && fs) {
+          filesystem = fs;
+        } else if (fsParam == "lfs") {
+          filesystem = &LittleFS;
+        }
+
+        if (!filesystem) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              404, "application/json",
+              "{\"error\":\"File system not available\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Additional safety check - ensure file system is still mounted
+        if (fsParam == "sd" && !sdCardInitialized) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              500, "application/json", "{\"error\":\"SD card not mounted\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Check if file exists before attempting deletion
+        if (!filesystem->exists(filePath)) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              404, "application/json", "{\"error\":\"File not found\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Prevent deletion of system files
+        if (filePath == "/config.json" || filePath == "/log" ||
+            filePath.startsWith("/system/") || filePath.startsWith("/boot/")) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              403, "application/json",
+              "{\"error\":\"Cannot delete system files\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Check if it's a directory or file
+        File file = filesystem->open(filePath);
+        bool isDirectory = file.isDirectory();
+        file.close();
+
+        // Attempt to delete the file/directory with error handling
+        bool deleteSuccess = false;
+        try {
+          // Add a small delay to ensure file system is ready
+          delay(10);
+
+          // Double-check file system is still valid
+          if (filesystem && filesystem->exists(filePath)) {
+            if (isDirectory) {
+              // Delete directory recursively
+              deleteSuccess = deleteDirectoryRecursive(filesystem, filePath);
+            } else {
+              // Delete file
+              deleteSuccess = filesystem->remove(filePath);
+            }
+          }
+        } catch (...) {
+          deleteSuccess = false;
+        }
+
+        if (deleteSuccess) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              200, "application/json", "{\"success\":true}");
+          addCORS(response);
+          request->send(response);
+        } else {
+          AsyncWebServerResponse *response = request->beginResponse(
+              500, "application/json", "{\"error\":\"Failed to delete file\"}");
+          addCORS(response);
+          request->send(response);
+        }
+      });
+
+  // API endpoint for file upload
+  webServer->on(
+      "/api/files/upload", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        String fsParam = request->getParam("fs")->value();
+        String path = request->getParam("path")->value();
+        if (!path.startsWith("/"))
+          path = "/" + path;
+
+        FS *filesystem = nullptr;
+        if (fsParam == "sd" && sdCardInitialized && fs) {
+          filesystem = fs;
+        } else if (fsParam == "lfs") {
+          filesystem = &LittleFS;
+        }
+
+        if (!filesystem) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              404, "application/json",
+              "{\"error\":\"File system not available\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Handle file upload
+        if (request->hasParam("file", true, true)) {
+          const AsyncWebParameter *fileParam =
+              request->getParam("file", true, true);
+          String fileName = fileParam->name();
+          String filePath = path + (path.endsWith("/") ? "" : "/") + fileName;
+
+          File file = filesystem->open(filePath, "w");
+          if (file) {
+            file.write((const uint8_t *)fileParam->value().c_str(),
+                       fileParam->value().length());
+            file.close();
+
+            AsyncWebServerResponse *response = request->beginResponse(
+                200, "application/json", "{\"success\":true}");
+            addCORS(response);
+            request->send(response);
+          } else {
+            AsyncWebServerResponse *response =
+                request->beginResponse(500, "application/json",
+                                       "{\"error\":\"Failed to create file\"}");
+            addCORS(response);
+            request->send(response);
+          }
+        } else {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"No file provided\"}");
+          addCORS(response);
+          request->send(response);
+        }
+      });
 
   webServer->on("/files", HTTP_GET, [this](AsyncWebServerRequest *request) {
     String html = "<!DOCTYPE html><html><head><meta "

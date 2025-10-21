@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import SaveIcon from "@mui/icons-material/SaveAs";
+import SettingsIcon from "@mui/icons-material/Settings";
 import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -281,7 +282,20 @@ export default function NetworkSettingsModal({
     <SettingsModal
       open={open}
       onClose={handleCloseModal}
-      title="Settings"
+      title={
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            width: "100%",
+          }}
+        >
+          <SettingsIcon color="primary" />
+          Settings
+        </span>
+      }
       maxWidth="lg"
       actions={getActions()}
     >

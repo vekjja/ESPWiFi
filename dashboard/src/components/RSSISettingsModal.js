@@ -9,6 +9,7 @@ import {
   Box,
 } from "@mui/material";
 import SaveIcon from "@mui/icons-material/SaveAs";
+import WifiIcon from "@mui/icons-material/Wifi";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 
@@ -210,7 +211,20 @@ export default function RSSISettingsModal({
     <SettingsModal
       open={open}
       onClose={handleCloseModal}
-      title="RSSI Settings"
+      title={
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            width: "100%",
+          }}
+        >
+          <WifiIcon color="primary" />
+          RSSI
+        </span>
+      }
       actions={
         <IButton
           color="primary"

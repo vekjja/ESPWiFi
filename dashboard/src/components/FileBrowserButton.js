@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { FolderOpen } from "@mui/icons-material";
 import SettingsModal from "./SettingsModal";
 import FileBrowserComponent from "./FileBrowser";
 
@@ -24,7 +25,20 @@ export default function FileBrowserButton({
     <SettingsModal
       open={modalOpen}
       onClose={handleModalClose}
-      title="File Browser"
+      title={
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            width: "100%",
+          }}
+        >
+          <FolderOpen color="primary" />
+          File Browser
+        </span>
+      }
       maxWidth={false}
       fullWidth={false}
     >

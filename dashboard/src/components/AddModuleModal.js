@@ -12,6 +12,7 @@ import {
   Input as PinIcon,
   Wifi as WebSocketIcon,
   CameraAlt as CameraAltIcon,
+  Add as AddIcon,
 } from "@mui/icons-material";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
@@ -190,7 +191,20 @@ export default function AddModuleModal({
       <SettingsModal
         open={open}
         onClose={onClose}
-        title="Add Module"
+        title={
+          <span
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              width: "100%",
+            }}
+          >
+            <AddIcon color="primary" />
+            Add Module
+          </span>
+        }
         actions={
           <Button onClick={onClose} color="inherit">
             Cancel

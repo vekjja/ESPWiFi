@@ -5,7 +5,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Typography,
   List,
   ListItem,
   ListItemIcon,
@@ -194,16 +193,16 @@ export default function AddModuleModal({
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>Add Module</DialogTitle>
         <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Choose the type of module you want to add:
-          </Typography>
+          {/* <Typography variant="body1" sx={{ mb: 2 }}>
+            Add a module:
+          </Typography> */}
           <List>
             <ListItem disablePadding>
               <ListItemButton onClick={handleOpenPinModal}>
                 <ListItemIcon>
                   <PinIcon />
                 </ListItemIcon>
-                <ListItemText primary="Add Pin" secondary="Control GPIO pins" />
+                <ListItemText primary="Pin" secondary="Control GPIO pins" />
               </ListItemButton>
             </ListItem>
             <ListItem disablePadding>
@@ -212,7 +211,7 @@ export default function AddModuleModal({
                   <WebSocketIcon />
                 </ListItemIcon>
                 <ListItemText
-                  primary="Add WebSocket"
+                  primary="WebSocket"
                   secondary="Connect to WebSocket streams"
                 />
               </ListItemButton>
@@ -222,10 +221,7 @@ export default function AddModuleModal({
                 <ListItemIcon>
                   <CameraAltIcon />
                 </ListItemIcon>
-                <ListItemText
-                  primary="Add Camera"
-                  secondary="Add camera module"
-                />
+                <ListItemText primary="Camera" secondary="Add camera module" />
               </ListItemButton>
             </ListItem>
           </List>

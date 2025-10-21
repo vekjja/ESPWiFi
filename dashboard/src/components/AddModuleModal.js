@@ -1,97 +1,289 @@
 import React, { useState } from "react";
 import {
+  Box,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
-  Tabs,
-  Tab,
-  Box,
-  IconButton,
+  DialogActions,
+  Typography,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
+import {
+  Input as PinIcon,
+  Wifi as WebSocketIcon,
+  CameraAlt as CameraAltIcon,
+} from "@mui/icons-material";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 
 export default function AddModuleModal({
-  open,
+  config,
+  saveConfig,
+  open = false,
   onClose,
-  onSavePin,
-  onSaveWebSocket,
-  pinData,
-  webSocketData,
-  onPinDataChange,
-  onWebSocketDataChange,
 }) {
-  const [activeTab, setActiveTab] = useState(0);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
 
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
+  const [pinData, setPinData] = useState({
+    name: "",
+    pinNumber: "",
+    mode: "out",
+    inverted: false,
+    remoteURL: "",
+    dutyMin: 0,
+    dutyMax: 255,
+  });
+
+  const [webSocketData, setWebSocketData] = useState({
+    name: "",
+    url: "",
+    payload: "text",
+    fontSize: 14,
+    enableSending: true,
+  });
+
+  const [cameraData, setCameraData] = useState({
+    name: "",
+    url: "/camera",
+    frameRate: 10,
+  });
+
+  const handleOpenPinModal = () => {
+    setPinData({
+      name: "",
+      pinNumber: "",
+      mode: "out",
+      inverted: false,
+      remoteURL: "",
+      dutyMin: 0,
+      dutyMax: 255,
+    });
+    setPinModalOpen(true);
   };
 
-  const handleClose = () => {
-    setActiveTab(0);
-    onClose();
+  const handleOpenWebSocketModal = () => {
+    setWebSocketData({
+      name: "",
+      url: "",
+      payload: "text",
+      fontSize: 14,
+      enableSending: true,
+    });
+    setWebSocketModalOpen(true);
+  };
+
+  const handleOpenCameraModal = () => {
+    setCameraData({
+      name: "",
+      url: "/camera",
+      frameRate: 10,
+    });
+    setCameraModalOpen(true);
+  };
+
+  const handleClosePinModal = () => {
+    setPinModalOpen(false);
+  };
+
+  const handleCloseWebSocketModal = () => {
+    setWebSocketModalOpen(false);
+  };
+
+  const handleCloseCameraModal = () => {
+    setCameraModalOpen(false);
+  };
+
+  // Helper function to generate unique key
+  const generateUniqueKey = (existingModules) => {
+    if (!existingModules || existingModules.length === 0) {
+      return 0;
+    }
+    const maxKey = Math.max(
+      ...existingModules.map((m) => (typeof m.key === "number" ? m.key : -1))
+    );
+    return maxKey + 1;
+  };
+
+  const handlePinDataChange = (changes) => {
+    setPinData((prev) => ({ ...prev, ...changes }));
+  };
+
+  const handleWebSocketDataChange = (changes) => {
+    setWebSocketData((prev) => ({ ...prev, ...changes }));
+  };
+
+  const handleSavePin = () => {
+    if (!pinData.pinNumber || pinData.pinNumber === "") return;
+
+    const existingModules = config.modules || [];
+    const newPin = {
+      type: "pin",
+      number: parseInt(pinData.pinNumber, 10),
+      state: "low",
+      name: pinData.name || `GPIO${pinData.pinNumber}`,
+      mode: pinData.mode,
+      inverted: pinData.inverted,
+      remoteURL: pinData.remoteURL,
+      dutyMin: pinData.dutyMin,
+      dutyMax: pinData.dutyMax,
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newPin];
+    saveConfig({ ...config, modules: updatedModules });
+    handleClosePinModal();
+    onClose(); // Close the main Add Module modal
+  };
+
+  const handleSaveWebSocket = () => {
+    if (!webSocketData.url || webSocketData.url.trim() === "") return;
+
+    const existingModules = config.modules || [];
+    const newWebSocket = {
+      type: "webSocket",
+      url: webSocketData.url.trim(),
+      name: webSocketData.name || "Unnamed",
+      payload: webSocketData.payload,
+      fontSize: webSocketData.fontSize,
+      enableSending: webSocketData.enableSending,
+      connectionState: "disconnected",
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newWebSocket];
+    saveConfig({ ...config, modules: updatedModules });
+    handleCloseWebSocketModal();
+    onClose(); // Close the main Add Module modal
+  };
+
+  const handleSaveCamera = () => {
+    if (!cameraData.url || cameraData.url.trim() === "") return;
+
+    const existingModules = config.modules || [];
+    const newCamera = {
+      type: "camera",
+      url: cameraData.url.trim(),
+      name:
+        cameraData.name ||
+        `Camera ${
+          existingModules.filter((m) => m.type === "camera").length + 1
+        }`,
+      frameRate: cameraData.frameRate,
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newCamera];
+    saveConfig({ ...config, modules: updatedModules });
+    handleCloseCameraModal();
+    onClose(); // Close the main Add Module modal
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          minHeight: "60vh",
-        },
-      }}
-    >
-      <DialogTitle
-        sx={{
-          m: 0,
-          p: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
+    <>
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Module</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            Choose the type of module you want to add:
+          </Typography>
+          <List>
+            <ListItem disablePadding>
+              <ListItemButton onClick={handleOpenPinModal}>
+                <ListItemIcon>
+                  <PinIcon />
+                </ListItemIcon>
+                <ListItemText primary="Add Pin" secondary="Control GPIO pins" />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton onClick={handleOpenWebSocketModal}>
+                <ListItemIcon>
+                  <WebSocketIcon />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Add WebSocket"
+                  secondary="Connect to WebSocket streams"
+                />
+              </ListItemButton>
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton onClick={handleOpenCameraModal}>
+                <ListItemIcon>
+                  <CameraAltIcon />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Add Camera"
+                  secondary="Add camera module"
+                />
+              </ListItemButton>
+            </ListItem>
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose} color="inherit">
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <PinSettingsModal
+        open={pinModalOpen}
+        onClose={handleClosePinModal}
+        onSave={handleSavePin}
+        pinData={pinData}
+        onPinDataChange={handlePinDataChange}
+      />
+
+      <WebSocketSettingsModal
+        open={webSocketModalOpen}
+        onClose={handleCloseWebSocketModal}
+        onSave={handleSaveWebSocket}
+        websocketData={webSocketData}
+        onWebSocketDataChange={handleWebSocketDataChange}
+      />
+
+      <Dialog
+        open={cameraModalOpen}
+        onClose={handleCloseCameraModal}
+        maxWidth="sm"
+        fullWidth
       >
-        <Tabs value={activeTab} onChange={handleTabChange} sx={{ flexGrow: 1 }}>
-          <Tab label="Pin Module" />
-          <Tab label="WebSocket Module" />
-        </Tabs>
-        <IconButton
-          aria-label="close"
-          onClick={handleClose}
-          sx={{
-            color: (theme) => theme.palette.grey[500],
-          }}
-        >
-          <CloseIcon />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
-        <Box sx={{ display: activeTab === 0 ? "block" : "none" }}>
-          <PinSettingsModal
-            open={true}
-            onClose={handleClose}
-            onSave={onSavePin}
-            onDelete={null}
-            pinData={pinData}
-            onPinDataChange={onPinDataChange}
-            hideModalWrapper={true}
-          />
-        </Box>
-        <Box sx={{ display: activeTab === 1 ? "block" : "none" }}>
-          <WebSocketSettingsModal
-            open={true}
-            onClose={handleClose}
-            onSave={onSaveWebSocket}
-            onDelete={null}
-            websocketData={webSocketData}
-            onWebSocketDataChange={onWebSocketDataChange}
-            hideModalWrapper={true}
-          />
-        </Box>
-      </DialogContent>
-    </Dialog>
+        <DialogTitle>Add Camera Module</DialogTitle>
+        <DialogContent>
+          <Box sx={{ marginTop: 2 }}>
+            <Typography gutterBottom>
+              Camera Name:{" "}
+              {cameraData.name ||
+                "Camera " +
+                  (config.modules?.filter((m) => m.type === "camera").length +
+                    1 || 1)}
+            </Typography>
+            <Typography gutterBottom>Camera URL: {cameraData.url}</Typography>
+            <Typography gutterBottom>
+              Frame Rate: {cameraData.frameRate} FPS
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCameraModal} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveCamera}
+            variant="contained"
+            color="primary"
+          >
+            Add Camera
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }

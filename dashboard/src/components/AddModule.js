@@ -21,8 +21,15 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 
-export default function AddModule({ config, saveConfig }) {
+export default function AddModule({
+  config,
+  saveConfig,
+  open = false,
+  onClose,
+  standalone = false, // New prop to indicate if this is a standalone component
+}) {
   const [anchorEl, setAnchorEl] = useState(null);
+  const buttonRef = React.useRef(null);
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
@@ -49,7 +56,13 @@ export default function AddModule({ config, saveConfig }) {
   });
 
   const handleOpenMenu = (event) => {
-    setAnchorEl(event.currentTarget);
+    // Handle case where event is provided (from button click) or not (from useEffect)
+    if (event && event.currentTarget) {
+      setAnchorEl(event.currentTarget);
+    } else {
+      // For programmatic opening, use the button ref
+      setAnchorEl(buttonRef.current);
+    }
   };
 
   const handleCloseMenu = () => {
@@ -271,22 +284,32 @@ export default function AddModule({ config, saveConfig }) {
     handleCloseCameraModal();
   };
 
+  // Handle external open prop
+  React.useEffect(() => {
+    if (open) {
+      handleOpenMenu();
+    }
+  }, [open]);
+
   return (
     <>
-      <Fab
-        size="small"
-        color="primary"
-        aria-label="add module"
-        onClick={handleOpenMenu}
-        sx={{
-          position: "fixed",
-          top: "20px",
-          right: "20px",
-          zIndex: 1001,
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Only render the Fab button when in standalone mode */}
+      {standalone && (
+        <Fab
+          ref={buttonRef}
+          size="small"
+          color="primary"
+          aria-label="add module"
+          onClick={handleOpenMenu}
+          sx={
+            {
+              // Remove fixed positioning - will be handled by SettingsButtonBar
+            }
+          }
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       <Menu
         anchorEl={anchorEl}

@@ -44,13 +44,8 @@ public:
   FS *fs;
   void initSDCard();
   void initLittleFS();
-  void listFiles(FS *fs);
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
-  void readFile(FS *fs, const String &filePath);
-  void deleteFile(FS *fs, const String &filePath);
-  void writeFile(FS *fs, const String &filePath, const String &content);
-  void appendToFile(FS *fs, const String &filePath, const String &content);
   bool fileExists(FS *fs, const String &filePath);
   bool dirExists(FS *fs, const String &dirPath);
   bool mkDir(FS *fs, const String &dirPath);

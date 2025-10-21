@@ -6,6 +6,8 @@ export default function CameraSettingsModal({
   config,
   saveConfig,
   saveConfigToDevice,
+  open = false,
+  onClose,
 }) {
   // Camera settings state
   const [enabled, setEnabled] = useState(false);
@@ -39,42 +41,37 @@ export default function CameraSettingsModal({
     saveConfigToDevice(configToSave);
   };
 
+  // Handle camera toggle when modal is opened
+  const handleCameraToggle = () => {
+    handleToggleCamera();
+    if (onClose) onClose();
+  };
+
   return (
-    <Container
-      sx={{
-        display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "center",
-      }}
+    <Tooltip
+      title={
+        enabled
+          ? "Camera Hardware Enabled - Click to Disable"
+          : "Camera Hardware Disabled - Click to Enable"
+      }
     >
-      <Tooltip
-        title={
-          enabled
-            ? "Camera Hardware Enabled - Click to Disable"
-            : "Camera Hardware Disabled - Click to Enable"
-        }
+      <Fab
+        size="small"
+        color="primary"
+        aria-label="camera-toggle"
+        onClick={handleCameraToggle}
+        sx={{
+          color: getCameraColor(),
+          backgroundColor: enabled ? "action.hover" : "action.disabled",
+          "&:hover": {
+            backgroundColor: enabled
+              ? "action.selected"
+              : "action.disabledBackground",
+          },
+        }}
       >
-        <Fab
-          size="small"
-          color="primary"
-          aria-label="camera-toggle"
-          onClick={handleToggleCamera}
-          sx={{
-            position: "fixed",
-            top: "20px",
-            left: "80px", // Position next to network settings button
-            color: getCameraColor(),
-            backgroundColor: enabled ? "action.hover" : "action.disabled",
-            "&:hover": {
-              backgroundColor: enabled
-                ? "action.selected"
-                : "action.disabledBackground",
-            },
-          }}
-        >
-          <CameraAltIcon />
-        </Fab>
-      </Tooltip>
-    </Container>
+        <CameraAltIcon />
+      </Fab>
+    </Tooltip>
   );
 }

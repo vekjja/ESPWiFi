@@ -1,6 +1,4 @@
 import React, { useState } from "react";
-import { Container, Fab, Tooltip } from "@mui/material";
-import { FolderOpen } from "@mui/icons-material";
 import SettingsModal from "./SettingsModal";
 import FileBrowserComponent from "./FileBrowser";
 
@@ -11,10 +9,6 @@ export default function FileBrowserButton({
   onClose,
 }) {
   const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
-
-  const handleOpenFileBrowser = () => {
-    setIsFileBrowserOpen(true);
-  };
 
   const handleCloseFileBrowser = () => {
     setIsFileBrowserOpen(false);
@@ -31,8 +25,8 @@ export default function FileBrowserButton({
       open={modalOpen}
       onClose={handleModalClose}
       title="File Browser"
-      maxWidth="lg"
-      fullWidth
+      maxWidth={false}
+      fullWidth={false}
     >
       <FileBrowserComponent config={config} deviceOnline={deviceOnline} />
     </SettingsModal>

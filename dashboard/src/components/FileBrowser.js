@@ -302,18 +302,20 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   return (
     <Box
       sx={{
-        height: "calc(80vh - 120px)", // Account for modal title and padding
+        height: { xs: "100vh", sm: "calc(80vh - 120px)" }, // Full height on mobile, calculated on desktop
         display: "flex",
         flexDirection: "column",
-        width: "100%",
-        maxWidth: "100%",
+        width: { xs: "100%", sm: "600px" },
+        maxWidth: { xs: "100%", sm: "600px" },
+        minWidth: { xs: "100%", sm: "600px" },
+        mx: "auto", // Center the entire file browser
         "& .MuiPaper-root": {
           p: { xs: 1, sm: 1.5 },
         },
       }}
     >
       {/* Header - Fixed */}
-      <Paper sx={{ flexShrink: 0, mb: 1 }}>
+      <Paper sx={{ flexShrink: 0, mb: 1, p: { xs: 1.5, sm: 2 } }}>
         <Box
           sx={{
             display: "flex",
@@ -321,63 +323,52 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             justifyContent: "center",
             mb: 1,
             flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 1.5, sm: 0 },
+            gap: { xs: 2, sm: 2 },
+            flexWrap: "wrap",
           }}
         >
-          <Box
+          <ToggleButtonGroup
+            value={fileSystem}
+            exclusive
+            onChange={handleFileSystemChange}
+            size="small"
             sx={{
-              display: "flex",
-              gap: 1,
-              flexDirection: { xs: "column", sm: "row" },
               width: { xs: "100%", sm: "auto" },
+              "& .MuiToggleButton-root": {
+                minWidth: "100px",
+                height: "32px",
+                flex: { xs: 1, sm: "none" },
+              },
             }}
           >
-            <ToggleButtonGroup
-              value={fileSystem}
-              exclusive
-              onChange={handleFileSystemChange}
-              size="small"
-              sx={{
-                width: { xs: "100%", sm: "auto" },
-                flex: { xs: 1, sm: "none" },
-                "& .MuiToggleButton-root": {
-                  flex: 1,
-                  minWidth: "100px",
-                },
-              }}
-            >
-              <ToggleButton value="sd">
-                <Storage sx={{ mr: 0.5 }} />
-                <Box sx={{ display: { xs: "none", sm: "inline" } }}>
-                  SD Card
-                </Box>
-                <Box sx={{ display: { xs: "inline", sm: "none" } }}>SD</Box>
-              </ToggleButton>
-              <ToggleButton value="lfs">
-                <Storage sx={{ mr: 0.5 }} />
-                <Box sx={{ display: { xs: "none", sm: "inline" } }}>
-                  Internal
-                </Box>
-                <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
-              </ToggleButton>
-            </ToggleButtonGroup>
-            <Button
-              variant="contained"
-              component="label"
-              startIcon={<Upload />}
-              disabled={loading}
-              sx={{
-                width: { xs: "100%", sm: "auto" },
-                flex: { xs: 1, sm: "none" },
-                minWidth: "80px",
-                px: 1,
-              }}
-            >
-              <Box sx={{ display: { xs: "none", sm: "inline" } }}>Upload</Box>
-              <Box sx={{ display: { xs: "inline", sm: "none" } }}>Upload</Box>
-              <input type="file" hidden onChange={handleUpload} />
-            </Button>
-          </Box>
+            <ToggleButton value="sd">
+              <Storage sx={{ mr: 0.5 }} />
+              <Box sx={{ display: { xs: "none", sm: "inline" } }}>SD Card</Box>
+              <Box sx={{ display: { xs: "inline", sm: "none" } }}>SD</Box>
+            </ToggleButton>
+            <ToggleButton value="lfs">
+              <Storage sx={{ mr: 0.5 }} />
+              <Box sx={{ display: { xs: "none", sm: "inline" } }}>Internal</Box>
+              <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <Button
+            variant="contained"
+            component="label"
+            startIcon={<Upload />}
+            disabled={loading}
+            size="small"
+            sx={{
+              width: { xs: "100%", sm: "auto" },
+              minWidth: "80px",
+              px: 1,
+              height: "32px", // Match toggle button height
+            }}
+          >
+            <Box sx={{ display: { xs: "none", sm: "inline" } }}>Upload</Box>
+            <Box sx={{ display: { xs: "inline", sm: "none" } }}>Upload</Box>
+            <input type="file" hidden onChange={handleUpload} />
+          </Button>
         </Box>
 
         {/* Breadcrumbs */}
@@ -385,14 +376,16 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           sx={{
             mb: 1,
             overflow: "hidden",
+            justifyContent: "center",
             "& .MuiBreadcrumbs-ol": {
               flexWrap: "nowrap",
+              justifyContent: "center",
             },
             "& .MuiBreadcrumbs-li": {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              maxWidth: "200px",
+              maxWidth: { xs: "100px", sm: "150px" },
             },
           }}
         >
@@ -477,7 +470,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                      maxWidth: "calc(100% - 60px)",
+                      maxWidth: { xs: "200px", sm: "400px" },
                     },
                     "& .MuiListItemText-secondary": {
                       overflow: "hidden",

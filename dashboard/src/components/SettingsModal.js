@@ -32,10 +32,10 @@ export default function SettingsModal({
         sx: {
           bgcolor: "background.paper",
           margin: isMobile ? 0 : "auto",
-          width: isMobile ? "auto" : "auto",
+          width: isMobile ? "90%" : maxWidth === false ? "650px" : "auto",
           height: isMobile ? "auto" : "auto",
-          minWidth: isMobile ? "90%" : "400px",
-          maxWidth: isMobile ? "90%" : "600px",
+          minWidth: isMobile ? "90%" : maxWidth === false ? "650px" : "400px",
+          maxWidth: isMobile ? "90%" : maxWidth === false ? "650px" : "600px",
           maxHeight: isMobile ? "90%" : "80vh",
           borderRadius: theme.shape.borderRadius,
           display: "flex",

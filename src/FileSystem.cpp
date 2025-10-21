@@ -88,7 +88,7 @@ void ESPWiFi::listFiles(FS *fs) {
 
   File file = root.openNextFile();
   while (file) {
-    logf("\t%s (%s)", file.name(), bytesToHumanReadable(file.size()).c_str());
+    logf("\t%s (%s)\n", file.name(), bytesToHumanReadable(file.size()).c_str());
     file = root.openNextFile();
   }
 
@@ -107,7 +107,7 @@ void ESPWiFi::readFile(FS *fs, const String &filePath) {
     return;
   }
 
-  logf("📂 Reading file: %s", filePath.c_str());
+  logf("📂 Reading file: %s\n", filePath.c_str());
   while (file.available()) {
     Serial.write(file.read());
   }
@@ -129,7 +129,7 @@ void ESPWiFi::writeFile(FS *fs, const String &filePath, const String &data) {
 
   file.print(data);
   file.close();
-  logf("📂 Written to file: %s", filePath.c_str());
+  logf("📂 Written to file: %s\n", filePath.c_str());
 }
 
 void ESPWiFi::appendToFile(FS *fs, const String &filePath, const String &data) {
@@ -146,7 +146,7 @@ void ESPWiFi::appendToFile(FS *fs, const String &filePath, const String &data) {
 
   file.print(data);
   file.close();
-  logf("📂 Appended to file: %s", filePath.c_str());
+  logf("📂 Appended to file: %s\n", filePath.c_str());
 }
 
 void ESPWiFi::deleteFile(FS *fs, const String &filePath) {
@@ -156,7 +156,7 @@ void ESPWiFi::deleteFile(FS *fs, const String &filePath) {
   }
 
   if (fs->remove(filePath)) {
-    logf("📂 Deleted file: %s", filePath.c_str());
+    logf("📂 Deleted file: %s\n", filePath.c_str());
   } else {
     logError("Failed to delete file: " + filePath);
   }
@@ -198,12 +198,12 @@ bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
   }
 
   if (dirExists(fs, dirPath)) {
-    logf("📁 Directory already exists: %s", dirPath.c_str());
+    logf("📁 Directory already exists: %s\n", dirPath.c_str());
     return true;
   }
 
   if (fs->mkdir(dirPath)) {
-    logf("📁 Created directory: %s", dirPath.c_str());
+    logf("📁 Created directory: %s\n", dirPath.c_str());
     return true;
   } else {
     logError("Failed to create directory: " + dirPath);
@@ -218,7 +218,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
   }
 
   if (!dirExists(fs, dirPath)) {
-    logf("📁 Directory does not exist: %s", dirPath.c_str());
+    logf("📁 Directory does not exist: %s\n", dirPath.c_str());
     return true; // Directory doesn't exist, consider it "deleted"
   }
 
@@ -253,9 +253,9 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
       }
       fileCount++;
 
-      // Log every 10th file to reduce log spam
-      if (fileCount % 10 == 0) {
-        logf("🗑️ Deleted %d files from: %s", fileCount, dirPath.c_str());
+      // Log every 50th file to reduce log spam
+      if (fileCount % 50 == 0) {
+        logf("🗑️ Deleted %d files from: %s\n", fileCount, dirPath.c_str());
       }
 
       // Yield control every batch to prevent watchdog timeout
@@ -271,7 +271,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
 
   // Now remove the empty directory
   if (fs->rmdir(dirPath)) {
-    logf("🗑️ Deleted directory: %s (%d files)", dirPath.c_str(), fileCount);
+    logf("🗑️ Deleted directory: %s (%d files)\n", dirPath.c_str(), fileCount);
     return true;
   } else {
     logError("Failed to delete directory: " + dirPath);
@@ -469,6 +469,7 @@ void ESPWiFi::srvFiles() {
         String newPath = dirPath + "/" + newName;
 
         if (filesystem->rename(oldPath, newPath)) {
+          logf("📁 Renamed file: %s -> %s\n", oldPath.c_str(), newName.c_str());
           AsyncWebServerResponse *response = request->beginResponse(
               200, "application/json", "{\"success\":true}");
           addCORS(response);
@@ -589,6 +590,11 @@ void ESPWiFi::srvFiles() {
         }
 
         if (deleteSuccess) {
+          if (isDirectory) {
+            logf("🗑️ Deleted directory: %s\n", filePath.c_str());
+          } else {
+            logf("🗑️ Deleted file: %s\n", filePath.c_str());
+          }
           AsyncWebServerResponse *response = request->beginResponse(
               200, "application/json", "{\"success\":true}");
           addCORS(response);
@@ -775,10 +781,6 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
       currentPath = request->getParam("path")->value();
     }
 
-    // Debug logging
-    logf("📁 Upload parameters - fs: '%s', path: '%s'", currentFs.c_str(),
-         currentPath.c_str());
-
     // Validate parameters
     if (currentFs.length() == 0 || currentPath.length() == 0) {
       logError("Missing fs or path parameters for file upload");
@@ -793,13 +795,11 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     String filePath =
         currentPath + (currentPath.endsWith("/") ? "" : "/") + filename;
 
-    logf("📁 Starting file upload: %s -> %s", filename.c_str(),
-         filePath.c_str());
+    logf("📁 Starting file upload: %s\n", filename.c_str());
 
     // Get total size from Content-Length header
     if (request->hasHeader("Content-Length")) {
       totalSize = request->getHeader("Content-Length")->value().toInt();
-      logf("📁 Total file size: %d bytes", totalSize);
     }
 
     // Determine filesystem
@@ -840,12 +840,11 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     }
     currentSize += len;
 
-    // Log progress every 10%
+    // Log progress every 25% to reduce log spam
     if (totalSize > 0) {
       int progress = (currentSize * 100) / totalSize;
-      if (progress % 10 == 0) {
-        logf("📁 Upload progress: %d%% (%d/%d bytes)", progress, currentSize,
-             totalSize);
+      if (progress % 25 == 0) {
+        logf("📁 Upload progress: %d%%\n", progress);
       }
     }
   }
@@ -854,8 +853,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      logf("✅ File upload completed: %s (%d bytes)", filename.c_str(),
-           currentSize);
+      logf("✅ File uploaded: %s (%d bytes)\n", filename.c_str(), currentSize);
     }
 
     // Reset static variables for next upload

@@ -286,7 +286,15 @@ export default function RSSISettingsModal({
           }}
         >
           <Typography variant="body2" color="primary.main">
-            📶 RSSI Signal Strength
+            📶{" "}
+            <a
+              href="https://en.wikipedia.org/wiki/Received_signal_strength_indication"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "inherit", textDecoration: "underline" }}
+            >
+              Received Signal Strength Indicator (RSSI)
+            </a>
           </Typography>
           <Typography
             variant="caption"

@@ -51,6 +51,7 @@ export default function SettingsButtonBar({
           config={config}
           deviceOnline={deviceOnline}
           onNetworkSettings={onNetworkSettings}
+          saveConfigToDevice={saveConfigToDevice}
         />
         <CameraButton
           config={config}

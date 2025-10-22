@@ -6,7 +6,7 @@ import DeviceSettingsModal from "./DeviceSettingsModal";
 export default function DeviceSettingsButton({
   config,
   deviceOnline,
-  onNetworkSettings,
+  saveConfigToDevice,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -47,6 +47,7 @@ export default function DeviceSettingsButton({
           open={modalOpen}
           onClose={handleCloseModal}
           config={config}
+          saveConfigToDevice={saveConfigToDevice}
         />
       )}
     </>

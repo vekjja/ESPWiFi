@@ -117,7 +117,9 @@ function App() {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error("Network response was not ok");
+          throw new Error(
+            `Network response was not ok: ${response.status} ${response.statusText}`
+          );
         }
         const data = await response.json();
         const configWithAPI = { ...data, apiURL };
@@ -149,16 +151,24 @@ function App() {
         setDeviceOnline(true); // Device is online
         return data;
       } catch (error) {
-        if (error.name === "AbortError") {
-          console.error("Device offline: Request timeout (6 seconds)");
-        } else {
-          console.error("Device offline:", error.message);
+        // Only log errors if we're not already offline to avoid spam
+        if (deviceOnline) {
+          if (error.name === "AbortError") {
+            console.warn("Device offline: Request timeout (6 seconds)");
+          } else if (
+            error.name === "TypeError" &&
+            error.message.includes("Failed to fetch")
+          ) {
+            console.warn("Device offline: Network connection failed");
+          } else {
+            console.warn("Device offline:", error.message);
+          }
         }
         setDeviceOnline(false); // Device is offline
         return null;
       }
     },
-    [apiURL, config]
+    [apiURL, config, deviceOnline]
   );
 
   useEffect(() => {
@@ -167,16 +177,45 @@ function App() {
       setLoading(false);
     });
 
-    // Set up polling every 5 seconds (frequent but smart)
-    const pollInterval = setInterval(() => {
-      fetchConfig();
-    }, 5000);
+    // Set up intelligent polling
+    let pollInterval;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const startPolling = () => {
+      pollInterval = setInterval(
+        () => {
+          fetchConfig().then((result) => {
+            if (result) {
+              retryCount = 0; // Reset retry count on successful fetch
+            } else if (deviceOnline) {
+              retryCount++;
+              if (retryCount >= maxRetries) {
+                console.warn(
+                  "Device appears to be offline - reducing polling frequency"
+                );
+                clearInterval(pollInterval);
+                // Poll less frequently when offline
+                pollInterval = setInterval(() => {
+                  fetchConfig();
+                }, 15000); // 15 seconds when offline
+              }
+            }
+          });
+        },
+        deviceOnline ? 5000 : 15000
+      ); // 5 seconds when online, 15 seconds when offline
+    };
+
+    startPolling();
 
     // Cleanup interval on unmount
     return () => {
-      clearInterval(pollInterval);
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
     };
-  }, [fetchConfig]);
+  }, [fetchConfig, deviceOnline]);
 
   if (loading) {
     return <LinearProgress color="inherit" />;
@@ -195,19 +234,34 @@ function App() {
     const configWithAPI = { ...newConfig, apiURL };
     setLocalConfig(configWithAPI);
 
+    // Don't attempt to save if device is offline
+    if (!deviceOnline) {
+      console.warn("Device is offline - configuration saved locally only");
+      return;
+    }
+
     // Then save to device
     setSaving(true);
     const configToSave = { ...configWithAPI };
     delete configToSave.apiURL; // Remove the apiURL key entirely
 
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for saves
+
     fetch(apiURL + "/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(configToSave),
+      signal: controller.signal,
     })
       .then((response) => {
-        if (!response.ok)
-          throw new Error("Failed to save configuration to Device");
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to save configuration to Device: ${response.status} ${response.statusText}`
+          );
+        }
         return response.json();
       })
       .then((savedConfig) => {
@@ -220,8 +274,16 @@ function App() {
         fetchConfig(true);
       })
       .catch((error) => {
-        console.error("Error saving configuration to Device:", error);
-        alert("Failed to save configuration to Device");
+        clearTimeout(timeoutId);
+        if (error.name === "AbortError") {
+          console.error("Save operation timed out - device may be offline");
+          alert(
+            "Save operation timed out. Device may be offline. Configuration saved locally."
+          );
+        } else {
+          console.error("Error saving configuration to Device:", error);
+          alert(`Failed to save configuration to Device: ${error.message}`);
+        }
         setSaving(false);
       });
   };

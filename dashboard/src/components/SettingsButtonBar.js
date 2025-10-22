@@ -50,8 +50,8 @@ export default function SettingsButtonBar({
     color,
     sx = {},
     disabled = false,
-  }) => (
-    <Tooltip title={tooltip}>
+  }) => {
+    const button = (
       <Fab
         {...buttonProps}
         onClick={disabled ? undefined : onClick}
@@ -67,8 +67,19 @@ export default function SettingsButtonBar({
       >
         {icon}
       </Fab>
-    </Tooltip>
-  );
+    );
+
+    // Wrap disabled buttons in a span to fix MUI Tooltip warning
+    if (disabled) {
+      return (
+        <Tooltip title={tooltip}>
+          <span>{button}</span>
+        </Tooltip>
+      );
+    }
+
+    return <Tooltip title={tooltip}>{button}</Tooltip>;
+  };
 
   // Both mobile and desktop use the same layout: horizontal row below header
   return (

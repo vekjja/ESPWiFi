@@ -9,7 +9,7 @@ import {
   Box,
   useTheme,
 } from "@mui/material";
-import WifiIcon from "@mui/icons-material/Wifi";
+import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import { getSaveIcon } from "../utils/themeUtils";
@@ -224,7 +224,7 @@ export default function RSSISettingsModal({
             width: "100%",
           }}
         >
-          <WifiIcon color="primary" />
+          <SignalCellularAltIcon color="primary" />
           RSSI
         </span>
       }

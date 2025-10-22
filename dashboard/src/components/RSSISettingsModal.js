@@ -247,65 +247,62 @@ export default function RSSISettingsModal({
         />
       </FormControl>
 
-      {enabled && (
-        <Box sx={{ marginTop: 3 }}>
-          <Typography gutterBottom>Display Mode:</Typography>
-          <RadioGroup
-            value={displayMode}
-            onChange={handleDisplayModeChange}
-            sx={{
-              "& .MuiRadio-root": {
-                color: "primary.main",
-              },
-              "& .MuiRadio-root.Mui-checked": {
-                color: "primary.main",
-              },
-            }}
-          >
-            <FormControlLabel
-              value="icon"
-              control={<Radio />}
-              label="Icon (Signal Bars)"
-            />
-            <FormControlLabel
-              value="numbers"
-              control={<Radio />}
-              label="Numbers (dBm)"
-            />
-          </RadioGroup>
-        </Box>
-      )}
-
-      {enabled && (
-        <Box
+      <Box sx={{ marginTop: 3 }}>
+        <Typography gutterBottom>Display Mode:</Typography>
+        <RadioGroup
+          value={displayMode}
+          onChange={handleDisplayModeChange}
+          disabled={!enabled}
           sx={{
-            marginTop: 2,
-            padding: 2,
-            backgroundColor: "rgba(71, 255, 240, 0.1)",
-            borderRadius: 1,
+            "& .MuiRadio-root": {
+              color: "primary.main",
+            },
+            "& .MuiRadio-root.Mui-checked": {
+              color: "primary.main",
+            },
           }}
         >
-          <Typography variant="body2" color="primary.main">
-            📶{" "}
-            <a
-              href="https://en.wikipedia.org/wiki/Received_signal_strength_indication"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "inherit", textDecoration: "underline" }}
-            >
-              Received Signal Strength Indicator (RSSI)
-            </a>
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{ marginTop: 1, color: "primary.main", display: "block" }}
+          <FormControlLabel
+            value="icon"
+            control={<Radio />}
+            label="Icon (Signal Bars)"
+          />
+          <FormControlLabel
+            value="numbers"
+            control={<Radio />}
+            label="Numbers (dBm)"
+          />
+        </RadioGroup>
+      </Box>
+
+      <Box
+        sx={{
+          marginTop: 2,
+          padding: 2,
+          backgroundColor: "rgba(71, 255, 240, 0.1)",
+          borderRadius: 1,
+        }}
+      >
+        <Typography variant="body2" color="primary.main">
+          📶{" "}
+          <a
+            href="https://en.wikipedia.org/wiki/Received_signal_strength_indication"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "inherit", textDecoration: "underline" }}
           >
-            WebSocket URL: ws://
-            {config?.mdns ? `${config.mdns}.local` : window.location.hostname}:
-            {window.location.port || 80}/rssi
-          </Typography>
-        </Box>
-      )}
+            Received Signal Strength Indicator (RSSI)
+          </a>
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{ marginTop: 1, color: "primary.main", display: "block" }}
+        >
+          WebSocket URL: ws://
+          {config?.mdns ? `${config.mdns}.local` : window.location.hostname}:
+          {window.location.port || 80}/rssi
+        </Typography>
+      </Box>
     </SettingsModal>
   );
 }

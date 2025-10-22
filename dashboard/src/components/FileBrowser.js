@@ -28,16 +28,20 @@ import {
 import {
   Storage,
   Upload,
-  Delete,
-  Edit,
   Download,
   Folder,
   InsertDriveFile,
   MoreVert,
   Home,
 } from "@mui/icons-material";
+import { useTheme } from "@mui/material";
+import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
 
 const FileBrowserComponent = ({ config, deviceOnline }) => {
+  const theme = useTheme();
+  const DeleteIcon = getDeleteIcon(theme);
+  const EditIcon = getEditIcon(theme);
+
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -517,11 +521,11 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         }
       >
         <MenuItem onClick={handleRename}>
-          <Edit sx={{ mr: 1 }} />
+          <EditIcon sx={{ mr: 1 }} />
           Rename
         </MenuItem>
         <MenuItem onClick={handleDelete} sx={{ color: "error.main" }}>
-          <Delete sx={{ mr: 1 }} />
+          <DeleteIcon sx={{ mr: 1 }} />
           Delete
         </MenuItem>
         {contextMenu.file && !contextMenu.file.isDirectory && (

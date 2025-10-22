@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { TextField, Box } from "@mui/material";
-import SaveIcon from "@mui/icons-material/SaveAs";
+import { TextField, Box, useTheme } from "@mui/material";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
+import { getSaveIcon } from "../utils/themeUtils";
 
 export default function CameraSettingsModal({
   open,
@@ -11,6 +11,8 @@ export default function CameraSettingsModal({
   cameraData,
   onCameraDataChange,
 }) {
+  const theme = useTheme();
+  const SaveIcon = getSaveIcon(theme);
   const [localData, setLocalData] = useState(cameraData);
 
   useEffect(() => {

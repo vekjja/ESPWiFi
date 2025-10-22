@@ -7,11 +7,12 @@ import {
   Radio,
   Typography,
   Box,
+  useTheme,
 } from "@mui/material";
-import SaveIcon from "@mui/icons-material/SaveAs";
 import WifiIcon from "@mui/icons-material/Wifi";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
+import { getSaveIcon } from "../utils/themeUtils";
 
 export default function RSSISettingsModal({
   config,
@@ -21,6 +22,8 @@ export default function RSSISettingsModal({
   onClose,
   onRSSIDataChange,
 }) {
+  const theme = useTheme();
+  const SaveIcon = getSaveIcon(theme);
   // Remove internal modal state - use external open prop
 
   // RSSI settings state (for modal editing)

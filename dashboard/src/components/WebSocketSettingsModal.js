@@ -8,11 +8,12 @@ import {
   FormControlLabel,
   Checkbox,
   Box,
+  useTheme,
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
 import DeleteButton from "./DeleteButton";
 import IButton from "./IButton";
-import SaveIcon from "@mui/icons-material/SaveAs";
+import { getSaveIcon } from "../utils/themeUtils";
 
 export default function WebSocketSettingsModal({
   open,
@@ -23,6 +24,8 @@ export default function WebSocketSettingsModal({
   onWebSocketDataChange,
   hideModalWrapper = false,
 }) {
+  const theme = useTheme();
+  const SaveIcon = getSaveIcon(theme);
   const {
     name = "",
     url = "",

@@ -9,11 +9,12 @@ import {
   Checkbox,
   Tooltip,
   Box,
+  useTheme,
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
 import DeleteButton from "./DeleteButton";
 import IButton from "./IButton";
-import SaveIcon from "@mui/icons-material/SaveAs";
+import { getSaveIcon } from "../utils/themeUtils";
 
 export default function PinSettingsModal({
   open,
@@ -24,6 +25,8 @@ export default function PinSettingsModal({
   onPinDataChange,
   hideModalWrapper = false,
 }) {
+  const theme = useTheme();
+  const SaveIcon = getSaveIcon(theme);
   const {
     name = "",
     pinNumber = "",

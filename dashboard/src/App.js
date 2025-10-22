@@ -3,6 +3,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
+import { Save, Delete, Edit } from "@mui/icons-material";
 import NetworkSettingsModal from "./components/NetworkSettingsModal";
 import RSSISettingsModal from "./components/RSSISettingsModal";
 import AddModuleModal from "./components/AddModuleModal";
@@ -77,6 +78,14 @@ const theme = createTheme({
         leaveDelay: 0,
         enterNextDelay: 150,
       },
+    },
+  },
+  // Custom theme properties for icons and components
+  custom: {
+    icons: {
+      save: Save,
+      delete: Delete,
+      edit: Edit,
     },
   },
 });

@@ -10,15 +10,15 @@ import {
   Alert,
   InputAdornment,
   IconButton,
+  useTheme,
 } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
-import SaveIcon from "@mui/icons-material/SaveAs";
 import SettingsIcon from "@mui/icons-material/Settings";
-import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
+import { getSaveIcon, getEditIcon } from "../utils/themeUtils";
 
 // Tab Panel component
 function TabPanel({ children, value, index, ...other }) {
@@ -42,6 +42,9 @@ export default function NetworkSettingsModal({
   open = false,
   onClose,
 }) {
+  const theme = useTheme();
+  const SaveIcon = getSaveIcon(theme);
+  const EditIcon = getEditIcon(theme);
   const [activeTab, setActiveTab] = useState(0);
 
   // Network settings state

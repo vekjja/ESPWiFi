@@ -4,6 +4,8 @@ import {
   Settings as SettingsIcon,
   CameraAlt as CameraAltIcon,
   SignalCellularAlt as SignalCellularAltIcon,
+  SignalCellularAlt1Bar as SignalCellularAlt1BarIcon,
+  SignalCellularAlt2Bar as SignalCellularAlt2BarIcon,
   FolderOpen as FolderOpenIcon,
   Add as AddIcon,
 } from "@mui/icons-material";
@@ -26,6 +28,16 @@ export default function SettingsButtonBar({
   cameraEnabled,
   getCameraColor,
 }) {
+  // Get the appropriate signal icon based on RSSI value
+  const getRSSIIconComponent = (rssiValue) => {
+    if (rssiValue === null || rssiValue === undefined) {
+      return <SignalCellularAltIcon />;
+    }
+    if (rssiValue >= -60) return <SignalCellularAltIcon />;
+    if (rssiValue >= -70) return <SignalCellularAlt2BarIcon />;
+    if (rssiValue >= -80) return <SignalCellularAlt1BarIcon />;
+    return <SignalCellularAltIcon />;
+  };
   const buttonProps = {
     size: "medium",
     color: "primary",
@@ -102,8 +114,8 @@ export default function SettingsButtonBar({
             rssiDisplayMode === "numbers" &&
             rssiValue !== null ? (
               rssiValue
-            ) : rssiEnabled && getRSSIIcon ? (
-              getRSSIIcon(rssiValue)
+            ) : rssiEnabled ? (
+              getRSSIIconComponent(rssiValue)
             ) : (
               <SignalCellularAltIcon />
             )

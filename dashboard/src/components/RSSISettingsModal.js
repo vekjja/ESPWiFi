@@ -25,7 +25,7 @@ export default function RSSISettingsModal({
 
   // RSSI settings state (for modal editing)
   const [enabled, setEnabled] = useState(false);
-  const [displayMode, setDisplayMode] = useState("both"); // "icon", "numbers", "both"
+  const [displayMode, setDisplayMode] = useState("icon"); // "icon", "numbers"
 
   // Actual saved RSSI settings (for button display)
   const [savedEnabled, setSavedEnabled] = useState(false);
@@ -38,7 +38,7 @@ export default function RSSISettingsModal({
   useEffect(() => {
     if (config?.rssi) {
       setEnabled(config.rssi.enabled || false);
-      setDisplayMode(config.rssi.displayMode || "both");
+      setDisplayMode(config.rssi.displayMode || "icon");
       setSavedEnabled(config.rssi.enabled || false);
     }
   }, [config]);
@@ -265,17 +265,12 @@ export default function RSSISettingsModal({
             <FormControlLabel
               value="icon"
               control={<Radio />}
-              label="Icon Only (Signal Bars)"
+              label="Icon (Signal Bars)"
             />
             <FormControlLabel
               value="numbers"
               control={<Radio />}
-              label="Numbers Only (dBm)"
-            />
-            <FormControlLabel
-              value="both"
-              control={<Radio />}
-              label="Both Icon and Numbers"
+              label="Numbers (dBm)"
             />
           </RadioGroup>
         </Box>
@@ -291,8 +286,7 @@ export default function RSSISettingsModal({
           }}
         >
           <Typography variant="body2" color="primary.main">
-            📶 RSSI display will be enabled when settings are saved. Signal
-            strength will be shown in the dashboard.
+            📶 RSSI Signal Strength
           </Typography>
           <Typography
             variant="caption"

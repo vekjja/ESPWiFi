@@ -43,9 +43,9 @@ export default function RSSISettingsModal({
     }
   }, [config]);
 
-  // WebSocket connection for RSSI data
+  // WebSocket connection for RSSI data - auto-connect if RSSI is enabled
   useEffect(() => {
-    if (savedEnabled && configSaved) {
+    if (savedEnabled) {
       // Add a delay to allow the backend to start the RSSI service
       const connectTimeout = setTimeout(() => {
         // Construct WebSocket URL
@@ -153,7 +153,7 @@ export default function RSSISettingsModal({
           wsRef.current = null;
         }
       };
-    } else {
+    } else if (!savedEnabled || !configSaved) {
       // Disconnect if disabled or config not saved
       if (wsRef.current) {
         wsRef.current.close();
@@ -161,7 +161,7 @@ export default function RSSISettingsModal({
       }
       setRssiValue(null);
     }
-  }, [savedEnabled, configSaved]);
+  }, [savedEnabled]);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {

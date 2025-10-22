@@ -53,6 +53,8 @@ void ESPWiFi::initSDCard() {
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3) // ESP32-S3
   int sdCardPin = 21;
+#else
+  int sdCardPin = 4;
 #endif
 
   if (!SD.begin(sdCardPin)) {

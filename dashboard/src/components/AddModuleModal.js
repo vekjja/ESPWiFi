@@ -249,14 +249,16 @@ export default function AddModuleModal({
               />
             </ListItemButton>
           </ListItem>
-          <ListItem disablePadding>
-            <ListItemButton onClick={handleOpenCameraModal}>
-              <ListItemIcon>
-                <CameraAltIcon />
-              </ListItemIcon>
-              <ListItemText primary="Camera" secondary="Add camera module" />
-            </ListItemButton>
-          </ListItem>
+          {config?.camera?.installed !== false && (
+            <ListItem disablePadding>
+              <ListItemButton onClick={handleOpenCameraModal}>
+                <ListItemIcon>
+                  <CameraAltIcon />
+                </ListItemIcon>
+                <ListItemText primary="Camera" secondary="Add camera module" />
+              </ListItemButton>
+            </ListItem>
+          )}
         </List>
       </SettingsModal>
 

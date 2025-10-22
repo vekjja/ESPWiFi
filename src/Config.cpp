@@ -21,6 +21,10 @@ void ESPWiFi::readConfig() {
     file.close();
   }
 
+#ifdef ESPWiFi_CAMERA_INSTALLED
+  config["camera"]["installed"] = true;
+#endif
+
   log("⚙️  Config Loaded:");
   logf("\tFile: %s\n", configFile.c_str());
 
@@ -58,8 +62,10 @@ void ESPWiFi::mergeConfig(JsonObject &json) {
 }
 
 void ESPWiFi::handleConfig() {
-  cameraConfigHandler();
   rssiConfigHandler();
+#ifdef ESPWiFi_CAMERA_INSTALLED
+  cameraConfigHandler();
+#endif
 }
 
 JsonDocument ESPWiFi::defaultConfig() {

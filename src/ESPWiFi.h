@@ -20,7 +20,7 @@
 #include <WiFi.h>
 #endif
 
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
 #include <esp_camera.h>
 #endif
 
@@ -129,15 +129,15 @@ public:
   void readAccelerometer(float &x, float &y, float &z);
 #endif // ESPWiFi_BMI160_ENABLED
 
-  // Camera
-#ifdef ESPWiFi_CAMERA_ENABLED
+// Camera
+#ifdef ESPWiFi_CAMERA_INSTALLED
+  camera_config_t camConfig;
+  WebSocket *camSoc = nullptr;
+  void cameraConfigHandler();
   void recordCamera();
   void startCamera();
   bool initCamera();
   void deinitCamera();
-  camera_config_t camConfig;
-  void cameraConfigHandler();
-  WebSocket *camSoc = nullptr;
   String camSocPath = "/camera";
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");

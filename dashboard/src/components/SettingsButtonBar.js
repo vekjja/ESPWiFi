@@ -53,13 +53,15 @@ export default function SettingsButtonBar({
           onNetworkSettings={onNetworkSettings}
           saveConfigToDevice={saveConfigToDevice}
         />
-        <CameraButton
-          config={config}
-          deviceOnline={deviceOnline}
-          onCameraSettings={onCameraSettings}
-          cameraEnabled={cameraEnabled}
-          getCameraColor={getCameraColor}
-        />
+        {config?.camera?.installed !== false && (
+          <CameraButton
+            config={config}
+            deviceOnline={deviceOnline}
+            onCameraSettings={onCameraSettings}
+            cameraEnabled={cameraEnabled}
+            getCameraColor={getCameraColor}
+          />
+        )}
         <RSSIButton
           config={config}
           deviceOnline={deviceOnline}

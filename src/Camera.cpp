@@ -1,4 +1,4 @@
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
 
 #ifndef ESPWiFi_CAMERA
 #define ESPWiFi_CAMERA
@@ -494,4 +494,4 @@ void ESPWiFi::cameraConfigHandler() {
 }
 
 #endif // ESPWiFi_CAMERA
-#endif // ESPWiFi_CAMERA_ENABLED
+#endif // ESPWiFi_CAMERA_INSTALLED

@@ -43,16 +43,24 @@ export default function SettingsButtonBar({
     color: "primary",
   };
 
-  const SettingsButton = ({ onClick, tooltip, icon, color, sx = {} }) => (
+  const SettingsButton = ({
+    onClick,
+    tooltip,
+    icon,
+    color,
+    sx = {},
+    disabled = false,
+  }) => (
     <Tooltip title={tooltip}>
       <Fab
         {...buttonProps}
-        onClick={onClick}
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
         sx={{
-          color: color || "primary.main",
-          backgroundColor: "action.hover",
+          color: disabled ? "text.disabled" : color || "primary.main",
+          backgroundColor: disabled ? "action.disabled" : "action.hover",
           "&:hover": {
-            backgroundColor: "action.selected",
+            backgroundColor: disabled ? "action.disabled" : "action.selected",
           },
           ...sx,
         }}
@@ -87,6 +95,7 @@ export default function SettingsButtonBar({
           onClick={onNetworkSettings}
           tooltip="Network & Configuration Settings"
           icon={<SettingsIcon />}
+          disabled={!deviceOnline}
         />
         <SettingsButton
           onClick={onCameraSettings}
@@ -97,6 +106,7 @@ export default function SettingsButtonBar({
           }
           icon={<CameraAltIcon />}
           color={getCameraColor ? getCameraColor() : "primary.main"}
+          disabled={!deviceOnline}
         />
         <SettingsButton
           onClick={onRSSISettings}
@@ -127,17 +137,20 @@ export default function SettingsButtonBar({
                 : "primary.main"
               : "text.disabled"
           }
+          disabled={!deviceOnline}
         />
         <SettingsButton
           onClick={onFileBrowser}
           tooltip="File Browser - Browse SD card and Internal files"
           icon={<FolderOpenIcon />}
           color={deviceOnline ? "primary.main" : "text.disabled"}
+          disabled={!deviceOnline}
         />
         <SettingsButton
           onClick={onAddModule}
           tooltip="Add Module"
           icon={<AddIcon />}
+          disabled={!deviceOnline}
         />
       </Stack>
     </Paper>

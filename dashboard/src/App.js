@@ -106,7 +106,16 @@ function App() {
   const fetchConfig = useCallback(
     async (forceUpdate = false) => {
       try {
-        const response = await fetch(apiURL + "/config");
+        // Create an AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
+
+        const response = await fetch(apiURL + "/config", {
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
           throw new Error("Network response was not ok");
         }
@@ -140,7 +149,11 @@ function App() {
         setDeviceOnline(true); // Device is online
         return data;
       } catch (error) {
-        console.error("Device offline:", error.message);
+        if (error.name === "AbortError") {
+          console.error("Device offline: Request timeout (6 seconds)");
+        } else {
+          console.error("Device offline:", error.message);
+        }
         setDeviceOnline(false); // Device is offline
         return null;
       }

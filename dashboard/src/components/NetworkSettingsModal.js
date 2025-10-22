@@ -296,7 +296,7 @@ export default function NetworkSettingsModal({
           Settings
         </span>
       }
-      maxWidth="lg"
+      maxWidth={false}
       actions={getActions()}
     >
       <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
@@ -333,13 +333,18 @@ export default function NetworkSettingsModal({
             control={
               <Switch checked={mode === "client"} onChange={handleModeToggle} />
             }
-            label={mode === "client" ? "WiFi Client" : "Access Point"}
+            label={mode === "client" ? "WiFi Client Mode" : "Access Point Mode"}
           />
         </FormControl>
-        {mode === "client" ? (
-          <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
+
+        {/* WiFi Client Settings */}
+        <Box sx={{ marginTop: 2 }}>
+          <h4 style={{ margin: "0 0 8px 0", color: "primary.secondary" }}>
+            WiFi Client Settings
+          </h4>
+          <FormControl fullWidth variant="outlined">
             <TextField
-              label="SSID"
+              label="Client SSID"
               value={ssid}
               onChange={handleSsidChange}
               variant="outlined"
@@ -347,7 +352,7 @@ export default function NetworkSettingsModal({
             />
             <TextField
               type={showPassword ? "text" : "password"}
-              label="Password"
+              label="Client Password"
               value={password}
               onChange={handlePasswordChange}
               variant="outlined"
@@ -371,10 +376,16 @@ export default function NetworkSettingsModal({
               }}
             />
           </FormControl>
-        ) : (
-          <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
+        </Box>
+
+        {/* Access Point Settings */}
+        <Box sx={{ marginTop: 2 }}>
+          <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
+            Access Point Settings
+          </h4>
+          <FormControl fullWidth variant="outlined">
             <TextField
-              label="SSID"
+              label="AP SSID"
               value={apSsid}
               onChange={handleApSsidChange}
               variant="outlined"
@@ -382,7 +393,7 @@ export default function NetworkSettingsModal({
             />
             <TextField
               type={showApPassword ? "text" : "password"}
-              label="Password"
+              label="AP Password"
               value={apPassword}
               onChange={handleApPasswordChange}
               variant="outlined"
@@ -406,7 +417,7 @@ export default function NetworkSettingsModal({
               }}
             />
           </FormControl>
-        )}
+        </Box>
       </TabPanel>
 
       <TabPanel value={activeTab} index={1}>

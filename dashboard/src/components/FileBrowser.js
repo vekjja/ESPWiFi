@@ -348,7 +348,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             </ToggleButton>
             <ToggleButton value="lfs">
               <Storage sx={{ mr: 0.5 }} />
-              <Box sx={{ display: { xs: "none", sm: "inline" } }}>Internal</Box>
+              <Box sx={{ display: { xs: "none", sm: "inline" } }}>Device</Box>
               <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
             </ToggleButton>
           </ToggleButtonGroup>

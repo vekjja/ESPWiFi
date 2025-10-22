@@ -2,7 +2,7 @@ import React from "react";
 import { Stack, Paper } from "@mui/material";
 import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
-import NetworkButton from "./NetworkButton";
+import DeviceSettingsButton from "./DeviceSettingsButton";
 import FileBrowserButton from "./FileBrowserButton";
 import AddModuleButton from "./AddModuleButton";
 
@@ -15,8 +15,9 @@ export default function SettingsButtonBar({
   onFileBrowser,
   onAddModule,
   saveConfig,
+  saveConfigToDevice,
+  onRSSIDataChange,
   // RSSI specific props
-  rssiValue,
   rssiEnabled,
   rssiDisplayMode,
   getRSSIColor,
@@ -46,7 +47,7 @@ export default function SettingsButtonBar({
         alignItems="center"
         sx={{ flexWrap: "wrap", gap: 1 }}
       >
-        <NetworkButton
+        <DeviceSettingsButton
           config={config}
           deviceOnline={deviceOnline}
           onNetworkSettings={onNetworkSettings}
@@ -62,7 +63,9 @@ export default function SettingsButtonBar({
           config={config}
           deviceOnline={deviceOnline}
           onRSSISettings={onRSSISettings}
-          rssiValue={rssiValue}
+          saveConfig={saveConfig}
+          saveConfigToDevice={saveConfigToDevice}
+          onRSSIDataChange={onRSSIDataChange}
           rssiEnabled={rssiEnabled}
           rssiDisplayMode={rssiDisplayMode}
           getRSSIColor={getRSSIColor}

@@ -35,7 +35,7 @@ function TabPanel({ children, value, index, ...other }) {
   );
 }
 
-export default function NetworkSettingsModal({
+export default function DeviceSettingsModal({
   config,
   saveConfig,
   saveConfigToDevice,
@@ -296,7 +296,7 @@ export default function NetworkSettingsModal({
           }}
         >
           <SettingsIcon color="primary" />
-          Settings
+          Device Settings
         </span>
       }
       maxWidth={false}

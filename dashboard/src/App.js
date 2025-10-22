@@ -4,11 +4,7 @@ import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import { Save, Delete, Edit, Settings } from "@mui/icons-material";
-import NetworkSettingsModal from "./components/NetworkSettingsModal";
-import RSSISettingsModal from "./components/RSSISettingsModal";
-import AddModuleModal from "./components/AddModuleModal";
 import Modules from "./components/Modules";
-import FileBrowserButton from "./components/FileBrowserButton";
 import SettingsButtonBar from "./components/SettingsButtonBar";
 
 // Define the theme
@@ -97,15 +93,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
-
-  // Settings modal states
-  const [networkModalOpen, setNetworkModalOpen] = useState(false);
-  const [rssiModalOpen, setRssiModalOpen] = useState(false);
-  const [fileBrowserModalOpen, setFileBrowserModalOpen] = useState(false);
-  const [addModuleModalOpen, setAddModuleModalOpen] = useState(false);
-
-  // RSSI data state
-  const [rssiValue, setRssiValue] = useState(null);
 
   const hostname = process.env.REACT_APP_API_HOST || "localhost";
   const port = process.env.REACT_APP_API_PORT || 80;
@@ -299,7 +286,7 @@ function App() {
   };
 
   // Settings button handlers
-  const handleNetworkSettings = () => setNetworkModalOpen(true);
+  const handleNetworkSettings = () => {}; // Device settings now handled by DeviceSettingsButton
   const handleCameraSettings = () => {
     // Toggle camera state immediately
     const newEnabledState = !localConfig?.camera?.enabled;
@@ -313,15 +300,9 @@ function App() {
     };
     saveConfigFromButton(configToSave);
   };
-  const handleRSSISettings = () => setRssiModalOpen(true);
-  const handleFileBrowser = () => setFileBrowserModalOpen(true);
-  const handleAddModule = () => setAddModuleModalOpen(true);
-
-  // Close handlers
-  const closeNetworkModal = () => setNetworkModalOpen(false);
-  const closeRSSIModal = () => setRssiModalOpen(false);
-  const closeFileBrowserModal = () => setFileBrowserModalOpen(false);
-  const closeAddModuleModal = () => setAddModuleModalOpen(false);
+  const handleRSSISettings = () => {}; // RSSI settings now handled by RSSIButton
+  const handleFileBrowser = () => {}; // File browser is now handled by FileBrowserButton
+  const handleAddModule = () => {}; // Add module now handled by AddModuleButton
 
   // RSSI helper functions
   const getRSSIColor = (rssi) => {
@@ -396,8 +377,9 @@ function App() {
             onFileBrowser={handleFileBrowser}
             onAddModule={handleAddModule}
             saveConfig={updateLocalConfig}
+            saveConfigToDevice={saveConfigFromButton}
+            onRSSIDataChange={() => {}} // RSSI data is now handled internally by RSSIButton
             // RSSI specific props
-            rssiValue={rssiValue}
             rssiEnabled={localConfig?.rssi?.enabled || false}
             rssiDisplayMode={localConfig?.rssi?.displayMode || "numbers"}
             getRSSIColor={getRSSIColor}
@@ -416,45 +398,6 @@ function App() {
               deviceOnline={deviceOnline}
             />
           </Container>
-
-          {/* Settings Modals - Only render when opened by SettingsButtonBar */}
-          {networkModalOpen && (
-            <NetworkSettingsModal
-              config={localConfig}
-              saveConfig={updateLocalConfig}
-              saveConfigToDevice={saveConfigFromButton}
-              deviceOnline={deviceOnline}
-              open={networkModalOpen}
-              onClose={closeNetworkModal}
-            />
-          )}
-          <RSSISettingsModal
-            config={localConfig}
-            saveConfig={updateLocalConfig}
-            saveConfigToDevice={saveConfigFromButton}
-            deviceOnline={deviceOnline}
-            open={rssiModalOpen}
-            onClose={closeRSSIModal}
-            onRSSIDataChange={(value, connected) => {
-              setRssiValue(value);
-            }}
-          />
-          {addModuleModalOpen && (
-            <AddModuleModal
-              config={localConfig}
-              saveConfig={updateLocalConfig}
-              open={addModuleModalOpen}
-              onClose={closeAddModuleModal}
-            />
-          )}
-          {fileBrowserModalOpen && (
-            <FileBrowserButton
-              config={localConfig}
-              deviceOnline={deviceOnline}
-              open={fileBrowserModalOpen}
-              onClose={closeFileBrowserModal}
-            />
-          )}
         </>
       )}
     </ThemeProvider>

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
 import { Settings as SettingsIcon } from "@mui/icons-material";
-import NetworkSettingsModal from "./NetworkSettingsModal";
+import DeviceSettingsModal from "./DeviceSettingsModal";
 
-export default function NetworkButton({
+export default function DeviceSettingsButton({
   config,
   deviceOnline,
   onNetworkSettings,
@@ -22,7 +22,7 @@ export default function NetworkButton({
 
   return (
     <>
-      <Tooltip title="Network & Configuration Settings">
+      <Tooltip title="Device Settings">
         <Fab
           size="medium"
           color="primary"
@@ -43,7 +43,7 @@ export default function NetworkButton({
       </Tooltip>
 
       {modalOpen && (
-        <NetworkSettingsModal
+        <DeviceSettingsModal
           open={modalOpen}
           onClose={handleCloseModal}
           config={config}

@@ -353,7 +353,7 @@ export default function NetworkSettingsModal({
               variant="outlined"
               fullWidth
               sx={{ marginTop: 1 }}
-              slots={{
+              InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
@@ -388,7 +388,7 @@ export default function NetworkSettingsModal({
               variant="outlined"
               fullWidth
               sx={{ marginTop: 1 }}
-              slots={{
+              InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton

@@ -1,9 +1,9 @@
 import React from "react";
 import IButton from "./IButton";
 import DeleteButton from "./DeleteButton";
-import SettingsButton from "./SettingsButton";
 import { RestartAlt } from "@mui/icons-material";
 import { Card, CardContent, Typography } from "@mui/material";
+import { Settings } from "@mui/icons-material";
 
 // Height in px for bottom controls (input/send + buttons)
 const BOTTOM_CONTROLS_HEIGHT = 88;
@@ -95,11 +95,12 @@ export default function Module({
         >
           <div style={{ pointerEvents: "auto" }}>
             {onSettings && (
-              <SettingsButton
+              <IButton
                 color="default"
                 onClick={onSettings}
                 tooltip={settingsTooltip}
                 tooltipPlacement="bottom"
+                Icon={Settings}
                 sx={{ pointerEvents: "auto" }}
               />
             )}

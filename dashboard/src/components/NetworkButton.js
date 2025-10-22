@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import { FolderOpen as FolderOpenIcon } from "@mui/icons-material";
-import SettingsModal from "./SettingsModal";
-import FileBrowserComponent from "./FileBrowser";
+import { Settings as SettingsIcon } from "@mui/icons-material";
+import NetworkSettingsModal from "./NetworkSettingsModal";
 
-export default function FileBrowserButton({
+export default function NetworkButton({
   config,
   deviceOnline,
-  onFileBrowser,
+  onNetworkSettings,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -23,7 +22,7 @@ export default function FileBrowserButton({
 
   return (
     <>
-      <Tooltip title="File Browser - Browse SD card and Internal files">
+      <Tooltip title="Network & Configuration Settings">
         <Fab
           size="medium"
           color="primary"
@@ -39,33 +38,16 @@ export default function FileBrowserButton({
             },
           }}
         >
-          <FolderOpenIcon />
+          <SettingsIcon />
         </Fab>
       </Tooltip>
 
       {modalOpen && (
-        <SettingsModal
+        <NetworkSettingsModal
           open={modalOpen}
           onClose={handleCloseModal}
-          title={
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                width: "100%",
-              }}
-            >
-              <FolderOpenIcon color="primary" />
-              File Browser
-            </span>
-          }
-          maxWidth={false}
-          fullWidth={false}
-        >
-          <FileBrowserComponent config={config} deviceOnline={deviceOnline} />
-        </SettingsModal>
+          config={config}
+        />
       )}
     </>
   );

@@ -3,7 +3,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
-import { Save, Delete, Edit } from "@mui/icons-material";
+import { Save, Delete, Edit, Settings } from "@mui/icons-material";
 import NetworkSettingsModal from "./components/NetworkSettingsModal";
 import RSSISettingsModal from "./components/RSSISettingsModal";
 import AddModuleModal from "./components/AddModuleModal";
@@ -86,6 +86,7 @@ const theme = createTheme({
       save: Save,
       delete: Delete,
       edit: Edit,
+      settings: Settings,
     },
   },
 });
@@ -394,6 +395,7 @@ function App() {
             onRSSISettings={handleRSSISettings}
             onFileBrowser={handleFileBrowser}
             onAddModule={handleAddModule}
+            saveConfig={updateLocalConfig}
             // RSSI specific props
             rssiValue={rssiValue}
             rssiEnabled={localConfig?.rssi?.enabled || false}

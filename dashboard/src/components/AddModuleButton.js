@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import { FolderOpen as FolderOpenIcon } from "@mui/icons-material";
-import SettingsModal from "./SettingsModal";
-import FileBrowserComponent from "./FileBrowser";
+import { Add as AddIcon } from "@mui/icons-material";
+import AddModuleModal from "./AddModuleModal";
 
-export default function FileBrowserButton({
+export default function AddModuleButton({
   config,
   deviceOnline,
-  onFileBrowser,
+  onAddModule,
+  saveConfig,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -23,7 +23,7 @@ export default function FileBrowserButton({
 
   return (
     <>
-      <Tooltip title="File Browser - Browse SD card and Internal files">
+      <Tooltip title="Add Module">
         <Fab
           size="medium"
           color="primary"
@@ -39,33 +39,17 @@ export default function FileBrowserButton({
             },
           }}
         >
-          <FolderOpenIcon />
+          <AddIcon />
         </Fab>
       </Tooltip>
 
       {modalOpen && (
-        <SettingsModal
+        <AddModuleModal
           open={modalOpen}
           onClose={handleCloseModal}
-          title={
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                width: "100%",
-              }}
-            >
-              <FolderOpenIcon color="primary" />
-              File Browser
-            </span>
-          }
-          maxWidth={false}
-          fullWidth={false}
-        >
-          <FileBrowserComponent config={config} deviceOnline={deviceOnline} />
-        </SettingsModal>
+          config={config}
+          saveConfig={saveConfig}
+        />
       )}
     </>
   );

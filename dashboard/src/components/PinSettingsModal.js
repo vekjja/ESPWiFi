@@ -12,7 +12,8 @@ import {
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
 import DeleteButton from "./DeleteButton";
-import OkayButton from "./OkayButton";
+import IButton from "./IButton";
+import SaveIcon from "@mui/icons-material/SaveAs";
 
 export default function PinSettingsModal({
   open,
@@ -181,7 +182,12 @@ export default function PinSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete Pin" />
           )}
-          <OkayButton onClick={handleSave} tooltip="Apply Pin Settings" />
+          <IButton
+            onClick={handleSave}
+            tooltip="Save Pin"
+            Icon={SaveIcon}
+            color="primary"
+          />
         </Box>
       </Box>
     );
@@ -197,7 +203,12 @@ export default function PinSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete Pin" />
           )}
-          <OkayButton onClick={handleSave} tooltip="Apply Pin Settings" />
+          <IButton
+            onClick={handleSave}
+            tooltip="Save Pin"
+            Icon={SaveIcon}
+            color="primary"
+          />
         </>
       }
     >

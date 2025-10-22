@@ -121,12 +121,22 @@ export default function AddModuleModal({
   };
 
   const handleSavePin = () => {
-    if (!pinData.pinNumber || pinData.pinNumber === "") return;
+    // Validate required fields
+    if (!pinData.pinNumber || pinData.pinNumber === "") {
+      alert("Please enter a pin number");
+      return;
+    }
+
+    const pinNumber = parseInt(pinData.pinNumber, 10);
+    if (isNaN(pinNumber) || pinNumber < 0) {
+      alert("Please enter a valid pin number");
+      return;
+    }
 
     const existingModules = config.modules || [];
     const newPin = {
       type: "pin",
-      number: parseInt(pinData.pinNumber, 10),
+      number: pinNumber,
       state: "low",
       name: pinData.name || `GPIO${pinData.pinNumber}`,
       mode: pinData.mode,
@@ -144,7 +154,11 @@ export default function AddModuleModal({
   };
 
   const handleSaveWebSocket = () => {
-    if (!webSocketData.url || webSocketData.url.trim() === "") return;
+    // Validate required fields
+    if (!webSocketData.url || webSocketData.url.trim() === "") {
+      alert("Please enter a WebSocket URL");
+      return;
+    }
 
     const existingModules = config.modules || [];
     const newWebSocket = {
@@ -165,7 +179,11 @@ export default function AddModuleModal({
   };
 
   const handleSaveCamera = () => {
-    if (!cameraData.url || cameraData.url.trim() === "") return;
+    // Validate required fields
+    if (!cameraData.url || cameraData.url.trim() === "") {
+      alert("Please enter a camera URL");
+      return;
+    }
 
     const existingModules = config.modules || [];
     const newCamera = {

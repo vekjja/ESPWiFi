@@ -11,7 +11,8 @@ import {
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
 import DeleteButton from "./DeleteButton";
-import OkayButton from "./OkayButton";
+import IButton from "./IButton";
+import SaveIcon from "@mui/icons-material/SaveAs";
 
 export default function WebSocketSettingsModal({
   open,
@@ -183,7 +184,12 @@ export default function WebSocketSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete WebSocket" />
           )}
-          <OkayButton onClick={handleSave} tooltip="Apply WebSocket Settings" />
+          <IButton
+            onClick={handleSave}
+            tooltip="Save WebSocket"
+            Icon={SaveIcon}
+            color="primary"
+          />
         </Box>
       </Box>
     );
@@ -199,7 +205,12 @@ export default function WebSocketSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete WebSocket" />
           )}
-          <OkayButton onClick={handleSave} tooltip="Apply WebSocket Settings" />
+          <IButton
+            onClick={handleSave}
+            tooltip="Save WebSocket"
+            Icon={SaveIcon}
+            color="primary"
+          />
         </>
       }
     >

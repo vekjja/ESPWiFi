@@ -55,6 +55,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
   const [currentPath, setCurrentPath] = useState("/");
   const [fileSystem, setFileSystem] = useState("sd"); // 'sd' or 'lfs'
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -268,6 +269,17 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     const file = event.target.files[0];
     if (!file) return;
 
+    // Check if file is too large for available storage
+    if (storageInfo.total > 0 && file.size > storageInfo.free) {
+      setError(
+        `File too large: ${formatBytes(file.size)}. Only ${formatBytes(
+          storageInfo.free
+        )} available.`
+      );
+      event.target.value = ""; // Reset file input
+      return;
+    }
+
     // Reset progress and start uploading
     setUploadProgress(0);
     setIsUploading(true);
@@ -324,19 +336,28 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             baseName = sanitizedName.substring(0, lastDot);
           }
 
-          // Truncate base name to fit extension
-          const maxBaseLength = maxFilenameLength - extension.length;
+          // Truncate base name to fit extension and add unique suffix
+          const maxBaseLength = maxFilenameLength - extension.length - 4; // Reserve 4 chars for unique suffix
           if (maxBaseLength > 0) {
-            sanitizedName = baseName.substring(0, maxBaseLength) + extension;
+            const uniqueSuffix = Math.random().toString(36).substring(2, 6); // 4-char random suffix
+            sanitizedName =
+              baseName.substring(0, maxBaseLength) +
+              "_" +
+              uniqueSuffix +
+              extension;
           } else {
-            sanitizedName = sanitizedName.substring(0, maxFilenameLength);
+            // If no room for extension, just truncate and add suffix
+            const uniqueSuffix = Math.random().toString(36).substring(2, 6);
+            sanitizedName =
+              sanitizedName.substring(0, maxFilenameLength - 5) +
+              "_" +
+              uniqueSuffix;
           }
         }
 
         if (originalName !== sanitizedName) {
-          console.log(
-            `File uploaded successfully! Filename sanitized: "${originalName}" → "${sanitizedName}"`
-          );
+          // Show info message about filename sanitization
+          setInfo(`Filename sanitized: "${originalName}" → "${sanitizedName}"`);
         }
       } else {
         setError(`Upload failed: HTTP ${xhr.status} - ${xhr.statusText}`);
@@ -538,6 +559,78 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           </Box>
         )}
 
+        {/* Storage Information */}
+        {storageInfo.total > 0 && (
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              backgroundColor: "rgba(0, 0, 0, 0.02)",
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                mb: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 500,
+                  color: "text.primary",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                {fileSystem === "sd" ? "SD Card" : "Device"} Storage
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontFamily: "monospace",
+                }}
+              >
+                {formatBytes(storageInfo.used)} /{" "}
+                {formatBytes(storageInfo.total)}
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <LinearProgress
+                variant="determinate"
+                value={(storageInfo.used / storageInfo.total) * 100}
+                sx={{
+                  flex: 1,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: "rgba(0, 0, 0, 0.08)",
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 2,
+                    backgroundColor: theme.palette.primary.main,
+                  },
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontFamily: "monospace",
+                  minWidth: "60px",
+                  textAlign: "right",
+                }}
+              >
+                {formatBytes(storageInfo.free)}
+              </Typography>
+            </Box>
+          </Box>
+        )}
+
         {/* Breadcrumbs */}
         <Breadcrumbs
           sx={{
@@ -559,54 +652,23 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           {generateBreadcrumbs()}
         </Breadcrumbs>
 
-        {/* Storage Information */}
-        {storageInfo.total > 0 && (
-          <Box sx={{ mb: 2, textAlign: "center" }}>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 0.5 }}
-            >
-              {fileSystem === "sd" ? "SD Card" : "Device"} Storage
-            </Typography>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 1,
-              }}
-            >
-              <LinearProgress
-                variant="determinate"
-                value={(storageInfo.used / storageInfo.total) * 100}
-                sx={{
-                  width: "200px",
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: "rgba(0, 0, 0, 0.1)",
-                  "& .MuiLinearProgress-bar": {
-                    borderRadius: 3,
-                  },
-                }}
-              />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ minWidth: "80px" }}
-              >
-                {formatBytes(storageInfo.used)} /{" "}
-                {formatBytes(storageInfo.total)}
-              </Typography>
-            </Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mt: 0.5 }}
-            >
-              {formatBytes(storageInfo.free)} free
-            </Typography>
-          </Box>
+        {/* Info Display */}
+        {info && (
+          <Alert
+            severity="info"
+            sx={{
+              mb: 2,
+              backgroundColor: theme.palette.primary.main + "15", // 15% opacity
+              color: theme.palette.primary.main,
+              border: `1px solid ${theme.palette.primary.main}30`, // 30% opacity
+              "& .MuiAlert-icon": {
+                color: theme.palette.primary.main,
+              },
+            }}
+            onClose={() => setInfo(null)}
+          >
+            {info}
+          </Alert>
         )}
 
         {/* Error Display */}

@@ -798,23 +798,28 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
         baseName = sanitizedFilename.substring(0, lastDot);
       }
 
-      // Truncate base name to fit extension
-      int maxBaseLength = maxFilenameLength - extension.length();
+      // Truncate base name to fit extension and add unique suffix
+      int maxBaseLength = maxFilenameLength - extension.length() -
+                          4; // Reserve 4 chars for unique suffix
       if (maxBaseLength > 0) {
-        sanitizedFilename = baseName.substring(0, maxBaseLength) + extension;
+        // Generate 4-character random suffix
+        String uniqueSuffix =
+            String(random(1000, 9999)); // 4-digit random number
+        sanitizedFilename = baseName.substring(0, maxBaseLength) + "_" +
+                            uniqueSuffix + extension;
       } else {
-        sanitizedFilename = sanitizedFilename.substring(0, maxFilenameLength);
+        // If no room for extension, just truncate and add suffix
+        String uniqueSuffix = String(random(1000, 9999));
+        sanitizedFilename =
+            sanitizedFilename.substring(0, maxFilenameLength - 5) + "_" +
+            uniqueSuffix;
       }
 
-      logf("📁 Filename truncated due to length limit: %s\n",
-           sanitizedFilename.c_str());
+      logf("📁 Filename truncated: %s\n", sanitizedFilename.c_str());
     }
 
     String filePath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
                       sanitizedFilename;
-
-    logf("📁 Starting file upload: %s -> %s\n", filename.c_str(),
-         sanitizedFilename.c_str());
 
     // Determine filesystem
     FS *filesystem = nullptr;
@@ -831,9 +836,6 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
         totalBytes = LittleFS.totalBytes();
         usedBytes = LittleFS.usedBytes();
         freeBytes = totalBytes - usedBytes;
-        logf("📁 LittleFS space: %s free of %s total\n",
-             bytesToHumanReadable(freeBytes).c_str(),
-             bytesToHumanReadable(totalBytes).c_str());
       } else if (currentFs == "sd") {
         // Use specific SD filesystem types for space checking
         if (sdCardInitialized) {
@@ -845,13 +847,8 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
           usedBytes = SD.usedBytes();
 #endif
           freeBytes = totalBytes - usedBytes;
-          logf("📁 SD Card space: %s free of %s total\n",
-               bytesToHumanReadable(freeBytes).c_str(),
-               bytesToHumanReadable(totalBytes).c_str());
         }
       }
-
-      logf("📁 Attempting to create file: %s\n", filePath.c_str());
       currentFile = filesystem->open(filePath, "w");
       if (!currentFile) {
         logError("Failed to create file for upload");
@@ -893,8 +890,8 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      logf("📁 File uploaded: %s (%d bytes)\n", sanitizedFilename.c_str(),
-           currentSize);
+      logf("📁 Uploaded: %s (%s)\n", sanitizedFilename.c_str(),
+           bytesToHumanReadable(currentSize).c_str());
     }
 
     // Reset static variables for next upload

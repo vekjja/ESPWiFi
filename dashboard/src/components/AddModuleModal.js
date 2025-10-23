@@ -254,10 +254,7 @@ export default function AddModuleModal({
               <ListItemIcon>
                 <CameraAltIcon />
               </ListItemIcon>
-              <ListItemText
-                primary="Camera"
-                secondary="Add camera module (local or remote)"
-              />
+              <ListItemText primary="Camera" secondary="Add camera module" />
             </ListItemButton>
           </ListItem>
         </List>

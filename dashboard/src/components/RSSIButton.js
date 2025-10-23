@@ -13,7 +13,6 @@ export default function RSSIButton({
   saveConfig,
   saveConfigToDevice,
   onRSSIDataChange,
-  rssiEnabled,
   rssiDisplayMode,
   getRSSIColor,
 }) {
@@ -21,9 +20,9 @@ export default function RSSIButton({
   const [rssiValue, setRssiValue] = useState(null);
   const wsRef = useRef(null);
 
-  // WebSocket connection for RSSI data - auto-connect if RSSI is enabled
+  // WebSocket connection for RSSI data - always connect when device is online
   useEffect(() => {
-    if (rssiEnabled && deviceOnline) {
+    if (deviceOnline) {
       // Add a delay to allow the backend to start the RSSI service
       const connectTimeout = setTimeout(() => {
         // Construct WebSocket URL
@@ -80,11 +79,11 @@ export default function RSSIButton({
             onRSSIDataChange(rssiValue, false);
           }
 
-          // Only retry if RSSI is still enabled
-          if (event.code !== 1000 && rssiEnabled && deviceOnline) {
+          // Only retry if device is still online
+          if (event.code !== 1000 && deviceOnline) {
             setTimeout(() => {
-              // Double-check that RSSI is still enabled before retrying
-              if (rssiEnabled && deviceOnline && !wsRef.current) {
+              // Double-check that device is still online before retrying
+              if (deviceOnline && !wsRef.current) {
                 // Retry connection
                 const retryWs = new WebSocket(wsUrl);
                 wsRef.current = retryWs;
@@ -134,15 +133,15 @@ export default function RSSIButton({
           wsRef.current = null;
         }
       };
-    } else if (!rssiEnabled || !deviceOnline) {
-      // Disconnect if disabled or device offline
+    } else if (!deviceOnline) {
+      // Disconnect if device offline
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
       setRssiValue(null);
     }
-  }, [rssiEnabled, deviceOnline, config?.mdns]);
+  }, [deviceOnline, config?.mdns]);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {
@@ -166,7 +165,7 @@ export default function RSSIButton({
   };
 
   // Get RSSI status text
-  const getRSSIStatusText = (rssiValue, rssiEnabled) => {
+  const getRSSIStatusText = (rssiValue) => {
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
     return `RSSI: ${rssiValue} dBm`;
@@ -215,7 +214,7 @@ export default function RSSIButton({
   // Wrap disabled buttons in a span to fix MUI Tooltip warning
   if (!deviceOnline) {
     return (
-      <Tooltip title={getRSSIStatusText(rssiValue, rssiEnabled)}>
+      <Tooltip title={getRSSIStatusText(rssiValue)}>
         <span>{button}</span>
       </Tooltip>
     );
@@ -223,9 +222,7 @@ export default function RSSIButton({
 
   return (
     <>
-      <Tooltip title={getRSSIStatusText(rssiValue, rssiEnabled)}>
-        {button}
-      </Tooltip>
+      <Tooltip title={getRSSIStatusText(rssiValue)}>{button}</Tooltip>
 
       {modalOpen && (
         <RSSISettingsModal

@@ -17,8 +17,6 @@ export default function SettingsButtonBar({
   saveConfig,
   saveConfigToDevice,
   onRSSIDataChange,
-  // RSSI specific props
-  rssiEnabled,
   rssiDisplayMode,
   getRSSIColor,
   getRSSIIcon,
@@ -54,7 +52,6 @@ export default function SettingsButtonBar({
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           onRSSIDataChange={onRSSIDataChange}
-          rssiEnabled={rssiEnabled}
           rssiDisplayMode={rssiDisplayMode}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}

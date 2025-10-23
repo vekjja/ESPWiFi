@@ -22,9 +22,6 @@ export default function RSSISettingsModal({
   // RSSI settings state (for modal editing)
   const [displayMode, setDisplayMode] = useState("icon"); // "icon", "numbers"
 
-  // RSSI is always enabled
-  const savedEnabled = true;
-
   // RSSI data state
   const [rssiValue, setRssiValue] = useState(null);
   const wsRef = useRef(null);
@@ -35,125 +32,115 @@ export default function RSSISettingsModal({
     }
   }, [config]);
 
-  // WebSocket connection for RSSI data - auto-connect if RSSI is enabled
+  // WebSocket connection for RSSI data - always connect
   useEffect(() => {
-    if (savedEnabled) {
-      // Add a delay to allow the backend to start the RSSI service
-      const connectTimeout = setTimeout(() => {
-        // Construct WebSocket URL
-        let wsUrl = "/rssi";
-        if (wsUrl.startsWith("/")) {
-          const protocol =
-            window.location.protocol === "https:" ? "wss:" : "ws:";
-          const mdnsHostname = config?.mdns;
-          const hostname = mdnsHostname
-            ? `${mdnsHostname}.local`
-            : window.location.hostname;
-          const port =
-            window.location.port && !mdnsHostname
-              ? `:${window.location.port}`
-              : "";
-          wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
-        }
+    // Add a delay to allow the backend to start the RSSI service
+    const connectTimeout = setTimeout(() => {
+      // Construct WebSocket URL
+      let wsUrl = "/rssi";
+      if (wsUrl.startsWith("/")) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const mdnsHostname = config?.mdns;
+        const hostname = mdnsHostname
+          ? `${mdnsHostname}.local`
+          : window.location.hostname;
+        const port =
+          window.location.port && !mdnsHostname
+            ? `:${window.location.port}`
+            : "";
+        wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
+      }
 
-        // Connect to RSSI WebSocket
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
+      // Connect to RSSI WebSocket
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-        ws.onopen = () => {
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, true);
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            // RSSI data comes as plain text (just the number)
-            const rssiValue = parseInt(event.data);
-            if (!isNaN(rssiValue)) {
-              setRssiValue(rssiValue);
-              if (onRSSIDataChange) {
-                onRSSIDataChange(rssiValue, true);
-              }
-            }
-          } catch (error) {
-            console.error("Error parsing RSSI data:", error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error("RSSI WebSocket error:", error);
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, false);
-          }
-        };
-
-        ws.onclose = (event) => {
-          wsRef.current = null;
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, false);
-          }
-
-          // Only retry if RSSI is still enabled and it's not a normal closure
-          if (event.code !== 1000 && savedEnabled) {
-            setTimeout(() => {
-              // Double-check that RSSI is still enabled before retrying
-              if (savedEnabled && !wsRef.current) {
-                // Retry connection
-                const retryWs = new WebSocket(wsUrl);
-                wsRef.current = retryWs;
-
-                retryWs.onopen = () => {
-                  // WebSocket retry connected
-                };
-                retryWs.onmessage = (event) => {
-                  try {
-                    // RSSI data comes as plain text (just the number)
-                    const rssiValue = parseInt(event.data);
-                    if (!isNaN(rssiValue)) {
-                      setRssiValue(rssiValue);
-                      if (onRSSIDataChange) {
-                        onRSSIDataChange(rssiValue, true);
-                      }
-                    }
-                  } catch (error) {
-                    console.error("Error parsing RSSI data:", error);
-                  }
-                };
-                retryWs.onerror = (error) => {
-                  console.error("RSSI WebSocket retry error:", error);
-                  if (onRSSIDataChange) {
-                    onRSSIDataChange(rssiValue, false);
-                  }
-                };
-                retryWs.onclose = () => {
-                  wsRef.current = null;
-                  if (onRSSIDataChange) {
-                    onRSSIDataChange(rssiValue, false);
-                  }
-                };
-              }
-            }, 2000);
-          }
-        };
-      }, 1000); // 1 second delay
-
-      return () => {
-        clearTimeout(connectTimeout);
-        if (wsRef.current) {
-          wsRef.current.close();
-          wsRef.current = null;
+      ws.onopen = () => {
+        if (onRSSIDataChange) {
+          onRSSIDataChange(rssiValue, true);
         }
       };
-    } else if (!savedEnabled) {
-      // Disconnect if disabled
+
+      ws.onmessage = (event) => {
+        try {
+          // RSSI data comes as plain text (just the number)
+          const rssiValue = parseInt(event.data);
+          if (!isNaN(rssiValue)) {
+            setRssiValue(rssiValue);
+            if (onRSSIDataChange) {
+              onRSSIDataChange(rssiValue, true);
+            }
+          }
+        } catch (error) {
+          console.error("Error parsing RSSI data:", error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error("RSSI WebSocket error:", error);
+        if (onRSSIDataChange) {
+          onRSSIDataChange(rssiValue, false);
+        }
+      };
+
+      ws.onclose = (event) => {
+        wsRef.current = null;
+        if (onRSSIDataChange) {
+          onRSSIDataChange(rssiValue, false);
+        }
+
+        // Only retry if it's not a normal closure
+        if (event.code !== 1000) {
+          setTimeout(() => {
+            // Double-check before retrying
+            if (!wsRef.current) {
+              // Retry connection
+              const retryWs = new WebSocket(wsUrl);
+              wsRef.current = retryWs;
+
+              retryWs.onopen = () => {
+                // WebSocket retry connected
+              };
+              retryWs.onmessage = (event) => {
+                try {
+                  // RSSI data comes as plain text (just the number)
+                  const rssiValue = parseInt(event.data);
+                  if (!isNaN(rssiValue)) {
+                    setRssiValue(rssiValue);
+                    if (onRSSIDataChange) {
+                      onRSSIDataChange(rssiValue, true);
+                    }
+                  }
+                } catch (error) {
+                  console.error("Error parsing RSSI data:", error);
+                }
+              };
+              retryWs.onerror = (error) => {
+                console.error("RSSI WebSocket retry error:", error);
+                if (onRSSIDataChange) {
+                  onRSSIDataChange(rssiValue, false);
+                }
+              };
+              retryWs.onclose = () => {
+                wsRef.current = null;
+                if (onRSSIDataChange) {
+                  onRSSIDataChange(rssiValue, false);
+                }
+              };
+            }
+          }, 2000);
+        }
+      };
+    }, 1000); // 1 second delay
+
+    return () => {
+      clearTimeout(connectTimeout);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
-      setRssiValue(null);
-    }
-  }, [savedEnabled]);
+    };
+  }, []);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {
@@ -179,7 +166,6 @@ export default function RSSISettingsModal({
     const configToSave = {
       ...config,
       rssi: {
-        enabled: true, // Always enabled
         displayMode: newDisplayMode,
       },
     };

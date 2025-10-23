@@ -359,10 +359,7 @@ export default function Modules({ config, saveConfig, deviceOnline = true }) {
                     onDelete={deleteModule}
                   />
                 );
-              } else if (
-                module.type === "camera" &&
-                config?.camera?.installed !== false
-              ) {
+              } else if (module.type === "camera") {
                 return (
                   <SortableCameraModule
                     key={`camera-${module.key}`}

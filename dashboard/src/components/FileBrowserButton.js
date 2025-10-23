@@ -23,7 +23,7 @@ export default function FileBrowserButton({
 
   return (
     <>
-      <Tooltip title="File Browser - Browse SD card and Internal files">
+      <Tooltip title="File Browser - Browse device files">
         <Fab
           size="medium"
           color="primary"

@@ -61,10 +61,10 @@ export default function CameraSettingsModal({
           label="Camera URL"
           value={localData.url || ""}
           onChange={(e) => handleDataChange("url", e.target.value)}
-          placeholder="Enter camera URL (e.g., /camera)"
+          placeholder="Enter camera URL (e.g., /camera or ws://192.168.1.100:8080/camera)"
           fullWidth
           variant="outlined"
-          helperText="Use relative path (e.g., /camera) for same server, or full URL for external cameras"
+          helperText="Local: /camera | Remote: ws://hostname:port/camera | HTTP: http://hostname:port/camera"
         />
 
         <TextField

@@ -289,7 +289,13 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   // Initialize
   useEffect(() => {
     if (config && deviceOnline) {
-      fetchFiles();
+      // If SD card is not enabled and we're trying to use SD filesystem, switch to LFS
+      if (config.sd?.enabled === false && fileSystem === "sd") {
+        setFileSystem("lfs");
+        fetchFiles("/", "lfs");
+      } else {
+        fetchFiles();
+      }
     }
   }, [config, deviceOnline]);
 
@@ -345,11 +351,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               },
             }}
           >
-            <ToggleButton value="sd">
-              <Storage sx={{ mr: 0.5 }} />
-              <Box sx={{ display: { xs: "none", sm: "inline" } }}>SD Card</Box>
-              <Box sx={{ display: { xs: "inline", sm: "none" } }}>SD</Box>
-            </ToggleButton>
+            {config?.sd?.enabled !== false && (
+              <ToggleButton value="sd">
+                <Storage sx={{ mr: 0.5 }} />
+                <Box sx={{ display: { xs: "none", sm: "inline" } }}>
+                  SD Card
+                </Box>
+                <Box sx={{ display: { xs: "inline", sm: "none" } }}>SD</Box>
+              </ToggleButton>
+            )}
             <ToggleButton value="lfs">
               <Storage sx={{ mr: 0.5 }} />
               <Box sx={{ display: { xs: "none", sm: "inline" } }}>Device</Box>

@@ -4,6 +4,7 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
+  readConfig();
   startLogging();
   startWiFi();
   startMDNS();

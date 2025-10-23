@@ -21,10 +21,6 @@ void ESPWiFi::readConfig() {
     file.close();
   }
 
-#ifdef ESPWiFi_CAMERA_INSTALLED
-  config["camera"]["installed"] = true;
-#endif
-
   log("⚙️  Config Loaded:");
   logf("\tFile: %s\n", configFile.c_str());
 
@@ -62,9 +58,11 @@ void ESPWiFi::mergeConfig(JsonObject &json) {
 }
 
 void ESPWiFi::handleConfig() {
-  rssiConfigHandler();
 #ifdef ESPWiFi_CAMERA_INSTALLED
   cameraConfigHandler();
+#else
+  config["camera"]["enabled"] = false;
+  config["camera"]["installed"] = false;
 #endif
 }
 
@@ -91,9 +89,14 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["enabled"] = false;
   defaultConfig["camera"]["frameRate"] = 10;
 
-  // RSSI settings
-  defaultConfig["rssi"]["enabled"] = false;
+  // RSSI settings - always enabled
   defaultConfig["rssi"]["displayMode"] = "numbers";
+
+#ifdef ESPWiFi_CAMERA_INSTALLED
+  defaultConfig["camera"]["installed"] = true;
+#else
+  defaultConfig["camera"]["installed"] = false;
+#endif
 
   return defaultConfig;
 }

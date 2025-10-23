@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  FormControl,
   FormControlLabel,
-  Switch,
   RadioGroup,
   Radio,
   Typography,
   Box,
-  useTheme,
 } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
-import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
-import { getSaveIcon } from "../utils/themeUtils";
 
 export default function RSSISettingsModal({
   config,
@@ -22,27 +17,21 @@ export default function RSSISettingsModal({
   onClose,
   onRSSIDataChange,
 }) {
-  const theme = useTheme();
-  const SaveIcon = getSaveIcon(theme);
   // Remove internal modal state - use external open prop
 
   // RSSI settings state (for modal editing)
-  const [enabled, setEnabled] = useState(false);
   const [displayMode, setDisplayMode] = useState("icon"); // "icon", "numbers"
 
-  // Actual saved RSSI settings (for button display)
-  const [savedEnabled, setSavedEnabled] = useState(false);
+  // RSSI is always enabled
+  const savedEnabled = true;
 
   // RSSI data state
   const [rssiValue, setRssiValue] = useState(null);
-  const [configSaved, setConfigSaved] = useState(false);
   const wsRef = useRef(null);
 
   useEffect(() => {
     if (config?.rssi) {
-      setEnabled(config.rssi.enabled || false);
       setDisplayMode(config.rssi.displayMode || "icon");
-      setSavedEnabled(config.rssi.enabled || false);
     }
   }, [config]);
 
@@ -106,10 +95,10 @@ export default function RSSISettingsModal({
           }
 
           // Only retry if RSSI is still enabled and it's not a normal closure
-          if (event.code !== 1000 && savedEnabled && configSaved) {
+          if (event.code !== 1000 && savedEnabled) {
             setTimeout(() => {
               // Double-check that RSSI is still enabled before retrying
-              if (savedEnabled && configSaved && !wsRef.current) {
+              if (savedEnabled && !wsRef.current) {
                 // Retry connection
                 const retryWs = new WebSocket(wsUrl);
                 wsRef.current = retryWs;
@@ -156,8 +145,8 @@ export default function RSSISettingsModal({
           wsRef.current = null;
         }
       };
-    } else if (!savedEnabled || !configSaved) {
-      // Disconnect if disabled or config not saved
+    } else if (!savedEnabled) {
+      // Disconnect if disabled
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
@@ -180,35 +169,29 @@ export default function RSSISettingsModal({
     if (onClose) onClose();
   };
 
-  const handleEnabledChange = (event) => {
-    setEnabled(event.target.checked);
-  };
+  // RSSI is always enabled, no need for enable/disable handler
 
   const handleDisplayModeChange = (event) => {
-    setDisplayMode(event.target.value);
-  };
+    const newDisplayMode = event.target.value;
+    setDisplayMode(newDisplayMode);
 
-  const handleSave = () => {
+    // Apply changes immediately
     const configToSave = {
       ...config,
       rssi: {
-        enabled: enabled,
-        displayMode: displayMode,
+        enabled: true, // Always enabled
+        displayMode: newDisplayMode,
       },
     };
 
-    // Save to device (not just local config)
-    // The backend will automatically start/stop RSSI based on enabled state
+    // Save to device immediately
     saveConfigToDevice(configToSave);
 
-    // Update saved settings to match what was just saved
-    setSavedEnabled(enabled);
-
-    // Mark config as saved so WebSocket can connect
-    setConfigSaved(true);
-
+    // Close modal after selection
     handleCloseModal();
   };
+
+  // No save button needed - changes apply immediately
 
   return (
     <SettingsModal
@@ -228,34 +211,12 @@ export default function RSSISettingsModal({
           RSSI
         </span>
       }
-      actions={
-        <IButton
-          color="primary"
-          Icon={SaveIcon}
-          onClick={handleSave}
-          tooltip={"Save RSSI Settings to Device"}
-        />
-      }
+      actions={null}
     >
-      <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={enabled}
-              onChange={handleEnabledChange}
-              color="primary"
-            />
-          }
-          label="Enable RSSI Display"
-        />
-      </FormControl>
-
-      <Box sx={{ marginTop: 3 }}>
-        <Typography gutterBottom>Display Mode:</Typography>
+      <Box sx={{ marginTop: 1 }}>
         <RadioGroup
           value={displayMode}
           onChange={handleDisplayModeChange}
-          disabled={!enabled}
           sx={{
             "& .MuiRadio-root": {
               color: "primary.main",

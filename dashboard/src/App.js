@@ -379,8 +379,7 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             onRSSIDataChange={() => {}} // RSSI data is now handled internally by RSSIButton
-            // RSSI specific props
-            rssiEnabled={localConfig?.rssi?.enabled || false}
+            rssiEnabled={true}
             rssiDisplayMode={localConfig?.rssi?.displayMode || "numbers"}
             getRSSIColor={getRSSIColor}
             getRSSIIcon={getRSSIIcon}

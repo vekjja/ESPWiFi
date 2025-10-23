@@ -167,7 +167,6 @@ export default function RSSIButton({
 
   // Get RSSI status text
   const getRSSIStatusText = (rssiValue, rssiEnabled) => {
-    if (!rssiEnabled) return "RSSI - Disabled";
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
     return `RSSI: ${rssiValue} dBm`;
@@ -196,11 +195,9 @@ export default function RSSIButton({
       sx={{
         color: !deviceOnline
           ? "text.disabled"
-          : rssiEnabled
-          ? getRSSIColor
-            ? getRSSIColor(rssiValue)
-            : "primary.main"
-          : "text.disabled",
+          : getRSSIColor
+          ? getRSSIColor(rssiValue)
+          : "primary.main",
         backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
         "&:hover": {
           backgroundColor: !deviceOnline
@@ -209,13 +206,9 @@ export default function RSSIButton({
         },
       }}
     >
-      {rssiEnabled && rssiDisplayMode === "numbers" && rssiValue !== null ? (
-        rssiValue
-      ) : rssiEnabled ? (
-        getRSSIIconComponent(rssiValue)
-      ) : (
-        <SignalCellularAltIcon />
-      )}
+      {rssiDisplayMode === "numbers" && rssiValue !== null
+        ? rssiValue
+        : getRSSIIconComponent(rssiValue)}
     </Fab>
   );
 

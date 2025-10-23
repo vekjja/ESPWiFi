@@ -47,6 +47,18 @@ export default function SettingsButtonBar({
         alignItems="center"
         sx={{ flexWrap: "wrap", gap: 1 }}
       >
+        <RSSIButton
+          config={config}
+          deviceOnline={deviceOnline}
+          onRSSISettings={onRSSISettings}
+          saveConfig={saveConfig}
+          saveConfigToDevice={saveConfigToDevice}
+          onRSSIDataChange={onRSSIDataChange}
+          rssiEnabled={rssiEnabled}
+          rssiDisplayMode={rssiDisplayMode}
+          getRSSIColor={getRSSIColor}
+          getRSSIIcon={getRSSIIcon}
+        />
         <DeviceSettingsButton
           config={config}
           deviceOnline={deviceOnline}
@@ -62,18 +74,6 @@ export default function SettingsButtonBar({
             getCameraColor={getCameraColor}
           />
         )}
-        <RSSIButton
-          config={config}
-          deviceOnline={deviceOnline}
-          onRSSISettings={onRSSISettings}
-          saveConfig={saveConfig}
-          saveConfigToDevice={saveConfigToDevice}
-          onRSSIDataChange={onRSSIDataChange}
-          rssiEnabled={rssiEnabled}
-          rssiDisplayMode={rssiDisplayMode}
-          getRSSIColor={getRSSIColor}
-          getRSSIIcon={getRSSIIcon}
-        />
         <FileBrowserButton
           config={config}
           deviceOnline={deviceOnline}

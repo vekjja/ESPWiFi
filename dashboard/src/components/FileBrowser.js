@@ -11,6 +11,7 @@ import {
   TextField,
   Alert,
   CircularProgress,
+  LinearProgress,
   ToggleButton,
   ToggleButtonGroup,
   Chip,
@@ -37,6 +38,15 @@ import {
 import { useTheme } from "@mui/material";
 import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
 
+// Helper function to format bytes
+const formatBytes = (bytes) => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
 const FileBrowserComponent = ({ config, deviceOnline }) => {
   const theme = useTheme();
   const DeleteIcon = getDeleteIcon(theme);
@@ -47,6 +57,14 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const [error, setError] = useState(null);
   const [currentPath, setCurrentPath] = useState("/");
   const [fileSystem, setFileSystem] = useState("sd"); // 'sd' or 'lfs'
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [storageInfo, setStorageInfo] = useState({
+    total: 0,
+    used: 0,
+    free: 0,
+    loading: false,
+  });
   const [renameDialog, setRenameDialog] = useState({
     open: false,
     file: null,
@@ -62,6 +80,34 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const apiURL = config?.apiURL || "";
 
   // Fetch files from ESP32
+  // Fetch storage information
+  const fetchStorageInfo = useCallback(
+    async (fs = fileSystem) => {
+      setStorageInfo((prev) => ({ ...prev, loading: true }));
+
+      try {
+        const response = await fetch(
+          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setStorageInfo({
+          total: data.total || 0,
+          used: data.used || 0,
+          free: data.free || 0,
+          loading: false,
+        });
+      } catch (err) {
+        console.error(`Failed to fetch storage info: ${err.message}`);
+        setStorageInfo((prev) => ({ ...prev, loading: false }));
+      }
+    },
+    [fileSystem, apiURL]
+  );
+
   const fetchFiles = useCallback(
     async (path = currentPath, fs = fileSystem) => {
       setLoading(true);
@@ -78,6 +124,9 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         const data = await response.json();
         setFiles(data.files || []);
         setCurrentPath(path);
+        setFileSystem(fs);
+        // Fetch storage info when filesystem changes
+        fetchStorageInfo(fs);
       } catch (err) {
         if (err.name === "TypeError" && err.message.includes("fetch")) {
           setError(
@@ -214,10 +263,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     }
   };
 
-  // Upload file
+  // Upload file with progress tracking
   const handleUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
+    // Reset progress and start uploading
+    setUploadProgress(0);
+    setIsUploading(true);
+    setError(null);
 
     // Create FormData with file and URL parameters for fs and path
     const formData = new FormData();
@@ -228,19 +282,85 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       fileSystem
     )}&path=${encodeURIComponent(currentPath)}`;
 
-    fetch(url, {
-      method: "POST",
-      body: formData,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+    // Use XMLHttpRequest for progress tracking
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        setUploadProgress(percentComplete);
+      }
+    });
+
+    // Handle successful upload
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setUploadProgress(100);
+        setIsUploading(false);
         fetchFiles(currentPath, fileSystem);
-      })
-      .catch((err) => {
-        setError(`Failed to upload file: ${err.message}`);
-      });
+        // Reset file input
+        event.target.value = "";
+
+        // Log filename sanitization if needed
+        const originalName = file.name;
+        let sanitizedName = originalName
+          .replace(/ /g, "_")
+          .replace(/[^a-zA-Z0-9._-]/g, "_")
+          .replace(/_+/g, "_")
+          .replace(/^_|_$/g, "");
+
+        // Check filename length limit (LittleFS typically has 31 char limit)
+        const maxFilenameLength = 31;
+        if (sanitizedName.length > maxFilenameLength) {
+          // Try to preserve file extension
+          const lastDot = sanitizedName.lastIndexOf(".");
+          let extension = "";
+          let baseName = sanitizedName;
+
+          if (lastDot > 0 && lastDot > sanitizedName.length - 6) {
+            // Extension is reasonable length
+            extension = sanitizedName.substring(lastDot);
+            baseName = sanitizedName.substring(0, lastDot);
+          }
+
+          // Truncate base name to fit extension
+          const maxBaseLength = maxFilenameLength - extension.length;
+          if (maxBaseLength > 0) {
+            sanitizedName = baseName.substring(0, maxBaseLength) + extension;
+          } else {
+            sanitizedName = sanitizedName.substring(0, maxFilenameLength);
+          }
+        }
+
+        if (originalName !== sanitizedName) {
+          console.log(
+            `File uploaded successfully! Filename sanitized: "${originalName}" → "${sanitizedName}"`
+          );
+        }
+      } else {
+        setError(`Upload failed: HTTP ${xhr.status} - ${xhr.statusText}`);
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
+    });
+
+    // Handle upload errors
+    xhr.addEventListener("error", () => {
+      setError("Upload failed: Network error");
+      setIsUploading(false);
+      setUploadProgress(0);
+    });
+
+    // Handle upload abort
+    xhr.addEventListener("abort", () => {
+      setIsUploading(false);
+      setUploadProgress(0);
+    });
+
+    // Start the upload
+    xhr.open("POST", url);
+    xhr.send(formData);
   };
 
   // Navigate to parent directory
@@ -370,7 +490,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             variant="contained"
             component="label"
             startIcon={<Upload />}
-            disabled={loading}
+            disabled={loading || isUploading}
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
@@ -379,11 +499,44 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               height: "32px", // Match toggle button height
             }}
           >
-            <Box sx={{ display: { xs: "none", sm: "inline" } }}>Upload</Box>
-            <Box sx={{ display: { xs: "inline", sm: "none" } }}>Upload</Box>
+            <Box sx={{ display: { xs: "none", sm: "inline" } }}>
+              {isUploading ? `Uploading... ${uploadProgress}%` : "Upload"}
+            </Box>
+            <Box sx={{ display: { xs: "inline", sm: "none" } }}>
+              {isUploading ? `${uploadProgress}%` : "Upload"}
+            </Box>
             <input type="file" hidden onChange={handleUpload} />
           </Button>
         </Box>
+
+        {/* Upload Progress Bar */}
+        {isUploading && (
+          <Box sx={{ width: "100%", mt: 1 }}>
+            <LinearProgress
+              variant="determinate"
+              value={uploadProgress}
+              sx={{
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: "rgba(0, 0, 0, 0.1)",
+                "& .MuiLinearProgress-bar": {
+                  borderRadius: 3,
+                },
+              }}
+            />
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                textAlign: "center",
+                mt: 0.5,
+                color: "text.secondary",
+              }}
+            >
+              Uploading... {uploadProgress}%
+            </Typography>
+          </Box>
+        )}
 
         {/* Breadcrumbs */}
         <Breadcrumbs
@@ -405,6 +558,56 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         >
           {generateBreadcrumbs()}
         </Breadcrumbs>
+
+        {/* Storage Information */}
+        {storageInfo.total > 0 && (
+          <Box sx={{ mb: 2, textAlign: "center" }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 0.5 }}
+            >
+              {fileSystem === "sd" ? "SD Card" : "Device"} Storage
+            </Typography>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1,
+              }}
+            >
+              <LinearProgress
+                variant="determinate"
+                value={(storageInfo.used / storageInfo.total) * 100}
+                sx={{
+                  width: "200px",
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: "rgba(0, 0, 0, 0.1)",
+                  "& .MuiLinearProgress-bar": {
+                    borderRadius: 3,
+                  },
+                }}
+              />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ minWidth: "80px" }}
+              >
+                {formatBytes(storageInfo.used)} /{" "}
+                {formatBytes(storageInfo.total)}
+              </Typography>
+            </Box>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 0.5 }}
+            >
+              {formatBytes(storageInfo.free)} free
+            </Typography>
+          </Box>
+        )}
 
         {/* Error Display */}
         {error && (

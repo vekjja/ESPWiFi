@@ -331,6 +331,55 @@ void ESPWiFi::srvFiles() {
     request->send(response);
   });
 
+  // API endpoint for storage information
+  webServer->on(
+      "/api/storage", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        String fsParam = "lfs";
+        if (request->hasParam("fs")) {
+          fsParam = request->getParam("fs")->value();
+        }
+
+        size_t totalBytes = 0;
+        size_t usedBytes = 0;
+        size_t freeBytes = 0;
+
+        if (fsParam == "lfs") {
+          totalBytes = LittleFS.totalBytes();
+          usedBytes = LittleFS.usedBytes();
+          freeBytes = totalBytes - usedBytes;
+        } else if (fsParam == "sd" && sdCardInitialized) {
+#if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
+          totalBytes = SD_MMC.totalBytes();
+          usedBytes = SD_MMC.usedBytes();
+#else // ESP32-S2, ESP32-S3, ESP32-C3
+      totalBytes = SD.totalBytes();
+      usedBytes = SD.usedBytes();
+#endif
+          freeBytes = totalBytes - usedBytes;
+        }
+
+        // Create JSON response
+        JsonDocument jsonDoc;
+        jsonDoc["total"] = totalBytes;
+        jsonDoc["used"] = usedBytes;
+        jsonDoc["free"] = freeBytes;
+        jsonDoc["filesystem"] = fsParam;
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+
+        AsyncWebServerResponse *response =
+            request->beginResponse(200, "application/json", jsonResponse);
+        addCORS(response);
+        request->send(response);
+      });
+
   // API endpoint for file rename
   webServer->on(
       "/api/files/rename", HTTP_POST, [this](AsyncWebServerRequest *request) {
@@ -686,6 +735,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
   static size_t currentSize = 0;
   static String currentFs = "";
   static String currentPath = "";
+  static String sanitizedFilename = "";
 
   if (index == 0) {
     // First chunk - get parameters and initialize (URL parameters like OTA)
@@ -707,10 +757,64 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     if (!currentPath.startsWith("/"))
       currentPath = "/" + currentPath;
 
-    String filePath =
-        currentPath + (currentPath.endsWith("/") ? "" : "/") + filename;
+    // Sanitize filename - keep only alphanumeric, dots, hyphens, and
+    // underscores
+    sanitizedFilename = filename;
+    sanitizedFilename.replace(" ", "_");
 
-    logf("📁 Starting file upload: %s\n", filename.c_str());
+    // Replace all non-alphanumeric characters (except dots, hyphens,
+    // underscores) with underscores
+    for (int i = 0; i < sanitizedFilename.length(); i++) {
+      char c = sanitizedFilename.charAt(i);
+      if (!isalnum(c) && c != '.' && c != '-' && c != '_') {
+        sanitizedFilename.setCharAt(i, '_');
+      }
+    }
+
+    // Clean up multiple consecutive underscores
+    while (sanitizedFilename.indexOf("__") != -1) {
+      sanitizedFilename.replace("__", "_");
+    }
+
+    // Remove leading/trailing underscores
+    sanitizedFilename.trim();
+    if (sanitizedFilename.startsWith("_"))
+      sanitizedFilename = sanitizedFilename.substring(1);
+    if (sanitizedFilename.endsWith("_"))
+      sanitizedFilename =
+          sanitizedFilename.substring(0, sanitizedFilename.length() - 1);
+
+    // Check filename length limit (LittleFS typically has 31 char limit)
+    const int maxFilenameLength = 31;
+    if (sanitizedFilename.length() > maxFilenameLength) {
+      // Try to preserve file extension
+      int lastDot = sanitizedFilename.lastIndexOf('.');
+      String extension = "";
+      String baseName = sanitizedFilename;
+
+      if (lastDot > 0 && lastDot > sanitizedFilename.length() -
+                                       6) { // Extension is reasonable length
+        extension = sanitizedFilename.substring(lastDot);
+        baseName = sanitizedFilename.substring(0, lastDot);
+      }
+
+      // Truncate base name to fit extension
+      int maxBaseLength = maxFilenameLength - extension.length();
+      if (maxBaseLength > 0) {
+        sanitizedFilename = baseName.substring(0, maxBaseLength) + extension;
+      } else {
+        sanitizedFilename = sanitizedFilename.substring(0, maxFilenameLength);
+      }
+
+      logf("📁 Filename truncated due to length limit: %s\n",
+           sanitizedFilename.c_str());
+    }
+
+    String filePath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
+                      sanitizedFilename;
+
+    logf("📁 Starting file upload: %s -> %s\n", filename.c_str(),
+         sanitizedFilename.c_str());
 
     // Determine filesystem
     FS *filesystem = nullptr;
@@ -721,9 +825,38 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     }
 
     if (filesystem) {
+      // Check available space before creating file
+      size_t totalBytes, usedBytes, freeBytes;
+      if (currentFs == "lfs") {
+        totalBytes = LittleFS.totalBytes();
+        usedBytes = LittleFS.usedBytes();
+        freeBytes = totalBytes - usedBytes;
+        logf("📁 LittleFS space: %s free of %s total\n",
+             bytesToHumanReadable(freeBytes).c_str(),
+             bytesToHumanReadable(totalBytes).c_str());
+      } else if (currentFs == "sd") {
+        // Use specific SD filesystem types for space checking
+        if (sdCardInitialized) {
+#if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
+          totalBytes = SD_MMC.totalBytes();
+          usedBytes = SD_MMC.usedBytes();
+#else // ESP32-S2, ESP32-S3, ESP32-C3
+          totalBytes = SD.totalBytes();
+          usedBytes = SD.usedBytes();
+#endif
+          freeBytes = totalBytes - usedBytes;
+          logf("📁 SD Card space: %s free of %s total\n",
+               bytesToHumanReadable(freeBytes).c_str(),
+               bytesToHumanReadable(totalBytes).c_str());
+        }
+      }
+
+      logf("📁 Attempting to create file: %s\n", filePath.c_str());
       currentFile = filesystem->open(filePath, "w");
       if (!currentFile) {
         logError("Failed to create file for upload");
+        logf("📁 File path: %s\n", filePath.c_str());
+        logf("📁 Filesystem: %s\n", currentFs.c_str());
         request->send(500, "application/json",
                       "{\"error\":\"Failed to create file\"}");
         return;
@@ -760,13 +893,15 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      logf("📁 File uploaded: %s (%d bytes)\n", filename.c_str(), currentSize);
+      logf("📁 File uploaded: %s (%d bytes)\n", sanitizedFilename.c_str(),
+           currentSize);
     }
 
     // Reset static variables for next upload
     currentFs = "";
     currentPath = "";
     currentSize = 0;
+    sanitizedFilename = "";
 
     AsyncWebServerResponse *response =
         request->beginResponse(200, "application/json", "{\"success\":true}");

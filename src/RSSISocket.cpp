@@ -19,6 +19,8 @@ void ESPWiFi::streamRSSI() {
         int rssi = WiFi.RSSI() | 0;
         snprintf(rssiBuffer, sizeof(rssiBuffer), "%d", rssi);
         rssiWebSocket->textAll(String(rssiBuffer));
+      } else {
+        rssiWebSocket = new WebSocket("/rssi", this);
       }
     });
   }

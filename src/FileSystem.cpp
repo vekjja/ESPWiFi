@@ -37,14 +37,14 @@ void ESPWiFi::initLittleFS() {
 }
 
 void ESPWiFi::initSDCard() {
-  if (sdCardInitialized) {
+  if (sdCardInitialized || config["sd"]["enabled"] == false) {
     return;
   }
 
 #if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
   if (!SD_MMC.begin()) {
-    log("⚠️  Failed to mount SD card");
     config["sd"]["enabled"] = false;
+    log("⚠️  Failed to mount SD card");
     return;
   }
   fs = &SD_MMC;
@@ -59,8 +59,8 @@ void ESPWiFi::initSDCard() {
 #endif
 
   if (!SD.begin(sdCardPin)) {
-    log("⚠️  Failed to mount SD card");
     config["sd"]["enabled"] = false;
+    log("⚠️  Failed to mount SD card");
     return;
   }
   fs = &SD;
@@ -378,6 +378,104 @@ void ESPWiFi::srvFiles() {
             request->beginResponse(200, "application/json", jsonResponse);
         addCORS(response);
         request->send(response);
+      });
+
+  // API endpoint for creating directories
+  webServer->on(
+      "/api/files/mkdir", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // Defer response until body is received
+      },
+      NULL,
+      [this](AsyncWebServerRequest *request, uint8_t *data, size_t len,
+             size_t index, size_t total) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        // Parse JSON body
+        JsonDocument jsonDoc;
+        String body = String((char *)data).substring(0, len);
+
+        DeserializationError error = deserializeJson(jsonDoc, body);
+
+        if (error) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"Invalid JSON\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        String fsParam = jsonDoc["fs"] | "lfs";
+        String path = jsonDoc["path"] | "/";
+        String name = jsonDoc["name"] | "";
+
+        if (name.length() == 0) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json", "{\"error\":\"Folder name required\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Sanitize folder name
+        String sanitizedName = name;
+        sanitizedName.replace(" ", "_");
+        for (int i = 0; i < sanitizedName.length(); i++) {
+          char c = sanitizedName.charAt(i);
+          if (!isalnum(c) && c != '-' && c != '_') {
+            sanitizedName.setCharAt(i, '_');
+          }
+        }
+        while (sanitizedName.indexOf("__") != -1) {
+          sanitizedName.replace("__", "_");
+        }
+        sanitizedName.trim();
+        if (sanitizedName.startsWith("_"))
+          sanitizedName = sanitizedName.substring(1);
+        if (sanitizedName.endsWith("_"))
+          sanitizedName =
+              sanitizedName.substring(0, sanitizedName.length() - 1);
+
+        // Determine filesystem
+        FS *filesystem = nullptr;
+        if (fsParam == "sd" && sdCardInitialized && fs) {
+          filesystem = fs;
+        } else if (fsParam == "lfs") {
+          filesystem = &LittleFS;
+        }
+
+        if (!filesystem) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              404, "application/json",
+              "{\"error\":\"File system not available\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+
+        // Create directory path
+        if (!path.startsWith("/"))
+          path = "/" + path;
+        String dirPath = path + (path.endsWith("/") ? "" : "/") + sanitizedName;
+
+        // Create directory
+        if (filesystem->mkdir(dirPath)) {
+          logf("📁 Created directory: %s\n", dirPath.c_str());
+          AsyncWebServerResponse *response = request->beginResponse(
+              200, "application/json", "{\"success\":true}");
+          addCORS(response);
+          request->send(response);
+        } else {
+          AsyncWebServerResponse *response = request->beginResponse(
+              500, "application/json",
+              "{\"error\":\"Failed to create directory\"}");
+          addCORS(response);
+          request->send(response);
+        }
       });
 
   // API endpoint for file rename

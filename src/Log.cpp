@@ -20,11 +20,12 @@
 static File logFileHandle;
 
 void ESPWiFi::startSerial(int baudRate) {
-  if (Serial) {
+  if (serialStarted) {
     return;
   }
   Serial.begin(baudRate);
   Serial.setDebugOutput(true);
+  serialStarted = true;
   delay(999); // wait for serial to start
   log("⛓️  Serial Started:");
   logf("\tBaud: %d\n", baudRate);
@@ -35,7 +36,11 @@ void ESPWiFi::startLogging(String filePath) {
     return;
   }
 
-  startSerial();
+  if (!serialStarted) {
+    startSerial();
+  }
+
+  loggingStarted = true; // Set this BEFORE calling initSDCard()
   initLittleFS();
   initSDCard();
   this->logFilePath = filePath;
@@ -43,8 +48,6 @@ void ESPWiFi::startLogging(String filePath) {
   closeLogFile();
   openLogFile();
   cleanLogFile();
-
-  loggingStarted = true;
   log("📝 Logging started:");
   logf("\tFile Name: %s\n", logFilePath.c_str());
   logf("\tFile System: %s\n", sdCardInitialized ? "SD Card" : "LittleFS");
@@ -104,6 +107,12 @@ String ESPWiFi::timestampForFilename() {
 }
 
 void ESPWiFi::log(String message) {
+  if (!serialStarted) {
+    startSerial();
+  }
+  if (!loggingStarted) {
+    startLogging();
+  }
   String ts = timestamp();
   Serial.println(ts + message);
   Serial.flush(); // Ensure immediate output
@@ -111,6 +120,13 @@ void ESPWiFi::log(String message) {
 }
 
 void ESPWiFi::logf(const char *format, ...) {
+  if (!serialStarted) {
+    startSerial();
+  }
+  if (!loggingStarted) {
+    startLogging();
+  }
+
   char buffer[256];
   va_list args;
   va_start(args, format);
@@ -128,7 +144,6 @@ void ESPWiFi::closeLogFile() {
   if (logFileHandle) {
     logFileHandle.close();
   }
-  loggingStarted = false;
 }
 
 void ESPWiFi::openLogFile() {

@@ -54,6 +54,7 @@ public:
                         size_t index, uint8_t *data, size_t len, bool final);
 
   // Logging
+  bool serialStarted = false;
   int maxLogFileSize = 1024 * 1024 * 0.5; // 512KB = 524288 bytes
   void cleanLogFile();
   void closeLogFile();

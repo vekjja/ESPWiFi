@@ -56,6 +56,10 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
+  const [newFolderDialog, setNewFolderDialog] = useState({
+    open: false,
+    folderName: "",
+  });
   const [currentPath, setCurrentPath] = useState("/");
   const [fileSystem, setFileSystem] = useState("sd"); // 'sd' or 'lfs'
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -163,6 +167,44 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     } else {
       // Download file
       window.open(`${apiURL}/${fileSystem}${file.path}`, "_blank");
+    }
+  };
+
+  // Handle new folder creation
+  const handleCreateFolder = async () => {
+    if (!newFolderDialog.folderName.trim()) {
+      setError("Please enter a folder name");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${apiURL}/api/files/mkdir`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fs: fileSystem,
+          path: currentPath,
+          name: newFolderDialog.folderName.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Close dialog and refresh files
+      setNewFolderDialog({ open: false, folderName: "" });
+      fetchFiles(currentPath, fileSystem);
+      setInfo(`Folder "${newFolderDialog.folderName}" created successfully`);
+    } catch (err) {
+      setError(`Failed to create folder: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -528,6 +570,22 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             </Box>
             <input type="file" hidden onChange={handleUpload} />
           </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Folder />}
+            onClick={() => setNewFolderDialog({ open: true, folderName: "" })}
+            disabled={loading || isUploading}
+            size="small"
+            sx={{
+              width: { xs: "100%", sm: "auto" },
+              minWidth: "100px",
+              px: 1,
+              height: "32px", // Match toggle button height
+            }}
+          >
+            <Box sx={{ display: { xs: "none", sm: "inline" } }}>New Folder</Box>
+            <Box sx={{ display: { xs: "inline", sm: "none" } }}>Folder</Box>
+          </Button>
         </Box>
 
         {/* Upload Progress Bar */}
@@ -885,6 +943,52 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             color="error"
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* New Folder Dialog */}
+      <Dialog
+        open={newFolderDialog.open}
+        onClose={() => setNewFolderDialog({ open: false, folderName: "" })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create New Folder</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Folder Name"
+            fullWidth
+            variant="outlined"
+            value={newFolderDialog.folderName}
+            onChange={(e) =>
+              setNewFolderDialog({
+                ...newFolderDialog,
+                folderName: e.target.value,
+              })
+            }
+            placeholder="Enter folder name"
+            onKeyPress={(e) => {
+              if (e.key === "Enter") {
+                handleCreateFolder();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setNewFolderDialog({ open: false, folderName: "" })}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateFolder}
+            variant="contained"
+            disabled={loading || !newFolderDialog.folderName.trim()}
+          >
+            Create
           </Button>
         </DialogActions>
       </Dialog>

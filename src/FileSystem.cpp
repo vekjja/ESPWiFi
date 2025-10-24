@@ -6,6 +6,13 @@
 
 #include "ESPWiFi.h"
 
+void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
+                                size_t usedBytes) {
+  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
+  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
+  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
+}
+
 void ESPWiFi::initLittleFS() {
   if (littleFsInitialized) {
     return;
@@ -31,9 +38,7 @@ void ESPWiFi::initLittleFS() {
   usedBytes = LittleFS.usedBytes();
 #endif
 
-  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
+  logFilesystemInfo("LittleFS", totalBytes, usedBytes);
 }
 
 void ESPWiFi::initSDCard() {
@@ -73,9 +78,62 @@ void ESPWiFi::initSDCard() {
   sdCardInitialized = true;
   log("💾 SD Card Initialized:");
 
-  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
+  logFilesystemInfo("SD Card", totalBytes, usedBytes);
+}
+
+FS *ESPWiFi::getFilesystem(const String &fsParam) {
+  if (fsParam == "sd" && sdCardInitialized && fs) {
+    return fs;
+  } else if (fsParam == "lfs") {
+    return &LittleFS;
+  }
+  return nullptr;
+}
+
+String ESPWiFi::sanitizeFilename(const String &filename) {
+  String sanitized = filename;
+  sanitized.replace(" ", "_");
+
+  for (int i = 0; i < sanitized.length(); i++) {
+    char c = sanitized.charAt(i);
+    if (!isalnum(c) && c != '.' && c != '-' && c != '_') {
+      sanitized.setCharAt(i, '_');
+    }
+  }
+
+  while (sanitized.indexOf("__") != -1) {
+    sanitized.replace("__", "_");
+  }
+
+  sanitized.trim();
+  if (sanitized.startsWith("_"))
+    sanitized = sanitized.substring(1);
+  if (sanitized.endsWith("_"))
+    sanitized = sanitized.substring(0, sanitized.length() - 1);
+
+  return sanitized;
+}
+
+void ESPWiFi::getStorageInfo(const String &fsParam, size_t &totalBytes,
+                             size_t &usedBytes, size_t &freeBytes) {
+  totalBytes = 0;
+  usedBytes = 0;
+  freeBytes = 0;
+
+  if (fsParam == "lfs") {
+    totalBytes = LittleFS.totalBytes();
+    usedBytes = LittleFS.usedBytes();
+    freeBytes = totalBytes - usedBytes;
+  } else if (fsParam == "sd" && sdCardInitialized) {
+#if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
+    totalBytes = SD_MMC.totalBytes();
+    usedBytes = SD_MMC.usedBytes();
+#else // ESP32-S2, ESP32-S3, ESP32-C3
+    totalBytes = SD.totalBytes();
+    usedBytes = SD.usedBytes();
+#endif
+    freeBytes = totalBytes - usedBytes;
+  }
 }
 
 bool ESPWiFi::fileExists(FS *fs, const String &filePath) {
@@ -274,27 +332,17 @@ void ESPWiFi::srvFiles() {
         path = "/" + path;
     }
 
-    FS *filesystem = nullptr;
-    if (fsParam == "sd" && sdCardInitialized && fs) {
-      filesystem = fs;
-    } else if (fsParam == "lfs") {
-      filesystem = &LittleFS;
-    }
+    FS *filesystem = getFilesystem(fsParam);
 
     if (!filesystem) {
-      AsyncWebServerResponse *response = request->beginResponse(
-          404, "application/json", "{\"error\":\"File system not available\"}");
-      addCORS(response);
-      request->send(response);
+      sendJsonResponse(request, 404,
+                       "{\"error\":\"File system not available\"}");
       return;
     }
 
     File root = filesystem->open(path, "r");
     if (!root || !root.isDirectory()) {
-      AsyncWebServerResponse *response = request->beginResponse(
-          404, "application/json", "{\"error\":\"Directory not found\"}");
-      addCORS(response);
-      request->send(response);
+      sendJsonResponse(request, 404, "{\"error\":\"Directory not found\"}");
       return;
     }
 
@@ -325,60 +373,37 @@ void ESPWiFi::srvFiles() {
 
     String jsonResponse;
     serializeJson(jsonDoc, jsonResponse);
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", jsonResponse);
-    addCORS(response);
-    request->send(response);
+    sendJsonResponse(request, 200, jsonResponse);
   });
 
   // API endpoint for storage information
-  webServer->on(
-      "/api/storage", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        // Handle CORS preflight requests
-        if (request->method() == HTTP_OPTIONS) {
-          handleCorsPreflight(request);
-          return;
-        }
+  webServer->on("/api/storage", HTTP_GET,
+                [this](AsyncWebServerRequest *request) {
+                  // Handle CORS preflight requests
+                  if (request->method() == HTTP_OPTIONS) {
+                    handleCorsPreflight(request);
+                    return;
+                  }
 
-        String fsParam = "lfs";
-        if (request->hasParam("fs")) {
-          fsParam = request->getParam("fs")->value();
-        }
+                  String fsParam = "lfs";
+                  if (request->hasParam("fs")) {
+                    fsParam = request->getParam("fs")->value();
+                  }
 
-        size_t totalBytes = 0;
-        size_t usedBytes = 0;
-        size_t freeBytes = 0;
+                  size_t totalBytes, usedBytes, freeBytes;
+                  getStorageInfo(fsParam, totalBytes, usedBytes, freeBytes);
 
-        if (fsParam == "lfs") {
-          totalBytes = LittleFS.totalBytes();
-          usedBytes = LittleFS.usedBytes();
-          freeBytes = totalBytes - usedBytes;
-        } else if (fsParam == "sd" && sdCardInitialized) {
-#if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
-          totalBytes = SD_MMC.totalBytes();
-          usedBytes = SD_MMC.usedBytes();
-#else // ESP32-S2, ESP32-S3, ESP32-C3
-      totalBytes = SD.totalBytes();
-      usedBytes = SD.usedBytes();
-#endif
-          freeBytes = totalBytes - usedBytes;
-        }
+                  // Create JSON response
+                  JsonDocument jsonDoc;
+                  jsonDoc["total"] = totalBytes;
+                  jsonDoc["used"] = usedBytes;
+                  jsonDoc["free"] = freeBytes;
+                  jsonDoc["filesystem"] = fsParam;
 
-        // Create JSON response
-        JsonDocument jsonDoc;
-        jsonDoc["total"] = totalBytes;
-        jsonDoc["used"] = usedBytes;
-        jsonDoc["free"] = freeBytes;
-        jsonDoc["filesystem"] = fsParam;
-
-        String jsonResponse;
-        serializeJson(jsonDoc, jsonResponse);
-
-        AsyncWebServerResponse *response =
-            request->beginResponse(200, "application/json", jsonResponse);
-        addCORS(response);
-        request->send(response);
-      });
+                  String jsonResponse;
+                  serializeJson(jsonDoc, jsonResponse);
+                  sendJsonResponse(request, 200, jsonResponse);
+                });
 
   // API endpoint for creating directories
   webServer->on(
@@ -402,10 +427,7 @@ void ESPWiFi::srvFiles() {
         DeserializationError error = deserializeJson(jsonDoc, body);
 
         if (error) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"Invalid JSON\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 400, "{\"error\":\"Invalid JSON\"}");
           return;
         }
 
@@ -414,46 +436,20 @@ void ESPWiFi::srvFiles() {
         String name = jsonDoc["name"] | "";
 
         if (name.length() == 0) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"Folder name required\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 400,
+                           "{\"error\":\"Folder name required\"}");
           return;
         }
 
         // Sanitize folder name
-        String sanitizedName = name;
-        sanitizedName.replace(" ", "_");
-        for (int i = 0; i < sanitizedName.length(); i++) {
-          char c = sanitizedName.charAt(i);
-          if (!isalnum(c) && c != '-' && c != '_') {
-            sanitizedName.setCharAt(i, '_');
-          }
-        }
-        while (sanitizedName.indexOf("__") != -1) {
-          sanitizedName.replace("__", "_");
-        }
-        sanitizedName.trim();
-        if (sanitizedName.startsWith("_"))
-          sanitizedName = sanitizedName.substring(1);
-        if (sanitizedName.endsWith("_"))
-          sanitizedName =
-              sanitizedName.substring(0, sanitizedName.length() - 1);
+        String sanitizedName = sanitizeFilename(name);
 
         // Determine filesystem
-        FS *filesystem = nullptr;
-        if (fsParam == "sd" && sdCardInitialized && fs) {
-          filesystem = fs;
-        } else if (fsParam == "lfs") {
-          filesystem = &LittleFS;
-        }
+        FS *filesystem = getFilesystem(fsParam);
 
         if (!filesystem) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              404, "application/json",
-              "{\"error\":\"File system not available\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 404,
+                           "{\"error\":\"File system not available\"}");
           return;
         }
 
@@ -465,16 +461,10 @@ void ESPWiFi::srvFiles() {
         // Create directory
         if (filesystem->mkdir(dirPath)) {
           logf("📁 Created directory: %s\n", dirPath.c_str());
-          AsyncWebServerResponse *response = request->beginResponse(
-              200, "application/json", "{\"success\":true}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
-          AsyncWebServerResponse *response = request->beginResponse(
-              500, "application/json",
-              "{\"error\":\"Failed to create directory\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 500,
+                           "{\"error\":\"Failed to create directory\"}");
         }
       });
 
@@ -504,26 +494,15 @@ void ESPWiFi::srvFiles() {
         // Validate parameters
         if (fsParam.length() == 0 || oldPath.length() == 0 ||
             newName.length() == 0) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"Missing parameters\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 400, "{\"error\":\"Missing parameters\"}");
           return;
         }
 
-        FS *filesystem = nullptr;
-        if (fsParam == "sd" && sdCardInitialized && fs) {
-          filesystem = fs;
-        } else if (fsParam == "lfs") {
-          filesystem = &LittleFS;
-        }
+        FS *filesystem = getFilesystem(fsParam);
 
         if (!filesystem) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              404, "application/json",
-              "{\"error\":\"File system not available\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 404,
+                           "{\"error\":\"File system not available\"}");
           return;
         }
 
@@ -533,15 +512,10 @@ void ESPWiFi::srvFiles() {
 
         if (filesystem->rename(oldPath, newPath)) {
           logf("📁 Renamed file: %s -> %s\n", oldPath.c_str(), newName.c_str());
-          AsyncWebServerResponse *response = request->beginResponse(
-              200, "application/json", "{\"success\":true}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
-          AsyncWebServerResponse *response = request->beginResponse(
-              500, "application/json", "{\"error\":\"Failed to rename file\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 500,
+                           "{\"error\":\"Failed to rename file\"}");
         }
       });
 
@@ -566,64 +540,41 @@ void ESPWiFi::srvFiles() {
 
         // Validate parameters
         if (fsParam.length() == 0 || filePath.length() == 0) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"Missing parameters\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 400, "{\"error\":\"Missing parameters\"}");
           return;
         }
 
         // Validate file path length
         if (filePath.length() > 255) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"Invalid file path\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 400, "{\"error\":\"Invalid file path\"}");
           return;
         }
 
-        FS *filesystem = nullptr;
-        if (fsParam == "sd" && sdCardInitialized && fs) {
-          filesystem = fs;
-        } else if (fsParam == "lfs") {
-          filesystem = &LittleFS;
-        }
+        FS *filesystem = getFilesystem(fsParam);
 
         if (!filesystem) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              404, "application/json",
-              "{\"error\":\"File system not available\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 404,
+                           "{\"error\":\"File system not available\"}");
           return;
         }
 
         // Additional safety check - ensure file system is still mounted
         if (fsParam == "sd" && !sdCardInitialized) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              500, "application/json", "{\"error\":\"SD card not mounted\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 500, "{\"error\":\"SD card not mounted\"}");
           return;
         }
 
         // Check if file exists before attempting deletion
         if (!filesystem->exists(filePath)) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              404, "application/json", "{\"error\":\"File not found\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 404, "{\"error\":\"File not found\"}");
           return;
         }
 
         // Prevent deletion of system files
         if (filePath == "/config.json" || filePath == "/log" ||
             filePath.startsWith("/system/") || filePath.startsWith("/boot/")) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              403, "application/json",
-              "{\"error\":\"Cannot delete system files\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 403,
+                           "{\"error\":\"Cannot delete system files\"}");
           return;
         }
 
@@ -658,15 +609,10 @@ void ESPWiFi::srvFiles() {
           } else {
             logf("🗑️ Deleted file: %s\n", filePath.c_str());
           }
-          AsyncWebServerResponse *response = request->beginResponse(
-              200, "application/json", "{\"success\":true}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
-          AsyncWebServerResponse *response = request->beginResponse(
-              500, "application/json", "{\"error\":\"Failed to delete file\"}");
-          addCORS(response);
-          request->send(response);
+          sendJsonResponse(request, 500,
+                           "{\"error\":\"Failed to delete file\"}");
         }
       });
 
@@ -719,92 +665,9 @@ void ESPWiFi::srvFiles() {
         path = "/" + path;
     }
 
-    // Helper function to generate file listing HTML
-    auto generateFileListing = [&](FS *filesystem, const String &fsName,
-                                   const String &fsPrefix,
-                                   const String &currentPath) -> String {
-      String result = "";
-
-      if (!filesystem) {
-        result += "<div class='fs-section'>";
-        result += "<div class='fs-header'><h3>💾 " + fsName +
-                  " (Not Available)</h3></div>";
-        result += "<p>File system not mounted or available.</p></div>";
-        return result;
-      }
-
-      File root = filesystem->open(currentPath, "r");
-      if (!root || !root.isDirectory()) {
-        result += "<div class='fs-section'>";
-        result += "<div class='fs-header'><h3>💾 " + fsName + "</h3></div>";
-        result += "<p>Directory not found: " + currentPath + "</p></div>";
-        return result;
-      }
-
-      result += "<div class='fs-section'>";
-      result += "<div class='fs-header'><h3>💾 " + fsName + "</h3></div>";
-      result += "<ul>";
-
-      // Add parent directory link if not root
-      if (currentPath != "/") {
-        String parent = currentPath;
-        if (parent.endsWith("/"))
-          parent = parent.substring(0, parent.length() - 1);
-        int lastSlash = parent.lastIndexOf('/');
-        if (lastSlash > 0) {
-          parent = parent.substring(0, lastSlash);
-        } else {
-          parent = "/";
-        }
-        String parentQuery = "?fs=" + fsPrefix + "&dir=" + parent;
-        if (parent.startsWith("/"))
-          parent = parent.substring(1);
-        result += "<li class='folder'>⬆️ <a href='/files" + parentQuery +
-                  "'>../</a></li>";
-      }
-
-      File file = root.openNextFile();
-      while (file) {
-        String fname = String(file.name());
-        String displayName = fname;
-        if (fname.startsWith(currentPath) && currentPath != "/") {
-          displayName = fname.substring(currentPath.length());
-          if (displayName.startsWith("/"))
-            displayName = displayName.substring(1);
-        }
-        if (displayName == "")
-          displayName = fname;
-
-        if (file.isDirectory()) {
-          String subdirPath = currentPath;
-          if (!subdirPath.endsWith("/"))
-            subdirPath += "/";
-          subdirPath += displayName;
-          String subdirQuery = "?fs=" + fsPrefix + "&dir=" + subdirPath;
-          if (subdirPath.startsWith("/"))
-            subdirQuery = "?fs=" + fsPrefix + "&dir=" + subdirPath.substring(1);
-          result += "<li class='folder'>📁 <a href='/files" + subdirQuery +
-                    "'>" + displayName + "/</a></li>";
-        } else {
-          String filePath = fsPrefix + currentPath;
-          if (!filePath.endsWith("/"))
-            filePath += "/";
-          filePath += displayName;
-          if (!filePath.startsWith("/"))
-            filePath = "/" + filePath;
-          result += "<li class='file'>📄 <a href='" + filePath +
-                    "' target='_blank'>" + displayName + "</a></li>";
-        }
-        file = root.openNextFile();
-      }
-
-      result += "</ul></div>";
-      return result;
-    };
-
     // Show LittleFS files
     if (fsParam == "" || fsParam == "lfs") {
-      html += generateFileListing(&LittleFS, "LittleFS", "lfs", path);
+      html += generateFileListingHTML(&LittleFS, "LittleFS", "lfs", path);
     }
 
     // Show SD Card files (if available)
@@ -813,7 +676,7 @@ void ESPWiFi::srvFiles() {
       if (sdCardInitialized && fs) {
         sdFS = fs;
       }
-      html += generateFileListing(sdFS, "SD Card", "sd", path);
+      html += generateFileListingHTML(sdFS, "SD Card", "sd", path);
     }
 
     html += "</body></html>";
@@ -847,40 +710,15 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     // Validate parameters
     if (currentFs.length() == 0 || currentPath.length() == 0) {
       logError("Missing fs or path parameters for file upload");
-      request->send(400, "application/json",
-                    "{\"error\":\"Missing parameters\"}");
+      sendJsonResponse(request, 400, "{\"error\":\"Missing parameters\"}");
       return;
     }
 
     if (!currentPath.startsWith("/"))
       currentPath = "/" + currentPath;
 
-    // Sanitize filename - keep only alphanumeric, dots, hyphens, and
-    // underscores
-    sanitizedFilename = filename;
-    sanitizedFilename.replace(" ", "_");
-
-    // Replace all non-alphanumeric characters (except dots, hyphens,
-    // underscores) with underscores
-    for (int i = 0; i < sanitizedFilename.length(); i++) {
-      char c = sanitizedFilename.charAt(i);
-      if (!isalnum(c) && c != '.' && c != '-' && c != '_') {
-        sanitizedFilename.setCharAt(i, '_');
-      }
-    }
-
-    // Clean up multiple consecutive underscores
-    while (sanitizedFilename.indexOf("__") != -1) {
-      sanitizedFilename.replace("__", "_");
-    }
-
-    // Remove leading/trailing underscores
-    sanitizedFilename.trim();
-    if (sanitizedFilename.startsWith("_"))
-      sanitizedFilename = sanitizedFilename.substring(1);
-    if (sanitizedFilename.endsWith("_"))
-      sanitizedFilename =
-          sanitizedFilename.substring(0, sanitizedFilename.length() - 1);
+    // Sanitize filename
+    sanitizedFilename = sanitizeFilename(filename);
 
     // Check filename length limit (LittleFS typically has 31 char limit)
     const int maxFilenameLength = 31;
@@ -920,46 +758,24 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
                       sanitizedFilename;
 
     // Determine filesystem
-    FS *filesystem = nullptr;
-    if (currentFs == "sd" && sdCardInitialized && fs) {
-      filesystem = fs;
-    } else if (currentFs == "lfs") {
-      filesystem = &LittleFS;
-    }
+    FS *filesystem = getFilesystem(currentFs);
 
     if (filesystem) {
       // Check available space before creating file
       size_t totalBytes, usedBytes, freeBytes;
-      if (currentFs == "lfs") {
-        totalBytes = LittleFS.totalBytes();
-        usedBytes = LittleFS.usedBytes();
-        freeBytes = totalBytes - usedBytes;
-      } else if (currentFs == "sd") {
-        // Use specific SD filesystem types for space checking
-        if (sdCardInitialized) {
-#if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
-          totalBytes = SD_MMC.totalBytes();
-          usedBytes = SD_MMC.usedBytes();
-#else // ESP32-S2, ESP32-S3, ESP32-C3
-          totalBytes = SD.totalBytes();
-          usedBytes = SD.usedBytes();
-#endif
-          freeBytes = totalBytes - usedBytes;
-        }
-      }
+      getStorageInfo(currentFs, totalBytes, usedBytes, freeBytes);
       currentFile = filesystem->open(filePath, "w");
       if (!currentFile) {
         logError("Failed to create file for upload");
         logf("📁 File path: %s\n", filePath.c_str());
         logf("📁 Filesystem: %s\n", currentFs.c_str());
-        request->send(500, "application/json",
-                      "{\"error\":\"Failed to create file\"}");
+        sendJsonResponse(request, 500, "{\"error\":\"Failed to create file\"}");
         return;
       }
     } else {
       logError("File system not available");
-      request->send(404, "application/json",
-                    "{\"error\":\"File system not available\"}");
+      sendJsonResponse(request, 404,
+                       "{\"error\":\"File system not available\"}");
       return;
     }
 
@@ -972,8 +788,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     if (bytesWritten != len) {
       logError("Failed to write all data to file");
       currentFile.close();
-      request->send(500, "application/json",
-                    "{\"error\":\"File write failed\"}");
+      sendJsonResponse(request, 500, "{\"error\":\"File write failed\"}");
       return;
     }
     currentSize += len;
@@ -998,11 +813,90 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     currentSize = 0;
     sanitizedFilename = "";
 
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", "{\"success\":true}");
-    addCORS(response);
-    request->send(response);
+    sendJsonResponse(request, 200, "{\"success\":true}");
   }
+}
+
+String ESPWiFi::generateFileListingHTML(FS *filesystem, const String &fsName,
+                                        const String &fsPrefix,
+                                        const String &currentPath) {
+  String result = "";
+
+  if (!filesystem) {
+    result += "<div class='fs-section'>";
+    result += "<div class='fs-header'><h3>💾 " + fsName +
+              " (Not Available)</h3></div>";
+    result += "<p>File system not mounted or available.</p></div>";
+    return result;
+  }
+
+  File root = filesystem->open(currentPath, "r");
+  if (!root || !root.isDirectory()) {
+    result += "<div class='fs-section'>";
+    result += "<div class='fs-header'><h3>💾 " + fsName + "</h3></div>";
+    result += "<p>Directory not found: " + currentPath + "</p></div>";
+    return result;
+  }
+
+  result += "<div class='fs-section'>";
+  result += "<div class='fs-header'><h3>💾 " + fsName + "</h3></div>";
+  result += "<ul>";
+
+  // Add parent directory link if not root
+  if (currentPath != "/") {
+    String parent = currentPath;
+    if (parent.endsWith("/"))
+      parent = parent.substring(0, parent.length() - 1);
+    int lastSlash = parent.lastIndexOf('/');
+    if (lastSlash > 0) {
+      parent = parent.substring(0, lastSlash);
+    } else {
+      parent = "/";
+    }
+    String parentQuery = "?fs=" + fsPrefix + "&dir=" + parent;
+    if (parent.startsWith("/"))
+      parent = parent.substring(1);
+    result +=
+        "<li class='folder'>⬆️ <a href='/files" + parentQuery + "'>../</a></li>";
+  }
+
+  File file = root.openNextFile();
+  while (file) {
+    String fname = String(file.name());
+    String displayName = fname;
+    if (fname.startsWith(currentPath) && currentPath != "/") {
+      displayName = fname.substring(currentPath.length());
+      if (displayName.startsWith("/"))
+        displayName = displayName.substring(1);
+    }
+    if (displayName == "")
+      displayName = fname;
+
+    if (file.isDirectory()) {
+      String subdirPath = currentPath;
+      if (!subdirPath.endsWith("/"))
+        subdirPath += "/";
+      subdirPath += displayName;
+      String subdirQuery = "?fs=" + fsPrefix + "&dir=" + subdirPath;
+      if (subdirPath.startsWith("/"))
+        subdirQuery = "?fs=" + fsPrefix + "&dir=" + subdirPath.substring(1);
+      result += "<li class='folder'>📁 <a href='/files" + subdirQuery + "'>" +
+                displayName + "/</a></li>";
+    } else {
+      String filePath = fsPrefix + currentPath;
+      if (!filePath.endsWith("/"))
+        filePath += "/";
+      filePath += displayName;
+      if (!filePath.startsWith("/"))
+        filePath = "/" + filePath;
+      result += "<li class='file'>📄 <a href='" + filePath +
+                "' target='_blank'>" + displayName + "</a></li>";
+    }
+    file = root.openNextFile();
+  }
+
+  result += "</ul></div>";
+  return result;
 }
 
 #endif // ESPWiFi_FileSystem

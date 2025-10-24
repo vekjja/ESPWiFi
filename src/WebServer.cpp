@@ -17,6 +17,14 @@ void ESPWiFi::handleCorsPreflight(AsyncWebServerRequest *request) {
   request->send(response);
 }
 
+void ESPWiFi::sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
+                               const String &jsonBody) {
+  AsyncWebServerResponse *response =
+      request->beginResponse(statusCode, "application/json", jsonBody);
+  addCORS(response);
+  request->send(response);
+}
+
 void ESPWiFi::initWebServer() {
   if (!webServer) {
     webServer = new AsyncWebServer(80);

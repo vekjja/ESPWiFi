@@ -40,7 +40,9 @@ void ESPWiFi::startLogging(String filePath) {
     startSerial();
   }
 
-  loggingStarted = true; // Set this BEFORE calling initSDCard()
+  // This must be set before calling initSDCard() to prevent circular calls
+  loggingStarted = true;
+
   initLittleFS();
   initSDCard();
   this->logFilePath = filePath;

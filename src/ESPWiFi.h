@@ -53,6 +53,17 @@ public:
   void handleFileUpload(AsyncWebServerRequest *request, String filename,
                         size_t index, uint8_t *data, size_t len, bool final);
 
+  // Helper functions for filesystem operations
+  void logFilesystemInfo(const String &fsName, size_t totalBytes,
+                         size_t usedBytes);
+  FS *getFilesystem(const String &fsParam);
+  String sanitizeFilename(const String &filename);
+  void getStorageInfo(const String &fsParam, size_t &totalBytes,
+                      size_t &usedBytes, size_t &freeBytes);
+  String generateFileListingHTML(FS *filesystem, const String &fsName,
+                                 const String &fsPrefix,
+                                 const String &currentPath);
+
   // Logging
   bool serialStarted = false;
   int maxLogFileSize = 1024 * 1024 * 0.5; // 512KB = 524288 bytes
@@ -109,6 +120,8 @@ public:
   bool webServerStarted = false;
   void addCORS(AsyncWebServerResponse *response);
   void handleCorsPreflight(AsyncWebServerRequest *request);
+  void sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
+                        const String &jsonBody);
 
   // LED Matrix
   void startLEDMatrix();

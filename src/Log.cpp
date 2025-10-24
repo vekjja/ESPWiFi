@@ -50,6 +50,7 @@ void ESPWiFi::startLogging(String filePath) {
   closeLogFile();
   openLogFile();
   cleanLogFile();
+
   log("📝 Logging started:");
   logf("\tFile Name: %s\n", logFilePath.c_str());
   logf("\tFile System: %s\n", sdCardInitialized ? "SD Card" : "LittleFS");

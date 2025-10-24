@@ -6,13 +6,6 @@
 
 #include "ESPWiFi.h"
 
-void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
-                                size_t usedBytes) {
-  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
-  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
-}
-
 void ESPWiFi::initLittleFS() {
   if (littleFsInitialized) {
     return;
@@ -42,10 +35,11 @@ void ESPWiFi::initLittleFS() {
 }
 
 void ESPWiFi::initSDCard() {
-  if (sdCardInitialized || config["sd"]["enabled"] == false) {
+  if (sdCardInitialized) {
     return;
   }
 
+  Serial.println("Initializing SD card");
 #if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
   if (!SD_MMC.begin()) {
     config["sd"]["enabled"] = false;
@@ -56,7 +50,8 @@ void ESPWiFi::initSDCard() {
   config["sd"]["enabled"] = true;
   size_t totalBytes = SD_MMC.totalBytes();
   size_t usedBytes = SD_MMC.usedBytes();
-#else                                  // ESP32-S2, ESP32-S3, ESP32-C3
+#else // ESP32-S2, ESP32-S3, ESP32-C3
+
 #if defined(CONFIG_IDF_TARGET_ESP32S3) // ESP32-S3
   int sdCardPin = 21;
 #else
@@ -830,6 +825,13 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
 
     sendJsonResponse(request, 200, "{\"success\":true}");
   }
+}
+
+void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
+                                size_t usedBytes) {
+  logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
+  logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
+  logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
 }
 
 String ESPWiFi::generateFileListingHTML(FS *filesystem, const String &fsName,

@@ -95,8 +95,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   // RSSI settings - always enabled
   defaultConfig["rssi"]["displayMode"] = "numbers";
 
-  // SD Card settings - default to enabled, will be set by initSDCard()
-  defaultConfig["sd"]["enabled"] = true;
+  // SD Card settings - default to disabled to prevent errors if no SD card is
+  // connected
+  defaultConfig["sd"]["enabled"] = false;
 
 #ifdef ESPWiFi_CAMERA_INSTALLED
   defaultConfig["camera"]["installed"] = true;

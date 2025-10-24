@@ -112,7 +112,9 @@ void ESPWiFi::startCamera() {
         // Ensure file system is initialized
         if (!fs) {
           initLittleFS();
-          initSDCard();
+          if (!config.isNull() && config["sd"]["enabled"] == true) {
+            initSDCard();
+          }
         }
 
         String snapshotDir = "/snapshots";
@@ -251,7 +253,9 @@ void ESPWiFi::recordCamera() {
   // Ensure file system is initialized
   if (!fs) {
     initLittleFS();
-    initSDCard();
+    if (!config.isNull() && config["sd"]["enabled"] == true) {
+      initSDCard();
+    }
   }
 
   if (!fs) {

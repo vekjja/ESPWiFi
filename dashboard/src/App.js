@@ -393,6 +393,7 @@ function App() {
             <Modules
               config={localConfig}
               saveConfig={updateLocalConfig}
+              saveConfigToDevice={saveConfigFromButton}
               deviceOnline={deviceOnline}
             />
           </Container>

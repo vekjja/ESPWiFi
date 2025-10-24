@@ -21,6 +21,7 @@ import CameraSettingsModal from "./CameraSettingsModal";
 export default function AddModuleModal({
   config,
   saveConfig,
+  saveConfigToDevice,
   open = false,
   onClose,
 }) {
@@ -148,7 +149,9 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newPin];
-    saveConfig({ ...config, modules: updatedModules });
+    const configToSave = { ...config, modules: updatedModules };
+    saveConfig(configToSave); // Update local config
+    saveConfigToDevice(configToSave); // Save to device
     handleClosePinModal();
     onClose(); // Close the main Add Module modal
   };
@@ -173,7 +176,9 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newWebSocket];
-    saveConfig({ ...config, modules: updatedModules });
+    const configToSave = { ...config, modules: updatedModules };
+    saveConfig(configToSave); // Update local config
+    saveConfigToDevice(configToSave); // Save to device
     handleCloseWebSocketModal();
     onClose(); // Close the main Add Module modal
   };
@@ -199,7 +204,9 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newCamera];
-    saveConfig({ ...config, modules: updatedModules });
+    const configToSave = { ...config, modules: updatedModules };
+    saveConfig(configToSave); // Update local config
+    saveConfigToDevice(configToSave); // Save to device
     handleCloseCameraModal();
     onClose(); // Close the main Add Module modal
   };

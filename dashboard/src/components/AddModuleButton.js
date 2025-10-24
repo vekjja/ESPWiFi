@@ -8,6 +8,7 @@ export default function AddModuleButton({
   deviceOnline,
   onAddModule,
   saveConfig,
+  saveConfigToDevice,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -49,6 +50,7 @@ export default function AddModuleButton({
           onClose={handleCloseModal}
           config={config}
           saveConfig={saveConfig}
+          saveConfigToDevice={saveConfigToDevice}
         />
       )}
     </>

@@ -81,6 +81,7 @@ export default function SettingsButtonBar({
           deviceOnline={deviceOnline}
           onAddModule={onAddModule}
           saveConfig={saveConfig}
+          saveConfigToDevice={saveConfigToDevice}
         />
       </Stack>
     </Paper>

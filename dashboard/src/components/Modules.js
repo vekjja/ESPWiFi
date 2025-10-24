@@ -116,7 +116,12 @@ function SortableCameraModule({
   );
 }
 
-export default function Modules({ config, saveConfig, deviceOnline = true }) {
+export default function Modules({
+  config,
+  saveConfig,
+  saveConfigToDevice,
+  deviceOnline = true,
+}) {
   const [modules, setModules] = useState([]);
 
   // Configure sensors for drag detection with activation constraints
@@ -272,7 +277,8 @@ export default function Modules({ config, saveConfig, deviceOnline = true }) {
 
         // Update the global config with the reordered modules
         const updatedConfig = { ...config, modules: reorderedModules };
-        saveConfig(updatedConfig);
+        saveConfig(updatedConfig); // Update local config
+        saveConfigToDevice(updatedConfig); // Save to device
       }
     }
   };
@@ -288,9 +294,10 @@ export default function Modules({ config, saveConfig, deviceOnline = true }) {
 
     setModules(updatedModules);
 
-    // Always update the global config with the updated modules
+    // Update the global config with the updated modules
     const updatedConfig = { ...config, modules: updatedModules };
-    saveConfig(updatedConfig);
+    saveConfig(updatedConfig); // Update local config
+    saveConfigToDevice(updatedConfig); // Save to device
   };
 
   const deleteModule = (moduleKey) => {
@@ -301,7 +308,8 @@ export default function Modules({ config, saveConfig, deviceOnline = true }) {
 
     // Update the global config
     const updatedConfig = { ...config, modules: updatedModules };
-    saveConfig(updatedConfig);
+    saveConfig(updatedConfig); // Update local config
+    saveConfigToDevice(updatedConfig); // Save to device
   };
 
   if (!config) {

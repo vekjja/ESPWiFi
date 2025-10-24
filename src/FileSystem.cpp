@@ -171,8 +171,6 @@ bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
     return true;
   }
 
-  logf("📁 Attempting to create directory: %s\n", dirPath.c_str());
-
   if (fs->mkdir(dirPath)) {
     logf("📁 Created directory: %s\n", dirPath.c_str());
     return true;
@@ -221,6 +219,8 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
         dir.close();
         return false;
       }
+      // Yield after recursive call to prevent deep recursion blocking
+      yield(); // Allow other tasks to run
     } else {
       // Delete file
       if (!fs->remove(filePath)) {
@@ -238,8 +238,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
 
       // Yield control every batch to prevent watchdog timeout
       if (fileCount % MAX_FILES_PER_BATCH == 0) {
-        delay(10); // Small delay to yield control
-        yield();   // Allow other tasks to run
+        yield(); // Allow other tasks to run
       }
     }
     file.close();
@@ -813,7 +812,9 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      logf("📁 Uploaded: %s (%s)\n", sanitizedFilename.c_str(),
+      String fullPath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
+                        sanitizedFilename;
+      logf("📁 Uploaded: %s (%s)\n", fullPath.c_str(),
            bytesToHumanReadable(currentSize).c_str());
     }
 

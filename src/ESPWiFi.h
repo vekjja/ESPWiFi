@@ -91,7 +91,7 @@ public:
   void printConfig();
   void handleConfig();
   JsonDocument defaultConfig();
-  void mergeConfig(JsonObject &json);
+  void mergeConfig(JsonDocument &json);
 
   // WiFi
   void startAP();

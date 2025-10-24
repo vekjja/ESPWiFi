@@ -176,11 +176,20 @@ bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
     return true;
   }
 
+  logf("📁 Attempting to create directory: %s\n", dirPath.c_str());
+
   if (fs->mkdir(dirPath)) {
     logf("📁 Created directory: %s\n", dirPath.c_str());
     return true;
   } else {
     logError("Failed to create directory: " + dirPath);
+
+    // Check if directory was actually created despite the error
+    if (dirExists(fs, dirPath)) {
+      logf("📁 Directory exists after failed mkdir: %s\n", dirPath.c_str());
+      return true;
+    }
+
     return false;
   }
 }
@@ -352,8 +361,10 @@ void ESPWiFi::srvFiles() {
     File file = root.openNextFile();
     int fileCount = 0;
     const int maxFiles = 1000; // Prevent infinite loops
+    unsigned long startTime = millis();
+    const unsigned long timeout = 3000; // 3 second timeout
 
-    while (file && fileCount < maxFiles) {
+    while (file && fileCount < maxFiles && (millis() - startTime) < timeout) {
       try {
         JsonObject fileObj = filesArray.add<JsonObject>();
         fileObj["name"] = file.name();
@@ -362,10 +373,15 @@ void ESPWiFi::srvFiles() {
         fileObj["size"] = file.size();
         fileObj["modified"] = file.getLastWrite();
         fileCount++;
+
       } catch (...) {
         // Skip problematic files
         break;
       }
+
+      // Yield control to prevent watchdog timeout
+      yield();
+
       file = root.openNextFile();
     }
 
@@ -458,9 +474,8 @@ void ESPWiFi::srvFiles() {
           path = "/" + path;
         String dirPath = path + (path.endsWith("/") ? "" : "/") + sanitizedName;
 
-        // Create directory
-        if (filesystem->mkdir(dirPath)) {
-          logf("📁 Created directory: %s\n", dirPath.c_str());
+        // Create directory using the robust mkDir function
+        if (mkDir(filesystem, dirPath)) {
           sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
           sendJsonResponse(request, 500,

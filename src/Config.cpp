@@ -11,13 +11,16 @@ void ESPWiFi::readConfig() {
   if (!file) {
     log("⚠️  Failed to open config file\nUsing default config");
     config = defaultConfig();
-  }
-
-  DeserializationError error = deserializeJson(config, file);
-  if (error) {
-    log("⚠️  Failed to read config file: " + String(error.c_str()) +
-        "\nUsing default config");
-    config = defaultConfig();
+  } else {
+    JsonDocument loadedConfig;
+    DeserializationError error = deserializeJson(loadedConfig, file);
+    if (error) {
+      log("⚠️  Failed to read config file: " + String(error.c_str()) +
+          "\nUsing default config");
+      JsonDocument defaultConfigDoc = defaultConfig();
+      mergeConfig(defaultConfigDoc);
+    }
+    mergeConfig(loadedConfig);
     file.close();
   }
 
@@ -51,8 +54,8 @@ void ESPWiFi::printConfig() {
   log(prettyConfig);
 }
 
-void ESPWiFi::mergeConfig(JsonObject &json) {
-  for (JsonPair kv : json) {
+void ESPWiFi::mergeConfig(JsonDocument &json) {
+  for (JsonPair kv : json.as<JsonObject>()) {
     config[kv.key()] = kv.value();
   }
 }
@@ -92,6 +95,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   // RSSI settings - always enabled
   defaultConfig["rssi"]["displayMode"] = "numbers";
 
+  // SD Card settings - default to enabled, will be set by initSDCard()
+  defaultConfig["sd"]["enabled"] = true;
+
 #ifdef ESPWiFi_CAMERA_INSTALLED
   defaultConfig["camera"]["installed"] = true;
 #else
@@ -129,8 +135,8 @@ void ESPWiFi::srvConfig() {
           return;
         }
 
-        JsonObject jsonObject = json.as<JsonObject>();
-        mergeConfig(jsonObject);
+        JsonDocument jsonDoc = json;
+        mergeConfig(jsonDoc);
 
         if (request->method() == HTTP_PUT) {
           saveConfig();

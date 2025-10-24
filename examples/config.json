@@ -1,41 +1,26 @@
 {
     "mode": "client",
-    "mdns": "ESPWiFi",
+    "mdns": "FirmaMint",
     "client": {
         "ssid": "YOUR_WIFI_SSID",
         "password": "YOUR_WIFI_PASSWORD"
     },
     "ap": {
-        "ssid": "ESPWiFi-AP",
+        "ssid": "FirmaMint",
         "password": "abcd1234"
     },
-    "power": {
-        "mode": "full",
-        "wifiSleep": false
+    "sd": {
+        "enabled": true
     },
-    "modules": [
-        {
-            "type": "pin",
-            "number": 10,
-            "state": "low",
-            "name": "Light",
-            "mode": "pwm",
-            "inverted": false,
-            "remoteURL": "",
-            "dutyMin": 0,
-            "dutyMax": 255,
-            "key": 0,
-            "duty": 16
-        },
-        {
-            "type": "webSocket",
-            "url": "espwifi.local/rssi",
-            "name": "RSSI",
-            "payload": "text",
-            "fontSize": 66,
-            "enableSending": false,
-            "connectionState": "disconnected",
-            "key": 1
-        }
-    ]
+    "log": {
+        "enabled": true
+    },
+    "camera": {
+        "enabled": false,
+        "frameRate": 10
+    },
+    "rssi": {
+        "displayMode": "numbers"
+    },
+    "modules": []
 }

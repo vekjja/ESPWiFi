@@ -17,7 +17,7 @@
         "frameRate": 10
     },
     "rssi": {
-        "displayMode": "numbers"
+        "displayMode": "icon"
     },
     "modules": []
 }

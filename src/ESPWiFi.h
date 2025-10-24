@@ -41,7 +41,8 @@ public:
   void runSystem();
 
   // File System
-  FS *fs;
+  FS *lfs = nullptr; // LittleFS handle
+  FS *sd = nullptr;  // SD card handle
   void initSDCard();
   void initLittleFS();
   bool sdCardInitialized = false;
@@ -56,23 +57,23 @@ public:
   // Helper functions for filesystem operations
   void logFilesystemInfo(const String &fsName, size_t totalBytes,
                          size_t usedBytes);
-  FS *getFilesystem(const String &fsParam);
   String sanitizeFilename(const String &filename);
   void getStorageInfo(const String &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
-  String generateFileListingHTML(FS *filesystem, const String &fsName,
-                                 const String &fsPrefix,
-                                 const String &currentPath);
+  bool writeFile(FS *filesystem, const String &filePath, const uint8_t *data,
+                 size_t len);
 
   // Logging
+  File logFile;
+  FS *logFileSystem = nullptr; // Track which filesystem the log file is on
   bool serialStarted = false;
-  int maxLogFileSize = 1024 * 1024 * 0.5; // 512KB = 524288 bytes
+  int maxLogFileSize = 0;
   void cleanLogFile();
   void closeLogFile();
   void openLogFile();
   void logf(const char *format, ...);
-  String logFilePath = "/log";
   bool loggingStarted = false;
+  String logFilePath = "/log";
   void startLogging(String filePath = "/log");
   void startSerial(int baudRate = 115200);
   String timestamp();

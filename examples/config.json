@@ -9,9 +9,6 @@
         "ssid": "FirmaMint",
         "password": "abcd1234"
     },
-    "sd": {
-        "enabled": true
-    },
     "log": {
         "enabled": true
     },

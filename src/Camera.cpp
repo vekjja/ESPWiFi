@@ -110,7 +110,7 @@ void ESPWiFi::startCamera() {
   webServer->on(
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
         // Ensure file system is initialized
-        if (!fs) {
+        if (!lfs) {
           initLittleFS();
           if (!config.isNull() && config["sd"]["enabled"] == true) {
             initSDCard();
@@ -118,16 +118,29 @@ void ESPWiFi::startCamera() {
         }
 
         String snapshotDir = "/snapshots";
-        if (fs) {
-          if (!dirExists(fs, snapshotDir)) {
-            if (!mkDir(fs, snapshotDir)) {
-              logError("Failed to create snapshots directory");
+        // Create directory on SD card first, fallback to LittleFS
+        bool dirCreated = false;
+        if (sdCardInitialized && sd) {
+          if (!dirExists(sd, snapshotDir)) {
+            if (mkDir(sd, snapshotDir)) {
+              dirCreated = true;
+            }
+          } else {
+            dirCreated = true;
+          }
+        }
+
+        // Fallback to LittleFS if SD card failed
+        if (!dirCreated && lfs) {
+          if (!dirExists(lfs, snapshotDir)) {
+            if (!mkDir(lfs, snapshotDir)) {
+              logError("Failed to create snapshots directory on LittleFS");
               request->send(500, "text/plain",
                             "Failed to create snapshots directory");
               return;
             }
           }
-        } else {
+        } else if (!dirCreated) {
           logError("No file system available for snapshots");
           request->send(500, "text/plain", "No file system available");
           return;
@@ -136,9 +149,16 @@ void ESPWiFi::startCamera() {
         String filePath = snapshotDir + "/" + timestampForFilename() + ".jpg";
         takeSnapshot(filePath);
 
-        // Use the fs pointer which points to the correct file system
-        AsyncWebServerResponse *response =
-            request->beginResponse(*fs, filePath, "image/jpeg");
+        // Serve from SD card first, then LittleFS
+        AsyncWebServerResponse *response;
+        if (sdCardInitialized && sd && sd->exists(filePath)) {
+          response = request->beginResponse(*sd, filePath, "image/jpeg");
+        } else if (lfs && lfs->exists(filePath)) {
+          response = request->beginResponse(*lfs, filePath, "image/jpeg");
+        } else {
+          request->send(404, "text/plain", "Snapshot not found");
+          return;
+        }
         response->addHeader("Content-Disposition",
                             "inline; filename=" + filePath);
         addCORS(response);
@@ -251,32 +271,37 @@ void ESPWiFi::recordCamera() {
   }
 
   // Ensure file system is initialized
-  if (!fs) {
+  if (!lfs) {
     initLittleFS();
     if (!config.isNull() && config["sd"]["enabled"] == true) {
       initSDCard();
     }
   }
 
-  if (!fs) {
-    logError("No file system available for recording");
+  if (!sdCardInitialized) {
+    logError("SD card not available for recording");
     return;
   }
 
-  // Create recordings directory if it doesn't exist
+  // Create recordings directory if it doesn't exist - SD card only
   String recordingsDir = "/recordings";
-  if (!dirExists(fs, recordingsDir)) {
-    if (!mkDir(fs, recordingsDir)) {
-      logError("Failed to create recordings directory");
-      return;
+  if (sdCardInitialized && sd) {
+    if (!dirExists(sd, recordingsDir)) {
+      if (!mkDir(sd, recordingsDir)) {
+        logError("Failed to create recordings directory on SD card");
+        return;
+      }
     }
+  } else {
+    logError("SD card not available for recordings");
+    return;
   }
 
   // Generate filename with timestamp
   String filePath = recordingsDir + "/" + timestampForFilename() + ".mjpeg";
 
   // Log which filesystem is being used
-  String fsType = sdCardInitialized && fs ? "SD Card" : "LittleFS";
+  String fsType = "SD Card";
   logf("📁 Using filesystem: %s\n", fsType.c_str());
   logf("📁 Recording path: %s\n", filePath.c_str());
 
@@ -290,7 +315,13 @@ void ESPWiFi::startVideoRecording(String filePath) {
     return;
   }
 
-  recordingFile = fs->open(filePath, "w");
+  // Use SD card for recording, error if not available
+  if (sdCardInitialized && sd) {
+    recordingFile = sd->open(filePath, "w");
+  } else {
+    logError("SD card not available for recording");
+    return;
+  }
   if (!recordingFile) {
     logError("Failed to open recording file: " + filePath);
     return;
@@ -400,24 +431,27 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  // save the image using ESPWiFi::fs
-  if (!fs) {
+  // save the image using ESPWiFi::lfs
+  if (!lfs) {
     logError("No file system available");
     esp_camera_fb_return(fb);
     return;
   }
 
-  File file = fs->open(filePath, "w");
-  if (!file) {
-    logError("Failed to open file for writing");
-  } else {
-    size_t written = file.write(fb->buf, fb->len);
-    if (written != fb->len) {
-      logError("Failed to write complete image to file");
-    } else {
-      log("📸 Snapshot Saved: " + filePath);
-    }
-    file.close();
+  // Try SD card first, fallback to LittleFS for snapshots
+  bool writeSuccess = false;
+  if (sdCardInitialized && sd) {
+    writeSuccess = writeFile(sd, filePath, fb->buf, fb->len);
+  }
+
+  // Fallback to LittleFS if SD card failed or not available
+  if (!writeSuccess && lfs) {
+    log("📁 Falling back to LittleFS for snapshot");
+    writeSuccess = writeFile(lfs, filePath, fb->buf, fb->len);
+  }
+
+  if (!writeSuccess) {
+    logError("Failed to save snapshot to any filesystem");
   }
 
   esp_camera_fb_return(fb);

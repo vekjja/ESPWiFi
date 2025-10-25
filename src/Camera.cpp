@@ -26,44 +26,26 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
   }
 }
 
-bool ESPWiFi::checkCameraGPIOConflicts() {
-  // Skip GPIO conflict detection for now as it may interfere with camera pins
-  // The camera pins are dedicated and should not be checked for conflicts
-  // This was causing issues with the camera initialization
-  return true;
-}
-
 bool ESPWiFi::initCamera() {
-  // Check if camera is already initialized
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    log("📷 Camera already initialized");
-    return true; // Camera already initialized
+    return true;
   }
 
-  // Prevent multiple simultaneous initialization attempts
   static bool initInProgress = false;
   if (initInProgress) {
-    log("📷 Camera initialization already in progress");
     return false;
   }
 
   initInProgress = true;
   log("📷 Initializing camera...");
 
-  // Skip GPIO conflict detection to prevent interference
-  // Camera pins are dedicated and should not be checked
-
-  // Check available memory before initialization
-  size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 50000) { // Need at least 50KB free heap
-    logError("📷 Insufficient memory for camera init. Free heap: " +
-             String(freeHeap));
+  if (ESP.getFreeHeap() < 50000) {
+    logError("📷 Insufficient memory for camera init");
     initInProgress = false;
     return false;
   }
 
-  // Initialize camera configuration with proper error checking
   memset(&camConfig, 0, sizeof(camera_config_t));
 
   camConfig.ledc_channel = LEDC_CHANNEL_0;
@@ -85,50 +67,28 @@ bool ESPWiFi::initCamera() {
   camConfig.pin_pwdn = PWDN_GPIO_NUM;
   camConfig.pin_reset = RESET_GPIO_NUM;
   camConfig.xclk_freq_hz = 20000000;
-  camConfig.pixel_format = PIXFORMAT_JPEG; // for streaming
+  camConfig.pixel_format = PIXFORMAT_JPEG;
 
-  // OV2640 optimized settings for streaming performance
   if (psramFound()) {
-    // With PSRAM - use better settings for higher quality streaming
-    camConfig.frame_size = FRAMESIZE_SVGA; // 800x600 for streaming with PSRAM
-    camConfig.jpeg_quality = 15; // Better quality for streaming with PSRAM
-    camConfig.fb_count = 4;      // More buffers for smoother streaming
+    camConfig.frame_size = FRAMESIZE_SVGA;
+    camConfig.jpeg_quality = 15;
+    camConfig.fb_count = 4;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
-    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
-    log("📷 Using PSRAM for camera buffers");
+    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   } else {
-    // Without PSRAM - optimized for streaming
-    camConfig.frame_size = FRAMESIZE_QVGA; // 320x240 for streaming
-    camConfig.jpeg_quality = 25; // Higher compression for smaller frames
-    camConfig.fb_count = 2;      // More buffers for smoother streaming
+    camConfig.frame_size = FRAMESIZE_QVGA;
+    camConfig.jpeg_quality = 25;
+    camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
-    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
-    log("📷 Using DRAM for camera buffers");
+    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   }
 
-  // Add small delay to ensure GPIOs are stable
   delay(100);
-
-  // Feed watchdog before camera init
   yield();
 
   esp_err_t err = esp_camera_init(&camConfig);
   if (err != ESP_OK) {
-    String errMsg = "Camera Init Failed: ";
-    // Use generic error handling since specific camera error codes may not be
-    // available
-    if (err == ESP_ERR_NOT_FOUND) {
-      errMsg += "Camera not detected";
-    } else if (err == ESP_ERR_INVALID_ARG) {
-      errMsg += "Invalid camera configuration";
-    } else if (err == ESP_ERR_NO_MEM) {
-      errMsg += "Insufficient memory for camera";
-    } else if (err == ESP_ERR_INVALID_STATE) {
-      errMsg += "Camera in invalid state";
-    } else {
-      errMsg += "Error code: " + String(err);
-    }
-    logError(errMsg);
+    logError("📷 Camera Init Failed: " + String(err));
     initInProgress = false;
     return false;
   }
@@ -141,47 +101,26 @@ bool ESPWiFi::initCamera() {
 void ESPWiFi::deinitCamera() {
   log("📷 Deinitializing camera...");
 
-  // Check if camera is actually initialized before trying to deactivate
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
-    log("📷 Camera not initialized, nothing to deactivate");
-    return; // Camera not initialized, nothing to deactivate
+    return;
   }
 
-  // Stop any ongoing camera operations
   if (isRecording) {
-    log("📷 Stopping recording before camera deinit");
     stopVideoRecording();
   }
 
-  // Clear camera buffer to free any pending frames
   clearCameraBuffer();
-
-  // Feed watchdog before deinit
   yield();
-  delay(100); // Longer delay to ensure all operations complete
+  delay(100);
 
-  // Properly deactivate the camera hardware
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
-    String errMsg = "Camera Deactivation Failed: ";
-    // Use generic error handling since specific camera error codes may not be
-    // available
-    if (err == ESP_ERR_NOT_FOUND) {
-      errMsg += "Camera not initialized";
-    } else if (err == ESP_ERR_INVALID_STATE) {
-      errMsg += "Camera in invalid state";
-    } else if (err == ESP_ERR_INVALID_ARG) {
-      errMsg += "Invalid camera state";
-    } else {
-      errMsg += "Error code: " + String(err);
-    }
-    logError(errMsg);
+    logError("📷 Camera Deactivation Failed: " + String(err));
   }
 
   log("📷 Camera deinitialized successfully");
-  // Additional cleanup delay
-  delay(200); // Longer delay for complete shutdown
+  delay(200);
 }
 
 void ESPWiFi::startCamera() {
@@ -189,7 +128,6 @@ void ESPWiFi::startCamera() {
     return;
   }
 
-  // Initialize camera hardware
   if (!initCamera()) {
     logError("Skipping Camera Startup: Camera Initialization Failed");
     return;
@@ -198,7 +136,6 @@ void ESPWiFi::startCamera() {
   initWebServer();
   webServer->on(
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        // Ensure file system is initialized
         if (!lfs) {
           initLittleFS();
           if (!config.isNull() && config["sd"]["enabled"] == true) {
@@ -207,30 +144,25 @@ void ESPWiFi::startCamera() {
         }
 
         String snapshotDir = "/snapshots";
-        // Create directory on SD card first, fallback to LittleFS
         bool dirCreated = false;
+
         if (sdCardInitialized && sd) {
           if (!dirExists(sd, snapshotDir)) {
-            if (mkDir(sd, snapshotDir)) {
-              dirCreated = true;
-            }
+            dirCreated = mkDir(sd, snapshotDir);
           } else {
             dirCreated = true;
           }
         }
 
-        // Fallback to LittleFS if SD card failed
         if (!dirCreated && lfs) {
           if (!dirExists(lfs, snapshotDir)) {
             if (!mkDir(lfs, snapshotDir)) {
-              logError("Failed to create snapshots directory on LittleFS");
               request->send(500, "text/plain",
                             "Failed to create snapshots directory");
               return;
             }
           }
         } else if (!dirCreated) {
-          logError("No file system available for snapshots");
           request->send(500, "text/plain", "No file system available");
           return;
         }
@@ -238,7 +170,6 @@ void ESPWiFi::startCamera() {
         String filePath = snapshotDir + "/" + timestampForFilename() + ".jpg";
         takeSnapshot(filePath);
 
-        // Serve from SD card first, then LittleFS
         AsyncWebServerResponse *response;
         if (sdCardInitialized && sd && sd->exists(filePath)) {
           response = request->beginResponse(*sd, filePath, "image/jpeg");
@@ -254,7 +185,6 @@ void ESPWiFi::startCamera() {
         request->send(response);
       });
 
-  // Video Recording Endpoints
   webServer->on("/camera/record/start", HTTP_POST,
                 [this](AsyncWebServerRequest *request) {
                   if (isRecording) {
@@ -263,7 +193,6 @@ void ESPWiFi::startCamera() {
                         "{\"error\":\"Recording already in progress\"}");
                     return;
                   }
-
                   recordCamera();
                   request->send(200, "application/json",
                                 "{\"status\":\"Recording started\"}");
@@ -276,7 +205,6 @@ void ESPWiFi::startCamera() {
                                   "{\"error\":\"No recording in progress\"}");
                     return;
                   }
-
                   stopVideoRecording();
                   request->send(200, "application/json",
                                 "{\"status\":\"Recording stopped\"}");
@@ -286,14 +214,12 @@ void ESPWiFi::startCamera() {
                 [this](AsyncWebServerRequest *request) {
                   String status = isRecording ? "recording" : "stopped";
                   String response = "{\"status\":\"" + status + "\"";
-
                   if (isRecording) {
                     response += ",\"file\":\"" + recordingFilePath + "\"";
                     response += ",\"frames\":" + String(recordingFrameCount);
                     response += ",\"duration\":" +
                                 String(millis() - recordingStartTime);
                   }
-
                   response += "}";
                   request->send(200, "application/json", response);
                 });
@@ -316,7 +242,6 @@ void ESPWiFi::recordCamera() {
     return;
   }
 
-  // Ensure file system is initialized
   if (!lfs) {
     initLittleFS();
     if (!config.isNull() && config["sd"]["enabled"] == true) {
@@ -329,7 +254,6 @@ void ESPWiFi::recordCamera() {
     return;
   }
 
-  // Create recordings directory if it doesn't exist - SD card only
   String recordingsDir = "/recordings";
   if (sdCardInitialized && sd) {
     if (!dirExists(sd, recordingsDir)) {
@@ -343,15 +267,8 @@ void ESPWiFi::recordCamera() {
     return;
   }
 
-  // Generate filename with timestamp
   String filePath = recordingsDir + "/" + timestampForFilename() + ".mjpeg";
-
-  // Log which filesystem is being used
-  String fsType = "SD Card";
-  logf("📁 Using filesystem: %s\n", fsType.c_str());
   logf("📁 Recording path: %s\n", filePath.c_str());
-
-  // Start recording
   startVideoRecording(filePath);
 }
 
@@ -361,19 +278,18 @@ void ESPWiFi::startVideoRecording(String filePath) {
     return;
   }
 
-  // Use SD card for recording, error if not available
   if (sdCardInitialized && sd) {
     recordingFile = sd->open(filePath, "w");
   } else {
     logError("SD card not available for recording");
     return;
   }
+
   if (!recordingFile) {
     logError("Failed to open recording file: " + filePath);
     return;
   }
 
-  // Write MJPEG header
   recordingFile.print("HTTP/1.1 200 OK\r\n");
   recordingFile.print(
       "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n");
@@ -412,18 +328,17 @@ void ESPWiFi::recordFrame() {
     return;
   }
 
-  // Check frame rate timing
   static unsigned long lastFrameTime = 0;
   unsigned long frameInterval = 1000 / recordingFrameRate;
 
   if (millis() - lastFrameTime < frameInterval) {
-    return; // Skip this frame to maintain frame rate
+    return;
   }
   lastFrameTime = millis();
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    return; // Skip error logging for performance
+    return;
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
@@ -431,13 +346,11 @@ void ESPWiFi::recordFrame() {
     return;
   }
 
-  // Write frame boundary and headers
   recordingFile.print("--frame\r\n");
   recordingFile.print("Content-Type: image/jpeg\r\n");
   recordingFile.print("Content-Length: " + String(fb->len) + "\r\n");
   recordingFile.print("\r\n");
 
-  // Write frame data
   size_t written = recordingFile.write(fb->buf, fb->len);
   if (written == fb->len) {
     recordingFrameCount++;
@@ -450,8 +363,6 @@ void ESPWiFi::recordFrame() {
 void ESPWiFi::updateRecording() {
   if (isRecording) {
     recordFrame();
-
-    // Auto-stop recording after 60 seconds to prevent storage overflow
     if (millis() - recordingStartTime > 60000) {
       stopVideoRecording();
     }
@@ -459,62 +370,46 @@ void ESPWiFi::updateRecording() {
 }
 
 void ESPWiFi::clearCameraBuffer() {
-  // Only log once to prevent spam
   static bool firstClear = true;
   if (firstClear) {
     log("📷 Clearing camera buffer...");
     firstClear = false;
   }
 
-  // Clear any cached frames with timeout protection
-  for (int i = 0; i < 3; i++) { // Reduced from 5 to 3 iterations
+  for (int i = 0; i < 3; i++) {
     camera_fb_t *temp_fb = esp_camera_fb_get();
     if (temp_fb) {
       esp_camera_fb_return(temp_fb);
     } else {
-      // No more frames available, break early
       break;
     }
-
-    // Feed watchdog during buffer clearing
     yield();
-    delay(5); // Reduced delay from 10ms to 5ms
+    delay(5);
   }
 
-  // Shorter delay to prevent blocking
-  delay(10); // Reduced from 50ms to 10ms
+  delay(10);
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
-  // Safety check to prevent multiple simultaneous camera operations
   if (cameraOperationInProgress) {
     logError("📸 Camera operation already in progress, skipping snapshot");
     return;
   }
 
-  // Check if camera is enabled
   if (!config["camera"]["enabled"]) {
     logError("📸 Camera not enabled, cannot take snapshot");
     return;
   }
 
-  // Check memory before snapshot
-  size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 30000) { // Need at least 30KB free heap for snapshot
-    logError("📸 Insufficient memory for snapshot. Free heap: " +
-             String(freeHeap));
+  if (ESP.getFreeHeap() < 30000) {
+    logError("📸 Insufficient memory for snapshot");
     return;
   }
 
   cameraOperationInProgress = true;
-
-  // Clear camera buffer to remove any cached frames
   clearCameraBuffer();
-
-  // Feed watchdog before camera operation
   yield();
 
-  // Get the final fresh frame for the snapshot
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     logError("📸 Camera Capture Failed");
@@ -529,8 +424,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  // Check frame size to prevent memory issues
-  if (fb->len > 200000) { // Limit snapshot size to 200KB
+  if (fb->len > 200000) {
     logError("📸 Snapshot too large: " + String(fb->len) + " bytes");
     esp_camera_fb_return(fb);
     cameraOperationInProgress = false;
@@ -539,13 +433,11 @@ void ESPWiFi::takeSnapshot(String filePath) {
 
   log("📸 Snapshot Taken - Size: " + String(fb->len) + " bytes");
 
-  // Try SD card first, fallback to LittleFS for snapshots
   bool writeSuccess = false;
   if (sdCardInitialized && sd) {
     writeSuccess = writeFile(sd, filePath, fb->buf, fb->len);
   }
 
-  // Fallback to LittleFS if SD card failed or not available
   if (!writeSuccess && lfs) {
     log("📁 Falling back to LittleFS for snapshot");
     writeSuccess = writeFile(lfs, filePath, fb->buf, fb->len);
@@ -558,74 +450,43 @@ void ESPWiFi::takeSnapshot(String filePath) {
   }
 
   esp_camera_fb_return(fb);
-
-  // Feed watchdog after operation
   yield();
-
-  // Clear the operation flag
   cameraOperationInProgress = false;
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  // CRITICAL: Check if camera operations are blocked (e.g., during shutdown)
-  if (cameraOperationInProgress) {
+  if (cameraOperationInProgress || !config["camera"]["enabled"]) {
     return;
   }
 
-  // Check if camera is enabled first
-  if (!config["camera"]["enabled"]) {
-    return;
-  }
-
-  // CRITICAL: Check if WebSocket is being disconnected
-  if (!this->camSoc || !this->camSoc->socket) {
-    return;
-  }
-
-  // Check if WebSocket exists and has clients
   if (!this->camSoc || !this->camSoc->socket ||
       this->camSoc->numClients() == 0) {
     return;
   }
 
-  // Double-check camera is still initialized (race condition protection)
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
-    return; // Camera not initialized, can't stream
+    return;
   }
 
-  // Check memory before streaming
-  // size_t freeHeap = ESP.getFreeHeap();
-  // if (freeHeap < 20000) { // Need at least 20KB free heap for streaming
-  //   logError("📹 Insufficient memory for camera streaming. Free heap: " +
-  //            String(freeHeap));
-  //   return;
-  // }
-
-  // Use frame rate from config, fallback to parameter, then default
-  int targetFrameRate = 10; // Default
+  int targetFrameRate = 10;
   if (!config["camera"]["frameRate"].isNull()) {
     targetFrameRate = config["camera"]["frameRate"];
   } else if (frameRate > 0) {
     targetFrameRate = frameRate;
   }
 
-  // Cap at reasonable maximum to prevent WebSocket overflow
-  if (targetFrameRate > 8)
+  if (targetFrameRate > 8) {
     targetFrameRate = 8;
-
-  unsigned long interval = 1000 / targetFrameRate;
+  }
 
   static IntervalTimer timer(1000);
-  if (!timer.shouldRun(interval)) {
+  if (!timer.shouldRun(1000 / targetFrameRate)) {
     return;
   }
 
-  // Feed watchdog before camera operation
   yield();
 
-  // CRITICAL: Final safety check before camera operation
-  // This prevents crashes during shutdown race conditions
   if (cameraOperationInProgress || !config["camera"]["enabled"] ||
       !this->camSoc) {
     return;
@@ -637,19 +498,14 @@ void ESPWiFi::streamCamera(int frameRate) {
     return;
   }
 
-  // Validate frame buffer before sending
   if (fb->buf && fb->len > 0 && fb->format == PIXFORMAT_JPEG) {
-    // CRITICAL: Final check before WebSocket send
-    // This prevents crashes if WebSocket was deleted during frame capture
     if (this->camSoc && this->camSoc->socket && !cameraOperationInProgress) {
-      // Check frame size to prevent memory issues
-      if (fb->len > 100000) { // Limit frame size to 100KB
+      if (fb->len > 100000) {
         logError("📹 Frame too large: " + String(fb->len) + " bytes");
         esp_camera_fb_return(fb);
         return;
       }
 
-      // Final safety check before sending
       if (config["camera"]["enabled"] && this->camSoc && this->camSoc->socket &&
           this->camSoc->numClients() > 0 && !cameraOperationInProgress) {
         this->camSoc->binaryAll((const char *)fb->buf, fb->len);
@@ -660,22 +516,17 @@ void ESPWiFi::streamCamera(int frameRate) {
              ", len: " + String(fb->len));
   }
 
-  // Always return the frame buffer to prevent memory leaks
   esp_camera_fb_return(fb);
-
-  // Feed watchdog after operation
   yield();
 }
 
 void ESPWiFi::cameraConfigHandler() {
-  // Handle camera start/stop based on enabled state
   bool cameraEnabled = config["camera"]["enabled"];
   bool cameraCurrentlyRunning = (camSoc != nullptr);
 
-  // Prevent rapid init/deinit cycles that can cause restarts
   static unsigned long lastCameraToggle = 0;
   unsigned long currentTime = millis();
-  if (currentTime - lastCameraToggle < 2000) { // 2 second cooldown
+  if (currentTime - lastCameraToggle < 2000) {
     log("📷 Camera toggle too frequent, waiting...");
     return;
   }
@@ -683,17 +534,13 @@ void ESPWiFi::cameraConfigHandler() {
   if (cameraEnabled && !cameraCurrentlyRunning) {
     lastCameraToggle = currentTime;
 
-    // Check memory before starting camera
-    size_t freeHeap = ESP.getFreeHeap();
-    if (freeHeap < 30000) {
-      logError("📷 Insufficient memory for camera startup. Free heap: " +
-               String(freeHeap));
+    if (ESP.getFreeHeap() < 30000) {
+      logError("📷 Insufficient memory for camera startup");
       return;
     }
 
     startCamera();
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
-    // Prevent multiple shutdown attempts
     static bool shutdownInProgress = false;
     if (shutdownInProgress) {
       log("📷 Camera shutdown already in progress");
@@ -703,54 +550,32 @@ void ESPWiFi::cameraConfigHandler() {
 
     lastCameraToggle = currentTime;
 
-    // CRITICAL: Disconnect WebSocket clients FIRST to stop streaming
     if (camSoc && camSoc->socket) {
       log("📷 Disconnecting Camera WebSocket clients");
-
-      // Close all client connections immediately
       camSoc->socket->closeAll();
-
-      // Wait for connections to close
       delay(100);
-
-      // Remove the AsyncWebSocket handler from the server
       webServer->removeHandler(camSoc->socket);
-
-      // Clear the socket reference
       camSoc->socket = nullptr;
     }
 
-    // Now set flag to prevent new camera operations
     cameraOperationInProgress = true;
-
-    // Wait for any ongoing operations to complete
     delay(100);
 
-    // Stop any ongoing recording
     if (isRecording) {
       log("📷 Stopping recording before camera disable");
       stopVideoRecording();
     }
 
-    // Clear camera buffer to free any pending frames
     clearCameraBuffer();
-
-    // Wait for operations to complete
     delay(100);
 
-    // Now safely delete WebSocket object
     if (camSoc) {
       delete camSoc;
       camSoc = nullptr;
     }
 
-    // Properly deactivate the camera hardware
     deinitCamera();
-
-    // Reset operation flag
     cameraOperationInProgress = false;
-
-    // Reset shutdown flag
     shutdownInProgress = false;
   }
 }

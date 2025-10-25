@@ -57,6 +57,7 @@ public:
   // Helper functions for filesystem operations
   void logFilesystemInfo(const String &fsName, size_t totalBytes,
                          size_t usedBytes);
+  void printFilesystemInfo();
   String sanitizeFilename(const String &filename);
   void getStorageInfo(const String &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
@@ -67,6 +68,7 @@ public:
   File logFile;
   FS *logFileSystem = nullptr; // Track which filesystem the log file is on
   bool serialStarted = false;
+  int baudRate = 115200;
   int maxLogFileSize = 0;
   void cleanLogFile();
   void closeLogFile();
@@ -147,17 +149,14 @@ public:
 // Camera
 #ifdef ESPWiFi_CAMERA_INSTALLED
   camera_config_t camConfig;
-  bool streamingModeSet = false;
   WebSocket *camSoc = nullptr;
   void cameraConfigHandler();
   void recordCamera();
   void startCamera();
   bool initCamera();
   void deinitCamera();
-  String camSocPath = "/camera";
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
-  void setCameraMode(String mode);
 
   // Video Recording
   void startVideoRecording(String filePath);
@@ -170,6 +169,9 @@ public:
   unsigned long recordingStartTime;
   int recordingFrameCount = 0;
   int recordingFrameRate = 10; // frames per second
+
+  // Camera operation safety
+  bool cameraOperationInProgress = false;
 #endif
 
   // RSSI

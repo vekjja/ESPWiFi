@@ -17,21 +17,7 @@ void ESPWiFi::initLittleFS() {
 
   lfs = &LittleFS;
   littleFsInitialized = true;
-  log("💾 LittleFS Initialized:");
-
-  size_t totalBytes, usedBytes;
-
-#ifdef ESP8266
-  FSInfo fs_info;
-  LittleFS.info(fs_info);
-  totalBytes = fs_info.totalBytes;
-  usedBytes = fs_info.usedBytes;
-#elif defined(ESP32)
-  totalBytes = LittleFS.totalBytes();
-  usedBytes = LittleFS.usedBytes();
-#endif
-
-  logFilesystemInfo("LittleFS", totalBytes, usedBytes);
+  log("💾 LittleFS Initialized");
 }
 
 void ESPWiFi::initSDCard() {
@@ -47,8 +33,6 @@ void ESPWiFi::initSDCard() {
   }
   sd = &SD_MMC;
   config["sd"]["enabled"] = true;
-  size_t totalBytes = SD_MMC.totalBytes();
-  size_t usedBytes = SD_MMC.usedBytes();
 #else // ESP32-S2, ESP32-S3, ESP32-C3
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3) // ESP32-S3
@@ -56,7 +40,6 @@ void ESPWiFi::initSDCard() {
 #else
   int sdCardPin = 4;
 #endif
-
   if (!SD.begin(sdCardPin)) {
     config["sd"]["enabled"] = false;
     log("⚠️  Failed to mount SD card");
@@ -64,15 +47,10 @@ void ESPWiFi::initSDCard() {
   }
   sd = &SD;
   config["sd"]["enabled"] = true;
-
-  size_t totalBytes = SD.totalBytes();
-  size_t usedBytes = SD.usedBytes();
 #endif
 
   sdCardInitialized = true;
-  log("💾 SD Card Initialized:");
-
-  logFilesystemInfo("SD Card", totalBytes, usedBytes);
+  log("💾 SD Card Initialized");
 }
 
 String ESPWiFi::sanitizeFilename(const String &filename) {
@@ -188,62 +166,91 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
     return true; // Directory doesn't exist, consider it "deleted"
   }
 
-  File dir = fs->open(dirPath);
-  if (!dir || !dir.isDirectory()) {
-    logError("Failed to open directory: " + dirPath);
-    return false;
-  }
+  // Use iterative approach with a queue to avoid deep recursion
+  String dirsToProcess[20]; // Queue for directories to process
+  int dirQueueHead = 0;
+  int dirQueueTail = 0;
+  int totalFilesDeleted = 0;
+  unsigned long startTime = millis();
+  const unsigned long MAX_DELETE_TIME = 10000; // 10 second timeout
 
-  int fileCount = 0;
-  const int MAX_FILES_PER_BATCH =
-      50; // Process files in batches to prevent memory issues
+  // Add the root directory to the queue
+  dirsToProcess[dirQueueTail] = dirPath;
+  dirQueueTail = (dirQueueTail + 1) % 20;
 
-  // List all files and directories in the directory
-  File file = dir.openNextFile();
-  while (file) {
-    String filePath = file.path();
-    if (file.isDirectory()) {
-      // Recursively delete subdirectory
-      if (!deleteDirectoryRecursive(fs, filePath)) {
-        file.close();
-        dir.close();
-        return false;
-      }
-      // Yield after recursive call to prevent deep recursion blocking
-      yield(); // Allow other tasks to run
-    } else {
-      // Delete file
-      if (!fs->remove(filePath)) {
-        logError("Failed to delete file: " + filePath);
-        file.close();
-        dir.close();
-        return false;
-      }
-      fileCount++;
+  while (dirQueueHead != dirQueueTail &&
+         (millis() - startTime) < MAX_DELETE_TIME) {
+    String currentDir = dirsToProcess[dirQueueHead];
+    dirQueueHead = (dirQueueHead + 1) % 20;
 
-      // Log every 50th file to reduce log spam
-      if (fileCount % 50 == 0) {
-        logf("🗑️ Deleted %d files from: %s\n", fileCount, dirPath.c_str());
-      }
-
-      // Yield control every batch to prevent watchdog timeout
-      if (fileCount % MAX_FILES_PER_BATCH == 0) {
-        yield(); // Allow other tasks to run
-      }
+    File dir = fs->open(currentDir);
+    if (!dir || !dir.isDirectory()) {
+      logError("Failed to open directory: " + currentDir);
+      continue;
     }
-    file.close();
-    file = dir.openNextFile();
-  }
-  dir.close();
 
-  // Now remove the empty directory
-  if (fs->rmdir(dirPath)) {
-    logf("🗑️ Deleted directory: %s (%d files)\n", dirPath.c_str(), fileCount);
-    return true;
-  } else {
-    logError("Failed to delete directory: " + dirPath);
+    int filesInThisDir = 0;
+    File file = dir.openNextFile();
+
+    while (file && (millis() - startTime) < MAX_DELETE_TIME) {
+      String filePath = file.path();
+
+      if (file.isDirectory()) {
+        // Add subdirectory to queue for later processing
+        if (dirQueueTail != dirQueueHead) { // Check queue not full
+          dirsToProcess[dirQueueTail] = filePath;
+          dirQueueTail = (dirQueueTail + 1) % 20;
+        } else {
+          logError("Directory queue full, skipping: " + filePath);
+        }
+      } else {
+        // Delete file
+        if (fs->remove(filePath)) {
+          filesInThisDir++;
+          totalFilesDeleted++;
+        } else {
+          logError("Failed to delete file: " + filePath);
+        }
+      }
+
+      file.close();
+
+      // Yield every 10 files to prevent watchdog timeout
+      if (filesInThisDir % 10 == 0) {
+        yield();
+        delay(1); // Small delay to prevent overwhelming the filesystem
+      }
+
+      file = dir.openNextFile();
+    }
+
+    dir.close();
+
+    // Log progress every 100 files
+    if (totalFilesDeleted % 100 == 0 && totalFilesDeleted > 0) {
+      logf("🗑️ Deleted %d files so far...\n", totalFilesDeleted);
+    }
+
+    // Yield after each directory to prevent blocking
+    yield();
+    delay(5); // Small delay between directories
+  }
+
+  // Now remove all empty directories (in reverse order)
+  for (int i = 0; i < 20; i++) {
+    int idx = (dirQueueTail - 1 - i + 20) % 20;
+    if (dirsToProcess[idx].length() > 0) {
+      fs->rmdir(dirsToProcess[idx]);
+    }
+  }
+
+  if ((millis() - startTime) >= MAX_DELETE_TIME) {
+    logError("Directory deletion timed out");
     return false;
   }
+
+  logf("🗑️ Deleted %d files from %s\n", totalFilesDeleted, dirPath.c_str());
+  return true;
 }
 
 void ESPWiFi::srvFiles() {
@@ -806,6 +813,22 @@ void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
   logf("\tUsed: %s\n", bytesToHumanReadable(usedBytes).c_str());
   logf("\tFree: %s\n", bytesToHumanReadable(totalBytes - usedBytes).c_str());
   logf("\tTotal: %s\n", bytesToHumanReadable(totalBytes).c_str());
+}
+
+void ESPWiFi::printFilesystemInfo() {
+  if (lfs) {
+    logf("📁 LittleFS Available:\n");
+    size_t totalBytes, usedBytes, freeBytes;
+    getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
+    logFilesystemInfo("LittleFS", totalBytes, usedBytes);
+  }
+
+  if (sdCardInitialized && sd) {
+    logf("💾 SD Card Available:\n");
+    size_t totalBytes, usedBytes, freeBytes;
+    getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
+    logFilesystemInfo("SD Card", totalBytes, usedBytes);
+  }
 }
 
 bool ESPWiFi::writeFile(FS *filesystem, const String &filePath,

@@ -91,6 +91,16 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Camera settings
   defaultConfig["camera"]["enabled"] = false;
   defaultConfig["camera"]["frameRate"] = 10;
+  defaultConfig["camera"]["brightness"] = 1;
+  defaultConfig["camera"]["contrast"] = 1;
+  defaultConfig["camera"]["saturation"] = 1;
+  defaultConfig["camera"]["exposure_level"] = 1;
+  defaultConfig["camera"]["exposure_value"] = 400;
+  defaultConfig["camera"]["agc_gain"] = 2;
+  defaultConfig["camera"]["gain_ceiling"] = 2;
+  defaultConfig["camera"]["white_balance"] = 1;
+  defaultConfig["camera"]["awb_gain"] = 1;
+  defaultConfig["camera"]["wb_mode"] = 0;
 
   // RSSI settings - always enabled
   defaultConfig["rssi"]["displayMode"] = "numbers";

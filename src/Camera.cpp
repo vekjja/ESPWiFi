@@ -54,21 +54,21 @@ bool ESPWiFi::initCamera() {
   camConfig.xclk_freq_hz = 20000000;
   camConfig.pixel_format = PIXFORMAT_JPEG; // for streaming
 
-  // OV2640 optimized settings for best image quality
+  // OV2640 optimized settings for streaming performance
   if (psramFound()) {
-    // With PSRAM - use maximum OV2640 resolution for snapshots
-    camConfig.frame_size = FRAMESIZE_UXGA; // 1600x1200 (2MP)
-    camConfig.jpeg_quality =
-        10; // Higher quality (lower number = better quality)
-    camConfig.fb_count = 2;
+    // With PSRAM - use better settings for higher quality streaming
+    camConfig.frame_size = FRAMESIZE_SVGA; // 800x600 for streaming with PSRAM
+    camConfig.jpeg_quality = 15; // Better quality for streaming with PSRAM
+    camConfig.fb_count = 4;      // More buffers for smoother streaming
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
-    camConfig.grab_mode = CAMERA_GRAB_LATEST;
+    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
   } else {
-    // Without PSRAM - use high quality VGA
-    camConfig.frame_size = FRAMESIZE_VGA; // 640x480
-    camConfig.jpeg_quality = 12;          // High quality
-    camConfig.fb_count = 1;
+    // Without PSRAM - optimized for streaming
+    camConfig.frame_size = FRAMESIZE_QVGA; // 320x240 for streaming
+    camConfig.jpeg_quality = 25; // Higher compression for smaller frames
+    camConfig.fb_count = 2;      // More buffers for smoother streaming
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
+    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
   }
 
   esp_err_t err = esp_camera_init(&camConfig);
@@ -76,41 +76,6 @@ bool ESPWiFi::initCamera() {
     String errMsg = String(err);
     logError("Camera Init Failed: " + errMsg + "\n");
     return false;
-  }
-
-  // Optimize OV2640 sensor settings for best image quality and brightness
-  s = esp_camera_sensor_get();
-  if (s != NULL) {
-    // Set sensor parameters for optimal OV2640 performance with improved
-    // brightness
-    s->set_brightness(s, 1); // Increased brightness (0 to 2, was 0)
-    s->set_contrast(s, 1);   // Increased contrast (0 to 2, was 0)
-    s->set_saturation(s, 1); // Increased saturation (0 to 2, was 0)
-    s->set_special_effect(s,
-                          0); // 0 to 6 (0-Normal, 1-Negative, 2-Grayscale,
-                              // 3-Red Tint, 4-Green Tint, 5-Blue Tint, 6-Sepia)
-    s->set_whitebal(s, 1);    // 0 = disable , 1 = enable
-    s->set_awb_gain(s, 1);    // 0 = disable , 1 = enable
-    s->set_wb_mode(s, 0); // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny,
-                          // 2 - Cloudy, 3 - Office, 4 - Home)
-    s->set_exposure_ctrl(s, 1); // 0 = disable , 1 = enable
-    s->set_aec2(s, 0);          // 0 = disable , 1 = enable
-    s->set_ae_level(s, 1);      // Increased exposure level (-2 to 2, was 0)
-    s->set_aec_value(s, 400);   // Increased exposure value (0 to 1200, was 300)
-    s->set_gain_ctrl(s, 1);     // 0 = disable , 1 = enable
-    s->set_agc_gain(s, 2);      // Increased gain (0 to 30, was 0)
-    s->set_gainceiling(
-        s, (gainceiling_t)2); // Increased gain ceiling (0 to 6, was 0)
-    s->set_bpc(s, 0);         // 0 = disable , 1 = enable
-    s->set_wpc(s, 1);         // 0 = disable , 1 = enable
-    s->set_raw_gma(s, 1);     // 0 = disable , 1 = enable
-    s->set_lenc(s, 1);        // 0 = disable , 1 = enable
-    s->set_hmirror(s, 0);     // 0 = disable , 1 = enable
-    s->set_vflip(s, 0);       // 0 = disable , 1 = enable
-    s->set_dcw(s, 1);         // 0 = disable , 1 = enable
-    s->set_colorbar(s, 0);    // 0 = disable , 1 = enable
-
-    log("📸 Camera sensor optimized for OV2640 with improved brightness");
   }
 
   return true;
@@ -242,6 +207,209 @@ void ESPWiFi::startCamera() {
         request->send(200, "text/html", html);
       });
 
+  // Camera Settings API Endpoints
+  webServer->on("/api/camera/settings", HTTP_GET,
+                [this](AsyncWebServerRequest *request) {
+                  // Return settings from config, with defaults as fallback
+                  String response = "{";
+                  response += "\"brightness\":" +
+                              String(config["camera"]["brightness"].isNull()
+                                         ? 1
+                                         : config["camera"]["brightness"]) +
+                              ",";
+                  response += "\"contrast\":" +
+                              String(config["camera"]["contrast"].isNull()
+                                         ? 1
+                                         : config["camera"]["contrast"]) +
+                              ",";
+                  response += "\"saturation\":" +
+                              String(config["camera"]["saturation"].isNull()
+                                         ? 1
+                                         : config["camera"]["saturation"]) +
+                              ",";
+                  response += "\"exposure_level\":" +
+                              String(config["camera"]["exposure_level"].isNull()
+                                         ? 1
+                                         : config["camera"]["exposure_level"]) +
+                              ",";
+                  response += "\"exposure_value\":" +
+                              String(config["camera"]["exposure_value"].isNull()
+                                         ? 400
+                                         : config["camera"]["exposure_value"]) +
+                              ",";
+                  response += "\"agc_gain\":" +
+                              String(config["camera"]["agc_gain"].isNull()
+                                         ? 2
+                                         : config["camera"]["agc_gain"]) +
+                              ",";
+                  response += "\"gain_ceiling\":" +
+                              String(config["camera"]["gain_ceiling"].isNull()
+                                         ? 2
+                                         : config["camera"]["gain_ceiling"]) +
+                              ",";
+                  response += "\"white_balance\":" +
+                              String(config["camera"]["white_balance"].isNull()
+                                         ? 1
+                                         : config["camera"]["white_balance"]) +
+                              ",";
+                  response += "\"awb_gain\":" +
+                              String(config["camera"]["awb_gain"].isNull()
+                                         ? 1
+                                         : config["camera"]["awb_gain"]) +
+                              ",";
+                  response += "\"wb_mode\":" +
+                              String(config["camera"]["wb_mode"].isNull()
+                                         ? 0
+                                         : config["camera"]["wb_mode"]) +
+                              ",";
+                  response += "\"frameRate\":" +
+                              String(config["camera"]["frameRate"].isNull()
+                                         ? 10
+                                         : config["camera"]["frameRate"]);
+                  response += "}";
+
+                  AsyncWebServerResponse *resp =
+                      request->beginResponse(200, "application/json", response);
+                  addCORS(resp);
+                  request->send(resp);
+                });
+
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
+      "/api/camera/settings",
+      [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s == NULL) {
+          sendJsonResponse(request, 500,
+                           "{\"error\":\"Camera not initialized\"}");
+          return;
+        }
+
+        if (json.isNull()) {
+          sendJsonResponse(request, 400, "{\"error\":\"Empty JSON\"}");
+          return;
+        }
+
+        JsonDocument doc = json;
+        bool configChanged = false;
+
+        if (doc["brightness"].is<int>()) {
+          int brightness = doc["brightness"];
+          brightness = constrain(brightness, -2, 2);
+          config["camera"]["brightness"] = brightness;
+          s->set_brightness(s, brightness);
+          configChanged = true;
+        }
+        if (doc["contrast"].is<int>()) {
+          int contrast = doc["contrast"];
+          contrast = constrain(contrast, -2, 2);
+          config["camera"]["contrast"] = contrast;
+          s->set_contrast(s, contrast);
+          configChanged = true;
+        }
+        if (doc["saturation"].is<int>()) {
+          int saturation = doc["saturation"];
+          saturation = constrain(saturation, -2, 2);
+          config["camera"]["saturation"] = saturation;
+          s->set_saturation(s, saturation);
+          configChanged = true;
+        }
+        if (doc["exposure_level"].is<int>()) {
+          int ae_level = doc["exposure_level"];
+          ae_level = constrain(ae_level, -2, 2);
+          config["camera"]["exposure_level"] = ae_level;
+          s->set_ae_level(s, ae_level);
+          configChanged = true;
+        }
+        if (doc["exposure_value"].is<int>()) {
+          int aec_value = doc["exposure_value"];
+          aec_value = constrain(aec_value, 0, 1200);
+          config["camera"]["exposure_value"] = aec_value;
+          s->set_aec_value(s, aec_value);
+          configChanged = true;
+        }
+        if (doc["agc_gain"].is<int>()) {
+          int agc_gain = doc["agc_gain"];
+          agc_gain = constrain(agc_gain, 0, 30);
+          config["camera"]["agc_gain"] = agc_gain;
+          s->set_agc_gain(s, agc_gain);
+          configChanged = true;
+        }
+        if (doc["gain_ceiling"].is<int>()) {
+          int gain_ceiling = doc["gain_ceiling"];
+          gain_ceiling = constrain(gain_ceiling, 0, 6);
+          config["camera"]["gain_ceiling"] = gain_ceiling;
+          s->set_gainceiling(s, (gainceiling_t)gain_ceiling);
+          configChanged = true;
+        }
+        if (doc["white_balance"].is<int>()) {
+          int white_balance = doc["white_balance"];
+          config["camera"]["white_balance"] = white_balance;
+          s->set_whitebal(s, white_balance ? 1 : 0);
+          configChanged = true;
+        }
+        if (doc["awb_gain"].is<int>()) {
+          int awb_gain = doc["awb_gain"];
+          config["camera"]["awb_gain"] = awb_gain;
+          s->set_awb_gain(s, awb_gain ? 1 : 0);
+          configChanged = true;
+        }
+        if (doc["wb_mode"].is<int>()) {
+          int wb_mode = doc["wb_mode"];
+          wb_mode = constrain(wb_mode, 0, 4);
+          config["camera"]["wb_mode"] = wb_mode;
+          s->set_wb_mode(s, wb_mode);
+          configChanged = true;
+        }
+        if (doc["frameRate"].is<int>()) {
+          int frameRate = doc["frameRate"];
+          frameRate = constrain(frameRate, 1, 30);
+          config["camera"]["frameRate"] = frameRate;
+          configChanged = true;
+        }
+
+        // Save config if any settings changed
+        if (configChanged) {
+          log("📸 Camera settings being saved:");
+          logf("  brightness: %d\n", config["camera"]["brightness"].as<int>());
+          logf("  contrast: %d\n", config["camera"]["contrast"].as<int>());
+          logf("  saturation: %d\n", config["camera"]["saturation"].as<int>());
+          logf("  exposure_level: %d\n",
+               config["camera"]["exposure_level"].as<int>());
+          logf("  exposure_value: %d\n",
+               config["camera"]["exposure_value"].as<int>());
+          logf("  agc_gain: %d\n", config["camera"]["agc_gain"].as<int>());
+          logf("  gain_ceiling: %d\n",
+               config["camera"]["gain_ceiling"].as<int>());
+          logf("  white_balance: %d\n",
+               config["camera"]["white_balance"].as<int>());
+          logf("  awb_gain: %d\n", config["camera"]["awb_gain"].as<int>());
+          logf("  wb_mode: %d\n", config["camera"]["wb_mode"].as<int>());
+          logf("  frameRate: %d\n", config["camera"]["frameRate"].as<int>());
+          saveConfig();
+
+          // Apply settings to already-initialized camera
+          sensor_t *sensor = esp_camera_sensor_get();
+          if (sensor != NULL) {
+            sensor->set_brightness(sensor, config["camera"]["brightness"]);
+            sensor->set_contrast(sensor, config["camera"]["contrast"]);
+            sensor->set_saturation(sensor, config["camera"]["saturation"]);
+            sensor->set_whitebal(sensor, config["camera"]["white_balance"]);
+            sensor->set_awb_gain(sensor, config["camera"]["awb_gain"]);
+            sensor->set_wb_mode(sensor, config["camera"]["wb_mode"]);
+            sensor->set_ae_level(sensor, config["camera"]["exposure_level"]);
+            sensor->set_aec_value(sensor, config["camera"]["exposure_value"]);
+            sensor->set_agc_gain(sensor, config["camera"]["agc_gain"]);
+            sensor->set_gainceiling(
+                sensor, (gainceiling_t)config["camera"]["gain_ceiling"]);
+            log("📸 Camera settings applied to sensor");
+          }
+
+          log("📸 Camera settings saved to config and applied");
+        }
+
+        sendJsonResponse(request, 200, "{\"success\":true}");
+      }));
+
   // Video Recording Endpoints
   webServer->on("/camera/record/start", HTTP_POST,
                 [this](AsyncWebServerRequest *request) {
@@ -286,14 +454,14 @@ void ESPWiFi::startCamera() {
                   request->send(200, "application/json", response);
                 });
 
-  logf("📷 Camera Started\n");
-
-  this->camSoc = new WebSocket(camSocPath, this, cameraWebSocketEventHandler);
+  this->camSoc = new WebSocket("/camera", this, cameraWebSocketEventHandler);
 
   if (!this->camSoc) {
     logError(" Failed to create Camera WebSocket");
     return;
   }
+
+  log("📷 Camera Enabled");
 }
 
 void ESPWiFi::recordCamera() {
@@ -404,8 +572,7 @@ void ESPWiFi::recordFrame() {
 
   // Check frame rate timing
   static unsigned long lastFrameTime = 0;
-  unsigned long frameInterval =
-      1000 / recordingFrameRate; // Convert FPS to milliseconds
+  unsigned long frameInterval = 1000 / recordingFrameRate;
 
   if (millis() - lastFrameTime < frameInterval) {
     return; // Skip this frame to maintain frame rate
@@ -414,12 +581,10 @@ void ESPWiFi::recordFrame() {
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    logError("Camera Capture for Recording Failed");
-    return;
+    return; // Skip error logging for performance
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
-    logError("Unsupported Pixel Format for Recording");
     esp_camera_fb_return(fb);
     return;
   }
@@ -432,14 +597,11 @@ void ESPWiFi::recordFrame() {
 
   // Write frame data
   size_t written = recordingFile.write(fb->buf, fb->len);
-  if (written != fb->len) {
-    logError("Failed to write complete frame to recording file");
-  } else {
+  if (written == fb->len) {
     recordingFrameCount++;
   }
 
   recordingFile.print("\r\n");
-
   esp_camera_fb_return(fb);
 }
 
@@ -447,7 +609,7 @@ void ESPWiFi::updateRecording() {
   if (isRecording) {
     recordFrame();
 
-    // Optional: Auto-stop recording after certain duration (e.g., 60 seconds)
+    // Auto-stop recording after 60 seconds to prevent storage overflow
     if (millis() - recordingStartTime > 60000) {
       stopVideoRecording();
     }
@@ -455,28 +617,45 @@ void ESPWiFi::updateRecording() {
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
-  // Set camera to snapshot mode for best quality
-  setCameraMode("snapshot");
+  // Safety check to prevent multiple simultaneous camera operations
+  if (cameraOperationInProgress) {
+    logError("📸 Camera operation already in progress, skipping snapshot");
+    return;
+  }
 
-  // Wait for camera settings to take effect
-  delay(200);
+  cameraOperationInProgress = true;
 
+  // Clear any cached frames multiple times to ensure clean buffer
+  for (int i = 0; i < 5; i++) {
+    camera_fb_t *temp_fb = esp_camera_fb_get();
+    if (temp_fb) {
+      esp_camera_fb_return(temp_fb);
+    }
+    delay(100); // Longer delay to allow camera to settle
+  }
+
+  // Force camera to capture a fresh frame by discarding several frames
+  // This ensures we get a new image, not a cached one
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t *discard_fb = esp_camera_fb_get();
+    if (discard_fb) {
+      esp_camera_fb_return(discard_fb);
+    }
+    delay(150); // Wait for camera to capture fresh frame
+  }
+
+  // Get the final fresh frame for the snapshot
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    logError(" Camera Capture Failed");
+    logError("📸 Camera Capture Failed");
+    cameraOperationInProgress = false;
     return;
   }
 
   if (fb->format != PIXFORMAT_JPEG) {
-    logError("Unsupported Pixel Format");
+    logError("📸 Unsupported Pixel Format");
     esp_camera_fb_return(fb);
-    return;
-  }
-
-  // save the image using ESPWiFi::lfs
-  if (!lfs) {
-    logError("No file system available");
-    esp_camera_fb_return(fb);
+    cameraOperationInProgress = false;
     return;
   }
 
@@ -493,26 +672,35 @@ void ESPWiFi::takeSnapshot(String filePath) {
   }
 
   if (!writeSuccess) {
-    logError("Failed to save snapshot to any filesystem");
+    logError("📸 Failed to save snapshot to any filesystem");
+  } else {
+    logf("📸 Snapshot saved: %s (%s) at %s\n", filePath.c_str(),
+         bytesToHumanReadable(fb->len).c_str(), timestamp().c_str());
   }
 
   esp_camera_fb_return(fb);
+
+  // Clear the operation flag
+  cameraOperationInProgress = false;
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!this->camSoc)
-    return;
-  if (this->camSoc->numClients() == 0)
+  if (!this->camSoc || this->camSoc->numClients() == 0)
     return;
 
-  // Set camera to streaming mode for optimal performance
-  setCameraMode("streaming");
+  // Camera uses current settings for streaming
 
-  // Optimize frame rate for streaming - cap at reasonable rates
-  int maxFrameRate = 15; // Maximum 15 FPS for streaming
-  int targetFrameRate = (frameRate > 0 && frameRate <= maxFrameRate)
-                            ? frameRate
-                            : 10; // Default 10 FPS
+  // Use frame rate from config, fallback to parameter, then default
+  int targetFrameRate = 10; // Default
+  if (!config["camera"]["frameRate"].isNull()) {
+    targetFrameRate = config["camera"]["frameRate"];
+  } else if (frameRate > 0) {
+    targetFrameRate = frameRate;
+  }
+
+  // Cap at reasonable maximum to prevent WebSocket overflow
+  if (targetFrameRate > 8)
+    targetFrameRate = 8;
 
   unsigned long interval = 1000 / targetFrameRate;
 
@@ -521,90 +709,25 @@ void ESPWiFi::streamCamera(int frameRate) {
     return;
   }
 
-  // Check WebSocket queue status before capturing
-  if (this->camSoc->socket) {
-    // Check if any clients are connected and their queue status
-    if (this->camSoc->socket->count() > 0) {
-      // Get all clients and check if any have full queues
-      AsyncWebSocketClient &client = this->camSoc->socket->getClients().front();
-      if (client.queueIsFull()) {
-        // Skip this frame if queue is full
-        return;
-      }
-    }
-  }
-
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    logError("Camera Capture for Streaming Failed");
+    logError("📹 Failed to get camera frame buffer");
     return;
   }
 
-  if (fb->format != PIXFORMAT_JPEG) {
-    logError("Unsupported Pixel Format");
-    esp_camera_fb_return(fb);
-    return;
-  }
-
-  // Check frame size - skip if too large for streaming
-  const size_t maxStreamSize =
-      100000; // 100KB max for streaming (VGA with quality 25)
-  if (fb->len > maxStreamSize) {
-    logf("⚠️ Frame too large for streaming: %d bytes, skipping\n", fb->len);
-    esp_camera_fb_return(fb);
-    return;
-  }
-
-  // Validate buffer before sending
-  if (fb->buf && fb->len > 0) {
-    this->camSoc->binaryAll((const char *)fb->buf, fb->len);
-  } else {
-    logError("Invalid camera buffer");
-  }
-
-  esp_camera_fb_return(fb);
-}
-
-void ESPWiFi::setCameraMode(String mode) {
-  sensor_t *s = esp_camera_sensor_get();
-  if (s == NULL) {
-    return;
-  }
-
-  // Check if mode is already set to avoid unnecessary changes
-  static String currentMode = "";
-  if (currentMode == mode) {
-    return; // Mode already set, no need to change
-  }
-
-  // Force camera to stop current capture before changing settings
-  esp_camera_fb_return(esp_camera_fb_get());
-
-  if (mode == "streaming") {
-    // Optimize for streaming - good resolution with compression
-    s->set_framesize(s, FRAMESIZE_VGA); // 640x480 for streaming
-    s->set_quality(s, 25);              // Balanced quality for streaming
-    log("📹 Camera set to streaming mode (VGA, quality 25)");
-    delay(100); // Allow camera settings to take effect
-  } else if (mode == "snapshot") {
-    // Optimize for snapshots - higher resolution, better quality
-    if (psramFound()) {
-      s->set_framesize(s, FRAMESIZE_UXGA); // 1600x1200 for snapshots
-      s->set_quality(s, 10);               // High quality
-      log("📸 Camera set to snapshot mode (UXGA, quality 10)");
-    } else {
-      s->set_framesize(s, FRAMESIZE_VGA); // 640x480 for snapshots without PSRAM
-      s->set_quality(s, 12);              // High quality
-      log("📸 Camera set to snapshot mode (VGA, quality 12)");
+  // Validate frame buffer before sending
+  if (fb->buf && fb->len > 0 && fb->format == PIXFORMAT_JPEG) {
+    // Check if WebSocket is still valid before sending
+    if (this->camSoc && this->camSoc->socket) {
+      this->camSoc->binaryAll((const char *)fb->buf, fb->len);
     }
-    delay(100); // Allow camera settings to take effect
   } else {
-    logError("Invalid camera mode: " + mode);
-    return;
+    logError("📹 Invalid frame buffer - format: " + String(fb->format) +
+             ", len: " + String(fb->len));
   }
 
-  // Update current mode
-  currentMode = mode;
+  // Always return the frame buffer to prevent memory leaks
+  esp_camera_fb_return(fb);
 }
 
 void ESPWiFi::cameraConfigHandler() {
@@ -640,7 +763,7 @@ void ESPWiFi::cameraConfigHandler() {
 
     // Properly deactivate the camera hardware
     deinitCamera();
-    log("📷 Camera Deactivated");
+    log("📷 Camera Disabled");
   }
 }
 

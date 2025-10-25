@@ -20,12 +20,13 @@ void ESPWiFi::startSerial(int baudRate) {
   if (serialStarted) {
     return;
   }
+  this->baudRate = baudRate;
   Serial.begin(baudRate);
   Serial.setDebugOutput(true);
   serialStarted = true;
   delay(999); // wait for serial to start
-  Serial.println("⛓️  Serial Started:");
-  Serial.printf("\tBaud: %d\n", baudRate);
+  Serial.println(timestamp() + "⛓️  Serial Started:");
+  Serial.printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
 void ESPWiFi::startLogging(String filePath) {
@@ -44,9 +45,17 @@ void ESPWiFi::startLogging(String filePath) {
   initSDCard();
   this->logFilePath = filePath;
 
-  closeLogFile();
   openLogFile();
   cleanLogFile();
+
+  logf("\n\n%s🌌 FirmaMint v0.1.0\n\n", timestamp().c_str());
+
+  if (Serial) {
+    log("📺 Serial Output Enabled");
+    logf("\tBaud: %d\n", baudRate);
+  }
+
+  printFilesystemInfo();
 
   log("📝 Logging started:");
   logf("\tFile Name: %s\n", logFilePath.c_str());

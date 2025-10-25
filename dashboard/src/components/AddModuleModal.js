@@ -289,6 +289,7 @@ export default function AddModuleModal({
         onSave={handleSaveCamera}
         cameraData={cameraData}
         onCameraDataChange={handleCameraDataChange}
+        config={config}
       />
     </>
   );

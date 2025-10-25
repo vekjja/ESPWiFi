@@ -7,6 +7,12 @@ import {
   Tooltip,
   TextField,
   Slider,
+  Switch,
+  FormControlLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip,
 } from "@mui/material";
 import {
   PlayArrow,
@@ -14,6 +20,7 @@ import {
   Fullscreen,
   FullscreenExit,
   CameraAlt,
+  ExpandMore,
 } from "@mui/icons-material";
 import SaveIcon from "@mui/icons-material/SaveAs";
 import SettingsModal from "./SettingsModal";
@@ -38,6 +45,19 @@ export default function CameraModule({
     url: config?.url || "/camera",
     frameRate: config?.frameRate || 10,
   });
+  const [cameraSettings, setCameraSettings] = useState({
+    brightness: 1,
+    contrast: 1,
+    saturation: 1,
+    exposure_level: 1,
+    exposure_value: 400,
+    agc_gain: 2,
+    gain_ceiling: 2,
+    white_balance: 1,
+    awb_gain: 1,
+    wb_mode: 0,
+  });
+  const [loading, setLoading] = useState(false);
   const wsRef = useRef(null);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
@@ -282,6 +302,51 @@ export default function CameraModule({
       frameRate: config?.frameRate || 10,
     });
     setSettingsModalOpen(true);
+    loadCameraSettings();
+  };
+
+  const loadCameraSettings = async () => {
+    try {
+      setLoading(true);
+      const apiURL = globalConfig?.apiURL || "";
+      const response = await fetch(`${apiURL}/api/camera/settings`);
+      if (response.ok) {
+        const settings = await response.json();
+        setCameraSettings(settings);
+      }
+    } catch (error) {
+      console.error("Failed to load camera settings:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveCameraSettings = async () => {
+    try {
+      setLoading(true);
+      const apiURL = globalConfig?.apiURL || "";
+      const response = await fetch(`${apiURL}/api/camera/settings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(cameraSettings),
+      });
+
+      if (response.ok) {
+        console.log("Camera settings saved successfully");
+      } else {
+        console.error("Failed to save camera settings");
+      }
+    } catch (error) {
+      console.error("Failed to save camera settings:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCameraSettingChange = (field, value) => {
+    setCameraSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleCloseSettings = () => {
@@ -296,6 +361,7 @@ export default function CameraModule({
       frameRate: settingsData.frameRate,
     };
     onUpdate(config?.key, updatedModule);
+    saveCameraSettings();
     handleCloseSettings();
   };
 
@@ -582,6 +648,209 @@ export default function CameraModule({
               },
             }}
           />
+
+          {/* Camera Sensor Settings */}
+          <Accordion defaultExpanded sx={{ marginTop: 3 }}>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Typography variant="h6">Camera Sensor Settings</Typography>
+              <Chip
+                label={loading ? "Loading..." : "Live"}
+                color={loading ? "default" : "success"}
+                size="small"
+                sx={{ ml: 2 }}
+              />
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {/* Brightness */}
+                <Box>
+                  <Typography gutterBottom>Brightness</Typography>
+                  <Slider
+                    value={cameraSettings.brightness}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("brightness", value)
+                    }
+                    min={-2}
+                    max={2}
+                    step={1}
+                    marks
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* Contrast */}
+                <Box>
+                  <Typography gutterBottom>Contrast</Typography>
+                  <Slider
+                    value={cameraSettings.contrast}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("contrast", value)
+                    }
+                    min={-2}
+                    max={2}
+                    step={1}
+                    marks
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* Saturation */}
+                <Box>
+                  <Typography gutterBottom>Saturation</Typography>
+                  <Slider
+                    value={cameraSettings.saturation}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("saturation", value)
+                    }
+                    min={-2}
+                    max={2}
+                    step={1}
+                    marks
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* Exposure Level */}
+                <Box>
+                  <Typography gutterBottom>Exposure Level</Typography>
+                  <Slider
+                    value={cameraSettings.exposure_level}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("exposure_level", value)
+                    }
+                    min={-2}
+                    max={2}
+                    step={1}
+                    marks
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* Exposure Value */}
+                <Box>
+                  <Typography gutterBottom>Exposure Value</Typography>
+                  <Slider
+                    value={cameraSettings.exposure_value}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("exposure_value", value)
+                    }
+                    min={0}
+                    max={1200}
+                    step={50}
+                    marks={[
+                      { value: 0, label: "0" },
+                      { value: 300, label: "300" },
+                      { value: 600, label: "600" },
+                      { value: 900, label: "900" },
+                      { value: 1200, label: "1200" },
+                    ]}
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* AGC Gain */}
+                <Box>
+                  <Typography gutterBottom>AGC Gain</Typography>
+                  <Slider
+                    value={cameraSettings.agc_gain}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("agc_gain", value)
+                    }
+                    min={0}
+                    max={30}
+                    step={1}
+                    marks={[
+                      { value: 0, label: "0" },
+                      { value: 10, label: "10" },
+                      { value: 20, label: "20" },
+                      { value: 30, label: "30" },
+                    ]}
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* Gain Ceiling */}
+                <Box>
+                  <Typography gutterBottom>Gain Ceiling</Typography>
+                  <Slider
+                    value={cameraSettings.gain_ceiling}
+                    onChange={(e, value) =>
+                      handleCameraSettingChange("gain_ceiling", value)
+                    }
+                    min={0}
+                    max={6}
+                    step={1}
+                    marks
+                    valueLabelDisplay="auto"
+                    disabled={loading}
+                  />
+                </Box>
+
+                {/* White Balance Controls */}
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={cameraSettings.white_balance === 1}
+                        onChange={(e) =>
+                          handleCameraSettingChange(
+                            "white_balance",
+                            e.target.checked ? 1 : 0
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    }
+                    label="Auto White Balance"
+                  />
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={cameraSettings.awb_gain === 1}
+                        onChange={(e) =>
+                          handleCameraSettingChange(
+                            "awb_gain",
+                            e.target.checked ? 1 : 0
+                          )
+                        }
+                        disabled={loading}
+                      />
+                    }
+                    label="AWB Gain"
+                  />
+
+                  <Box>
+                    <Typography gutterBottom>White Balance Mode</Typography>
+                    <Slider
+                      value={cameraSettings.wb_mode}
+                      onChange={(e, value) =>
+                        handleCameraSettingChange("wb_mode", value)
+                      }
+                      min={0}
+                      max={4}
+                      step={1}
+                      marks={[
+                        { value: 0, label: "Auto" },
+                        { value: 1, label: "Sunny" },
+                        { value: 2, label: "Cloudy" },
+                        { value: 3, label: "Office" },
+                        { value: 4, label: "Home" },
+                      ]}
+                      valueLabelDisplay="auto"
+                      disabled={loading}
+                    />
+                  </Box>
+                </Box>
+              </Box>
+            </AccordionDetails>
+          </Accordion>
         </Box>
       </SettingsModal>
     </>

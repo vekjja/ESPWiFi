@@ -5,7 +5,7 @@
 
 void ESPWiFi::start() {
   startSerial();
-  // startLogging();
+  startLogging();
   readConfig();
   startWiFi();
   startMDNS();

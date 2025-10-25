@@ -179,6 +179,7 @@ void ESPWiFi::deinitCamera() {
     logError(errMsg);
   }
 
+  log("📷 Camera deinitialized successfully");
   // Additional cleanup delay
   delay(200); // Longer delay for complete shutdown
 }
@@ -680,7 +681,6 @@ void ESPWiFi::cameraConfigHandler() {
   }
 
   if (cameraEnabled && !cameraCurrentlyRunning) {
-    log("📷 Starting camera...");
     lastCameraToggle = currentTime;
 
     // Check memory before starting camera
@@ -701,12 +701,11 @@ void ESPWiFi::cameraConfigHandler() {
     }
     shutdownInProgress = true;
 
-    log("📷 Stopping camera...");
     lastCameraToggle = currentTime;
 
     // CRITICAL: Disconnect WebSocket clients FIRST to stop streaming
     if (camSoc && camSoc->socket) {
-      log("📷 Disconnecting WebSocket clients...");
+      log("📷 Disconnecting Camera WebSocket clients");
 
       // Close all client connections immediately
       camSoc->socket->closeAll();

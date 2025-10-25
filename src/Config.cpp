@@ -91,6 +91,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Camera settings
   defaultConfig["camera"]["enabled"] = false;
   defaultConfig["camera"]["frameRate"] = 10;
+  defaultConfig["camera"]["rotation"] = 0;
   defaultConfig["camera"]["brightness"] = 1;
   defaultConfig["camera"]["contrast"] = 1;
   defaultConfig["camera"]["saturation"] = 1;

@@ -265,7 +265,12 @@ void ESPWiFi::startCamera() {
                   response += "\"frameRate\":" +
                               String(config["camera"]["frameRate"].isNull()
                                          ? 10
-                                         : config["camera"]["frameRate"]);
+                                         : config["camera"]["frameRate"]) +
+                              ",";
+                  response += "\"rotation\":" +
+                              String(config["camera"]["rotation"].isNull()
+                                         ? 0
+                                         : config["camera"]["rotation"]);
                   response += "}";
 
                   AsyncWebServerResponse *resp =
@@ -366,6 +371,12 @@ void ESPWiFi::startCamera() {
           config["camera"]["frameRate"] = frameRate;
           configChanged = true;
         }
+        if (doc["rotation"].is<int>()) {
+          int rotation = doc["rotation"];
+          rotation = constrain(rotation, 0, 270);
+          config["camera"]["rotation"] = rotation;
+          configChanged = true;
+        }
 
         // Save config if any settings changed
         if (configChanged) {
@@ -385,6 +396,7 @@ void ESPWiFi::startCamera() {
           logf("  awb_gain: %d\n", config["camera"]["awb_gain"].as<int>());
           logf("  wb_mode: %d\n", config["camera"]["wb_mode"].as<int>());
           logf("  frameRate: %d\n", config["camera"]["frameRate"].as<int>());
+          logf("  rotation: %d\n", config["camera"]["rotation"].as<int>());
           saveConfig();
 
           // Apply settings to already-initialized camera
@@ -654,6 +666,8 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
+  log("📸 Snapshot Taken");
+
   // Try SD card first, fallback to LittleFS for snapshots
   bool writeSuccess = false;
   if (sdCardInitialized && sd) {
@@ -668,9 +682,6 @@ void ESPWiFi::takeSnapshot(String filePath) {
 
   if (!writeSuccess) {
     logError("📸 Failed to save snapshot to any filesystem");
-  } else {
-    logf("📸 Snapshot saved: %s (%s) at %s\n", filePath.c_str(),
-         bytesToHumanReadable(fb->len).c_str(), timestamp().c_str());
   }
 
   esp_camera_fb_return(fb);

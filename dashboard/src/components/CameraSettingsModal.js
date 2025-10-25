@@ -11,6 +11,10 @@ import {
   AccordionSummary,
   AccordionDetails,
   Chip,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import IButton from "./IButton";
@@ -62,9 +66,18 @@ export default function CameraSettingsModal({
         const settings = await response.json();
         setCameraSettings(settings);
 
-        // Also update frame rate in localData if it's in the response
-        if (settings.frameRate !== undefined) {
-          const newLocalData = { ...localData, frameRate: settings.frameRate };
+        // Also update frame rate and rotation in localData if they're in the response
+        if (
+          settings.frameRate !== undefined ||
+          settings.rotation !== undefined
+        ) {
+          const newLocalData = { ...localData };
+          if (settings.frameRate !== undefined) {
+            newLocalData.frameRate = settings.frameRate;
+          }
+          if (settings.rotation !== undefined) {
+            newLocalData.rotation = settings.rotation;
+          }
           setLocalData(newLocalData);
           if (onCameraDataChange) {
             onCameraDataChange(newLocalData);
@@ -85,6 +98,7 @@ export default function CameraSettingsModal({
       const settingsToSave = {
         ...cameraSettings,
         frameRate: localData.frameRate || 10,
+        rotation: localData.rotation || 0,
       };
 
       const response = await fetch(`${apiURL}/api/camera/settings`, {
@@ -172,6 +186,22 @@ export default function CameraSettingsModal({
           variant="outlined"
           helperText="Frames per second (1-60)"
         />
+
+        <FormControl fullWidth>
+          <InputLabel>Rotation</InputLabel>
+          <Select
+            value={localData.rotation || 0}
+            label="Rotation"
+            onChange={(e) =>
+              handleDataChange("rotation", parseInt(e.target.value))
+            }
+          >
+            <MenuItem value={0}>0° (No rotation)</MenuItem>
+            <MenuItem value={90}>90° (Clockwise)</MenuItem>
+            <MenuItem value={180}>180° (Upside down)</MenuItem>
+            <MenuItem value={270}>270° (Counter-clockwise)</MenuItem>
+          </Select>
+        </FormControl>
 
         {/* Camera Sensor Settings */}
         <Accordion defaultExpanded>

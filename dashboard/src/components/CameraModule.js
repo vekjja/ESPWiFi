@@ -13,6 +13,10 @@ import {
   AccordionSummary,
   AccordionDetails,
   Chip,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import {
   PlayArrow,
@@ -44,6 +48,7 @@ export default function CameraModule({
     name: config?.name || "",
     url: config?.url || "/camera",
     frameRate: config?.frameRate || 10,
+    rotation: globalConfig?.camera?.rotation || 0,
   });
   const [cameraSettings, setCameraSettings] = useState({
     brightness: 1,
@@ -300,6 +305,7 @@ export default function CameraModule({
       name: config?.name || "",
       url: config?.url || "/camera",
       frameRate: config?.frameRate || 10,
+      rotation: globalConfig?.camera?.rotation || 0,
     });
     setSettingsModalOpen(true);
     loadCameraSettings();
@@ -313,6 +319,11 @@ export default function CameraModule({
       if (response.ok) {
         const settings = await response.json();
         setCameraSettings(settings);
+
+        // Update rotation in settingsData if present in response
+        if (settings.rotation !== undefined) {
+          setSettingsData((prev) => ({ ...prev, rotation: settings.rotation }));
+        }
       }
     } catch (error) {
       console.error("Failed to load camera settings:", error);
@@ -361,6 +372,8 @@ export default function CameraModule({
       frameRate: settingsData.frameRate,
     };
     onUpdate(config?.key, updatedModule);
+
+    // Save camera settings to API
     saveCameraSettings();
     handleCloseSettings();
   };
@@ -435,6 +448,7 @@ export default function CameraModule({
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "4px",
+                transform: `rotate(${globalConfig?.camera?.rotation || 0}deg)`,
               }}
             />
           ) : (
@@ -648,6 +662,25 @@ export default function CameraModule({
               },
             }}
           />
+
+          <FormControl fullWidth sx={{ marginTop: 3 }}>
+            <InputLabel>Rotation</InputLabel>
+            <Select
+              value={settingsData.rotation || 0}
+              label="Rotation"
+              onChange={(e) =>
+                setSettingsData({
+                  ...settingsData,
+                  rotation: parseInt(e.target.value),
+                })
+              }
+            >
+              <MenuItem value={0}>0° (No rotation)</MenuItem>
+              <MenuItem value={90}>90° (Clockwise)</MenuItem>
+              <MenuItem value={180}>180° (Upside down)</MenuItem>
+              <MenuItem value={270}>270° (Counter-clockwise)</MenuItem>
+            </Select>
+          </FormControl>
 
           {/* Camera Sensor Settings */}
           <Accordion defaultExpanded sx={{ marginTop: 3 }}>

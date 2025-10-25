@@ -873,8 +873,8 @@ bool ESPWiFi::writeFile(FS *filesystem, const String &filePath,
 
   // Determine filesystem name for logging
   String fsName = (filesystem == sd) ? "SD Card" : "LittleFS";
-  logf("📁 Successfully wrote file to %s: %s (%s)\n", fsName.c_str(),
-       filePath.c_str(), bytesToHumanReadable(written).c_str());
+  logf("📁 File Written to %s: %s (%s)\n", fsName.c_str(), filePath.c_str(),
+       bytesToHumanReadable(written).c_str());
   return true;
 }
 

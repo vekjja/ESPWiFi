@@ -29,6 +29,8 @@ class WebSocket;
 
 class ESPWiFi {
 private:
+  String version = "v0.1.0";
+
 public:
   JsonDocument config;
   int connectTimeout = 15000;

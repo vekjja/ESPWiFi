@@ -466,14 +466,13 @@ void ESPWiFi::startCamera() {
                   request->send(200, "application/json", response);
                 });
 
+  log("📷 Camera Enabled");
   this->camSoc = new WebSocket("/camera", this, cameraWebSocketEventHandler);
 
   if (!this->camSoc) {
     logError(" Failed to create Camera WebSocket");
     return;
   }
-
-  log("📷 Camera Enabled");
 }
 
 void ESPWiFi::recordCamera() {

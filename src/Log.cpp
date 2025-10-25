@@ -55,11 +55,6 @@ void ESPWiFi::startLogging(String filePath) {
   }
 
   printFilesystemInfo();
-
-  log("📝 Logging started:");
-  logf("\tFile Name: %s\n", logFilePath.c_str());
-  logf("\tFile System: %s\n",
-       (sdCardInitialized && sd) ? "SD Card" : "LittleFS");
 }
 
 // Function to check filesystem space and delete log if needed

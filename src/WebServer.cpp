@@ -39,7 +39,7 @@ void ESPWiFi::startWebServer() {
   srvAll();
   webServer->begin();
   webServerStarted = true;
-  log("🗄️  HTTP Web Server Started:");
+  log("🗄️ HTTP Web Server Started:");
   logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
   logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
 }

@@ -76,7 +76,7 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  log("🛜  WiFi Connected:");
+  log("🛜 WiFi Connected:");
   logf("\tIP Address: %s\n", WiFi.localIP().toString());
 }
 

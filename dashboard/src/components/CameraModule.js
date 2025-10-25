@@ -183,6 +183,29 @@ export default function CameraModule({
     updateCameraStatus();
   }, [globalConfig?.camera?.enabled, deviceOnline]); // Re-run when camera enabled status or device online status changes
 
+  // Listen for camera disable events and disconnect WebSocket
+  useEffect(() => {
+    const handleCameraDisable = () => {
+      console.log(
+        "📷 Camera disable event received, disconnecting WebSocket..."
+      );
+      handleStopStream();
+    };
+
+    // Add event listener for camera disable
+    const moduleElement = document.querySelector("[data-camera-module]");
+    if (moduleElement) {
+      moduleElement.addEventListener("cameraDisable", handleCameraDisable);
+    }
+
+    // Cleanup event listener
+    return () => {
+      if (moduleElement) {
+        moduleElement.removeEventListener("cameraDisable", handleCameraDisable);
+      }
+    };
+  }, []);
+
   // Load camera settings on component mount and when global config changes
   useEffect(() => {
     loadCameraSettings();
@@ -271,6 +294,12 @@ export default function CameraModule({
       wsRef.current = ws;
       setIsStreaming(false); // Set to connecting state
 
+      // Track WebSocket globally for cleanup
+      if (!window.cameraWebSockets) {
+        window.cameraWebSockets = [];
+      }
+      window.cameraWebSockets.push(ws);
+
       ws.onopen = () => {
         setIsStreaming(true);
       };
@@ -307,6 +336,15 @@ export default function CameraModule({
   const handleStopStream = () => {
     if (wsRef.current) {
       wsRef.current.close();
+
+      // Remove from global tracking
+      if (window.cameraWebSockets) {
+        const index = window.cameraWebSockets.indexOf(wsRef.current);
+        if (index > -1) {
+          window.cameraWebSockets.splice(index, 1);
+        }
+      }
+
       wsRef.current = null;
     }
     setIsStreaming(false);
@@ -510,6 +548,7 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
+        data-camera-module="true"
         sx={{
           minWidth: "300px",
           maxWidth: "400px",

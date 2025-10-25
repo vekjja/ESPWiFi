@@ -150,6 +150,7 @@ public:
 #ifdef ESPWiFi_CAMERA_INSTALLED
   camera_config_t camConfig;
   WebSocket *camSoc = nullptr;
+  bool checkCameraGPIOConflicts();
   bool initCamera();
   void startCamera();
   void recordCamera();

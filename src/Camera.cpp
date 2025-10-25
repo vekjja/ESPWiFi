@@ -26,12 +26,45 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
   }
 }
 
+bool ESPWiFi::checkCameraGPIOConflicts() {
+  // Skip GPIO conflict detection for now as it may interfere with camera pins
+  // The camera pins are dedicated and should not be checked for conflicts
+  // This was causing issues with the camera initialization
+  return true;
+}
+
 bool ESPWiFi::initCamera() {
   // Check if camera is already initialized
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
+    log("📷 Camera already initialized");
     return true; // Camera already initialized
   }
+
+  // Prevent multiple simultaneous initialization attempts
+  static bool initInProgress = false;
+  if (initInProgress) {
+    log("📷 Camera initialization already in progress");
+    return false;
+  }
+
+  initInProgress = true;
+  log("📷 Initializing camera...");
+
+  // Skip GPIO conflict detection to prevent interference
+  // Camera pins are dedicated and should not be checked
+
+  // Check available memory before initialization
+  size_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < 50000) { // Need at least 50KB free heap
+    logError("📷 Insufficient memory for camera init. Free heap: " +
+             String(freeHeap));
+    initInProgress = false;
+    return false;
+  }
+
+  // Initialize camera configuration with proper error checking
+  memset(&camConfig, 0, sizeof(camera_config_t));
 
   camConfig.ledc_channel = LEDC_CHANNEL_0;
   camConfig.ledc_timer = LEDC_TIMER_0;
@@ -62,6 +95,7 @@ bool ESPWiFi::initCamera() {
     camConfig.fb_count = 4;      // More buffers for smoother streaming
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
     camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
+    log("📷 Using PSRAM for camera buffers");
   } else {
     // Without PSRAM - optimized for streaming
     camConfig.frame_size = FRAMESIZE_QVGA; // 320x240 for streaming
@@ -69,31 +103,84 @@ bool ESPWiFi::initCamera() {
     camConfig.fb_count = 2;      // More buffers for smoother streaming
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
     camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY; // Better for streaming
+    log("📷 Using DRAM for camera buffers");
   }
+
+  // Add small delay to ensure GPIOs are stable
+  delay(100);
+
+  // Feed watchdog before camera init
+  yield();
 
   esp_err_t err = esp_camera_init(&camConfig);
   if (err != ESP_OK) {
-    String errMsg = String(err);
-    logError("Camera Init Failed: " + errMsg + "\n");
+    String errMsg = "Camera Init Failed: ";
+    // Use generic error handling since specific camera error codes may not be
+    // available
+    if (err == ESP_ERR_NOT_FOUND) {
+      errMsg += "Camera not detected";
+    } else if (err == ESP_ERR_INVALID_ARG) {
+      errMsg += "Invalid camera configuration";
+    } else if (err == ESP_ERR_NO_MEM) {
+      errMsg += "Insufficient memory for camera";
+    } else if (err == ESP_ERR_INVALID_STATE) {
+      errMsg += "Camera in invalid state";
+    } else {
+      errMsg += "Error code: " + String(err);
+    }
+    logError(errMsg);
+    initInProgress = false;
     return false;
   }
 
+  log("📷 Camera initialized successfully");
+  initInProgress = false;
   return true;
 }
 
 void ESPWiFi::deinitCamera() {
+  log("📷 Deinitializing camera...");
+
   // Check if camera is actually initialized before trying to deactivate
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
+    log("📷 Camera not initialized, nothing to deactivate");
     return; // Camera not initialized, nothing to deactivate
   }
+
+  // Stop any ongoing camera operations
+  if (isRecording) {
+    log("📷 Stopping recording before camera deinit");
+    stopVideoRecording();
+  }
+
+  // Clear camera buffer to free any pending frames
+  clearCameraBuffer();
+
+  // Feed watchdog before deinit
+  yield();
+  delay(100); // Longer delay to ensure all operations complete
 
   // Properly deactivate the camera hardware
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
-    String errMsg = String(err);
-    logError("Camera Deactivation Failed: " + errMsg);
+    String errMsg = "Camera Deactivation Failed: ";
+    // Use generic error handling since specific camera error codes may not be
+    // available
+    if (err == ESP_ERR_NOT_FOUND) {
+      errMsg += "Camera not initialized";
+    } else if (err == ESP_ERR_INVALID_STATE) {
+      errMsg += "Camera in invalid state";
+    } else if (err == ESP_ERR_INVALID_ARG) {
+      errMsg += "Invalid camera state";
+    } else {
+      errMsg += "Error code: " + String(err);
+    }
+    logError(errMsg);
   }
+
+  // Additional cleanup delay
+  delay(200); // Longer delay for complete shutdown
 }
 
 void ESPWiFi::startCamera() {
@@ -166,47 +253,6 @@ void ESPWiFi::startCamera() {
         request->send(response);
       });
 
-  webServer->on(
-      "/camera/live", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        String deviceName = config["mdns"];
-        String html =
-            "<!DOCTYPE html><html><head><title>" + deviceName +
-            " Live Stream</title>"
-            "<style>body{background:#181a1b;color:#e8eaed;font-family:sans-"
-            "serif;text-align:center;}"
-            "img{max-width:100vw;max-height:90vh;border-radius:8px;box-shadow:"
-            "0 2px 8px #0008;margin-top:2em;}"
-            "#status{margin:1em;font-size:1.1em;}"
-            "</style>"
-            "</head><body>"
-            "<h2>&#128247; " +
-            deviceName +
-            " Live Stream</h2>"
-            "<div id='status'>Connecting...</div>"
-            "<img id='stream' alt='Camera Stream'/>"
-            "<script>\n"
-            "const img = document.getElementById('stream');\n"
-            "const status = document.getElementById('status');\n"
-            "let ws = new WebSocket((location.protocol === 'https:' ? 'wss://' "
-            ": 'ws://') + location.host + '" +
-            this->camSoc->socket->url() +
-            "');\n"
-            "ws.binaryType = 'arraybuffer';\n"
-            "ws.onopen = () => { status.textContent = 'Connected!'; };\n"
-            "ws.onclose = () => { status.textContent = 'Disconnected'; };\n"
-            "ws.onerror = (e) => { status.textContent = 'WebSocket Error'; };\n"
-            "ws.onmessage = (event) => {\n"
-            "  if (event.data instanceof ArrayBuffer) {\n"
-            "    let blob = new Blob([event.data], {type: 'image/jpeg'});\n"
-            "    img.src = URL.createObjectURL(blob);\n"
-            "    setTimeout(() => URL.revokeObjectURL(img.src), 1000);\n"
-            "  }\n"
-            "};\n"
-            "</script>"
-            "</body></html>";
-        request->send(200, "text/html", html);
-      });
-
   // Video Recording Endpoints
   webServer->on("/camera/record/start", HTTP_POST,
                 [this](AsyncWebServerRequest *request) {
@@ -251,7 +297,6 @@ void ESPWiFi::startCamera() {
                   request->send(200, "application/json", response);
                 });
 
-  log("📷 Camera Enabled");
   this->camSoc = new WebSocket("/camera", this, cameraWebSocketEventHandler);
 
   if (!this->camSoc) {
@@ -413,14 +458,30 @@ void ESPWiFi::updateRecording() {
 }
 
 void ESPWiFi::clearCameraBuffer() {
-  // Clear any cached frames multiple times to ensure clean buffer
-  for (int i = 0; i < 5; i++) {
+  // Only log once to prevent spam
+  static bool firstClear = true;
+  if (firstClear) {
+    log("📷 Clearing camera buffer...");
+    firstClear = false;
+  }
+
+  // Clear any cached frames with timeout protection
+  for (int i = 0; i < 3; i++) { // Reduced from 5 to 3 iterations
     camera_fb_t *temp_fb = esp_camera_fb_get();
     if (temp_fb) {
       esp_camera_fb_return(temp_fb);
+    } else {
+      // No more frames available, break early
+      break;
     }
-    delay(10); // Allow camera to settle between clears
+
+    // Feed watchdog during buffer clearing
+    yield();
+    delay(5); // Reduced delay from 10ms to 5ms
   }
+
+  // Shorter delay to prevent blocking
+  delay(10); // Reduced from 50ms to 10ms
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
@@ -430,10 +491,27 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
+  // Check if camera is enabled
+  if (!config["camera"]["enabled"]) {
+    logError("📸 Camera not enabled, cannot take snapshot");
+    return;
+  }
+
+  // Check memory before snapshot
+  size_t freeHeap = ESP.getFreeHeap();
+  if (freeHeap < 30000) { // Need at least 30KB free heap for snapshot
+    logError("📸 Insufficient memory for snapshot. Free heap: " +
+             String(freeHeap));
+    return;
+  }
+
   cameraOperationInProgress = true;
 
   // Clear camera buffer to remove any cached frames
   clearCameraBuffer();
+
+  // Feed watchdog before camera operation
+  yield();
 
   // Get the final fresh frame for the snapshot
   camera_fb_t *fb = esp_camera_fb_get();
@@ -450,7 +528,15 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  log("📸 Snapshot Taken");
+  // Check frame size to prevent memory issues
+  if (fb->len > 200000) { // Limit snapshot size to 200KB
+    logError("📸 Snapshot too large: " + String(fb->len) + " bytes");
+    esp_camera_fb_return(fb);
+    cameraOperationInProgress = false;
+    return;
+  }
+
+  log("📸 Snapshot Taken - Size: " + String(fb->len) + " bytes");
 
   // Try SD card first, fallback to LittleFS for snapshots
   bool writeSuccess = false;
@@ -466,22 +552,54 @@ void ESPWiFi::takeSnapshot(String filePath) {
 
   if (!writeSuccess) {
     logError("📸 Failed to save snapshot to any filesystem");
+  } else {
+    log("📸 Snapshot saved successfully");
   }
 
   esp_camera_fb_return(fb);
+
+  // Feed watchdog after operation
+  yield();
 
   // Clear the operation flag
   cameraOperationInProgress = false;
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!config["camera"]["enabled"] || !this->camSoc ||
-      this->camSoc->numClients() == 0) {
-    if (!cameraOperationInProgress) {
-      clearCameraBuffer();
-    }
+  // CRITICAL: Check if camera operations are blocked (e.g., during shutdown)
+  if (cameraOperationInProgress) {
     return;
   }
+
+  // Check if camera is enabled first
+  if (!config["camera"]["enabled"]) {
+    return;
+  }
+
+  // CRITICAL: Check if WebSocket is being disconnected
+  if (!this->camSoc || !this->camSoc->socket) {
+    return;
+  }
+
+  // Check if WebSocket exists and has clients
+  if (!this->camSoc || !this->camSoc->socket ||
+      this->camSoc->numClients() == 0) {
+    return;
+  }
+
+  // Double-check camera is still initialized (race condition protection)
+  sensor_t *s = esp_camera_sensor_get();
+  if (s == NULL) {
+    return; // Camera not initialized, can't stream
+  }
+
+  // Check memory before streaming
+  // size_t freeHeap = ESP.getFreeHeap();
+  // if (freeHeap < 20000) { // Need at least 20KB free heap for streaming
+  //   logError("📹 Insufficient memory for camera streaming. Free heap: " +
+  //            String(freeHeap));
+  //   return;
+  // }
 
   // Use frame rate from config, fallback to parameter, then default
   int targetFrameRate = 10; // Default
@@ -502,6 +620,16 @@ void ESPWiFi::streamCamera(int frameRate) {
     return;
   }
 
+  // Feed watchdog before camera operation
+  yield();
+
+  // CRITICAL: Final safety check before camera operation
+  // This prevents crashes during shutdown race conditions
+  if (cameraOperationInProgress || !config["camera"]["enabled"] ||
+      !this->camSoc) {
+    return;
+  }
+
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     logError("📹 Failed to get camera frame buffer");
@@ -510,9 +638,21 @@ void ESPWiFi::streamCamera(int frameRate) {
 
   // Validate frame buffer before sending
   if (fb->buf && fb->len > 0 && fb->format == PIXFORMAT_JPEG) {
-    // Check if WebSocket is still valid before sending
-    if (this->camSoc && this->camSoc->socket) {
-      this->camSoc->binaryAll((const char *)fb->buf, fb->len);
+    // CRITICAL: Final check before WebSocket send
+    // This prevents crashes if WebSocket was deleted during frame capture
+    if (this->camSoc && this->camSoc->socket && !cameraOperationInProgress) {
+      // Check frame size to prevent memory issues
+      if (fb->len > 100000) { // Limit frame size to 100KB
+        logError("📹 Frame too large: " + String(fb->len) + " bytes");
+        esp_camera_fb_return(fb);
+        return;
+      }
+
+      // Final safety check before sending
+      if (config["camera"]["enabled"] && this->camSoc && this->camSoc->socket &&
+          this->camSoc->numClients() > 0 && !cameraOperationInProgress) {
+        this->camSoc->binaryAll((const char *)fb->buf, fb->len);
+      }
     }
   } else {
     logError("📹 Invalid frame buffer - format: " + String(fb->format) +
@@ -521,6 +661,9 @@ void ESPWiFi::streamCamera(int frameRate) {
 
   // Always return the frame buffer to prevent memory leaks
   esp_camera_fb_return(fb);
+
+  // Feed watchdog after operation
+  yield();
 }
 
 void ESPWiFi::cameraConfigHandler() {
@@ -528,33 +671,88 @@ void ESPWiFi::cameraConfigHandler() {
   bool cameraEnabled = config["camera"]["enabled"];
   bool cameraCurrentlyRunning = (camSoc != nullptr);
 
+  // Prevent rapid init/deinit cycles that can cause restarts
+  static unsigned long lastCameraToggle = 0;
+  unsigned long currentTime = millis();
+  if (currentTime - lastCameraToggle < 2000) { // 2 second cooldown
+    log("📷 Camera toggle too frequent, waiting...");
+    return;
+  }
+
   if (cameraEnabled && !cameraCurrentlyRunning) {
+    log("📷 Starting camera...");
+    lastCameraToggle = currentTime;
+
+    // Check memory before starting camera
+    size_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap < 30000) {
+      logError("📷 Insufficient memory for camera startup. Free heap: " +
+               String(freeHeap));
+      return;
+    }
+
     startCamera();
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
+    // Prevent multiple shutdown attempts
+    static bool shutdownInProgress = false;
+    if (shutdownInProgress) {
+      log("📷 Camera shutdown already in progress");
+      return;
+    }
+    shutdownInProgress = true;
+
+    log("📷 Stopping camera...");
+    lastCameraToggle = currentTime;
+
+    // CRITICAL: Disconnect WebSocket clients FIRST to stop streaming
+    if (camSoc && camSoc->socket) {
+      log("📷 Disconnecting WebSocket clients...");
+
+      // Close all client connections immediately
+      camSoc->socket->closeAll();
+
+      // Wait for connections to close
+      delay(100);
+
+      // Remove the AsyncWebSocket handler from the server
+      webServer->removeHandler(camSoc->socket);
+
+      // Clear the socket reference
+      camSoc->socket = nullptr;
+    }
+
+    // Now set flag to prevent new camera operations
+    cameraOperationInProgress = true;
+
+    // Wait for any ongoing operations to complete
+    delay(100);
+
+    // Stop any ongoing recording
+    if (isRecording) {
+      log("📷 Stopping recording before camera disable");
+      stopVideoRecording();
+    }
+
+    // Clear camera buffer to free any pending frames
+    clearCameraBuffer();
+
+    // Wait for operations to complete
+    delay(100);
+
+    // Now safely delete WebSocket object
     if (camSoc) {
-      // Store reference to socket before cleanup
-      AsyncWebSocket *socketToRemove = nullptr;
-      if (camSoc->socket) {
-        socketToRemove = camSoc->socket;
-
-        // Close all client connections first
-        socketToRemove->closeAll();
-
-        // Remove the AsyncWebSocket handler from the server
-        webServer->removeHandler(socketToRemove);
-
-        // Clear the socket reference to prevent destructor from deleting it
-        camSoc->socket = nullptr;
-      }
-
-      // Delete the WebSocket wrapper object
       delete camSoc;
       camSoc = nullptr;
     }
 
     // Properly deactivate the camera hardware
     deinitCamera();
-    log("📷 Camera Disabled");
+
+    // Reset operation flag
+    cameraOperationInProgress = false;
+
+    // Reset shutdown flag
+    shutdownInProgress = false;
   }
 }
 

@@ -290,6 +290,28 @@ function App() {
   const handleCameraSettings = () => {
     // Toggle camera state immediately
     const newEnabledState = !localConfig?.camera?.enabled;
+
+    // If disabling camera, disconnect any active WebSocket connections
+    if (!newEnabledState) {
+      // Find and disconnect any active camera WebSocket connections
+      const cameraModules = document.querySelectorAll("[data-camera-module]");
+      cameraModules.forEach((module) => {
+        // Trigger WebSocket disconnection in camera modules
+        const event = new CustomEvent("cameraDisable");
+        module.dispatchEvent(event);
+      });
+
+      // Also disconnect any global WebSocket connections
+      if (window.cameraWebSockets) {
+        window.cameraWebSockets.forEach((ws) => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+          }
+        });
+        window.cameraWebSockets = [];
+      }
+    }
+
     const configToSave = {
       ...localConfig,
       camera: {

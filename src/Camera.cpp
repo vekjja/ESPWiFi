@@ -54,18 +54,19 @@ bool ESPWiFi::initCamera() {
   camConfig.xclk_freq_hz = 20000000;
   camConfig.pixel_format = PIXFORMAT_JPEG; // for streaming
 
-  // ESP32-CAM optimized settings
+  // OV2640 optimized settings for best image quality
   if (psramFound()) {
-    // With PSRAM - can use higher resolution
-    camConfig.frame_size = FRAMESIZE_VGA; // 640x480
-    camConfig.jpeg_quality = 20;
+    // With PSRAM - use maximum OV2640 resolution for snapshots
+    camConfig.frame_size = FRAMESIZE_UXGA; // 1600x1200 (2MP)
+    camConfig.jpeg_quality =
+        10; // Higher quality (lower number = better quality)
     camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
   } else {
-    // Without PSRAM - use smaller resolution to avoid memory issues
-    camConfig.frame_size = FRAMESIZE_QVGA; // 320x240
-    camConfig.jpeg_quality = 30;
+    // Without PSRAM - use high quality VGA
+    camConfig.frame_size = FRAMESIZE_VGA; // 640x480
+    camConfig.jpeg_quality = 12;          // High quality
     camConfig.fb_count = 1;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
   }
@@ -75,6 +76,41 @@ bool ESPWiFi::initCamera() {
     String errMsg = String(err);
     logError("Camera Init Failed: " + errMsg + "\n");
     return false;
+  }
+
+  // Optimize OV2640 sensor settings for best image quality and brightness
+  s = esp_camera_sensor_get();
+  if (s != NULL) {
+    // Set sensor parameters for optimal OV2640 performance with improved
+    // brightness
+    s->set_brightness(s, 1); // Increased brightness (0 to 2, was 0)
+    s->set_contrast(s, 1);   // Increased contrast (0 to 2, was 0)
+    s->set_saturation(s, 1); // Increased saturation (0 to 2, was 0)
+    s->set_special_effect(s,
+                          0); // 0 to 6 (0-Normal, 1-Negative, 2-Grayscale,
+                              // 3-Red Tint, 4-Green Tint, 5-Blue Tint, 6-Sepia)
+    s->set_whitebal(s, 1);    // 0 = disable , 1 = enable
+    s->set_awb_gain(s, 1);    // 0 = disable , 1 = enable
+    s->set_wb_mode(s, 0); // 0 to 4 - if awb_gain enabled (0 - Auto, 1 - Sunny,
+                          // 2 - Cloudy, 3 - Office, 4 - Home)
+    s->set_exposure_ctrl(s, 1); // 0 = disable , 1 = enable
+    s->set_aec2(s, 0);          // 0 = disable , 1 = enable
+    s->set_ae_level(s, 1);      // Increased exposure level (-2 to 2, was 0)
+    s->set_aec_value(s, 400);   // Increased exposure value (0 to 1200, was 300)
+    s->set_gain_ctrl(s, 1);     // 0 = disable , 1 = enable
+    s->set_agc_gain(s, 2);      // Increased gain (0 to 30, was 0)
+    s->set_gainceiling(
+        s, (gainceiling_t)2); // Increased gain ceiling (0 to 6, was 0)
+    s->set_bpc(s, 0);         // 0 = disable , 1 = enable
+    s->set_wpc(s, 1);         // 0 = disable , 1 = enable
+    s->set_raw_gma(s, 1);     // 0 = disable , 1 = enable
+    s->set_lenc(s, 1);        // 0 = disable , 1 = enable
+    s->set_hmirror(s, 0);     // 0 = disable , 1 = enable
+    s->set_vflip(s, 0);       // 0 = disable , 1 = enable
+    s->set_dcw(s, 1);         // 0 = disable , 1 = enable
+    s->set_colorbar(s, 0);    // 0 = disable , 1 = enable
+
+    log("📸 Camera sensor optimized for OV2640 with improved brightness");
   }
 
   return true;
@@ -419,6 +455,12 @@ void ESPWiFi::updateRecording() {
 }
 
 void ESPWiFi::takeSnapshot(String filePath) {
+  // Set camera to snapshot mode for best quality
+  setCameraMode("snapshot");
+
+  // Wait for camera settings to take effect
+  delay(200);
+
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     logError(" Camera Capture Failed");
@@ -463,13 +505,33 @@ void ESPWiFi::streamCamera(int frameRate) {
   if (this->camSoc->numClients() == 0)
     return;
 
-  unsigned long interval =
-      frameRate > 0 ? (1000 / frameRate)
-                    : 500; // Default to 500ms if frameRate is 0 or negative
+  // Set camera to streaming mode for optimal performance
+  setCameraMode("streaming");
+
+  // Optimize frame rate for streaming - cap at reasonable rates
+  int maxFrameRate = 15; // Maximum 15 FPS for streaming
+  int targetFrameRate = (frameRate > 0 && frameRate <= maxFrameRate)
+                            ? frameRate
+                            : 10; // Default 10 FPS
+
+  unsigned long interval = 1000 / targetFrameRate;
 
   static IntervalTimer timer(1000);
   if (!timer.shouldRun(interval)) {
     return;
+  }
+
+  // Check WebSocket queue status before capturing
+  if (this->camSoc->socket) {
+    // Check if any clients are connected and their queue status
+    if (this->camSoc->socket->count() > 0) {
+      // Get all clients and check if any have full queues
+      AsyncWebSocketClient &client = this->camSoc->socket->getClients().front();
+      if (client.queueIsFull()) {
+        // Skip this frame if queue is full
+        return;
+      }
+    }
   }
 
   camera_fb_t *fb = esp_camera_fb_get();
@@ -484,6 +546,15 @@ void ESPWiFi::streamCamera(int frameRate) {
     return;
   }
 
+  // Check frame size - skip if too large for streaming
+  const size_t maxStreamSize =
+      100000; // 100KB max for streaming (VGA with quality 25)
+  if (fb->len > maxStreamSize) {
+    logf("⚠️ Frame too large for streaming: %d bytes, skipping\n", fb->len);
+    esp_camera_fb_return(fb);
+    return;
+  }
+
   // Validate buffer before sending
   if (fb->buf && fb->len > 0) {
     this->camSoc->binaryAll((const char *)fb->buf, fb->len);
@@ -492,6 +563,48 @@ void ESPWiFi::streamCamera(int frameRate) {
   }
 
   esp_camera_fb_return(fb);
+}
+
+void ESPWiFi::setCameraMode(String mode) {
+  sensor_t *s = esp_camera_sensor_get();
+  if (s == NULL) {
+    return;
+  }
+
+  // Check if mode is already set to avoid unnecessary changes
+  static String currentMode = "";
+  if (currentMode == mode) {
+    return; // Mode already set, no need to change
+  }
+
+  // Force camera to stop current capture before changing settings
+  esp_camera_fb_return(esp_camera_fb_get());
+
+  if (mode == "streaming") {
+    // Optimize for streaming - good resolution with compression
+    s->set_framesize(s, FRAMESIZE_VGA); // 640x480 for streaming
+    s->set_quality(s, 25);              // Balanced quality for streaming
+    log("📹 Camera set to streaming mode (VGA, quality 25)");
+    delay(100); // Allow camera settings to take effect
+  } else if (mode == "snapshot") {
+    // Optimize for snapshots - higher resolution, better quality
+    if (psramFound()) {
+      s->set_framesize(s, FRAMESIZE_UXGA); // 1600x1200 for snapshots
+      s->set_quality(s, 10);               // High quality
+      log("📸 Camera set to snapshot mode (UXGA, quality 10)");
+    } else {
+      s->set_framesize(s, FRAMESIZE_VGA); // 640x480 for snapshots without PSRAM
+      s->set_quality(s, 12);              // High quality
+      log("📸 Camera set to snapshot mode (VGA, quality 12)");
+    }
+    delay(100); // Allow camera settings to take effect
+  } else {
+    logError("Invalid camera mode: " + mode);
+    return;
+  }
+
+  // Update current mode
+  currentMode = mode;
 }
 
 void ESPWiFi::cameraConfigHandler() {

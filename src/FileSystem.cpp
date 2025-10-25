@@ -118,10 +118,6 @@ void ESPWiFi::getStorageInfo(const String &fsParam, size_t &totalBytes,
     usedBytes = SD.usedBytes();
 #endif
     freeBytes = totalBytes - usedBytes;
-
-    // Debug: Log storage info when requested
-    logf("🔍 Storage Info Request - SD Card: Total=%zu, Used=%zu, Free=%zu\n",
-         totalBytes, usedBytes, freeBytes);
   }
 }
 

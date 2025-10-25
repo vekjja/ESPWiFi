@@ -38,7 +38,6 @@ void ESPWiFi::startLogging(String filePath) {
     startSerial();
   }
 
-  // This must be set before calling initSDCard() to prevent circular calls
   loggingStarted = true;
 
   initLittleFS();
@@ -69,10 +68,11 @@ void ESPWiFi::cleanLogFile() {
     size_t logFileSize = logFile.size();
     if (logFileSize > maxLogFileSize) {
       closeLogFile();
-      // Delete the log file to free up space using the tracked filesystem
       bool deleted = false;
-      if (logFileSystem) {
-        deleted = logFileSystem->remove(logFilePath);
+      if (sdCardInitialized && sd) {
+        deleted = sd->remove(logFilePath);
+      } else if (lfs) {
+        deleted = lfs->remove(logFilePath);
       }
 
       if (deleted) {
@@ -158,55 +158,22 @@ void ESPWiFi::closeLogFile() {
   if (logFile) {
     logFile.close();
   }
-  logFileSystem = nullptr;
 }
 
 void ESPWiFi::openLogFile() {
   // Try SD card first, fallback to LittleFS for logging
   if (sdCardInitialized && sd) {
     logFile = sd->open(logFilePath, "a");
-    logFileSystem = sd;
   } else if (lfs) {
     logFile = lfs->open(logFilePath, "a");
-    logFileSystem = lfs;
   } else {
     logError("No file system available for logging");
-    logFileSystem = nullptr;
     return;
   }
 
   if (!logFile) {
     logError("Failed to open log file");
-    logFileSystem = nullptr;
   }
 }
 
-void ESPWiFi::srvLog() {
-  initWebServer();
-  webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    // Use the current logFile to serve the active log from the correct
-    // filesystem
-    if (logFile && logFileSystem) {
-      if (logFileSystem->exists(logFilePath)) {
-        AsyncWebServerResponse *response = request->beginResponse(
-            *logFileSystem, logFilePath,
-            "text/plain; charset=utf-8"); // Set UTF-8 encoding
-        addCORS(response);
-        request->send(response);
-      } else {
-        AsyncWebServerResponse *response = request->beginResponse(
-            404, "text/plain; charset=utf-8",
-            "Log file not found on filesystem"); // Set UTF-8 encoding
-        addCORS(response);
-        request->send(response);
-      }
-    } else {
-      AsyncWebServerResponse *response =
-          request->beginResponse(404, "text/plain; charset=utf-8",
-                                 "No active log file"); // Set UTF-8 encoding
-      addCORS(response);
-      request->send(response);
-    }
-  });
-}
 #endif // ESPWiFi_LOG

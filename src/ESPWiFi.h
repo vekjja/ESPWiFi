@@ -66,7 +66,6 @@ public:
 
   // Logging
   File logFile;
-  FS *logFileSystem = nullptr; // Track which filesystem the log file is on
   bool serialStarted = false;
   int baudRate = 115200;
   int maxLogFileSize = 0;
@@ -110,7 +109,6 @@ public:
 
   // WebServer
   void srvAll();
-  void srvLog();
   void srvOTA();
   void srvRoot();
   void srvInfo();

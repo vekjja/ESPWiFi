@@ -121,7 +121,6 @@ void ESPWiFi::srvInfo() {
 }
 
 void ESPWiFi::srvAll() {
-  srvLog();
   srvRoot();
   srvOTA();
   srvInfo();

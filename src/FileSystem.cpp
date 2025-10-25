@@ -258,7 +258,6 @@ void ESPWiFi::srvFiles() {
 
   // Generic file requests - updated to handle both LittleFS and SD card
   webServer->onNotFound([this](AsyncWebServerRequest *request) {
-    // Handle CORS preflight requests
     if (request->method() == HTTP_OPTIONS) {
       handleCorsPreflight(request);
       return;

@@ -50,8 +50,10 @@ String ESPWiFi::getContentType(String filename) {
     return "audio/wav";
   else if (filename.endsWith(".json"))
     return "application/json";
-  // Add more MIME types here as needed
-  return "text/plain";
+  else if (filename.endsWith("log"))
+    return "text/plain; charset=utf-8";
+  else
+    return "text/plain";
 }
 
 String ESPWiFi::bytesToHumanReadable(size_t bytes) {

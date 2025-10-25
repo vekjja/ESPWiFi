@@ -37,6 +37,7 @@ export default function CameraModule({
   onUpdate,
   onDelete,
   deviceOnline = true,
+  saveConfigToDevice,
 }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -51,18 +52,20 @@ export default function CameraModule({
     rotation: globalConfig?.camera?.rotation || 0,
   });
   const [cameraSettings, setCameraSettings] = useState({
-    brightness: 1,
-    contrast: 1,
-    saturation: 1,
-    exposure_level: 1,
-    exposure_value: 400,
-    agc_gain: 2,
-    gain_ceiling: 2,
-    white_balance: 1,
-    awb_gain: 1,
-    wb_mode: 0,
+    brightness: globalConfig?.camera?.brightness ?? 1,
+    contrast: globalConfig?.camera?.contrast ?? 1,
+    saturation: globalConfig?.camera?.saturation ?? 1,
+    exposure_level: globalConfig?.camera?.exposure_level ?? 1,
+    exposure_value: globalConfig?.camera?.exposure_value ?? 400,
+    agc_gain: globalConfig?.camera?.agc_gain ?? 2,
+    gain_ceiling: globalConfig?.camera?.gain_ceiling ?? 2,
+    white_balance: globalConfig?.camera?.white_balance ?? 1,
+    awb_gain: globalConfig?.camera?.awb_gain ?? 1,
+    wb_mode: globalConfig?.camera?.wb_mode ?? 0,
+    frameRate: globalConfig?.camera?.frameRate ?? 10,
+    rotation: globalConfig?.camera?.rotation ?? 0,
   });
-  const [loading, setLoading] = useState(false);
+
   const wsRef = useRef(null);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
@@ -180,6 +183,49 @@ export default function CameraModule({
     updateCameraStatus();
   }, [globalConfig?.camera?.enabled, deviceOnline]); // Re-run when camera enabled status or device online status changes
 
+  // Load camera settings on component mount and when global config changes
+  useEffect(() => {
+    loadCameraSettings();
+  }, [globalConfig?.camera]); // Re-run when camera config changes
+
+  // Update camera settings when global config changes
+  useEffect(() => {
+    if (globalConfig?.camera) {
+      setCameraSettings({
+        brightness: globalConfig.camera.brightness ?? 1,
+        contrast: globalConfig.camera.contrast ?? 1,
+        saturation: globalConfig.camera.saturation ?? 1,
+        exposure_level: globalConfig.camera.exposure_level ?? 1,
+        exposure_value: globalConfig.camera.exposure_value ?? 400,
+        agc_gain: globalConfig.camera.agc_gain ?? 2,
+        gain_ceiling: globalConfig.camera.gain_ceiling ?? 2,
+        white_balance: globalConfig.camera.white_balance ?? 1,
+        awb_gain: globalConfig.camera.awb_gain ?? 1,
+        wb_mode: globalConfig.camera.wb_mode ?? 0,
+        frameRate: globalConfig.camera.frameRate ?? 10,
+        rotation: globalConfig.camera.rotation ?? 0,
+      });
+    }
+  }, [globalConfig?.camera]); // Re-run when camera config changes
+
+  // Update settings data when modal opens to ensure latest values
+  useEffect(() => {
+    if (settingsModalOpen) {
+      setSettingsData({
+        name: config?.name || "",
+        url: config?.url || "/camera",
+        frameRate: cameraSettings.frameRate || config?.frameRate || 10,
+        rotation:
+          cameraSettings.rotation || globalConfig?.camera?.rotation || 0,
+      });
+    }
+  }, [
+    settingsModalOpen,
+    cameraSettings,
+    config,
+    globalConfig?.camera?.rotation,
+  ]);
+
   // Set up polling for remote cameras
   useEffect(() => {
     if (!isRemoteCamera()) return;
@@ -276,16 +322,38 @@ export default function CameraModule({
   const handleFullscreen = () => {
     if (!isFullscreen) {
       // Enter fullscreen
-      if (imgRef.current && imgRef.current.requestFullscreen) {
-        imgRef.current.requestFullscreen();
-        setIsFullscreen(true);
+      const element = imgRef.current || document.documentElement;
+
+      if (element.requestFullscreen) {
+        element.requestFullscreen();
+      } else if (element.webkitRequestFullscreen) {
+        // Safari
+        element.webkitRequestFullscreen();
+      } else if (element.webkitEnterFullscreen) {
+        // iOS Safari
+        element.webkitEnterFullscreen();
+      } else if (element.mozRequestFullScreen) {
+        // Firefox
+        element.mozRequestFullScreen();
+      } else if (element.msRequestFullscreen) {
+        // IE/Edge
+        element.msRequestFullscreen();
       }
+
+      setIsFullscreen(true);
     } else {
       // Exit fullscreen
       if (document.exitFullscreen) {
         document.exitFullscreen();
-        setIsFullscreen(false);
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
       }
+
+      setIsFullscreen(false);
     }
   };
 
@@ -301,58 +369,43 @@ export default function CameraModule({
   };
 
   const handleOpenSettings = () => {
+    console.log("Opening settings - cameraSettings:", cameraSettings);
+    console.log(
+      "Opening settings - globalConfig.camera:",
+      globalConfig?.camera
+    );
+
+    // Load camera settings first to ensure we have the latest values
+    loadCameraSettings();
+
+    // Set settings data, using cameraSettings which is kept in sync via useEffect
     setSettingsData({
       name: config?.name || "",
       url: config?.url || "/camera",
-      frameRate: config?.frameRate || 10,
-      rotation: globalConfig?.camera?.rotation || 0,
+      frameRate: cameraSettings.frameRate || config?.frameRate || 10,
+      rotation: cameraSettings.rotation || globalConfig?.camera?.rotation || 0,
     });
+
     setSettingsModalOpen(true);
-    loadCameraSettings();
   };
 
-  const loadCameraSettings = async () => {
-    try {
-      setLoading(true);
-      const apiURL = globalConfig?.apiURL || "";
-      const response = await fetch(`${apiURL}/api/camera/settings`);
-      if (response.ok) {
-        const settings = await response.json();
-        setCameraSettings(settings);
-
-        // Update rotation in settingsData if present in response
-        if (settings.rotation !== undefined) {
-          setSettingsData((prev) => ({ ...prev, rotation: settings.rotation }));
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load camera settings:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveCameraSettings = async () => {
-    try {
-      setLoading(true);
-      const apiURL = globalConfig?.apiURL || "";
-      const response = await fetch(`${apiURL}/api/camera/settings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(cameraSettings),
+  const loadCameraSettings = () => {
+    // Load camera settings from globalConfig
+    if (globalConfig?.camera) {
+      setCameraSettings({
+        brightness: globalConfig.camera.brightness ?? 1,
+        contrast: globalConfig.camera.contrast ?? 1,
+        saturation: globalConfig.camera.saturation ?? 1,
+        exposure_level: globalConfig.camera.exposure_level ?? 1,
+        exposure_value: globalConfig.camera.exposure_value ?? 400,
+        agc_gain: globalConfig.camera.agc_gain ?? 2,
+        gain_ceiling: globalConfig.camera.gain_ceiling ?? 2,
+        white_balance: globalConfig.camera.white_balance ?? 1,
+        awb_gain: globalConfig.camera.awb_gain ?? 1,
+        wb_mode: globalConfig.camera.wb_mode ?? 0,
+        frameRate: globalConfig.camera.frameRate ?? 10,
+        rotation: globalConfig.camera.rotation ?? 0,
       });
-
-      if (response.ok) {
-        console.log("Camera settings saved successfully");
-      } else {
-        console.error("Failed to save camera settings");
-      }
-    } catch (error) {
-      console.error("Failed to save camera settings:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -365,16 +418,36 @@ export default function CameraModule({
   };
 
   const handleSaveSettings = () => {
+    // Update module settings
     const updatedModule = {
       ...config,
       name: settingsData.name,
       url: settingsData.url,
       frameRate: settingsData.frameRate,
     };
-    onUpdate(config?.key, updatedModule);
 
-    // Save camera settings to API
-    saveCameraSettings();
+    // Update camera settings state
+    const updatedCameraSettings = {
+      ...cameraSettings,
+      rotation: settingsData.rotation,
+    };
+    setCameraSettings(updatedCameraSettings);
+
+    // Save everything in one call
+    if (globalConfig && saveConfigToDevice) {
+      const updatedConfig = {
+        ...globalConfig,
+        modules: globalConfig.modules.map((module) =>
+          module.key === config?.key ? updatedModule : module
+        ),
+        camera: {
+          ...globalConfig.camera,
+          ...updatedCameraSettings,
+        },
+      };
+      saveConfigToDevice(updatedConfig);
+    }
+
     handleCloseSettings();
   };
 
@@ -386,12 +459,36 @@ export default function CameraModule({
   // Listen for fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      // Check for fullscreen across all browser prefixes
+      const isFullscreenActive =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement;
+
+      setIsFullscreen(!!isFullscreenActive);
     };
 
+    // Add listeners for all browser prefixes
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener(
+        "webkitfullscreenchange",
+        handleFullscreenChange
+      );
+      document.removeEventListener(
+        "mozfullscreenchange",
+        handleFullscreenChange
+      );
+      document.removeEventListener(
+        "MSFullscreenChange",
+        handleFullscreenChange
+      );
     };
   }, []);
 
@@ -448,7 +545,16 @@ export default function CameraModule({
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "4px",
-                transform: `rotate(${globalConfig?.camera?.rotation || 0}deg)`,
+                transform: `rotate(${cameraSettings.rotation || 0}deg)`,
+                transition: "transform 0.2s ease",
+              }}
+              onLoad={(e) => {
+                // Ensure rotation is applied after image loads
+                if (e.target) {
+                  e.target.style.transform = `rotate(${
+                    cameraSettings.rotation || 0
+                  }deg)`;
+                }
               }}
             />
           ) : (
@@ -686,12 +792,7 @@ export default function CameraModule({
           <Accordion defaultExpanded sx={{ marginTop: 3 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Typography variant="h6">Camera Sensor Settings</Typography>
-              <Chip
-                label={loading ? "Loading..." : "Live"}
-                color={loading ? "default" : "success"}
-                size="small"
-                sx={{ ml: 2 }}
-              />
+              <Chip label="Live" color="success" size="small" sx={{ ml: 2 }} />
             </AccordionSummary>
             <AccordionDetails>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -708,7 +809,6 @@ export default function CameraModule({
                     step={1}
                     marks
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -725,7 +825,6 @@ export default function CameraModule({
                     step={1}
                     marks
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -742,7 +841,6 @@ export default function CameraModule({
                     step={1}
                     marks
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -759,7 +857,6 @@ export default function CameraModule({
                     step={1}
                     marks
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -782,7 +879,6 @@ export default function CameraModule({
                       { value: 1200, label: "1200" },
                     ]}
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -804,7 +900,6 @@ export default function CameraModule({
                       { value: 30, label: "30" },
                     ]}
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -821,7 +916,6 @@ export default function CameraModule({
                     step={1}
                     marks
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
 
@@ -837,7 +931,6 @@ export default function CameraModule({
                             e.target.checked ? 1 : 0
                           )
                         }
-                        disabled={loading}
                       />
                     }
                     label="Auto White Balance"
@@ -853,7 +946,6 @@ export default function CameraModule({
                             e.target.checked ? 1 : 0
                           )
                         }
-                        disabled={loading}
                       />
                     }
                     label="AWB Gain"
@@ -877,7 +969,6 @@ export default function CameraModule({
                         { value: 4, label: "Home" },
                       ]}
                       valueLabelDisplay="auto"
-                      disabled={loading}
                     />
                   </Box>
                 </Box>

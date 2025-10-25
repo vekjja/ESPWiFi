@@ -44,7 +44,6 @@ export default function CameraSettingsModal({
     awb_gain: 1,
     wb_mode: 0,
   });
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setLocalData(cameraData);
@@ -57,72 +56,38 @@ export default function CameraSettingsModal({
     }
   }, [open]);
 
-  const loadCameraSettings = async () => {
-    try {
-      setLoading(true);
-      const apiURL = config?.apiURL || "";
-      const response = await fetch(`${apiURL}/api/camera/settings`);
-      if (response.ok) {
-        const settings = await response.json();
-        setCameraSettings(settings);
-
-        // Also update frame rate and rotation in localData if they're in the response
-        if (
-          settings.frameRate !== undefined ||
-          settings.rotation !== undefined
-        ) {
-          const newLocalData = { ...localData };
-          if (settings.frameRate !== undefined) {
-            newLocalData.frameRate = settings.frameRate;
-          }
-          if (settings.rotation !== undefined) {
-            newLocalData.rotation = settings.rotation;
-          }
-          setLocalData(newLocalData);
-          if (onCameraDataChange) {
-            onCameraDataChange(newLocalData);
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load camera settings:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveCameraSettings = async () => {
-    try {
-      setLoading(true);
-      const apiURL = config?.apiURL || "";
-      const settingsToSave = {
-        ...cameraSettings,
-        frameRate: localData.frameRate || 10,
-        rotation: localData.rotation || 0,
-      };
-
-      const response = await fetch(`${apiURL}/api/camera/settings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(settingsToSave),
+  const loadCameraSettings = () => {
+    // Load camera settings from config
+    if (config?.camera) {
+      setCameraSettings({
+        brightness: config.camera.brightness ?? 1,
+        contrast: config.camera.contrast ?? 1,
+        saturation: config.camera.saturation ?? 1,
+        exposure_level: config.camera.exposure_level ?? 1,
+        exposure_value: config.camera.exposure_value ?? 400,
+        agc_gain: config.camera.agc_gain ?? 2,
+        gain_ceiling: config.camera.gain_ceiling ?? 2,
+        white_balance: config.camera.white_balance ?? 1,
+        awb_gain: config.camera.awb_gain ?? 1,
+        wb_mode: config.camera.wb_mode ?? 0,
       });
 
-      if (response.ok) {
-        console.log("Camera settings saved successfully");
-      } else {
-        console.error("Failed to save camera settings");
+      // Also update frame rate and rotation in localData if they're in config
+      const newLocalData = { ...localData };
+      if (config.camera.frameRate !== undefined) {
+        newLocalData.frameRate = config.camera.frameRate;
       }
-    } catch (error) {
-      console.error("Failed to save camera settings:", error);
-    } finally {
-      setLoading(false);
+      if (config.camera.rotation !== undefined) {
+        newLocalData.rotation = config.camera.rotation;
+      }
+      setLocalData(newLocalData);
+      if (onCameraDataChange) {
+        onCameraDataChange(newLocalData);
+      }
     }
   };
 
   const handleSave = () => {
-    saveCameraSettings();
     if (onSave) {
       onSave();
     }
@@ -207,12 +172,7 @@ export default function CameraSettingsModal({
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="h6">Camera Sensor Settings</Typography>
-            <Chip
-              label={loading ? "Loading..." : "Live"}
-              color={loading ? "default" : "success"}
-              size="small"
-              sx={{ ml: 2 }}
-            />
+            <Chip label="Live" color="success" size="small" sx={{ ml: 2 }} />
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -229,7 +189,6 @@ export default function CameraSettingsModal({
                   step={1}
                   marks
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -246,7 +205,6 @@ export default function CameraSettingsModal({
                   step={1}
                   marks
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -263,7 +221,6 @@ export default function CameraSettingsModal({
                   step={1}
                   marks
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -280,7 +237,6 @@ export default function CameraSettingsModal({
                   step={1}
                   marks
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -303,7 +259,6 @@ export default function CameraSettingsModal({
                     { value: 1200, label: "1200" },
                   ]}
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -325,7 +280,6 @@ export default function CameraSettingsModal({
                     { value: 30, label: "30" },
                   ]}
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -342,7 +296,6 @@ export default function CameraSettingsModal({
                   step={1}
                   marks
                   valueLabelDisplay="auto"
-                  disabled={loading}
                 />
               </Box>
 
@@ -358,7 +311,6 @@ export default function CameraSettingsModal({
                           e.target.checked ? 1 : 0
                         )
                       }
-                      disabled={loading}
                     />
                   }
                   label="Auto White Balance"
@@ -374,7 +326,6 @@ export default function CameraSettingsModal({
                           e.target.checked ? 1 : 0
                         )
                       }
-                      disabled={loading}
                     />
                   }
                   label="AWB Gain"
@@ -398,7 +349,6 @@ export default function CameraSettingsModal({
                       { value: 4, label: "Home" },
                     ]}
                     valueLabelDisplay="auto"
-                    disabled={loading}
                   />
                 </Box>
               </Box>

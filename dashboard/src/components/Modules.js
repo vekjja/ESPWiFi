@@ -86,6 +86,7 @@ function SortableCameraModule({
   onUpdate,
   onDelete,
   deviceOnline,
+  saveConfigToDevice,
 }) {
   const {
     attributes,
@@ -111,6 +112,7 @@ function SortableCameraModule({
         onUpdate={onUpdate}
         onDelete={onDelete}
         deviceOnline={deviceOnline}
+        saveConfigToDevice={saveConfigToDevice}
       />
     </div>
   );
@@ -376,6 +378,7 @@ export default function Modules({
                     onUpdate={updateModule}
                     onDelete={deleteModule}
                     deviceOnline={deviceOnline}
+                    saveConfigToDevice={saveConfigToDevice}
                   />
                 );
               }

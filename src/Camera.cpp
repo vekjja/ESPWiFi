@@ -616,6 +616,17 @@ void ESPWiFi::updateRecording() {
   }
 }
 
+void ESPWiFi::clearCameraBuffer() {
+  // Clear any cached frames multiple times to ensure clean buffer
+  for (int i = 0; i < 5; i++) {
+    camera_fb_t *temp_fb = esp_camera_fb_get();
+    if (temp_fb) {
+      esp_camera_fb_return(temp_fb);
+    }
+    delay(10); // Allow camera to settle between clears
+  }
+}
+
 void ESPWiFi::takeSnapshot(String filePath) {
   // Safety check to prevent multiple simultaneous camera operations
   if (cameraOperationInProgress) {
@@ -625,24 +636,8 @@ void ESPWiFi::takeSnapshot(String filePath) {
 
   cameraOperationInProgress = true;
 
-  // Clear any cached frames multiple times to ensure clean buffer
-  for (int i = 0; i < 5; i++) {
-    camera_fb_t *temp_fb = esp_camera_fb_get();
-    if (temp_fb) {
-      esp_camera_fb_return(temp_fb);
-    }
-    delay(100); // Longer delay to allow camera to settle
-  }
-
-  // Force camera to capture a fresh frame by discarding several frames
-  // This ensures we get a new image, not a cached one
-  for (int i = 0; i < 3; i++) {
-    camera_fb_t *discard_fb = esp_camera_fb_get();
-    if (discard_fb) {
-      esp_camera_fb_return(discard_fb);
-    }
-    delay(150); // Wait for camera to capture fresh frame
-  }
+  // Clear camera buffer to remove any cached frames
+  clearCameraBuffer();
 
   // Get the final fresh frame for the snapshot
   camera_fb_t *fb = esp_camera_fb_get();
@@ -685,10 +680,13 @@ void ESPWiFi::takeSnapshot(String filePath) {
 }
 
 void ESPWiFi::streamCamera(int frameRate) {
-  if (!this->camSoc || this->camSoc->numClients() == 0)
+  if (!config["camera"]["enabled"] || !this->camSoc ||
+      this->camSoc->numClients() == 0) {
+    if (!cameraOperationInProgress) {
+      clearCameraBuffer();
+    }
     return;
-
-  // Camera uses current settings for streaming
+  }
 
   // Use frame rate from config, fallback to parameter, then default
   int targetFrameRate = 10; // Default

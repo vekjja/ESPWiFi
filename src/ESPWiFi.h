@@ -157,6 +157,7 @@ public:
   void deinitCamera();
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
+  void clearCameraBuffer();
 
   // Video Recording
   void startVideoRecording(String filePath);

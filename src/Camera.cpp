@@ -17,12 +17,12 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
                                  AwsEventType type, void *arg, uint8_t *data,
                                  size_t len, ESPWiFi *espWifi) {
   if (type == WS_EVT_DATA) {
-    String receivedData = String((char *)data, len);
-    receivedData.trim(); // Remove any whitespace
-    espWifi->log("🔌 WebSocket Data Received: 📨");
-    espWifi->logf("\tClient ID: %d\n", client->id());
-    espWifi->logf("\tData Length: %d bytes\n", len);
-    espWifi->logf("\tData: %s\n", receivedData.c_str());
+    // String receivedData = String((char *)data, len);
+    // receivedData.trim(); // Remove any whitespace
+    // espWifi->log("🔌 WebSocket Data Received: 📨");
+    // espWifi->logf("\tClient ID: %d\n", client->id());
+    // espWifi->logf("\tData Length: %d bytes\n", len);
+    // espWifi->logf("\tData: %s\n", receivedData.c_str());
   }
 }
 
@@ -41,7 +41,7 @@ bool ESPWiFi::initCamera() {
   log("📷 Initializing camera...");
 
   if (ESP.getFreeHeap() < 50000) {
-    logError("📷 Insufficient memory for camera init");
+    logError("📷 Insufficient Memory for Camera Initialization");
     initInProgress = false;
     return false;
   }
@@ -105,13 +105,13 @@ bool ESPWiFi::initCamera() {
   log("📷 Camera initialized successfully");
 
   // Set camera settings from config
-  setCameraSettings();
+  updateCameraSettings();
 
   initInProgress = false;
   return true;
 }
 
-void ESPWiFi::setCameraSettings() {
+void ESPWiFi::updateCameraSettings() {
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
     logError("📷 Cannot set camera settings: sensor not available");
@@ -462,7 +462,7 @@ void ESPWiFi::cameraConfigHandler() {
   }
 
   if (cameraEnabled && cameraCurrentlyRunning) {
-    setCameraSettings();
+    updateCameraSettings();
   }
 }
 

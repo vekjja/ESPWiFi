@@ -1,40 +1,14 @@
 import React, { useState, useEffect } from "react";
-import {
-  TextField,
-  FormControl,
-  FormControlLabel,
-  Switch,
-  Tabs,
-  Tab,
-  Box,
-  Alert,
-  InputAdornment,
-  IconButton,
-  useTheme,
-} from "@mui/material";
+import { Tabs, Tab, Box } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import SettingsIcon from "@mui/icons-material/Settings";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
-import { getEditIcon } from "../utils/themeUtils";
-
-// Tab Panel component
-function TabPanel({ children, value, index, ...other }) {
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`settings-tabpanel-${index}`}
-      aria-labelledby={`settings-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+import TabPanel from "./tabPanels/TabPanel";
+import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
+import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
+import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
 
 export default function DeviceSettingsModal({
   config,
@@ -43,8 +17,6 @@ export default function DeviceSettingsModal({
   open = false,
   onClose,
 }) {
-  const theme = useTheme();
-  const EditIcon = getEditIcon(theme);
   const [activeTab, setActiveTab] = useState(0);
 
   // Network settings state
@@ -63,6 +35,11 @@ export default function DeviceSettingsModal({
   const [jsonConfig, setJsonConfig] = useState("");
   const [jsonError, setJsonError] = useState("");
   const [isEditable, setIsEditable] = useState(false);
+
+  // Device info state
+  const [deviceInfo, setDeviceInfo] = useState(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoError, setInfoError] = useState("");
 
   useEffect(() => {
     if (config) {
@@ -90,6 +67,30 @@ export default function DeviceSettingsModal({
     setJsonError("");
     setIsEditable(false);
     setActiveTab(0);
+    // Fetch device info when modal opens
+    fetchDeviceInfo();
+  };
+
+  // Fetch device info from /info endpoint
+  const fetchDeviceInfo = async () => {
+    if (!config?.apiURL) return;
+
+    setInfoLoading(true);
+    setInfoError("");
+
+    try {
+      const response = await fetch(`${config.apiURL}/info`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setDeviceInfo(data);
+    } catch (error) {
+      console.error("Failed to fetch device info:", error);
+      setInfoError(error.message);
+    } finally {
+      setInfoLoading(false);
+    }
   };
 
   const handleCloseModal = () => {
@@ -121,39 +122,10 @@ export default function DeviceSettingsModal({
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
-  };
-
-  // Network settings handlers
-  const handleSsidChange = (event) => {
-    setSsid(event.target.value);
-  };
-
-  const handlePasswordChange = (event) => {
-    setPassword(event.target.value);
-  };
-
-  const handleApSsidChange = (event) => {
-    setApSsid(event.target.value);
-  };
-
-  const handleApPasswordChange = (event) => {
-    setApPassword(event.target.value);
-  };
-
-  const handleModeToggle = (event) => {
-    setMode(event.target.checked ? "client" : "ap");
-  };
-
-  const handleMDNSChange = (event) => {
-    setMdns(event.target.value);
-  };
-
-  const handleTogglePasswordVisibility = () => {
-    setShowPassword((prev) => !prev);
-  };
-
-  const handleToggleApPasswordVisibility = () => {
-    setShowApPassword((prev) => !prev);
+    // Fetch device info when switching to info tab
+    if (newValue === 0) {
+      fetchDeviceInfo();
+    }
   };
 
   const isValidHostname = (hostname) => {
@@ -218,13 +190,6 @@ export default function DeviceSettingsModal({
     }
   };
 
-  const handleJsonChange = (event) => {
-    setJsonConfig(event.target.value);
-    if (jsonError) {
-      setJsonError("");
-    }
-  };
-
   const toggleEditability = () => {
     setIsEditable((prev) => !prev);
   };
@@ -232,6 +197,17 @@ export default function DeviceSettingsModal({
   // Determine which actions to show based on active tab
   const getActions = () => {
     if (activeTab === 0) {
+      // Info tab - only show restart button
+      return (
+        <>
+          <IButton
+            Icon={RestartIcon}
+            onClick={handleRestart}
+            tooltip={"Restart Device"}
+          />
+        </>
+      );
+    } else if (activeTab === 1) {
       // Network settings tab
       return (
         <>
@@ -258,12 +234,6 @@ export default function DeviceSettingsModal({
           <SaveButton
             onClick={handleJsonSave}
             tooltip="Save Configuration to Device"
-          />
-          <IButton
-            color={isEditable ? "secondary" : "default"}
-            Icon={EditIcon}
-            onClick={toggleEditability}
-            tooltip={isEditable ? "Stop Editing" : "Edit"}
           />
         </>
       );
@@ -312,136 +282,49 @@ export default function DeviceSettingsModal({
             },
           }}
         >
+          <Tab label="Info" />
           <Tab label="Network" />
           <Tab label="JSON" />
         </Tabs>
       </Box>
 
       <TabPanel value={activeTab} index={0}>
-        <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
-          <TextField
-            label="mDNS Hostname"
-            value={mdns}
-            onChange={handleMDNSChange}
-            variant="outlined"
-            fullWidth
-          />
-        </FormControl>
-        <FormControl variant="outlined" sx={{ marginTop: 1 }}>
-          <FormControlLabel
-            control={
-              <Switch checked={mode === "client"} onChange={handleModeToggle} />
-            }
-            label={mode === "client" ? "WiFi Client Mode" : "Access Point Mode"}
-          />
-        </FormControl>
-
-        {/* WiFi Client Settings */}
-        <Box sx={{ marginTop: 2 }}>
-          <h4 style={{ margin: "0 0 8px 0", color: "primary.secondary" }}>
-            WiFi Client Settings
-          </h4>
-          <FormControl fullWidth variant="outlined">
-            <TextField
-              label="Client SSID"
-              value={ssid}
-              onChange={handleSsidChange}
-              variant="outlined"
-              fullWidth
-            />
-            <TextField
-              type={showPassword ? "text" : "password"}
-              label="Client Password"
-              value={password}
-              onChange={handlePasswordChange}
-              variant="outlined"
-              fullWidth
-              sx={{ marginTop: 1 }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleTogglePasswordVisibility}
-                      edge="end"
-                    >
-                      {showPassword ? (
-                        <VisibilityOffIcon />
-                      ) : (
-                        <VisibilityIcon />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </FormControl>
-        </Box>
-
-        {/* Access Point Settings */}
-        <Box sx={{ marginTop: 2 }}>
-          <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
-            Access Point Settings
-          </h4>
-          <FormControl fullWidth variant="outlined">
-            <TextField
-              label="AP SSID"
-              value={apSsid}
-              onChange={handleApSsidChange}
-              variant="outlined"
-              fullWidth
-            />
-            <TextField
-              type={showApPassword ? "text" : "password"}
-              label="AP Password"
-              value={apPassword}
-              onChange={handleApPasswordChange}
-              variant="outlined"
-              fullWidth
-              sx={{ marginTop: 1 }}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleToggleApPasswordVisibility}
-                      edge="end"
-                    >
-                      {showApPassword ? (
-                        <VisibilityOffIcon />
-                      ) : (
-                        <VisibilityIcon />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </FormControl>
-        </Box>
+        <DeviceSettingsInfoTab
+          deviceInfo={deviceInfo}
+          infoLoading={infoLoading}
+          infoError={infoError}
+        />
       </TabPanel>
 
       <TabPanel value={activeTab} index={1}>
-        {jsonError && (
-          <Alert severity="error" sx={{ marginBottom: 2 }}>
-            {jsonError}
-          </Alert>
-        )}
-        <TextField
-          label="Configuration JSON"
-          value={jsonConfig}
-          onChange={handleJsonChange}
-          variant="outlined"
-          fullWidth
-          multiline
-          rows={20}
-          error={!!jsonError}
-          disabled={!isEditable}
-          sx={{
-            marginTop: 2,
-            "& .MuiInputBase-input": {
-              fontFamily: "monospace",
-              fontSize: "0.875rem",
-            },
-          }}
+        <DeviceSettingsNetworkTab
+          ssid={ssid}
+          setSsid={setSsid}
+          password={password}
+          setPassword={setPassword}
+          apSsid={apSsid}
+          setApSsid={setApSsid}
+          apPassword={apPassword}
+          setApPassword={setApPassword}
+          mode={mode}
+          setMode={setMode}
+          mdns={mdns}
+          setMdns={setMdns}
+          showPassword={showPassword}
+          setShowPassword={setShowPassword}
+          showApPassword={showApPassword}
+          setShowApPassword={setShowApPassword}
+        />
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={2}>
+        <DeviceSettingsJsonTab
+          jsonConfig={jsonConfig}
+          setJsonConfig={setJsonConfig}
+          jsonError={jsonError}
+          setJsonError={setJsonError}
+          isEditable={isEditable}
+          toggleEditability={toggleEditability}
         />
       </TabPanel>
     </SettingsModal>

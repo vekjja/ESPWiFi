@@ -96,6 +96,8 @@ void ESPWiFi::srvInfo() {
 #endif
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
+    jsonDoc["total_heap"] = ESP.getHeapSize();
+    jsonDoc["used_heap"] = ESP.getHeapSize() - ESP.getFreeHeap();
 
 #ifdef ESP8266
     FSInfo fs_info;
@@ -109,7 +111,15 @@ void ESPWiFi::srvInfo() {
     jsonDoc["littlefs_free"] = totalBytes - usedBytes;
     jsonDoc["littlefs_used"] = usedBytes;
     jsonDoc["littlefs_total"] = totalBytes;
-    jsonDoc["config"] = config.as<JsonObject>();
+
+    // Add SD card storage information if available
+    if (sdCardInitialized && sd) {
+      size_t sdTotalBytes, sdUsedBytes, sdFreeBytes;
+      getStorageInfo("sd", sdTotalBytes, sdUsedBytes, sdFreeBytes);
+      jsonDoc["sd_free"] = sdFreeBytes;
+      jsonDoc["sd_used"] = sdUsedBytes;
+      jsonDoc["sd_total"] = sdTotalBytes;
+    }
 
     String jsonResponse;
     serializeJson(jsonDoc, jsonResponse);

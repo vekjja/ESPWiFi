@@ -574,16 +574,6 @@ export default function CameraModule({
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "4px",
-                transform: `rotate(${cameraSettings.rotation || 0}deg)`,
-                transition: "transform 0.2s ease",
-              }}
-              onLoad={(e) => {
-                // Ensure rotation is applied after image loads
-                if (e.target) {
-                  e.target.style.transform = `rotate(${
-                    cameraSettings.rotation || 0
-                  }deg)`;
-                }
               }}
             />
           ) : (

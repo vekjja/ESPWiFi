@@ -103,8 +103,83 @@ bool ESPWiFi::initCamera() {
   }
 
   log("📷 Camera initialized successfully");
+
+  // Set camera settings from config
+  setCameraSettings();
+
   initInProgress = false;
   return true;
+}
+
+void ESPWiFi::setCameraSettings() {
+  sensor_t *s = esp_camera_sensor_get();
+  if (s == NULL) {
+    logError("📷 Cannot set camera settings: sensor not available");
+    return;
+  }
+
+  log("📷 Setting camera parameters from config...");
+
+  // Apply camera settings from config with defaults if not present
+  if (!config["camera"]["brightness"].isNull()) {
+    s->set_brightness(s, config["camera"]["brightness"]);
+  }
+
+  if (!config["camera"]["contrast"].isNull()) {
+    s->set_contrast(s, config["camera"]["contrast"]);
+  }
+
+  if (!config["camera"]["saturation"].isNull()) {
+    s->set_saturation(s, config["camera"]["saturation"]);
+  }
+
+  if (!config["camera"]["exposure_level"].isNull()) {
+    s->set_ae_level(s, config["camera"]["exposure_level"]);
+  }
+
+  if (!config["camera"]["exposure_value"].isNull()) {
+    s->set_aec_value(s, config["camera"]["exposure_value"]);
+  }
+
+  if (!config["camera"]["agc_gain"].isNull()) {
+    s->set_agc_gain(s, config["camera"]["agc_gain"]);
+  }
+
+  if (!config["camera"]["gain_ceiling"].isNull()) {
+    s->set_gainceiling(s, (gainceiling_t)config["camera"]["gain_ceiling"]);
+  }
+
+  if (!config["camera"]["white_balance"].isNull()) {
+    s->set_whitebal(s, config["camera"]["white_balance"]);
+  }
+
+  if (!config["camera"]["awb_gain"].isNull()) {
+    s->set_awb_gain(s, config["camera"]["awb_gain"]);
+  }
+
+  if (!config["camera"]["wb_mode"].isNull()) {
+    s->set_wb_mode(s, config["camera"]["wb_mode"]);
+  }
+
+  if (!config["camera"]["rotation"].isNull()) {
+    int rotation = config["camera"]["rotation"];
+    if (rotation == 90) {
+      s->set_vflip(s, 0);
+      s->set_hmirror(s, 1);
+    } else if (rotation == 180) {
+      s->set_vflip(s, 1);
+      s->set_hmirror(s, 1);
+    } else if (rotation == 270) {
+      s->set_vflip(s, 1);
+      s->set_hmirror(s, 0);
+    } else {
+      // 0 degrees or default
+      s->set_vflip(s, 0);
+      s->set_hmirror(s, 0);
+    }
+  }
+
+  log("📷 Camera parameters applied successfully");
 }
 
 void ESPWiFi::deinitCamera() {
@@ -351,31 +426,16 @@ void ESPWiFi::cameraConfigHandler() {
   bool cameraEnabled = config["camera"]["enabled"];
   bool cameraCurrentlyRunning = (camSoc != nullptr);
 
-  static unsigned long lastCameraToggle = 0;
-  unsigned long currentTime = millis();
-  if (currentTime - lastCameraToggle < 2000) {
-    log("📷 Camera toggle too frequent, waiting...");
-    return;
-  }
-
   if (cameraEnabled && !cameraCurrentlyRunning) {
-    lastCameraToggle = currentTime;
-
-    if (ESP.getFreeHeap() < 30000) {
-      logError("📷 Insufficient memory for camera startup");
-      return;
-    }
 
     startCamera();
+
   } else if (!cameraEnabled && cameraCurrentlyRunning) {
     static bool shutdownInProgress = false;
     if (shutdownInProgress) {
-      log("📷 Camera shutdown already in progress");
       return;
     }
     shutdownInProgress = true;
-
-    lastCameraToggle = currentTime;
 
     if (camSoc && camSoc->socket) {
       log("📷 Disconnecting Camera WebSocket clients");
@@ -399,6 +459,10 @@ void ESPWiFi::cameraConfigHandler() {
     deinitCamera();
     cameraOperationInProgress = false;
     shutdownInProgress = false;
+  }
+
+  if (cameraEnabled && cameraCurrentlyRunning) {
+    setCameraSettings();
   }
 }
 

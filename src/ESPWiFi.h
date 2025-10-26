@@ -159,6 +159,7 @@ public:
   void cameraConfigHandler();
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
+  void setCameraSettings();
 
   // Camera operation safety
   bool cameraOperationInProgress = false;

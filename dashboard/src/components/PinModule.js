@@ -43,7 +43,7 @@ export default function PinModule({
   // Use module key for updates
   const moduleKey = initialProps.key;
 
-  const updatePinState = (newState, deletePin) => {
+  const updatePinState = (newState, deletePin, saveConfig = true) => {
     // Use the new state if provided, otherwise use current state
     const newPinState = {
       name: name,
@@ -114,7 +114,7 @@ export default function PinModule({
           // Only update local state after successful API call
           if (deletePin) {
             onDelete(moduleKey);
-          } else {
+          } else if (saveConfig) {
             onUpdate(moduleKey, newPinState);
           }
         })
@@ -129,7 +129,7 @@ export default function PinModule({
       // Update local state only for configuration changes
       if (deletePin) {
         onDelete(moduleKey);
-      } else {
+      } else if (saveConfig) {
         onUpdate(moduleKey, newPinState);
       }
     }
@@ -149,8 +149,8 @@ export default function PinModule({
     // Update the internal state to match the actual pin state
     setIsOn(actualState === "high");
 
-    // Send the update request with the new state
-    updatePinState({ state: actualState });
+    // Send the update request with the new state (don't save config)
+    updatePinState({ state: actualState }, false, false);
   };
 
   const handleOpenPinModal = () => {
@@ -309,7 +309,7 @@ export default function PinModule({
               value={duty}
               onChange={(event, newValue) => setDuty(newValue)}
               onChangeCommitted={(event, newValue) => {
-                updatePinState({ duty: newValue });
+                updatePinState({ duty: newValue }, false, false);
               }}
               aria-labelledby="duty-length-slider"
               min={Number(sliderMin)}

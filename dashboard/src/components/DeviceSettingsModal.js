@@ -18,7 +18,8 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
-import { getSaveIcon, getEditIcon } from "../utils/themeUtils";
+import SaveButton from "./SaveButton";
+import { getEditIcon } from "../utils/themeUtils";
 
 // Tab Panel component
 function TabPanel({ children, value, index, ...other }) {
@@ -43,7 +44,6 @@ export default function DeviceSettingsModal({
   onClose,
 }) {
   const theme = useTheme();
-  const SaveIcon = getSaveIcon(theme);
   const EditIcon = getEditIcon(theme);
   const [activeTab, setActiveTab] = useState(0);
 
@@ -240,11 +240,9 @@ export default function DeviceSettingsModal({
             onClick={handleRestart}
             tooltip={"Restart Device"}
           />
-          <IButton
-            color="primary"
-            Icon={SaveIcon}
+          <SaveButton
             onClick={handleNetworkSave}
-            tooltip={"Save Settings to Device"}
+            tooltip="Save Settings to Device"
           />
         </>
       );
@@ -257,9 +255,7 @@ export default function DeviceSettingsModal({
             onClick={handleRestart}
             tooltip={"Restart Device"}
           />
-          <IButton
-            color="primary"
-            Icon={SaveIcon}
+          <SaveButton
             onClick={handleJsonSave}
             tooltip="Save Configuration to Device"
           />

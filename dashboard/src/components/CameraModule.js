@@ -26,10 +26,9 @@ import {
   CameraAlt,
   ExpandMore,
 } from "@mui/icons-material";
-import SaveIcon from "@mui/icons-material/SaveAs";
 import SettingsModal from "./SettingsModal";
-import IButton from "./IButton";
 import DeleteButton from "./DeleteButton";
+import SaveButton from "./SaveButton";
 import { buildApiUrl, buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function CameraModule({
@@ -397,11 +396,11 @@ export default function CameraModule({
   };
 
   const handleOpenSettings = () => {
-    console.log("Opening settings - cameraSettings:", cameraSettings);
-    console.log(
-      "Opening settings - globalConfig.camera:",
-      globalConfig?.camera
-    );
+    // console.log("Opening settings - cameraSettings:", cameraSettings);
+    // console.log(
+    //   "Opening settings - globalConfig.camera:",
+    //   globalConfig?.camera
+    // );
 
     // Load camera settings first to ensure we have the latest values
     loadCameraSettings();
@@ -538,6 +537,9 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
+        settingsDisabled={!deviceOnline}
+        settingsTooltip={!deviceOnline ? "Device is offline" : "Settings"}
+        errorOutline={!deviceOnline}
         data-camera-module="true"
         sx={{
           minWidth: "300px",
@@ -671,16 +673,24 @@ export default function CameraModule({
             marginTop: 0.5,
           }}
         >
-          <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
+          <Tooltip
+            title={
+              !deviceOnline
+                ? "Device is offline"
+                : isStreaming
+                ? "Stop Stream"
+                : "Start Stream"
+            }
+          >
             <span>
               <IconButton
                 onClick={isStreaming ? handleStopStream : handleStartStream}
-                disabled={cameraStatus !== "enabled"}
+                disabled={!deviceOnline || cameraStatus !== "enabled"}
                 sx={{
                   color:
-                    cameraStatus === "enabled"
-                      ? "primary.main"
-                      : "text.disabled",
+                    !deviceOnline || cameraStatus !== "enabled"
+                      ? "text.disabled"
+                      : "primary.main",
                 }}
               >
                 {isStreaming ? <Pause /> : <PlayArrow />}
@@ -688,19 +698,42 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
-          <Tooltip title="Take Snapshot">
-            <IconButton onClick={handleSnapshot} sx={{ color: "primary.main" }}>
-              <CameraAlt />
-            </IconButton>
+          <Tooltip
+            title={!deviceOnline ? "Device is offline" : "Take Snapshot"}
+          >
+            <span>
+              <IconButton
+                onClick={handleSnapshot}
+                disabled={!deviceOnline}
+                sx={{
+                  color: !deviceOnline ? "text.disabled" : "primary.main",
+                }}
+              >
+                <CameraAlt />
+              </IconButton>
+            </span>
           </Tooltip>
 
-          <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
-            <IconButton
-              onClick={handleFullscreen}
-              sx={{ color: "primary.main" }}
-            >
-              {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-            </IconButton>
+          <Tooltip
+            title={
+              !deviceOnline
+                ? "Device is offline"
+                : isFullscreen
+                ? "Exit Fullscreen"
+                : "Fullscreen"
+            }
+          >
+            <span>
+              <IconButton
+                onClick={handleFullscreen}
+                disabled={!deviceOnline}
+                sx={{
+                  color: !deviceOnline ? "text.disabled" : "primary.main",
+                }}
+              >
+                {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       </Module>
@@ -714,12 +747,14 @@ export default function CameraModule({
             <DeleteButton
               onClick={handleDeleteModule}
               tooltip="Delete Camera Module"
+              disabled={!deviceOnline}
             />
-            <IButton
-              color="primary"
-              Icon={SaveIcon}
+            <SaveButton
               onClick={handleSaveSettings}
-              tooltip="Save Camera Settings"
+              tooltip={
+                !deviceOnline ? "Device is offline" : "Save Camera Settings"
+              }
+              disabled={!deviceOnline}
             />
           </>
         }
@@ -732,6 +767,7 @@ export default function CameraModule({
             onChange={(e) =>
               setSettingsData({ ...settingsData, name: e.target.value })
             }
+            disabled={!deviceOnline}
             sx={{ marginBottom: 3 }}
           />
 
@@ -744,6 +780,7 @@ export default function CameraModule({
             }
             placeholder="/camera"
             helperText="WebSocket endpoint for camera stream"
+            disabled={!deviceOnline}
             sx={{ marginBottom: 3 }}
           />
 
@@ -758,6 +795,7 @@ export default function CameraModule({
             min={1}
             max={30}
             step={1}
+            disabled={!deviceOnline}
             marks={[
               { value: 1, label: "1" },
               { value: 5, label: "5" },
@@ -788,11 +826,12 @@ export default function CameraModule({
             }}
           />
 
-          <FormControl fullWidth sx={{ marginTop: 3 }}>
+          <FormControl fullWidth sx={{ marginTop: 3 }} disabled={!deviceOnline}>
             <InputLabel>Rotation</InputLabel>
             <Select
               value={settingsData.rotation || 0}
               label="Rotation"
+              disabled={!deviceOnline}
               onChange={(e) =>
                 setSettingsData({
                   ...settingsData,
@@ -808,7 +847,11 @@ export default function CameraModule({
           </FormControl>
 
           {/* Camera Sensor Settings */}
-          <Accordion defaultExpanded sx={{ marginTop: 3 }}>
+          <Accordion
+            defaultExpanded
+            sx={{ marginTop: 3 }}
+            disabled={!deviceOnline}
+          >
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Typography variant="h6">Camera Sensor Settings</Typography>
               <Chip label="Live" color="success" size="small" sx={{ ml: 2 }} />
@@ -827,6 +870,7 @@ export default function CameraModule({
                     max={2}
                     step={1}
                     marks
+                    disabled={!deviceOnline}
                     valueLabelDisplay="auto"
                   />
                 </Box>
@@ -843,6 +887,7 @@ export default function CameraModule({
                     max={2}
                     step={1}
                     marks
+                    disabled={!deviceOnline}
                     valueLabelDisplay="auto"
                   />
                 </Box>
@@ -859,6 +904,7 @@ export default function CameraModule({
                     max={2}
                     step={1}
                     marks
+                    disabled={!deviceOnline}
                     valueLabelDisplay="auto"
                   />
                 </Box>
@@ -875,6 +921,7 @@ export default function CameraModule({
                     max={2}
                     step={1}
                     marks
+                    disabled={!deviceOnline}
                     valueLabelDisplay="auto"
                   />
                 </Box>
@@ -890,6 +937,7 @@ export default function CameraModule({
                     min={0}
                     max={1200}
                     step={50}
+                    disabled={!deviceOnline}
                     marks={[
                       { value: 0, label: "0" },
                       { value: 300, label: "300" },
@@ -912,6 +960,7 @@ export default function CameraModule({
                     min={0}
                     max={30}
                     step={1}
+                    disabled={!deviceOnline}
                     marks={[
                       { value: 0, label: "0" },
                       { value: 10, label: "10" },
@@ -934,6 +983,7 @@ export default function CameraModule({
                     max={6}
                     step={1}
                     marks
+                    disabled={!deviceOnline}
                     valueLabelDisplay="auto"
                   />
                 </Box>
@@ -950,6 +1000,7 @@ export default function CameraModule({
                             e.target.checked ? 1 : 0
                           )
                         }
+                        disabled={!deviceOnline}
                       />
                     }
                     label="Auto White Balance"
@@ -965,6 +1016,7 @@ export default function CameraModule({
                             e.target.checked ? 1 : 0
                           )
                         }
+                        disabled={!deviceOnline}
                       />
                     }
                     label="AWB Gain"
@@ -980,6 +1032,7 @@ export default function CameraModule({
                       min={0}
                       max={4}
                       step={1}
+                      disabled={!deviceOnline}
                       marks={[
                         { value: 0, label: "Auto" },
                         { value: 1, label: "Sunny" },

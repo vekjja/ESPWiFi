@@ -3,7 +3,7 @@ import { useTheme } from "@mui/material";
 import IButton from "./IButton";
 import { getDeleteIcon } from "../utils/themeUtils";
 
-const DeleteButton = ({ onClick, tooltip, sx = {} }) => {
+const DeleteButton = ({ onClick, tooltip, sx = {}, disabled = false }) => {
   const theme = useTheme();
   const DeleteIcon = getDeleteIcon(theme);
 
@@ -14,6 +14,7 @@ const DeleteButton = ({ onClick, tooltip, sx = {} }) => {
       onClick={onClick}
       Icon={DeleteIcon}
       sx={sx}
+      disabled={disabled}
       tooltipPlacement="top"
     />
   );

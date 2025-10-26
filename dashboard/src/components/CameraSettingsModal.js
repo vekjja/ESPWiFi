@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   TextField,
   Box,
-  useTheme,
   Slider,
   Typography,
   Switch,
@@ -17,9 +16,8 @@ import {
   InputLabel,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
-import { getSaveIcon } from "../utils/themeUtils";
+import SaveButton from "./SaveButton";
 
 export default function CameraSettingsModal({
   open,
@@ -29,8 +27,6 @@ export default function CameraSettingsModal({
   onCameraDataChange,
   config,
 }) {
-  const theme = useTheme();
-  const SaveIcon = getSaveIcon(theme);
   const [localData, setLocalData] = useState(cameraData);
   const [cameraSettings, setCameraSettings] = useState({
     brightness: 1,
@@ -110,14 +106,7 @@ export default function CameraSettingsModal({
       open={open}
       onClose={onClose}
       title="Camera Settings"
-      actions={
-        <IButton
-          color="primary"
-          Icon={SaveIcon}
-          onClick={handleSave}
-          tooltip="Add Camera Module"
-        />
-      }
+      actions={<SaveButton onClick={handleSave} tooltip="Add Camera Module" />}
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <TextField

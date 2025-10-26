@@ -126,27 +126,7 @@ public:
   void sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
                         const String &jsonBody);
 
-  // LED Matrix
-  void startLEDMatrix();
-
-  // Spectral Analyzer
-  void startSpectralAnalyzer();
-
-  // I2C
-  void scanI2CDevices();
-  bool checkI2CDevice(uint8_t address);
-
-  // BMI160
-#ifdef ESPWiFi_BMI160_ENABLED
-  float getTemperature(String unit = "C");
-  int8_t readGyroscope(int16_t *gyroData);
-  bool startBMI160(uint8_t address = 0x69);
-  int8_t readAccelerometer(int16_t *accelData);
-  void readGyroscope(float &x, float &y, float &z);
-  void readAccelerometer(float &x, float &y, float &z);
-#endif // ESPWiFi_BMI160_ENABLED
-
-// Camera
+  // Camera
 #ifdef ESPWiFi_CAMERA_INSTALLED
   camera_config_t camConfig;
   WebSocket *camSoc = nullptr;
@@ -172,6 +152,26 @@ public:
   String bytesToHumanReadable(size_t bytes);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
+
+  // LED Matrix
+  void startLEDMatrix();
+
+  // Spectral Analyzer
+  void startSpectralAnalyzer();
+
+  // I2C
+  void scanI2CDevices();
+  bool checkI2CDevice(uint8_t address);
+
+  // BMI160
+#ifdef ESPWiFi_BMI160_ENABLED
+  float getTemperature(String unit = "C");
+  int8_t readGyroscope(int16_t *gyroData);
+  bool startBMI160(uint8_t address = 0x69);
+  int8_t readAccelerometer(int16_t *accelData);
+  void readGyroscope(float &x, float &y, float &z);
+  void readAccelerometer(float &x, float &y, float &z);
+#endif // ESPWiFi_BMI160_ENABLED
 
   // OTA
   void startOTA();

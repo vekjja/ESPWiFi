@@ -21,6 +21,8 @@ export default function Module({
   reconnectColor = "secondary",
   sx = {},
   bottomContent, // Add new prop
+  settingsDisabled = false, // Add new prop for disabling settings
+  errorOutline = false, // Add new prop for error outline
 }) {
   return (
     <Card
@@ -31,7 +33,7 @@ export default function Module({
         // maxWidth: "400px",
         // Removed minHeight and maxHeight to allow natural height expansion
         border: "1px solid",
-        borderColor: "primary.main",
+        borderColor: errorOutline ? "error.main" : "primary.main",
         borderRadius: "5px",
         backgroundColor: "secondary.light",
         display: "flex",
@@ -101,6 +103,7 @@ export default function Module({
                 tooltip={settingsTooltip}
                 tooltipPlacement="bottom"
                 Icon={Settings}
+                disabled={settingsDisabled}
                 sx={{ pointerEvents: "auto" }}
               />
             )}

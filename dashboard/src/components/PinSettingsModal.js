@@ -9,12 +9,10 @@ import {
   Checkbox,
   Tooltip,
   Box,
-  useTheme,
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
 import DeleteButton from "./DeleteButton";
-import IButton from "./IButton";
-import { getSaveIcon } from "../utils/themeUtils";
+import SaveButton from "./SaveButton";
 
 export default function PinSettingsModal({
   open,
@@ -25,8 +23,6 @@ export default function PinSettingsModal({
   onPinDataChange,
   hideModalWrapper = false,
 }) {
-  const theme = useTheme();
-  const SaveIcon = getSaveIcon(theme);
   const {
     name = "",
     pinNumber = "",
@@ -185,12 +181,7 @@ export default function PinSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete Pin" />
           )}
-          <IButton
-            onClick={handleSave}
-            tooltip="Save Pin"
-            Icon={SaveIcon}
-            color="primary"
-          />
+          <SaveButton onClick={handleSave} tooltip="Save Pin" />
         </Box>
       </Box>
     );
@@ -206,12 +197,7 @@ export default function PinSettingsModal({
           {onDelete && (
             <DeleteButton onClick={handleDelete} tooltip="Delete Pin" />
           )}
-          <IButton
-            onClick={handleSave}
-            tooltip="Save Pin"
-            Icon={SaveIcon}
-            color="primary"
-          />
+          <SaveButton onClick={handleSave} tooltip="Save Pin" />
         </>
       }
     >

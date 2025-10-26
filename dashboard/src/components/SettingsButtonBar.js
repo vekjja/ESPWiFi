@@ -45,6 +45,12 @@ export default function SettingsButtonBar({
         alignItems="center"
         sx={{ flexWrap: "wrap", gap: 1 }}
       >
+        <DeviceSettingsButton
+          config={config}
+          deviceOnline={deviceOnline}
+          onNetworkSettings={onNetworkSettings}
+          saveConfigToDevice={saveConfigToDevice}
+        />
         <RSSIButton
           config={config}
           deviceOnline={deviceOnline}
@@ -55,12 +61,6 @@ export default function SettingsButtonBar({
           rssiDisplayMode={rssiDisplayMode}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
-        />
-        <DeviceSettingsButton
-          config={config}
-          deviceOnline={deviceOnline}
-          onNetworkSettings={onNetworkSettings}
-          saveConfigToDevice={saveConfigToDevice}
         />
         {config?.camera?.installed !== false && (
           <CameraButton

@@ -38,7 +38,7 @@ bool ESPWiFi::initCamera() {
   }
 
   initInProgress = true;
-  log("📷 Initializing camera...");
+  log("📷 Initializing Camera");
 
   if (ESP.getFreeHeap() < 50000) {
     logError("📷 Insufficient Memory for Camera Initialization");
@@ -102,7 +102,7 @@ bool ESPWiFi::initCamera() {
     return false;
   }
 
-  log("📷 Camera initialized successfully");
+  log("📷 Camera Initialized Successfully");
 
   // Set camera settings from config
   updateCameraSettings();

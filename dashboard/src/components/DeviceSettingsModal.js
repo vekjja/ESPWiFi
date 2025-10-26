@@ -10,6 +10,7 @@ import TabPanel from "./tabPanels/TabPanel";
 import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
 import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
+import { buildApiUrl } from "../utils/apiUtils";
 
 export default function DeviceSettingsModal({
   config,
@@ -41,6 +42,7 @@ export default function DeviceSettingsModal({
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState("");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (config) {
@@ -94,29 +96,56 @@ export default function DeviceSettingsModal({
   };
 
   // Fetch device info from /info endpoint
-  const fetchDeviceInfo = async () => {
-    if (!config?.apiURL) {
-      console.warn("No apiURL configured in fetchDeviceInfo");
-      return;
-    }
-
-    const fetchUrl = `${config.apiURL}/info`;
+  const fetchDeviceInfo = async (isRetry = false) => {
+    const fetchUrl = buildApiUrl("/info", config?.mdns);
+    console.log(
+      "Fetching device info from:",
+      fetchUrl,
+      isRetry ? `(retry ${retryCount + 1})` : ""
+    );
 
     setInfoLoading(true);
-    setInfoError("");
+    if (!isRetry) {
+      setInfoError("");
+    }
+
+    // Add timeout handling similar to main config fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
 
     try {
-      const response = await fetch(fetchUrl);
+      const response = await fetch(fetchUrl, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const data = await response.json();
       console.log("Fetched device info:", data);
       setDeviceInfo(data);
+      setRetryCount(0); // Reset retry count on success
     } catch (error) {
-      console.error("Failed to fetch device info:", error);
-      setInfoError(error.message);
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        console.error("Device info fetch timed out");
+        setInfoError("Request timed out - device may be offline");
+      } else {
+        console.error("Failed to fetch device info:", error);
+        setInfoError(`Failed to fetch device info: ${error.message}`);
+      }
       setDeviceInfo(null); // Ensure deviceInfo is set to null on error
+
+      // Auto-retry once after a short delay
+      if (!isRetry && retryCount < 1) {
+        console.log("Retrying device info fetch in 2 seconds...");
+        setTimeout(() => {
+          setRetryCount((prev) => prev + 1);
+          fetchDeviceInfo(true);
+        }, 2000);
+      }
     } finally {
       setInfoLoading(false);
     }
@@ -135,6 +164,13 @@ export default function DeviceSettingsModal({
       fetchDeviceInfo();
     }
   };
+
+  // Fetch device info when Info tab is first rendered
+  React.useEffect(() => {
+    if (activeTab === 0 && !deviceInfo && !infoLoading && !infoError) {
+      fetchDeviceInfo();
+    }
+  }, [activeTab, deviceInfo, infoLoading, infoError]);
 
   const isValidHostname = (hostname) => {
     const regex = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/;
@@ -167,7 +203,8 @@ export default function DeviceSettingsModal({
   };
 
   const handleRestart = () => {
-    fetch(`${config.apiURL}/restart`, {
+    const restartUrl = buildApiUrl("/restart", config?.mdns);
+    fetch(restartUrl, {
       method: "GET",
     }).catch((error) => {
       // Ignore errors since device will restart
@@ -257,8 +294,7 @@ export default function DeviceSettingsModal({
   React.useEffect(() => {
     if (open) {
       handleOpenModal();
-      // Fetch device info since Info tab is default
-      fetchDeviceInfo();
+      // Don't fetch device info here - only fetch when switching to Info tab
     }
   }, [open]);
 

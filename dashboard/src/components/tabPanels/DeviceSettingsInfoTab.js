@@ -19,163 +19,18 @@ export default function DeviceSettingsInfoTab({
 }) {
   if (infoLoading) {
     return (
-      <Grid container spacing={2}>
-        {/* Device Information Skeleton */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Box
-                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
-              >
-                <InfoIcon color="primary" />
-                <Skeleton variant="text" width={150} height={24} />
-              </Box>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Box
-                    key={i}
-                    sx={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <Skeleton variant="text" width={80} height={20} />
-                    <Skeleton variant="text" width={100} height={20} />
-                  </Box>
-                ))}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Network Information Skeleton */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Skeleton variant="text" width={150} height={24} sx={{ mb: 2 }} />
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Box
-                    key={i}
-                    sx={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <Skeleton variant="text" width={80} height={20} />
-                    <Skeleton variant="text" width={100} height={20} />
-                  </Box>
-                ))}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* LittleFS Storage Skeleton */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Skeleton variant="text" width={120} height={24} sx={{ mb: 2 }} />
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {[1, 2, 3].map((i) => (
-                  <Box
-                    key={i}
-                    sx={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <Skeleton variant="text" width={60} height={20} />
-                    <Skeleton variant="text" width={80} height={20} />
-                  </Box>
-                ))}
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Skeleton variant="text" width={60} height={20} />
-                    <Skeleton variant="text" width={40} height={20} />
-                  </Box>
-                  <Skeleton
-                    variant="rectangular"
-                    height={8}
-                    sx={{ borderRadius: 1 }}
-                  />
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* SD Card Storage Skeleton */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Skeleton variant="text" width={120} height={24} sx={{ mb: 2 }} />
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {[1, 2, 3].map((i) => (
-                  <Box
-                    key={i}
-                    sx={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <Skeleton variant="text" width={60} height={20} />
-                    <Skeleton variant="text" width={80} height={20} />
-                  </Box>
-                ))}
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Skeleton variant="text" width={60} height={20} />
-                    <Skeleton variant="text" width={40} height={20} />
-                  </Box>
-                  <Skeleton
-                    variant="rectangular"
-                    height={8}
-                    sx={{ borderRadius: 1 }}
-                  />
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Memory Information Skeleton */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Skeleton variant="text" width={140} height={24} sx={{ mb: 2 }} />
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {[1, 2, 3].map((i) => (
-                  <Box
-                    key={i}
-                    sx={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <Skeleton variant="text" width={80} height={20} />
-                    <Skeleton variant="text" width={80} height={20} />
-                  </Box>
-                ))}
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Skeleton variant="text" width={60} height={20} />
-                    <Skeleton variant="text" width={40} height={20} />
-                  </Box>
-                  <Skeleton
-                    variant="rectangular"
-                    height={8}
-                    sx={{ borderRadius: 1 }}
-                  />
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+        <Box sx={{ textAlign: "center" }}>
+          <Skeleton
+            variant="circular"
+            width={40}
+            height={40}
+            sx={{ mx: "auto", mb: 2 }}
+          />
+          <Skeleton variant="text" width={200} height={24} sx={{ mb: 1 }} />
+          <Skeleton variant="text" width={150} height={20} />
+        </Box>
+      </Box>
     );
   }
 
@@ -345,7 +200,7 @@ export default function DeviceSettingsInfoTab({
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
-              LittleFS Storage
+              Device Storage
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>

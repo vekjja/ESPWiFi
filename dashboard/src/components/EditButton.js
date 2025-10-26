@@ -11,7 +11,7 @@ const EditButton = ({
 }) => {
   return (
     <IButton
-      color={isEditing ? "secondary" : "primary"}
+      color={isEditing ? "white" : "primary"}
       tooltip={tooltip}
       onClick={onClick}
       Icon={EditIcon}

@@ -5,6 +5,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
+import EditButton from "./EditButton";
 import TabPanel from "./tabPanels/TabPanel";
 import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
 import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
@@ -52,55 +53,9 @@ export default function DeviceSettingsModal({
     }
   }, [config]);
 
-  // Update JSON config whenever network settings change
-  useEffect(() => {
-    if (config) {
-      updateJsonConfig();
-    }
-  }, [ssid, password, apSsid, apPassword, mode, mdns, config]);
-
-  const handleOpenModal = () => {
-    // Format the config as pretty JSON when opening the modal, excluding apiURL
-    const configWithoutAPI = { ...config };
-    delete configWithoutAPI.apiURL;
-    setJsonConfig(JSON.stringify(configWithoutAPI, null, 2));
-    setJsonError("");
-    setIsEditable(false);
-    setActiveTab(0);
-    // Fetch device info when modal opens
-    fetchDeviceInfo();
-  };
-
-  // Fetch device info from /info endpoint
-  const fetchDeviceInfo = async () => {
-    if (!config?.apiURL) return;
-
-    setInfoLoading(true);
-    setInfoError("");
-
-    try {
-      const response = await fetch(`${config.apiURL}/info`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setDeviceInfo(data);
-    } catch (error) {
-      console.error("Failed to fetch device info:", error);
-      setInfoError(error.message);
-    } finally {
-      setInfoLoading(false);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setJsonError("");
-    setIsEditable(false);
-    if (onClose) onClose();
-  };
-
   // Function to update JSON config based on current network settings
   const updateJsonConfig = () => {
+    if (!config) return;
     const configToUpdate = {
       ...config,
       mode: mode,
@@ -120,9 +75,62 @@ export default function DeviceSettingsModal({
     setJsonConfig(JSON.stringify(configToUpdate, null, 2));
   };
 
+  // Update JSON config whenever network settings change
+  useEffect(() => {
+    if (config) {
+      updateJsonConfig();
+    }
+  }, [ssid, password, apSsid, apPassword, mode, mdns, config]);
+
+  const handleOpenModal = () => {
+    // Format the config as pretty JSON when opening the modal, excluding apiURL
+    const configWithoutAPI = { ...config };
+    delete configWithoutAPI.apiURL;
+    setJsonConfig(JSON.stringify(configWithoutAPI, null, 2));
+    setJsonError("");
+    setIsEditable(false);
+    setActiveTab(0);
+    // Don't fetch here - fetch only when switching to Info tab
+  };
+
+  // Fetch device info from /info endpoint
+  const fetchDeviceInfo = async () => {
+    if (!config?.apiURL) {
+      console.warn("No apiURL configured in fetchDeviceInfo");
+      return;
+    }
+
+    const fetchUrl = `${config.apiURL}/info`;
+
+    setInfoLoading(true);
+    setInfoError("");
+
+    try {
+      const response = await fetch(fetchUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      console.log("Fetched device info:", data);
+      setDeviceInfo(data);
+    } catch (error) {
+      console.error("Failed to fetch device info:", error);
+      setInfoError(error.message);
+      setDeviceInfo(null); // Ensure deviceInfo is set to null on error
+    } finally {
+      setInfoLoading(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setJsonError("");
+    setIsEditable(false);
+    if (onClose) onClose();
+  };
+
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
-    // Fetch device info when switching to info tab
+    // Fetch device info when switching to Info tab
     if (newValue === 0) {
       fetchDeviceInfo();
     }
@@ -231,6 +239,11 @@ export default function DeviceSettingsModal({
             onClick={handleRestart}
             tooltip={"Restart Device"}
           />
+          <EditButton
+            onClick={toggleEditability}
+            tooltip={isEditable ? "Stop Editing" : "Edit"}
+            isEditing={isEditable}
+          />
           <SaveButton
             onClick={handleJsonSave}
             tooltip="Save Configuration to Device"
@@ -244,6 +257,8 @@ export default function DeviceSettingsModal({
   React.useEffect(() => {
     if (open) {
       handleOpenModal();
+      // Fetch device info since Info tab is default
+      fetchDeviceInfo();
     }
   }, [open]);
 
@@ -324,7 +339,6 @@ export default function DeviceSettingsModal({
           jsonError={jsonError}
           setJsonError={setJsonError}
           isEditable={isEditable}
-          toggleEditability={toggleEditability}
         />
       </TabPanel>
     </SettingsModal>

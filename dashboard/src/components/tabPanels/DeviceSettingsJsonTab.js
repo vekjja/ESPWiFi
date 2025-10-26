@@ -1,6 +1,5 @@
 import React from "react";
-import { TextField, Alert, Box } from "@mui/material";
-import EditButton from "../EditButton";
+import { TextField, Alert } from "@mui/material";
 
 export default function DeviceSettingsJsonTab({
   jsonConfig,
@@ -8,7 +7,6 @@ export default function DeviceSettingsJsonTab({
   jsonError,
   setJsonError,
   isEditable,
-  toggleEditability,
 }) {
   const handleJsonChange = (event) => {
     setJsonConfig(event.target.value);
@@ -24,13 +22,6 @@ export default function DeviceSettingsJsonTab({
           {jsonError}
         </Alert>
       )}
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
-        <EditButton
-          onClick={toggleEditability}
-          tooltip={isEditable ? "Stop Editing" : "Edit"}
-          isEditing={isEditable}
-        />
-      </Box>
       <TextField
         label="Configuration JSON"
         value={jsonConfig}

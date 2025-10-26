@@ -160,22 +160,6 @@ public:
   void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
 
-  // Video Recording
-  void startVideoRecording(String filePath);
-  void stopVideoRecording();
-  void recordFrame();
-  void updateRecording();
-  bool isRecording = false;
-  String recordingFilePath;
-  File recordingFile;
-  unsigned long recordingStartTime;
-  int recordingFrameCount = 0;
-  int recordingFrameRate = 10; // frames per second
-  size_t hdrlSizePos = 0;
-  size_t moviSizePos = 0;
-  size_t totalFramesPos = 0;
-  size_t lengthPos = 0;
-
   // Camera operation safety
   bool cameraOperationInProgress = false;
 #endif

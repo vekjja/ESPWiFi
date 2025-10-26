@@ -20,7 +20,6 @@ void ESPWiFi::runSystem() {
 #ifdef ESPWiFi_CAMERA_INSTALLED
   if (config["camera"]["enabled"]) {
     streamCamera();
-    updateRecording();
   }
 #endif
 

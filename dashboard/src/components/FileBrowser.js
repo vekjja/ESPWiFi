@@ -81,12 +81,6 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     mouseY: null,
     file: null,
   });
-  const [videoDialog, setVideoDialog] = useState({
-    open: false,
-    url: null,
-    title: null,
-    isMJPEG: false,
-  });
 
   const apiURL = config?.apiURL || "";
 
@@ -171,37 +165,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         : currentPath + "/" + file.name;
       fetchFiles(newPath, fileSystem);
     } else {
-      // Check if it's a video file
-      const videoExtensions = [".mjpg", ".mp4", ".avi", ".mov", ".webm"];
-      const isVideo = videoExtensions.some((ext) =>
-        file.name.toLowerCase().endsWith(ext)
-      );
-
-      if (isVideo) {
-        // Open video in player dialog
-        const videoUrl = `${apiURL}/${fileSystem}${file.path}`;
-
-        // For .mjpg files, show instruction dialog instead of trying to play
-        if (file.name.toLowerCase().endsWith(".mjpg")) {
-          setVideoDialog({
-            open: true,
-            url: videoUrl,
-            title: file.name,
-            isMJPEG: true,
-          });
-        } else {
-          // Other video formats can be played
-          setVideoDialog({
-            open: true,
-            url: videoUrl,
-            title: file.name,
-            isMJPEG: false,
-          });
-        }
-      } else {
-        // Download file
-        window.open(`${apiURL}/${fileSystem}${file.path}`, "_blank");
-      }
+      // Download file
+      window.open(`${apiURL}/${fileSystem}${file.path}`, "_blank");
     }
   };
 
@@ -1025,125 +990,6 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           >
             Create
           </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Video Player Dialog */}
-      <Dialog
-        open={videoDialog.open}
-        onClose={() =>
-          setVideoDialog({
-            open: false,
-            url: null,
-            title: null,
-            isMJPEG: false,
-          })
-        }
-        maxWidth="lg"
-        fullWidth
-      >
-        <DialogTitle>{videoDialog.title || "Video Player"}</DialogTitle>
-        <DialogContent>
-          {videoDialog.url && videoDialog.isMJPEG ? (
-            // MJPEG conversion instructions
-            <Box
-              sx={{
-                width: "100%",
-                textAlign: "center",
-                p: 3,
-              }}
-            >
-              <Typography variant="h6" gutterBottom>
-                MJPEG Format Not Supported by Browser
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Raw MJPEG files (.mjpg) cannot be played directly in web
-                browsers.
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                To watch the video:
-              </Typography>
-              <Box
-                component="ol"
-                sx={{
-                  textAlign: "left",
-                  maxWidth: "600px",
-                  mx: "auto",
-                  mt: 2,
-                }}
-              >
-                <Typography component="li" variant="body2" gutterBottom>
-                  Download the .mjpg file
-                </Typography>
-                <Typography component="li" variant="body2" gutterBottom>
-                  Install ffmpeg (brew install ffmpeg)
-                </Typography>
-                <Typography component="li" variant="body2" gutterBottom>
-                  Run:{" "}
-                  <code>
-                    ffmpeg -f mjpeg -r 10 -i file.mjpg -c:v libx264 -pix_fmt
-                    yuv420p -movflags +faststart file.mp4
-                  </code>
-                </Typography>
-                <Typography component="li" variant="body2">
-                  Play the converted MP4 file
-                </Typography>
-              </Box>
-              <Button
-                variant="contained"
-                onClick={() => window.open(videoDialog.url, "_blank")}
-                sx={{ mt: 3 }}
-              >
-                Download Video File
-              </Button>
-            </Box>
-          ) : (
-            // Regular video player for other formats
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                minHeight: "400px",
-              }}
-            >
-              <video
-                controls
-                autoPlay
-                style={{
-                  width: "100%",
-                  maxWidth: "100%",
-                  maxHeight: "70vh",
-                }}
-              >
-                <source src={videoDialog.url} />
-                Your browser does not support the video tag.
-              </video>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() =>
-              setVideoDialog({
-                open: false,
-                url: null,
-                title: null,
-                isMJPEG: false,
-              })
-            }
-            variant="contained"
-          >
-            Close
-          </Button>
-          {videoDialog.url && (
-            <Button
-              onClick={() => window.open(videoDialog.url, "_blank")}
-              variant="outlined"
-            >
-              Open in New Tab
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
     </Box>

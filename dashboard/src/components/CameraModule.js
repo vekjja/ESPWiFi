@@ -25,8 +25,6 @@ import {
   FullscreenExit,
   CameraAlt,
   ExpandMore,
-  FiberManualRecord,
-  Stop,
 } from "@mui/icons-material";
 import SaveIcon from "@mui/icons-material/SaveAs";
 import SettingsModal from "./SettingsModal";
@@ -44,7 +42,6 @@ export default function CameraModule({
 }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -399,50 +396,6 @@ export default function CameraModule({
     window.open(snapshotUrl, "_blank");
   };
 
-  const handleStartRecording = async () => {
-    const mdnsHostname = globalConfig?.mdns;
-
-    try {
-      const response = await fetch(
-        buildApiUrl("/camera/record/start", mdnsHostname),
-        {
-          method: "POST",
-        }
-      );
-
-      if (response.ok) {
-        setIsRecording(true);
-        console.log("Recording started");
-      } else {
-        console.error("Failed to start recording");
-      }
-    } catch (error) {
-      console.error("Error starting recording:", error);
-    }
-  };
-
-  const handleStopRecording = async () => {
-    const mdnsHostname = globalConfig?.mdns;
-
-    try {
-      const response = await fetch(
-        buildApiUrl("/camera/record/stop", mdnsHostname),
-        {
-          method: "POST",
-        }
-      );
-
-      if (response.ok) {
-        setIsRecording(false);
-        console.log("Recording stopped");
-      } else {
-        console.error("Failed to stop recording");
-      }
-    } catch (error) {
-      console.error("Error stopping recording:", error);
-    }
-  };
-
   const handleOpenSettings = () => {
     console.log("Opening settings - cameraSettings:", cameraSettings);
     console.log(
@@ -713,44 +666,6 @@ export default function CameraModule({
                 : "Online"}
             </Typography>
           </Box>
-
-          {/* Recording indicator */}
-          {isRecording && (
-            <Box
-              sx={{
-                position: "absolute",
-                top: 8,
-                left: 8,
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                backgroundColor: "rgba(211, 47, 47, 0.9)",
-                borderRadius: 1,
-                padding: "4px 8px",
-              }}
-            >
-              <Box
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: "white",
-                  animation: "pulse 1.5s ease-in-out infinite",
-                  "@keyframes pulse": {
-                    "0%, 100%": {
-                      opacity: 1,
-                    },
-                    "50%": {
-                      opacity: 0.3,
-                    },
-                  },
-                }}
-              />
-              <Typography variant="caption" sx={{ color: "white" }}>
-                REC
-              </Typography>
-            </Box>
-          )}
         </Box>
 
         {/* Camera controls at the bottom */}
@@ -779,26 +694,6 @@ export default function CameraModule({
                 }}
               >
                 {isStreaming ? <Pause /> : <PlayArrow />}
-              </IconButton>
-            </span>
-          </Tooltip>
-
-          <Tooltip title={isRecording ? "Stop Recording" : "Start Recording"}>
-            <span>
-              <IconButton
-                onClick={
-                  isRecording ? handleStopRecording : handleStartRecording
-                }
-                disabled={cameraStatus !== "enabled"}
-                sx={{
-                  color: isRecording
-                    ? "error.main"
-                    : cameraStatus === "enabled"
-                    ? "primary.main"
-                    : "text.disabled",
-                }}
-              >
-                {isRecording ? <Stop /> : <FiberManualRecord />}
               </IconButton>
             </span>
           </Tooltip>

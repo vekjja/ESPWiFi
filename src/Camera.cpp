@@ -118,7 +118,7 @@ void ESPWiFi::setCameraSettings() {
     return;
   }
 
-  log("📷 Setting camera parameters from config...");
+  log("📷 Updating Camera Settings");
 
   // Apply camera settings from config with defaults if not present
   if (!config["camera"]["brightness"].isNull()) {
@@ -179,11 +179,11 @@ void ESPWiFi::setCameraSettings() {
     }
   }
 
-  log("📷 Camera parameters applied successfully");
+  log("📷 Camera Settings Updated Successfully");
 }
 
 void ESPWiFi::deinitCamera() {
-  log("📷 Deinitializing camera...");
+  log("📷 Deinitializing Camera");
 
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
@@ -206,7 +206,7 @@ void ESPWiFi::deinitCamera() {
     digitalWrite(camConfig.pin_pwdn, HIGH);
   }
 
-  log("📷 Camera deinitialized successfully");
+  log("📷 Camera Deinitialized Successfully");
   delay(200);
 }
 
@@ -283,7 +283,7 @@ void ESPWiFi::startCamera() {
 void ESPWiFi::clearCameraBuffer() {
   static bool firstClear = true;
   if (firstClear) {
-    log("📷 Clearing camera buffer...");
+    log("📷 Clearing Camera Buffer");
     firstClear = false;
   }
 
@@ -343,7 +343,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
   }
 
   if (!writeSuccess && lfs) {
-    log("📁 Falling back to LittleFS for snapshot");
+    log("📁 Falling back to LittleFS for Snapshot");
     writeSuccess = writeFile(lfs, filePath, fb->buf, fb->len);
   }
 

@@ -6,6 +6,7 @@ import {
   SignalCellularAlt2Bar as SignalCellularAlt2BarIcon,
 } from "@mui/icons-material";
 import RSSISettingsModal from "./RSSISettingsModal";
+import { buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function RSSIButton({
   config,
@@ -26,20 +27,8 @@ export default function RSSIButton({
       // Add a delay to allow the backend to start the RSSI service
       const connectTimeout = setTimeout(() => {
         // Construct WebSocket URL
-        let wsUrl = "/rssi";
-        if (wsUrl.startsWith("/")) {
-          const protocol =
-            window.location.protocol === "https:" ? "wss:" : "ws:";
-          const mdnsHostname = config?.mdns;
-          const hostname = mdnsHostname
-            ? `${mdnsHostname}.local`
-            : window.location.hostname;
-          const port =
-            window.location.port && !mdnsHostname
-              ? `:${window.location.port}`
-              : "";
-          wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
-        }
+        const mdnsHostname = config?.mdns;
+        const wsUrl = buildWebSocketUrl("/rssi", mdnsHostname);
 
         // Connect to RSSI WebSocket
         const ws = new WebSocket(wsUrl);
@@ -124,7 +113,7 @@ export default function RSSIButton({
             }, 2000); // 2 second retry delay
           }
         };
-      }, 1000); // 1 second delay
+      }, 300); // 300ms delay
 
       return () => {
         clearTimeout(connectTimeout);

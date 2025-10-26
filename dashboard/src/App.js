@@ -6,6 +6,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import { Save, Delete, Edit, Settings } from "@mui/icons-material";
 import Modules from "./components/Modules";
 import SettingsButtonBar from "./components/SettingsButtonBar";
+import { getApiUrl, buildApiUrl } from "./utils/apiUtils";
 
 // Define the theme
 const theme = createTheme({
@@ -45,7 +46,7 @@ const theme = createTheme({
       main: "#333",
     },
     error: {
-      main: "#FC2828",
+      main: "#FE4245",
     },
     success: {
       main: "#17EB9D",
@@ -94,10 +95,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
 
-  const hostname = process.env.REACT_APP_API_HOST || "localhost";
-  const port = process.env.REACT_APP_API_PORT || 80;
-  const apiURL =
-    process.env.NODE_ENV === "production" ? "" : `http://${hostname}:${port}`;
+  const apiURL = getApiUrl();
 
   // Function to fetch config from device
   const fetchConfig = useCallback(
@@ -107,7 +105,7 @@ function App() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
 
-        const response = await fetch(apiURL + "/config", {
+        const response = await fetch(buildApiUrl("/config"), {
           signal: controller.signal,
         });
 
@@ -246,7 +244,7 @@ function App() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for saves
 
-    fetch(apiURL + "/config", {
+    fetch(buildApiUrl("/config"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(configToSave),

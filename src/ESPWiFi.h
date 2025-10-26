@@ -171,6 +171,10 @@ public:
   unsigned long recordingStartTime;
   int recordingFrameCount = 0;
   int recordingFrameRate = 10; // frames per second
+  size_t hdrlSizePos = 0;
+  size_t moviSizePos = 0;
+  size_t totalFramesPos = 0;
+  size_t lengthPos = 0;
 
   // Camera operation safety
   bool cameraOperationInProgress = false;

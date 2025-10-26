@@ -74,18 +74,27 @@ bool ESPWiFi::initCamera() {
     camConfig.jpeg_quality = 15;
     camConfig.fb_count = 4;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
-    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+    camConfig.grab_mode = CAMERA_GRAB_LATEST;
+    log("📷 Using PSRAM for camera buffers");
   } else {
     camConfig.frame_size = FRAMESIZE_QVGA;
     camConfig.jpeg_quality = 25;
     camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
-    camConfig.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+    camConfig.grab_mode = CAMERA_GRAB_LATEST;
+    log("📷 Using DRAM for camera buffers");
   }
 
   delay(100);
   yield();
 
+  // Power up the camera if PWDN pin is defined
+  if (camConfig.pin_pwdn != -1) {
+    pinMode(camConfig.pin_pwdn, OUTPUT);
+    digitalWrite(camConfig.pin_pwdn, LOW);
+  }
+
+  // Initialize the camera
   esp_err_t err = esp_camera_init(&camConfig);
   if (err != ESP_OK) {
     logError("📷 Camera Init Failed: " + String(err));
@@ -114,9 +123,16 @@ void ESPWiFi::deinitCamera() {
   yield();
   delay(100);
 
+  // Deinitialize the camera
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
     logError("📷 Camera Deactivation Failed: " + String(err));
+  }
+
+  // Power down the camera if PWDN pin is defined
+  if (camConfig.pin_pwdn != -1) {
+    pinMode(camConfig.pin_pwdn, OUTPUT);
+    digitalWrite(camConfig.pin_pwdn, HIGH);
   }
 
   log("📷 Camera deinitialized successfully");
@@ -185,30 +201,55 @@ void ESPWiFi::startCamera() {
         request->send(response);
       });
 
+  // CORS preflight for record endpoints
+  webServer->on(
+      "/camera/record/start", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->on(
+      "/camera/record/stop", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
   webServer->on("/camera/record/start", HTTP_POST,
                 [this](AsyncWebServerRequest *request) {
                   if (isRecording) {
-                    request->send(
-                        400, "application/json",
-                        "{\"error\":\"Recording already in progress\"}");
+                    AsyncWebServerResponse *response =
+                        request->beginResponse(400, "application/json",
+                                               "{\"error\":\"Recording already "
+                                               "in progress\"}");
+                    addCORS(response);
+                    request->send(response);
                     return;
                   }
                   recordCamera();
-                  request->send(200, "application/json",
-                                "{\"status\":\"Recording started\"}");
+                  AsyncWebServerResponse *response = request->beginResponse(
+                      200, "application/json",
+                      "{\"status\":\"Recording started\"}");
+                  addCORS(response);
+                  request->send(response);
                 });
 
-  webServer->on("/camera/record/stop", HTTP_POST,
-                [this](AsyncWebServerRequest *request) {
-                  if (!isRecording) {
-                    request->send(400, "application/json",
-                                  "{\"error\":\"No recording in progress\"}");
-                    return;
-                  }
-                  stopVideoRecording();
-                  request->send(200, "application/json",
-                                "{\"status\":\"Recording stopped\"}");
-                });
+  webServer->on(
+      "/camera/record/stop", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!isRecording) {
+          AsyncWebServerResponse *response = request->beginResponse(
+              400, "application/json",
+              "{\"error\":\"No recording in progress\"}");
+          addCORS(response);
+          request->send(response);
+          return;
+        }
+        stopVideoRecording();
+        AsyncWebServerResponse *response = request->beginResponse(
+            200, "application/json", "{\"status\":\"Recording stopped\"}");
+        addCORS(response);
+        request->send(response);
+      });
+
+  // CORS preflight for record status
+  webServer->on(
+      "/camera/record/status", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
 
   webServer->on("/camera/record/status", HTTP_GET,
                 [this](AsyncWebServerRequest *request) {
@@ -221,7 +262,10 @@ void ESPWiFi::startCamera() {
                                 String(millis() - recordingStartTime);
                   }
                   response += "}";
-                  request->send(200, "application/json", response);
+                  AsyncWebServerResponse *httpResponse =
+                      request->beginResponse(200, "application/json", response);
+                  addCORS(httpResponse);
+                  request->send(httpResponse);
                 });
 
   this->camSoc = new WebSocket("/camera", this, cameraWebSocketEventHandler);
@@ -242,16 +286,13 @@ void ESPWiFi::recordCamera() {
     return;
   }
 
-  if (!lfs) {
-    initLittleFS();
-    if (!config.isNull() && config["sd"]["enabled"] == true) {
-      initSDCard();
-    }
-  }
-
   if (!sdCardInitialized) {
-    logError("SD card not available for recording");
-    return;
+    initSDCard();
+
+    if (!sdCardInitialized) {
+      logError("SD card not available, cannot record camera");
+      return;
+    }
   }
 
   String recordingsDir = "/recordings";
@@ -267,7 +308,7 @@ void ESPWiFi::recordCamera() {
     return;
   }
 
-  String filePath = recordingsDir + "/" + timestampForFilename() + ".mjpeg";
+  String filePath = recordingsDir + "/" + timestampForFilename() + ".mjpg";
   logf("📁 Recording path: %s\n", filePath.c_str());
   startVideoRecording(filePath);
 }
@@ -290,10 +331,13 @@ void ESPWiFi::startVideoRecording(String filePath) {
     return;
   }
 
-  recordingFile.print("HTTP/1.1 200 OK\r\n");
-  recordingFile.print(
-      "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n");
-  recordingFile.print("\r\n");
+  // Write simple MJPEG stream header
+  // No complex AVI headers - just write JPEGs in sequence
+  // This is a simple format that can be converted to proper video later
+  // Start with a marker and frame rate info
+  recordingFile.write((uint8_t *)"MJPEG", 5);
+  recordingFile.write((uint8_t *)&recordingFrameRate,
+                      sizeof(recordingFrameRate));
 
   isRecording = true;
   recordingFilePath = filePath;
@@ -346,17 +390,15 @@ void ESPWiFi::recordFrame() {
     return;
   }
 
-  recordingFile.print("--frame\r\n");
-  recordingFile.print("Content-Type: image/jpeg\r\n");
-  recordingFile.print("Content-Length: " + String(fb->len) + "\r\n");
-  recordingFile.print("\r\n");
+  // Write frame size, then JPEG data
+  uint32_t frameSize = fb->len;
+  recordingFile.write((uint8_t *)&frameSize, sizeof(frameSize));
 
   size_t written = recordingFile.write(fb->buf, fb->len);
   if (written == fb->len) {
     recordingFrameCount++;
   }
 
-  recordingFile.print("\r\n");
   esp_camera_fb_return(fb);
 }
 

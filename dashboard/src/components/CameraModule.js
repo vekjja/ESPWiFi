@@ -25,11 +25,14 @@ import {
   FullscreenExit,
   CameraAlt,
   ExpandMore,
+  FiberManualRecord,
+  Stop,
 } from "@mui/icons-material";
 import SaveIcon from "@mui/icons-material/SaveAs";
 import SettingsModal from "./SettingsModal";
 import IButton from "./IButton";
 import DeleteButton from "./DeleteButton";
+import { buildApiUrl, buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function CameraModule({
   config,
@@ -41,6 +44,7 @@ export default function CameraModule({
 }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -152,23 +156,15 @@ export default function CameraModule({
   };
 
   useEffect(() => {
-    // Convert relative path to absolute URL like WebSocketModule does
+    // Convert relative path to absolute URL
     let wsUrl = config?.url || "/camera";
 
     // Check if URL already has a protocol
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       if (wsUrl.startsWith("/")) {
         // For relative paths, use the mDNS hostname from global config
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const mdnsHostname = globalConfig?.mdns;
-        const hostname = mdnsHostname
-          ? `${mdnsHostname}.local`
-          : window.location.hostname;
-        const port =
-          window.location.port && !mdnsHostname
-            ? `:${window.location.port}`
-            : "";
-        wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
+        wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname);
       } else {
         // URL doesn't have protocol and doesn't start with /, add ws:// protocol
         wsUrl = `ws://${wsUrl}`;
@@ -396,14 +392,55 @@ export default function CameraModule({
   };
 
   const handleSnapshot = () => {
-    // Get the base URL from the current window location
-    const protocol = window.location.protocol;
-    const hostname = window.location.hostname;
-    const port = window.location.port ? `:${window.location.port}` : "";
-    const snapshotUrl = `${protocol}//${hostname}${port}/camera/snapshot`;
+    const mdnsHostname = globalConfig?.mdns;
+    const snapshotUrl = buildApiUrl("/camera/snapshot", mdnsHostname);
 
     // Open the snapshot in a new tab
     window.open(snapshotUrl, "_blank");
+  };
+
+  const handleStartRecording = async () => {
+    const mdnsHostname = globalConfig?.mdns;
+
+    try {
+      const response = await fetch(
+        buildApiUrl("/camera/record/start", mdnsHostname),
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.ok) {
+        setIsRecording(true);
+        console.log("Recording started");
+      } else {
+        console.error("Failed to start recording");
+      }
+    } catch (error) {
+      console.error("Error starting recording:", error);
+    }
+  };
+
+  const handleStopRecording = async () => {
+    const mdnsHostname = globalConfig?.mdns;
+
+    try {
+      const response = await fetch(
+        buildApiUrl("/camera/record/stop", mdnsHostname),
+        {
+          method: "POST",
+        }
+      );
+
+      if (response.ok) {
+        setIsRecording(false);
+        console.log("Recording stopped");
+      } else {
+        console.error("Failed to stop recording");
+      }
+    } catch (error) {
+      console.error("Error stopping recording:", error);
+    }
   };
 
   const handleOpenSettings = () => {
@@ -676,6 +713,44 @@ export default function CameraModule({
                 : "Online"}
             </Typography>
           </Box>
+
+          {/* Recording indicator */}
+          {isRecording && (
+            <Box
+              sx={{
+                position: "absolute",
+                top: 8,
+                left: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                backgroundColor: "rgba(211, 47, 47, 0.9)",
+                borderRadius: 1,
+                padding: "4px 8px",
+              }}
+            >
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: "white",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                  "@keyframes pulse": {
+                    "0%, 100%": {
+                      opacity: 1,
+                    },
+                    "50%": {
+                      opacity: 0.3,
+                    },
+                  },
+                }}
+              />
+              <Typography variant="caption" sx={{ color: "white" }}>
+                REC
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Camera controls at the bottom */}
@@ -708,18 +783,38 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
+          <Tooltip title={isRecording ? "Stop Recording" : "Start Recording"}>
+            <span>
+              <IconButton
+                onClick={
+                  isRecording ? handleStopRecording : handleStartRecording
+                }
+                disabled={cameraStatus !== "enabled"}
+                sx={{
+                  color: isRecording
+                    ? "error.main"
+                    : cameraStatus === "enabled"
+                    ? "primary.main"
+                    : "text.disabled",
+                }}
+              >
+                {isRecording ? <Stop /> : <FiberManualRecord />}
+              </IconButton>
+            </span>
+          </Tooltip>
+
+          <Tooltip title="Take Snapshot">
+            <IconButton onClick={handleSnapshot} sx={{ color: "primary.main" }}>
+              <CameraAlt />
+            </IconButton>
+          </Tooltip>
+
           <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
             <IconButton
               onClick={handleFullscreen}
               sx={{ color: "primary.main" }}
             >
               {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="Take Snapshot">
-            <IconButton onClick={handleSnapshot} sx={{ color: "primary.main" }}>
-              <CameraAlt />
             </IconButton>
           </Tooltip>
         </Box>

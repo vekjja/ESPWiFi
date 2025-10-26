@@ -3,6 +3,7 @@ import { Typography, TextField, Button, Box } from "@mui/material";
 import { RestartAlt, Link, LinkOff } from "@mui/icons-material";
 import Module from "./Module";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
+import { buildWebSocketUrl } from "../utils/apiUtils";
 
 // Global connection manager to persist connections across re-renders
 const connectionManager = new Map();
@@ -123,10 +124,7 @@ export default function WebSocketModule({
     // Convert relative path to absolute URL
     if (wsUrl.startsWith("/")) {
       // For relative paths, use the current hostname
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const hostname = window.location.hostname;
-      const port = window.location.port ? `:${window.location.port}` : "";
-      wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
+      wsUrl = buildWebSocketUrl(wsUrl);
     } else if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       // If it's not a full WebSocket URL and not relative, assume it's a hostname
       // and add the default WebSocket protocol

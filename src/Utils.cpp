@@ -50,6 +50,18 @@ String ESPWiFi::getContentType(String filename) {
     return "audio/wav";
   else if (filename.endsWith(".json"))
     return "application/json";
+  else if (filename.endsWith(".avi"))
+    return "video/x-msvideo";
+  else if (filename.endsWith(".mjpg") || filename.endsWith(".mjpeg"))
+    return "video/x-motion-jpeg";
+  else if (filename.endsWith(".mp4"))
+    return "video/mp4";
+  else if (filename.endsWith(".webm"))
+    return "video/webm";
+  else if (filename.endsWith(".mkv"))
+    return "video/x-matroska";
+  else if (filename.endsWith(".mov"))
+    return "video/quicktime";
   else if (filename.endsWith("log"))
     return "text/plain; charset=utf-8";
   else

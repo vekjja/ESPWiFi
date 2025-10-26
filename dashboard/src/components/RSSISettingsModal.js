@@ -8,6 +8,7 @@ import {
 } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SettingsModal from "./SettingsModal";
+import { buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function RSSISettingsModal({
   config,
@@ -37,19 +38,8 @@ export default function RSSISettingsModal({
     // Add a delay to allow the backend to start the RSSI service
     const connectTimeout = setTimeout(() => {
       // Construct WebSocket URL
-      let wsUrl = "/rssi";
-      if (wsUrl.startsWith("/")) {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const mdnsHostname = config?.mdns;
-        const hostname = mdnsHostname
-          ? `${mdnsHostname}.local`
-          : window.location.hostname;
-        const port =
-          window.location.port && !mdnsHostname
-            ? `:${window.location.port}`
-            : "";
-        wsUrl = `${protocol}//${hostname}${port}${wsUrl}`;
-      }
+      const mdnsHostname = config?.mdns;
+      const wsUrl = buildWebSocketUrl("/rssi", mdnsHostname);
 
       // Connect to RSSI WebSocket
       const ws = new WebSocket(wsUrl);

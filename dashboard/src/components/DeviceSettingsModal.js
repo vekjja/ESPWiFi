@@ -97,7 +97,7 @@ export default function DeviceSettingsModal({
 
   // Fetch device info from /info endpoint
   const fetchDeviceInfo = async (isRetry = false) => {
-    const fetchUrl = buildApiUrl("/info", config?.mdns);
+    const fetchUrl = buildApiUrl("/info");
     console.log(
       "Fetching device info from:",
       fetchUrl,
@@ -203,7 +203,7 @@ export default function DeviceSettingsModal({
   };
 
   const handleRestart = () => {
-    const restartUrl = buildApiUrl("/restart", config?.mdns);
+    const restartUrl = buildApiUrl("/restart");
     fetch(restartUrl, {
       method: "GET",
     }).catch((error) => {

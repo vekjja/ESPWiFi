@@ -1,14 +1,18 @@
 /**
  * Get the API base URL for HTTP requests
- * Uses environment variables or falls back to localhost
+ * Uses environment variables or falls back to localhost:80
  * @returns {string} The API base URL
  */
 export const getApiUrl = () => {
+  // In production, use relative URLs
+  if (process.env.NODE_ENV === "production") {
+    return "";
+  }
+
+  // Use environment variables if set, otherwise default to localhost:80
   const hostname = process.env.REACT_APP_API_HOST || "localhost";
-  const port = process.env.REACT_APP_API_PORT || 80;
-  return process.env.NODE_ENV === "production"
-    ? ""
-    : `http://${hostname}:${port}`;
+  const port = process.env.REACT_APP_API_PORT || 3000;
+  return `http://${hostname}:${port}`;
 };
 
 /**
@@ -20,16 +24,13 @@ export const getApiUrl = () => {
 export const getWebSocketUrl = (mdnsHostname = null) => {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  // Use mDNS hostname if provided, otherwise use current hostname
+  // Use mDNS hostname if provided, otherwise use environment variables or localhost
   const hostname = mdnsHostname
     ? `${mdnsHostname}.local`
-    : window.location.hostname;
+    : process.env.REACT_APP_API_HOST || "localhost";
+  const port = process.env.REACT_APP_API_PORT || 80;
 
-  // Include port only if we're not using mDNS
-  const port =
-    window.location.port && !mdnsHostname ? `:${window.location.port}` : "";
-
-  return `${protocol}//${hostname}${port}`;
+  return `${protocol}//${hostname}:${port}`;
 };
 
 /**
@@ -39,15 +40,14 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
  * @returns {string} The full API URL
  */
 export const buildApiUrl = (path, mdnsHostname = null) => {
-  let apiUrl = getApiUrl();
-
-  // If mDNS hostname is provided and we're not in production, use it
-  if (mdnsHostname && process.env.NODE_ENV !== "production") {
+  // If mDNS hostname is provided, use it with port 80
+  if (mdnsHostname) {
     const protocol = window.location.protocol === "https:" ? "https:" : "http:";
-    apiUrl = `${protocol}//${mdnsHostname}.local`;
+    return `${protocol}//${mdnsHostname}.local:80${path}`;
   }
 
-  return `${apiUrl}${path}`;
+  // Always use getApiUrl() - it handles both development and production correctly
+  return `${getApiUrl()}${path}`;
 };
 
 /**

@@ -1,34 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import Module from "./Module";
-import {
-  Box,
-  Typography,
-  IconButton,
-  Tooltip,
-  TextField,
-  Slider,
-  Switch,
-  FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Chip,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-} from "@mui/material";
+import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import {
   PlayArrow,
   Pause,
   Fullscreen,
   FullscreenExit,
   CameraAlt,
-  ExpandMore,
 } from "@mui/icons-material";
-import SettingsModal from "./SettingsModal";
-import DeleteButton from "./DeleteButton";
-import SaveButton from "./SaveButton";
+import CameraSettingsModal from "./CameraSettingsModal";
 import { buildApiUrl, buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function CameraModule({
@@ -48,22 +28,6 @@ export default function CameraModule({
   const [settingsData, setSettingsData] = useState({
     name: config?.name || "",
     url: config?.url || "/camera",
-    frameRate: config?.frameRate || 10,
-    rotation: globalConfig?.camera?.rotation || 0,
-  });
-  const [cameraSettings, setCameraSettings] = useState({
-    brightness: globalConfig?.camera?.brightness ?? 1,
-    contrast: globalConfig?.camera?.contrast ?? 1,
-    saturation: globalConfig?.camera?.saturation ?? 1,
-    exposure_level: globalConfig?.camera?.exposure_level ?? 1,
-    exposure_value: globalConfig?.camera?.exposure_value ?? 400,
-    agc_gain: globalConfig?.camera?.agc_gain ?? 2,
-    gain_ceiling: globalConfig?.camera?.gain_ceiling ?? 2,
-    white_balance: globalConfig?.camera?.white_balance ?? 1,
-    awb_gain: globalConfig?.camera?.awb_gain ?? 1,
-    wb_mode: globalConfig?.camera?.wb_mode ?? 0,
-    frameRate: globalConfig?.camera?.frameRate ?? 10,
-    rotation: globalConfig?.camera?.rotation ?? 0,
   });
 
   const wsRef = useRef(null);
@@ -198,30 +162,7 @@ export default function CameraModule({
     };
   }, []);
 
-  // Load camera settings on component mount and when global config changes
-  useEffect(() => {
-    loadCameraSettings();
-  }, [globalConfig?.camera]); // Re-run when camera config changes
-
-  // Update camera settings when global config changes
-  useEffect(() => {
-    if (globalConfig?.camera) {
-      setCameraSettings({
-        brightness: globalConfig.camera.brightness ?? 1,
-        contrast: globalConfig.camera.contrast ?? 1,
-        saturation: globalConfig.camera.saturation ?? 1,
-        exposure_level: globalConfig.camera.exposure_level ?? 1,
-        exposure_value: globalConfig.camera.exposure_value ?? 400,
-        agc_gain: globalConfig.camera.agc_gain ?? 2,
-        gain_ceiling: globalConfig.camera.gain_ceiling ?? 2,
-        white_balance: globalConfig.camera.white_balance ?? 1,
-        awb_gain: globalConfig.camera.awb_gain ?? 1,
-        wb_mode: globalConfig.camera.wb_mode ?? 0,
-        frameRate: globalConfig.camera.frameRate ?? 10,
-        rotation: globalConfig.camera.rotation ?? 0,
-      });
-    }
-  }, [globalConfig?.camera]); // Re-run when camera config changes
+  // Re-run when camera config changes
 
   // Update settings data when modal opens to ensure latest values
   useEffect(() => {
@@ -229,17 +170,9 @@ export default function CameraModule({
       setSettingsData({
         name: config?.name || "",
         url: config?.url || "/camera",
-        frameRate: cameraSettings.frameRate || config?.frameRate || 10,
-        rotation:
-          cameraSettings.rotation || globalConfig?.camera?.rotation || 0,
       });
     }
-  }, [
-    settingsModalOpen,
-    cameraSettings,
-    config,
-    globalConfig?.camera?.rotation,
-  ]);
+  }, [settingsModalOpen, config]);
 
   // Set up polling for remote cameras
   useEffect(() => {
@@ -396,48 +329,15 @@ export default function CameraModule({
   };
 
   const handleOpenSettings = () => {
-    // console.log("Opening settings - cameraSettings:", cameraSettings);
-    // console.log(
-    //   "Opening settings - globalConfig.camera:",
-    //   globalConfig?.camera
-    // );
+    // console.log("Opening settings - globalConfig.camera:", globalConfig?.camera);
 
-    // Load camera settings first to ensure we have the latest values
-    loadCameraSettings();
-
-    // Set settings data, using cameraSettings which is kept in sync via useEffect
+    // Set settings data
     setSettingsData({
       name: config?.name || "",
       url: config?.url || "/camera",
-      frameRate: cameraSettings.frameRate || config?.frameRate || 10,
-      rotation: cameraSettings.rotation || globalConfig?.camera?.rotation || 0,
     });
 
     setSettingsModalOpen(true);
-  };
-
-  const loadCameraSettings = () => {
-    // Load camera settings from globalConfig
-    if (globalConfig?.camera) {
-      setCameraSettings({
-        brightness: globalConfig.camera.brightness ?? 1,
-        contrast: globalConfig.camera.contrast ?? 1,
-        saturation: globalConfig.camera.saturation ?? 1,
-        exposure_level: globalConfig.camera.exposure_level ?? 1,
-        exposure_value: globalConfig.camera.exposure_value ?? 400,
-        agc_gain: globalConfig.camera.agc_gain ?? 2,
-        gain_ceiling: globalConfig.camera.gain_ceiling ?? 2,
-        white_balance: globalConfig.camera.white_balance ?? 1,
-        awb_gain: globalConfig.camera.awb_gain ?? 1,
-        wb_mode: globalConfig.camera.wb_mode ?? 0,
-        frameRate: globalConfig.camera.frameRate ?? 10,
-        rotation: globalConfig.camera.rotation ?? 0,
-      });
-    }
-  };
-
-  const handleCameraSettingChange = (field, value) => {
-    setCameraSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleCloseSettings = () => {
@@ -445,41 +345,7 @@ export default function CameraModule({
   };
 
   const handleSaveSettings = () => {
-    // Update module settings
-    const updatedModule = {
-      ...config,
-      name: settingsData.name,
-      url: settingsData.url,
-      frameRate: settingsData.frameRate,
-    };
-
-    // Update camera settings state
-    const updatedCameraSettings = {
-      ...cameraSettings,
-      rotation: settingsData.rotation,
-    };
-    setCameraSettings(updatedCameraSettings);
-
-    // Save everything in one call
-    if (globalConfig && saveConfigToDevice) {
-      const updatedConfig = {
-        ...globalConfig,
-        modules: globalConfig.modules.map((module) =>
-          module.key === config?.key ? updatedModule : module
-        ),
-        camera: {
-          ...globalConfig.camera,
-          ...updatedCameraSettings,
-        },
-      };
-      saveConfigToDevice(updatedConfig);
-    }
-
-    handleCloseSettings();
-  };
-
-  const handleDeleteModule = () => {
-    onDelete(config?.key);
+    // Just close the modal - CameraSettingsModal handles all saving
     handleCloseSettings();
   };
 
@@ -738,317 +604,15 @@ export default function CameraModule({
         </Box>
       </Module>
 
-      <SettingsModal
+      <CameraSettingsModal
         open={settingsModalOpen}
         onClose={handleCloseSettings}
-        title="Camera Module Settings"
-        actions={
-          <>
-            <DeleteButton
-              onClick={handleDeleteModule}
-              tooltip="Delete Camera Module"
-              disabled={!deviceOnline}
-            />
-            <SaveButton
-              onClick={handleSaveSettings}
-              tooltip={
-                !deviceOnline ? "Device is offline" : "Save Camera Settings"
-              }
-              disabled={!deviceOnline}
-            />
-          </>
-        }
-      >
-        <Box sx={{ marginTop: 2 }}>
-          <TextField
-            fullWidth
-            label="Camera Name"
-            value={settingsData.name}
-            onChange={(e) =>
-              setSettingsData({ ...settingsData, name: e.target.value })
-            }
-            disabled={!deviceOnline}
-            sx={{ marginBottom: 3 }}
-          />
-
-          <TextField
-            fullWidth
-            label="Camera URL"
-            value={settingsData.url}
-            onChange={(e) =>
-              setSettingsData({ ...settingsData, url: e.target.value })
-            }
-            placeholder="/camera"
-            helperText="WebSocket endpoint for camera stream"
-            disabled={!deviceOnline}
-            sx={{ marginBottom: 3 }}
-          />
-
-          <Typography gutterBottom>
-            Frame Rate: {settingsData.frameRate} FPS
-          </Typography>
-          <Slider
-            value={settingsData.frameRate}
-            onChange={(e, newValue) =>
-              setSettingsData({ ...settingsData, frameRate: newValue })
-            }
-            min={1}
-            max={30}
-            step={1}
-            disabled={!deviceOnline}
-            marks={[
-              { value: 1, label: "1" },
-              { value: 5, label: "5" },
-              { value: 10, label: "10" },
-              { value: 15, label: "15" },
-              { value: 20, label: "20" },
-              { value: 25, label: "25" },
-              { value: 30, label: "30" },
-            ]}
-            valueLabelDisplay="auto"
-            sx={{
-              color: "primary.main",
-              "& .MuiSlider-thumb": {
-                backgroundColor: "primary.main",
-              },
-              "& .MuiSlider-track": {
-                backgroundColor: "primary.main",
-              },
-              "& .MuiSlider-rail": {
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-              },
-              "& .MuiSlider-mark": {
-                backgroundColor: "primary.main",
-              },
-              "& .MuiSlider-markLabel": {
-                color: "primary.main",
-              },
-            }}
-          />
-
-          <FormControl fullWidth sx={{ marginTop: 3 }} disabled={!deviceOnline}>
-            <InputLabel>Rotation</InputLabel>
-            <Select
-              value={settingsData.rotation || 0}
-              label="Rotation"
-              disabled={!deviceOnline}
-              onChange={(e) =>
-                setSettingsData({
-                  ...settingsData,
-                  rotation: parseInt(e.target.value),
-                })
-              }
-            >
-              <MenuItem value={0}>0° (No rotation)</MenuItem>
-              <MenuItem value={90}>90° (Clockwise)</MenuItem>
-              <MenuItem value={180}>180° (Upside down)</MenuItem>
-              <MenuItem value={270}>270° (Counter-clockwise)</MenuItem>
-            </Select>
-          </FormControl>
-
-          {/* Camera Sensor Settings */}
-          <Accordion
-            defaultExpanded
-            sx={{ marginTop: 3 }}
-            disabled={!deviceOnline}
-          >
-            <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="h6">Camera Sensor Settings</Typography>
-              <Chip label="Live" color="success" size="small" sx={{ ml: 2 }} />
-            </AccordionSummary>
-            <AccordionDetails>
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {/* Brightness */}
-                <Box>
-                  <Typography gutterBottom>Brightness</Typography>
-                  <Slider
-                    value={cameraSettings.brightness}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("brightness", value)
-                    }
-                    min={-2}
-                    max={2}
-                    step={1}
-                    marks
-                    disabled={!deviceOnline}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* Contrast */}
-                <Box>
-                  <Typography gutterBottom>Contrast</Typography>
-                  <Slider
-                    value={cameraSettings.contrast}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("contrast", value)
-                    }
-                    min={-2}
-                    max={2}
-                    step={1}
-                    marks
-                    disabled={!deviceOnline}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* Saturation */}
-                <Box>
-                  <Typography gutterBottom>Saturation</Typography>
-                  <Slider
-                    value={cameraSettings.saturation}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("saturation", value)
-                    }
-                    min={-2}
-                    max={2}
-                    step={1}
-                    marks
-                    disabled={!deviceOnline}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* Exposure Level */}
-                <Box>
-                  <Typography gutterBottom>Exposure Level</Typography>
-                  <Slider
-                    value={cameraSettings.exposure_level}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("exposure_level", value)
-                    }
-                    min={-2}
-                    max={2}
-                    step={1}
-                    marks
-                    disabled={!deviceOnline}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* Exposure Value */}
-                <Box>
-                  <Typography gutterBottom>Exposure Value</Typography>
-                  <Slider
-                    value={cameraSettings.exposure_value}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("exposure_value", value)
-                    }
-                    min={0}
-                    max={1200}
-                    step={50}
-                    disabled={!deviceOnline}
-                    marks={[
-                      { value: 0, label: "0" },
-                      { value: 300, label: "300" },
-                      { value: 600, label: "600" },
-                      { value: 900, label: "900" },
-                      { value: 1200, label: "1200" },
-                    ]}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* AGC Gain */}
-                <Box>
-                  <Typography gutterBottom>AGC Gain</Typography>
-                  <Slider
-                    value={cameraSettings.agc_gain}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("agc_gain", value)
-                    }
-                    min={0}
-                    max={30}
-                    step={1}
-                    disabled={!deviceOnline}
-                    marks={[
-                      { value: 0, label: "0" },
-                      { value: 10, label: "10" },
-                      { value: 20, label: "20" },
-                      { value: 30, label: "30" },
-                    ]}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* Gain Ceiling */}
-                <Box>
-                  <Typography gutterBottom>Gain Ceiling</Typography>
-                  <Slider
-                    value={cameraSettings.gain_ceiling}
-                    onChange={(e, value) =>
-                      handleCameraSettingChange("gain_ceiling", value)
-                    }
-                    min={0}
-                    max={6}
-                    step={1}
-                    marks
-                    disabled={!deviceOnline}
-                    valueLabelDisplay="auto"
-                  />
-                </Box>
-
-                {/* White Balance Controls */}
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={cameraSettings.white_balance === 1}
-                        onChange={(e) =>
-                          handleCameraSettingChange(
-                            "white_balance",
-                            e.target.checked ? 1 : 0
-                          )
-                        }
-                        disabled={!deviceOnline}
-                      />
-                    }
-                    label="Auto White Balance"
-                  />
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={cameraSettings.awb_gain === 1}
-                        onChange={(e) =>
-                          handleCameraSettingChange(
-                            "awb_gain",
-                            e.target.checked ? 1 : 0
-                          )
-                        }
-                        disabled={!deviceOnline}
-                      />
-                    }
-                    label="AWB Gain"
-                  />
-
-                  <Box>
-                    <Typography gutterBottom>White Balance Mode</Typography>
-                    <Slider
-                      value={cameraSettings.wb_mode}
-                      onChange={(e, value) =>
-                        handleCameraSettingChange("wb_mode", value)
-                      }
-                      min={0}
-                      max={4}
-                      step={1}
-                      disabled={!deviceOnline}
-                      marks={[
-                        { value: 0, label: "Auto" },
-                        { value: 1, label: "Sunny" },
-                        { value: 2, label: "Cloudy" },
-                        { value: 3, label: "Office" },
-                        { value: 4, label: "Home" },
-                      ]}
-                      valueLabelDisplay="auto"
-                    />
-                  </Box>
-                </Box>
-              </Box>
-            </AccordionDetails>
-          </Accordion>
-        </Box>
-      </SettingsModal>
+        onSave={handleSaveSettings}
+        cameraData={settingsData}
+        onCameraDataChange={setSettingsData}
+        config={globalConfig}
+        saveConfigToDevice={saveConfigToDevice}
+      />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   TextField,
   Box,
@@ -9,7 +9,6 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Chip,
   MenuItem,
   Select,
   FormControl,
@@ -26,9 +25,12 @@ export default function CameraSettingsModal({
   cameraData,
   onCameraDataChange,
   config,
+  saveConfigToDevice,
 }) {
   const [localData, setLocalData] = useState(cameraData);
+  const isInitialLoad = useRef(true);
   const [cameraSettings, setCameraSettings] = useState({
+    frameRate: 10,
     brightness: 1,
     contrast: 1,
     saturation: 1,
@@ -43,19 +45,29 @@ export default function CameraSettingsModal({
 
   useEffect(() => {
     setLocalData(cameraData);
+    isInitialLoad.current = true;
   }, [cameraData]);
+
+  // Notify parent component when localData changes (but not on initial load)
+  useEffect(() => {
+    if (onCameraDataChange && !isInitialLoad.current) {
+      onCameraDataChange(localData);
+    }
+    isInitialLoad.current = false;
+  }, [localData, onCameraDataChange]);
 
   // Load camera settings when modal opens
   useEffect(() => {
     if (open) {
       loadCameraSettings();
     }
-  }, [open]);
+  }, [open, config]);
 
   const loadCameraSettings = () => {
     // Load camera settings from config
     if (config?.camera) {
       setCameraSettings({
+        frameRate: config.camera.frameRate ?? 10,
         brightness: config.camera.brightness ?? 1,
         contrast: config.camera.contrast ?? 1,
         saturation: config.camera.saturation ?? 1,
@@ -68,22 +80,31 @@ export default function CameraSettingsModal({
         wb_mode: config.camera.wb_mode ?? 0,
       });
 
-      // Also update frame rate and rotation in localData if they're in config
-      const newLocalData = { ...localData };
-      if (config.camera.frameRate !== undefined) {
-        newLocalData.frameRate = config.camera.frameRate;
-      }
-      if (config.camera.rotation !== undefined) {
-        newLocalData.rotation = config.camera.rotation;
-      }
-      setLocalData(newLocalData);
-      if (onCameraDataChange) {
-        onCameraDataChange(newLocalData);
-      }
+      // Also update rotation in localData if it's in config
+      setLocalData((prevLocalData) => {
+        const newLocalData = { ...prevLocalData };
+        if (config.camera.rotation !== undefined) {
+          newLocalData.rotation = config.camera.rotation;
+        }
+        return newLocalData;
+      });
     }
   };
 
   const handleSave = () => {
+    // Save camera settings to global config
+    if (config && saveConfigToDevice) {
+      const updatedConfig = {
+        ...config,
+        camera: {
+          ...config.camera,
+          ...cameraSettings,
+          rotation: localData.rotation,
+        },
+      };
+      saveConfigToDevice(updatedConfig);
+    }
+
     if (onSave) {
       onSave();
     }
@@ -92,9 +113,6 @@ export default function CameraSettingsModal({
   const handleDataChange = (field, value) => {
     const newData = { ...localData, [field]: value };
     setLocalData(newData);
-    if (onCameraDataChange) {
-      onCameraDataChange(newData);
-    }
   };
 
   const handleCameraSettingChange = (field, value) => {
@@ -128,19 +146,6 @@ export default function CameraSettingsModal({
           helperText="Local: /camera | Remote: ws://hostname:port/camera | HTTP: http://hostname:port/camera"
         />
 
-        <TextField
-          label="Frame Rate (FPS)"
-          type="number"
-          value={localData.frameRate || 10}
-          onChange={(e) =>
-            handleDataChange("frameRate", parseInt(e.target.value) || 10)
-          }
-          inputProps={{ min: 1, max: 60 }}
-          fullWidth
-          variant="outlined"
-          helperText="Frames per second (1-60)"
-        />
-
         <FormControl fullWidth>
           <InputLabel>Rotation</InputLabel>
           <Select
@@ -161,10 +166,30 @@ export default function CameraSettingsModal({
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography variant="h6">Camera Sensor Settings</Typography>
-            <Chip label="Live" color="success" size="small" sx={{ ml: 2 }} />
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {/* Frame Rate */}
+              <Box>
+                <Typography gutterBottom>Frame Rate (FPS)</Typography>
+                <Slider
+                  value={cameraSettings.frameRate}
+                  onChange={(e, value) =>
+                    handleCameraSettingChange("frameRate", value)
+                  }
+                  min={1}
+                  max={60}
+                  step={1}
+                  marks={[
+                    { value: 1, label: "1" },
+                    { value: 10, label: "10" },
+                    { value: 30, label: "30" },
+                    { value: 60, label: "60" },
+                  ]}
+                  valueLabelDisplay="auto"
+                />
+              </Box>
+
               {/* Brightness */}
               <Box>
                 <Typography gutterBottom>Brightness</Typography>

@@ -578,7 +578,7 @@ void ESPWiFi::srvFiles() {
         }
 
         if (!filesystem) {
-          sendJsonResponse(request, 404,
+          sendJsonResponse(request, 400,
                            "{\"error\":\"File system not available\"}");
           return;
         }
@@ -595,10 +595,13 @@ void ESPWiFi::srvFiles() {
           return;
         }
 
-        // Prevent deletion of system files
-        if (filePath == "/config.json" || filePath == "/index.html" ||
-            filePath.startsWith("/static/") ||
-            filePath.startsWith("/system/") || filePath.startsWith("/boot/")) {
+        // Prevent deletion of system files on LittleFS
+        if (fsParam == "lfs" &&
+            (filePath == "/config.json" || filePath == "/index.html" ||
+             filePath == "/asset-manifest.json" ||
+             filePath.startsWith("/static/") ||
+             filePath.startsWith("/system/") ||
+             filePath.startsWith("/boot/"))) {
           sendJsonResponse(request, 403,
                            "{\"error\":\"Cannot delete system files\"}");
           return;

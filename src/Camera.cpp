@@ -75,14 +75,14 @@ bool ESPWiFi::initCamera() {
     camConfig.fb_count = 4;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    log("📷 Using PSRAM for camera buffers");
+    logf("\tUsing PSRAM for camera buffers\n");
   } else {
     camConfig.frame_size = FRAMESIZE_QVGA;
     camConfig.jpeg_quality = 25;
     camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    log("📷 Using DRAM for camera buffers");
+    logf("\tUsing DRAM for camera buffers\n");
   }
 
   delay(100);
@@ -102,8 +102,6 @@ bool ESPWiFi::initCamera() {
     return false;
   }
 
-  log("📷 Camera Initialized Successfully");
-
   // Set camera settings from config
   updateCameraSettings();
 
@@ -118,9 +116,7 @@ void ESPWiFi::updateCameraSettings() {
     return;
   }
 
-  log("📷 Updating Camera Settings");
-
-  // Apply camera settings from config with defaults if not present
+  // Apply camera settings from config
   if (!config["camera"]["brightness"].isNull()) {
     s->set_brightness(s, config["camera"]["brightness"]);
   }
@@ -178,8 +174,7 @@ void ESPWiFi::updateCameraSettings() {
       s->set_hmirror(s, 0);
     }
   }
-
-  log("📷 Camera Settings Updated Successfully");
+  log("📷 Camera Settings Updated");
 }
 
 void ESPWiFi::deinitCamera() {
@@ -197,7 +192,7 @@ void ESPWiFi::deinitCamera() {
   // Deinitialize the camera
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
-    logError("📷 Camera Deactivation Failed: " + String(err));
+    logError("📷 Camera Deinitialization Failed: " + String(err));
   }
 
   // Power down the camera if PWDN pin is defined
@@ -206,7 +201,6 @@ void ESPWiFi::deinitCamera() {
     digitalWrite(camConfig.pin_pwdn, HIGH);
   }
 
-  log("📷 Camera Deinitialized Successfully");
   delay(200);
 }
 
@@ -378,8 +372,8 @@ void ESPWiFi::streamCamera(int frameRate) {
     targetFrameRate = frameRate;
   }
 
-  if (targetFrameRate > 8) {
-    targetFrameRate = 8;
+  if (targetFrameRate > 30) {
+    targetFrameRate = 30;
   }
 
   static IntervalTimer timer(1000);

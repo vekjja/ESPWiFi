@@ -16,6 +16,10 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
                                  AsyncWebSocketClient *client,
                                  AwsEventType type, void *arg, uint8_t *data,
                                  size_t len, ESPWiFi *espWifi) {
+  if (!espWifi || !client) {
+    return;
+  }
+
   if (type == WS_EVT_DATA) {
     // String receivedData = String((char *)data, len);
     // receivedData.trim(); // Remove any whitespace
@@ -112,7 +116,7 @@ bool ESPWiFi::initCamera() {
 void ESPWiFi::updateCameraSettings() {
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
-    logError("📷 Cannot set camera settings: sensor not available");
+    logError("📷 Cannot Update Camera Settings: sensor not available");
     return;
   }
 
@@ -269,7 +273,7 @@ void ESPWiFi::startCamera() {
   this->camSoc = new WebSocket("/camera", this, cameraWebSocketEventHandler);
 
   if (!this->camSoc) {
-    logError(" Failed to create Camera WebSocket");
+    logError("📷 Failed to create Camera WebSocket");
     return;
   }
 }
@@ -365,13 +369,12 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  int targetFrameRate = 10;
+  int targetFrameRate = 9;
   if (!config["camera"]["frameRate"].isNull()) {
     targetFrameRate = config["camera"]["frameRate"];
-  } else {
-    targetFrameRate = 9;
   }
 
+  // Limit frame rate to 30fps
   if (targetFrameRate > 30) {
     targetFrameRate = 30;
   }
@@ -383,6 +386,7 @@ void ESPWiFi::streamCamera() {
 
   yield();
 
+  // Checking again because config changes are asynchronous
   if (cameraOperationInProgress || !config["camera"]["enabled"] ||
       !this->camSoc) {
     return;
@@ -396,15 +400,28 @@ void ESPWiFi::streamCamera() {
 
   if (fb->buf && fb->len > 0 && fb->format == PIXFORMAT_JPEG) {
     if (this->camSoc && this->camSoc->socket && !cameraOperationInProgress) {
-      if (fb->len > 100000) {
-        logError("📹 Frame too large: " + String(fb->len) + " bytes");
-        esp_camera_fb_return(fb);
-        return;
-      }
-
       if (config["camera"]["enabled"] && this->camSoc && this->camSoc->socket &&
           this->camSoc->numClients() > 0 && !cameraOperationInProgress) {
-        this->camSoc->binaryAll((const char *)fb->buf, fb->len);
+
+        // Check if WebSocket has a large queue (buffer overflow protection)
+        bool queueTooLarge = false;
+        for (auto &client : this->camSoc->socket->getClients()) {
+          if (client.queueIsFull()) {
+            queueTooLarge = true;
+            break;
+          }
+        }
+
+        if (queueTooLarge) {
+          esp_camera_fb_return(fb);
+          return;
+        }
+
+        try {
+          this->camSoc->binaryAll((const char *)fb->buf, fb->len);
+        } catch (...) {
+          logError("📹 Error sending frame data to WebSocket clients");
+        }
       }
     }
   } else {
@@ -440,7 +457,6 @@ void ESPWiFi::cameraConfigHandler() {
     }
 
     cameraOperationInProgress = true;
-    delay(100);
 
     clearCameraBuffer();
     delay(100);

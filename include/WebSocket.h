@@ -74,8 +74,14 @@ public:
   void textAll(const String &message) { socket->textAll(message); }
 
   void binaryAll(const char *data, size_t len) {
-    if (data && len > 0) {
-      socket->binaryAll((const uint8_t *)data, len);
+    if (data && len > 0 && socket) {
+      try {
+        socket->binaryAll((const uint8_t *)data, len);
+      } catch (...) {
+        if (espWifi) {
+          espWifi->logError("WebSocket binaryAll failed");
+        }
+      }
     }
   }
 

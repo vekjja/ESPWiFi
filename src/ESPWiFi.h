@@ -147,8 +147,8 @@ public:
 
   // Utils
   String getContentType(String filename);
-  String getFileExtension(const String &filename);
   String bytesToHumanReadable(size_t bytes);
+  String getFileExtension(const String &filename);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
@@ -178,6 +178,8 @@ public:
   void handleOTAStart(AsyncWebServerRequest *request);
   void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                        size_t index, uint8_t *data, size_t len, bool final);
+  void handleOTAFileUpload(AsyncWebServerRequest *request, String filename,
+                           size_t index, uint8_t *data, size_t len, bool final);
   void handleFSUpdate(AsyncWebServerRequest *request, String filename,
                       size_t index, uint8_t *data, size_t len, bool final);
   void resetOTAState();

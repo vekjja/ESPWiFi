@@ -150,6 +150,126 @@ void ESPWiFi::resetOTAState() {
   }
 }
 
+void ESPWiFi::handleOTAFileUpload(AsyncWebServerRequest *request,
+                                  String filename, size_t index, uint8_t *data,
+                                  size_t len, bool final) {
+  // Static variables to maintain state across multiple calls (like filesystem
+  // upload)
+  static File currentFile;
+  static size_t currentSize = 0;
+  static String currentPath = "";
+  static String sanitizedFilename = "";
+
+  if (index == 0) {
+    // First chunk - get parameters and initialize
+    if (request->hasParam("path")) {
+      currentPath = request->getParam("path")->value();
+    } else {
+      currentPath = "/";
+    }
+
+    // Validate parameters
+    if (!currentPath.startsWith("/"))
+      currentPath = "/" + currentPath;
+
+    // Sanitize filename
+    sanitizedFilename = sanitizeFilename(filename);
+
+    // Check filename length limit (LittleFS typically has 31 char limit)
+    const int maxFilenameLength = 31;
+    if (sanitizedFilename.length() > maxFilenameLength) {
+      // Try to preserve file extension
+      int lastDot = sanitizedFilename.lastIndexOf('.');
+      String extension = "";
+      String baseName = sanitizedFilename;
+
+      if (lastDot > 0 && lastDot > sanitizedFilename.length() -
+                                       6) { // Extension is reasonable length
+        extension = sanitizedFilename.substring(lastDot);
+        baseName = sanitizedFilename.substring(0, lastDot);
+      }
+
+      // Truncate base name to fit extension and add unique suffix
+      int maxBaseLength = maxFilenameLength - extension.length() -
+                          4; // Reserve 4 chars for unique suffix
+      if (maxBaseLength > 0) {
+        // Generate 4-character random suffix
+        String uniqueSuffix =
+            String(random(1000, 9999)); // 4-digit random number
+        sanitizedFilename = baseName.substring(0, maxBaseLength) + "_" +
+                            uniqueSuffix + extension;
+      } else {
+        // If no room for extension, just truncate and add suffix
+        String uniqueSuffix = String(random(1000, 9999));
+        sanitizedFilename =
+            sanitizedFilename.substring(0, maxFilenameLength - 5) + "_" +
+            uniqueSuffix;
+      }
+
+      logf("📁 Filename truncated: %s\n", sanitizedFilename.c_str());
+    }
+
+    String filePath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
+                      sanitizedFilename;
+
+    // Use LittleFS for OTA filesystem uploads
+    if (!lfs) {
+      logError("LittleFS not available for OTA filesystem upload");
+      sendJsonResponse(request, 500, "{\"error\":\"LittleFS not available\"}");
+      return;
+    }
+
+    // Check available space before creating file
+    size_t totalBytes, usedBytes, freeBytes;
+    getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
+    currentFile = lfs->open(filePath, "w");
+    if (!currentFile) {
+      logError("Failed to create file for OTA filesystem upload");
+      logf("📁 File path: %s\n", filePath.c_str());
+      sendJsonResponse(request, 500, "{\"error\":\"Failed to create file\"}");
+      return;
+    }
+
+    currentSize = 0;
+    logf("📁 Starting OTA filesystem upload: %s\n", filePath.c_str());
+  }
+
+  // Write data chunk
+  if (currentFile && len > 0) {
+    size_t bytesWritten = currentFile.write(data, len);
+    if (bytesWritten != len) {
+      logError("Failed to write all data to OTA filesystem file");
+      currentFile.close();
+      sendJsonResponse(request, 500, "{\"error\":\"File write failed\"}");
+      return;
+    }
+    currentSize += len;
+
+    // Yield control periodically for large files to prevent watchdog timeout
+    if (currentSize % 8192 == 0) { // Every 8KB
+      yield();
+    }
+  }
+
+  if (final) {
+    // Last chunk - close file and send response
+    if (currentFile) {
+      currentFile.close();
+      String fullPath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
+                        sanitizedFilename;
+      logf("📁 OTA filesystem upload completed: %s (%s)\n", fullPath.c_str(),
+           bytesToHumanReadable(currentSize).c_str());
+    }
+
+    // Reset static variables for next upload
+    currentPath = "";
+    currentSize = 0;
+    sanitizedFilename = "";
+
+    sendJsonResponse(request, 200, "{\"success\":true}");
+  }
+}
+
 void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
                              size_t index, uint8_t *data, size_t len,
                              bool final) {
@@ -225,28 +345,190 @@ void ESPWiFi::handleOTAHtml(AsyncWebServerRequest *request) {
 void ESPWiFi::srvOTA() {
   initWebServer();
 
-  // OTA start endpoint (initialize update)
+  // API endpoint for OTA status information
+  webServer->on("/api/ota/status", HTTP_GET,
+                [this](AsyncWebServerRequest *request) {
+                  // Handle CORS preflight requests
+                  if (request->method() == HTTP_OPTIONS) {
+                    handleCorsPreflight(request);
+                    return;
+                  }
+
+                  JsonDocument jsonDoc;
+                  jsonDoc["firmware_size"] = ESP.getSketchSize();
+                  jsonDoc["free_space"] = ESP.getFreeSketchSpace();
+                  jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
+                  jsonDoc["chip_model"] = String(ESP.getChipModel());
+                  jsonDoc["in_progress"] = otaInProgress;
+                  jsonDoc["current_size"] = otaCurrentSize;
+                  jsonDoc["total_size"] = otaTotalSize;
+                  jsonDoc["progress"] = 0; // Will be calculated below
+
+                  // Calculate progress percentage if we have total size and OTA
+                  // is in progress
+                  if (otaInProgress && otaTotalSize > 0) {
+                    int progress = (otaCurrentSize * 100) / otaTotalSize;
+                    jsonDoc["progress"] = progress;
+                  }
+
+                  String jsonResponse;
+                  serializeJson(jsonDoc, jsonResponse);
+                  sendJsonResponse(request, 200, jsonResponse);
+                });
+
+  // API endpoint for OTA progress
+  webServer->on("/api/ota/progress", HTTP_GET,
+                [this](AsyncWebServerRequest *request) {
+                  // Handle CORS preflight requests
+                  if (request->method() == HTTP_OPTIONS) {
+                    handleCorsPreflight(request);
+                    return;
+                  }
+
+                  JsonDocument jsonDoc;
+                  jsonDoc["in_progress"] = otaInProgress;
+                  jsonDoc["current_size"] = otaCurrentSize;
+                  jsonDoc["total_size"] = otaTotalSize;
+                  jsonDoc["progress"] = 0; // Will be calculated below
+
+                  // Calculate progress percentage if we have total size and OTA
+                  // is in progress
+                  if (otaInProgress && otaTotalSize > 0) {
+                    int progress = (otaCurrentSize * 100) / otaTotalSize;
+                    jsonDoc["progress"] = progress;
+                  }
+
+                  String jsonResponse;
+                  serializeJson(jsonDoc, jsonResponse);
+                  sendJsonResponse(request, 200, jsonResponse);
+                });
+
+  // API endpoint for starting OTA update
+  webServer->on(
+      "/api/ota/start", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
+        // Get mode from parameter (firmware or filesystem)
+        String mode = "firmware";
+        if (request->hasParam("mode")) {
+          mode = request->getParam("mode")->value();
+        }
+
+        // Get MD5 hash if provided
+        if (request->hasParam("hash")) {
+          String hash = request->getParam("hash")->value();
+          logf("📦 OTA MD5 Hash: %s", hash.c_str());
+          if (!Update.setMD5(hash.c_str())) {
+            logError("Invalid MD5 hash provided");
+            sendJsonResponse(request, 400, "{\"error\":\"Invalid MD5 hash\"}");
+            return;
+          }
+        }
+
+        // Reset OTA state
+        otaCurrentSize = 0;
+        otaTotalSize = 0;
+        otaErrorString = "";
+        otaInProgress = true;
+
+        // Start update process based on mode
+        if (mode == "fs" || mode == "filesystem") {
+          log("📁 Starting filesystem update");
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+            otaErrorString =
+                "Update.begin failed: " + String(Update.getError());
+            logError("Failed to start filesystem update");
+            logError(otaErrorString);
+            otaInProgress = false;
+            sendJsonResponse(request, 400,
+                             "{\"error\":\"" + otaErrorString + "\"}");
+            return;
+          }
+        } else {
+          log("📦 Starting firmware update");
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+            otaErrorString =
+                "Update.begin failed: " + String(Update.getError());
+            logError("Failed to start firmware update");
+            logError(otaErrorString);
+            otaInProgress = false;
+            sendJsonResponse(request, 400,
+                             "{\"error\":\"" + otaErrorString + "\"}");
+            return;
+          }
+        }
+
+        log("✅ OTA update initialized successfully");
+        sendJsonResponse(request, 200, "{\"success\":true}");
+      });
+
+  // API endpoint for resetting OTA state
+  webServer->on("/api/ota/reset", HTTP_POST,
+                [this](AsyncWebServerRequest *request) {
+                  // Handle CORS preflight requests
+                  if (request->method() == HTTP_OPTIONS) {
+                    handleCorsPreflight(request);
+                    return;
+                  }
+
+                  resetOTAState();
+                  sendJsonResponse(request, 200, "{\"success\":true}");
+                });
+
+  // API endpoint for firmware upload using OTA pattern
+  webServer->on(
+      "/api/ota/upload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleOTAUpdate(request, filename, index, data, len, final);
+      });
+
+  // API endpoint for filesystem upload using filesystem pattern
+  webServer->on(
+      "/api/ota/filesystem", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+        // This will be handled by the upload handler
+      },
+      [this](AsyncWebServerRequest *request, String filename, size_t index,
+             uint8_t *data, size_t len, bool final) {
+        handleOTAFileUpload(request, filename, index, data, len, final);
+      });
+
+  // Legacy endpoints for backward compatibility
   webServer->on("/ota/start", HTTP_GET, [this](AsyncWebServerRequest *request) {
     handleOTAStart(request);
   });
 
-  // OTA reset endpoint (reset stuck updates)
   webServer->on("/ota/reset", HTTP_GET, [this](AsyncWebServerRequest *request) {
     resetOTAState();
     request->send(200, "text/plain", "OTA state reset");
   });
 
-  // OTA progress endpoint
   webServer->on(
       "/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument jsonDoc;
         jsonDoc["in_progress"] = otaInProgress;
         jsonDoc["current_size"] = otaCurrentSize;
         jsonDoc["total_size"] = otaTotalSize;
-        jsonDoc["progress"] = 0; // Will be calculated below
+        jsonDoc["progress"] = 0;
 
-        // Calculate progress percentage if we have total size and OTA is in
-        // progress
         if (otaInProgress && otaTotalSize > 0) {
           int progress = (otaCurrentSize * 100) / otaTotalSize;
           jsonDoc["progress"] = progress;
@@ -260,29 +542,20 @@ void ESPWiFi::srvOTA() {
         request->send(response);
       });
 
-  // OTA upload endpoint (actual file upload)
   webServer->on(
-      "/ota/upload", HTTP_POST,
-      [this](AsyncWebServerRequest *request) {
-        // This will be handled by the upload handler
-      },
+      "/ota/upload", HTTP_POST, [this](AsyncWebServerRequest *request) {},
       [this](AsyncWebServerRequest *request, String filename, size_t index,
              uint8_t *data, size_t len, bool final) {
         handleOTAUpdate(request, filename, index, data, len, final);
       });
 
-  // Filesystem update endpoint
   webServer->on(
-      "/ota/fsupload", HTTP_POST,
-      [this](AsyncWebServerRequest *request) {
-        // This will be handled by the upload handler
-      },
+      "/ota/fsupload", HTTP_POST, [this](AsyncWebServerRequest *request) {},
       [this](AsyncWebServerRequest *request, String filename, size_t index,
              uint8_t *data, size_t len, bool final) {
         handleFSUpdate(request, filename, index, data, len, final);
       });
 
-  // OTA status endpoint
   webServer->on(
       "/ota/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument jsonDoc;

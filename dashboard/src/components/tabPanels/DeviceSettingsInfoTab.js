@@ -56,7 +56,7 @@ export default function DeviceSettingsInfoTab({
     <Grid container spacing={2}>
       {/* Device Information */}
       <Grid item xs={12} md={6}>
-        <Card>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
             <Typography
               variant="h6"
@@ -64,30 +64,25 @@ export default function DeviceSettingsInfoTab({
               sx={{ display: "flex", alignItems: "center", gap: 1 }}
             >
               <InfoIcon color="primary" />
-              Device Information
+              Chip Information
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
                   Hostname:
                 </Typography>
-                <Typography variant="body2">
+                <Typography
+                  variant="body1"
+                  sx={{ fontWeight: 600, color: "primary.main" }}
+                >
                   {deviceInfo.hostname || "N/A"}
                 </Typography>
               </Box>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  mDNS:
+                  Chip Model:
                 </Typography>
-                <Typography variant="body2">
-                  {deviceInfo.mdns || "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Chip:
-                </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.chip || "N/A"}
                 </Typography>
               </Box>
@@ -95,15 +90,15 @@ export default function DeviceSettingsInfoTab({
                 <Typography variant="body2" color="text.secondary">
                   SDK Version:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.sdk_version || "N/A"}
                 </Typography>
               </Box>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Uptime:
+                  System Uptime:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {formatUptime(deviceInfo.uptime)}
                 </Typography>
               </Box>
@@ -114,7 +109,7 @@ export default function DeviceSettingsInfoTab({
 
       {/* Network Information */}
       <Grid item xs={12} md={6}>
-        <Card>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Network Information
@@ -124,8 +119,23 @@ export default function DeviceSettingsInfoTab({
                 <Typography variant="body2" color="text.secondary">
                   IP Address:
                 </Typography>
-                <Typography variant="body2">
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 600,
+                    color: "primary.main",
+                    fontFamily: "monospace",
+                  }}
+                >
                   {deviceInfo.ip || "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  mDNS Hostname:
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {deviceInfo.mdns || "N/A"}
                 </Typography>
               </Box>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -133,34 +143,28 @@ export default function DeviceSettingsInfoTab({
                   MAC Address:
                 </Typography>
                 <Typography
-                  variant="body2"
-                  sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                  variant="body1"
+                  sx={{
+                    fontWeight: 500,
+                    fontFamily: "monospace",
+                    fontSize: "0.9rem",
+                  }}
                 >
                   {deviceInfo.mac || "N/A"}
                 </Typography>
               </Box>
               {deviceInfo.client_ssid && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                   <Typography variant="body2" color="text.secondary">
-                    Connected SSID:
+                    Connected Network:
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
                     {deviceInfo.client_ssid}
                   </Typography>
                 </Box>
               )}
               {deviceInfo.rssi && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                   <Typography variant="body2" color="text.secondary">
                     Signal Strength:
                   </Typography>
@@ -173,21 +177,18 @@ export default function DeviceSettingsInfoTab({
                         ? "warning"
                         : "error"
                     }
-                    size="small"
+                    sx={{ fontWeight: 600 }}
                   />
                 </Box>
               )}
               {deviceInfo.ap_ssid && (
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                   <Typography variant="body2" color="text.secondary">
-                    AP SSID:
+                    Access Point:
                   </Typography>
-                  <Typography variant="body2">{deviceInfo.ap_ssid}</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    {deviceInfo.ap_ssid}
+                  </Typography>
                 </Box>
               )}
             </Box>
@@ -197,7 +198,7 @@ export default function DeviceSettingsInfoTab({
 
       {/* LittleFS Storage Information */}
       <Grid item xs={12} md={6}>
-        <Card>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Device Storage
@@ -205,9 +206,12 @@ export default function DeviceSettingsInfoTab({
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Total:
+                  Total Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography
+                  variant="body1"
+                  sx={{ fontWeight: 600, color: "primary.main" }}
+                >
                   {deviceInfo.littlefs_total
                     ? bytesToHumanReadable(deviceInfo.littlefs_total)
                     : "N/A"}
@@ -215,9 +219,9 @@ export default function DeviceSettingsInfoTab({
               </Box>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Used:
+                  Used Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.littlefs_used
                     ? bytesToHumanReadable(deviceInfo.littlefs_used)
                     : "N/A"}
@@ -225,9 +229,9 @@ export default function DeviceSettingsInfoTab({
               </Box>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Free:
+                  Free Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.littlefs_free
                     ? bytesToHumanReadable(deviceInfo.littlefs_free)
                     : "N/A"}
@@ -245,7 +249,10 @@ export default function DeviceSettingsInfoTab({
                     <Typography variant="body2" color="text.secondary">
                       Usage:
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography
+                      variant="h6"
+                      sx={{ fontWeight: 600, color: "primary.main" }}
+                    >
                       {Math.round(
                         (deviceInfo.littlefs_used / deviceInfo.littlefs_total) *
                           100
@@ -283,52 +290,40 @@ export default function DeviceSettingsInfoTab({
 
       {/* SD Card Storage Information */}
       <Grid item xs={12} md={6}>
-        <Card>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               SD Card Storage
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Total:
+                  Total Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography
+                  variant="body1"
+                  sx={{ fontWeight: 600, color: "primary.main" }}
+                >
                   {deviceInfo.sd_total
                     ? bytesToHumanReadable(deviceInfo.sd_total)
                     : "Not Available"}
                 </Typography>
               </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Used:
+                  Used Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.sd_used
                     ? bytesToHumanReadable(deviceInfo.sd_used)
                     : "Not Available"}
                 </Typography>
               </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                 <Typography variant="body2" color="text.secondary">
-                  Free:
+                  Free Storage:
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
                   {deviceInfo.sd_free
                     ? bytesToHumanReadable(deviceInfo.sd_free)
                     : "Not Available"}
@@ -346,7 +341,10 @@ export default function DeviceSettingsInfoTab({
                     <Typography variant="body2" color="text.secondary">
                       Usage:
                     </Typography>
-                    <Typography variant="body2">
+                    <Typography
+                      variant="h6"
+                      sx={{ fontWeight: 600, color: "primary.main" }}
+                    >
                       {Math.round(
                         (deviceInfo.sd_used / deviceInfo.sd_total) * 100
                       )}
@@ -381,7 +379,7 @@ export default function DeviceSettingsInfoTab({
 
       {/* Memory Information */}
       <Grid item xs={12} md={6}>
-        <Card>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Memory Information

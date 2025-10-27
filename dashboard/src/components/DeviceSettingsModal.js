@@ -10,6 +10,7 @@ import TabPanel from "./tabPanels/TabPanel";
 import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
 import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
+import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
 import { buildApiUrl } from "../utils/apiUtils";
 
 export default function DeviceSettingsModal({
@@ -267,7 +268,7 @@ export default function DeviceSettingsModal({
           />
         </>
       );
-    } else {
+    } else if (activeTab === 2) {
       // JSON editing tab
       return (
         <>
@@ -284,6 +285,17 @@ export default function DeviceSettingsModal({
           <SaveButton
             onClick={handleJsonSave}
             tooltip="Save Configuration to Device"
+          />
+        </>
+      );
+    } else {
+      // OTA tab - only show restart button
+      return (
+        <>
+          <IButton
+            Icon={RestartIcon}
+            onClick={handleRestart}
+            tooltip={"Restart Device"}
           />
         </>
       );
@@ -333,9 +345,10 @@ export default function DeviceSettingsModal({
             },
           }}
         >
-          <Tab label="Info" />
+          <Tab label="Device" />
           <Tab label="Network" />
           <Tab label="JSON" />
+          <Tab label="Updates" />
         </Tabs>
       </Box>
 
@@ -376,6 +389,10 @@ export default function DeviceSettingsModal({
           setJsonError={setJsonError}
           isEditable={isEditable}
         />
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={3}>
+        <DeviceSettingsOTATab config={config} />
       </TabPanel>
     </SettingsModal>
   );

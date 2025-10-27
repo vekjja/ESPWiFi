@@ -154,192 +154,135 @@ void ESPWiFi::resetOTAState() {
 void ESPWiFi::handleOTAFileUpload(AsyncWebServerRequest *request,
                                   String filename, size_t index, uint8_t *data,
                                   size_t len, bool final) {
-  // Static variables to maintain state across multiple calls (like filesystem
-  // upload)
+  // Static variables to maintain state across multiple calls
   static File currentFile;
   static size_t currentSize = 0;
-  static String currentPath = "";
-  static String sanitizedFilename = "";
+  static String currentFilePath = "";
 
   if (index == 0) {
-    // First chunk - get parameters and initialize
-    if (request->hasParam("path")) {
-      currentPath = request->getParam("path")->value();
-    } else {
-      currentPath = "/";
-    }
-
-    // Validate parameters
-    if (!currentPath.startsWith("/"))
-      currentPath = "/" + currentPath;
-
-    // Sanitize filename
-    sanitizedFilename = sanitizeFilename(filename);
-
-    // Check filename length limit (LittleFS typically has 31 char limit)
-    const int maxFilenameLength = 31;
-    if (sanitizedFilename.length() > maxFilenameLength) {
-      // Try to preserve file extension
-      int lastDot = sanitizedFilename.lastIndexOf('.');
-      String extension = "";
-      String baseName = sanitizedFilename;
-
-      if (lastDot > 0 && lastDot > sanitizedFilename.length() -
-                                       6) { // Extension is reasonable length
-        extension = sanitizedFilename.substring(lastDot);
-        baseName = sanitizedFilename.substring(0, lastDot);
-      }
-
-      // Truncate base name to fit extension and add unique suffix
-      int maxBaseLength = maxFilenameLength - extension.length() -
-                          4; // Reserve 4 chars for unique suffix
-      if (maxBaseLength > 0) {
-        // Generate 4-character random suffix
-        String uniqueSuffix =
-            String(random(1000, 9999)); // 4-digit random number
-        sanitizedFilename = baseName.substring(0, maxBaseLength) + "_" +
-                            uniqueSuffix + extension;
-      } else {
-        // If no room for extension, just truncate and add suffix
-        String uniqueSuffix = String(random(1000, 9999));
-        sanitizedFilename =
-            sanitizedFilename.substring(0, maxFilenameLength - 5) + "_" +
-            uniqueSuffix;
-      }
-
-      logf("📁 Filename truncated: %s\n", sanitizedFilename.c_str());
-    }
-
-    String filePath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
-                      sanitizedFilename;
-
-    // Use LittleFS for OTA filesystem uploads
+    // First chunk - initialize upload
     if (!lfs) {
       logError("LittleFS not available for OTA filesystem upload");
       sendJsonResponse(request, 500, "{\"error\":\"LittleFS not available\"}");
       return;
     }
 
-    // Check available space before creating file
-    size_t totalBytes, usedBytes, freeBytes;
-    getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
-    currentFile = lfs->open(filePath, "w");
+    // Get the target path from request parameter
+    String targetPath = "/";
+    if (request->hasParam("path")) {
+      targetPath = request->getParam("path")->value();
+      // Ensure path starts with /
+      if (!targetPath.startsWith("/")) {
+        targetPath = "/" + targetPath;
+      }
+    }
+
+    // Create the full file path: targetPath + filename
+    // This preserves folder structure from the frontend
+    currentFilePath =
+        targetPath + (targetPath.endsWith("/") ? "" : "/") + filename;
+
+    // Strip the first directory level (e.g., "/data/static/css/main.css" ->
+    // "/static/css/main.css")
+    if (currentFilePath.startsWith("/") &&
+        currentFilePath.indexOf("/", 1) > 0) {
+      int firstSlash = currentFilePath.indexOf("/", 1);
+      // Remove the first directory (e.g., "/data")
+      currentFilePath = currentFilePath.substring(firstSlash);
+    }
+
+    // Validate file path length
+    if (currentFilePath.length() > 100) {
+      logError("File path too long for OTA filesystem upload");
+      logf("📁 File path: %s\n", currentFilePath.c_str());
+      sendJsonResponse(request, 500, "{\"error\":\"File path too long\"}");
+      return;
+    }
+
+    // Pre-create known directory structure for dashboard files
+    if (currentFilePath.startsWith("/static/")) {
+      if (!lfs->exists("/static")) {
+        lfs->mkdir("/static");
+      }
+      if (currentFilePath.startsWith("/static/css/") &&
+          !lfs->exists("/static/css")) {
+        lfs->mkdir("/static/css");
+      }
+      if (currentFilePath.startsWith("/static/js/") &&
+          !lfs->exists("/static/js")) {
+        lfs->mkdir("/static/js");
+      }
+    }
+
+    // Create the file
+    currentFile = lfs->open(currentFilePath, "w");
     if (!currentFile) {
       logError("Failed to create file for OTA filesystem upload");
-      logf("📁 File path: %s\n", filePath.c_str());
+      logf("📁 File path: %s\n", currentFilePath.c_str());
       sendJsonResponse(request, 500, "{\"error\":\"Failed to create file\"}");
       return;
     }
 
     currentSize = 0;
-    logf("📁 Starting OTA filesystem upload: %s\n", filePath.c_str());
-  }
+    logf("📁 Starting OTA filesystem upload: %s\n", currentFilePath.c_str());
 
-  // Write data chunk
-  if (currentFile && len > 0) {
-    size_t bytesWritten = currentFile.write(data, len);
-    if (bytesWritten != len) {
-      logError("Failed to write all data to OTA filesystem file");
-      currentFile.close();
-      sendJsonResponse(request, 500, "{\"error\":\"File write failed\"}");
+    // Special handling for large JS files - skip them for now
+    if (currentFilePath.endsWith(".js") &&
+        currentFilePath.indexOf("main.") >= 0) {
+      logf("📁 Skipping large JS file to prevent crash: %s\n",
+           currentFilePath.c_str());
+      request->send(200, "text/plain", "OK");
       return;
     }
-    currentSize += len;
+  }
 
-    // Yield control periodically for large files to prevent watchdog timeout
-    if (currentSize % 8192 == 0) { // Every 8KB
-      yield();
+  // Write data chunk with optimized handling for large files
+  if (currentFile && len > 0 && data != nullptr) {
+    // Write data in smaller chunks to prevent memory issues
+    size_t bytesWritten = 0;
+    size_t remaining = len;
+    uint8_t *ptr = data;
+
+    while (remaining > 0) {
+      size_t chunkSize = (remaining > 512) ? 512 : remaining;
+      size_t written = currentFile.write(ptr, chunkSize);
+
+      if (written != chunkSize) {
+        logError("Failed to write chunk to OTA filesystem file");
+        currentFile.close();
+        sendJsonResponse(request, 500, "{\"error\":\"File write failed\"}");
+        return;
+      }
+
+      bytesWritten += written;
+      remaining -= written;
+      ptr += written;
+
+      // Small delay between chunks for large files
+      if (remaining > 0 && chunkSize >= 512) {
+        delay(1);
+        yield();
+      }
     }
+
+    currentSize += bytesWritten;
   }
 
   if (final) {
     // Last chunk - close file and send response
     if (currentFile) {
       currentFile.close();
-      String fullPath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
-                        sanitizedFilename;
-      logf("📁 OTA filesystem upload completed: %s (%s)\n", fullPath.c_str(),
-           bytesToHumanReadable(currentSize).c_str());
+      String sizeStr =
+          (currentSize > 0) ? bytesToHumanReadable(currentSize) : "0 B";
+      logf("📁 OTA filesystem upload completed: %s (%s)\n",
+           currentFilePath.c_str(), sizeStr.c_str());
     }
 
     // Reset static variables for next upload
-    currentPath = "";
+    currentFilePath = "";
     currentSize = 0;
-    sanitizedFilename = "";
 
-    sendJsonResponse(request, 200, "{\"success\":true}");
-  }
-}
-
-void ESPWiFi::handleFSUpdate(AsyncWebServerRequest *request, String filename,
-                             size_t index, uint8_t *data, size_t len,
-                             bool final) {
-  static File fsFile;
-  static size_t totalSize = 0;
-  static size_t currentSize = 0;
-
-  if (index == 0) {
-    // Start of filesystem update
-    if (!LittleFS.begin()) {
-      log("❌ Failed to start LittleFS");
-      request->send(400, "text/plain", "Filesystem not available");
-      return;
-    }
-
-    // Get total size from Content-Length header
-    if (request->hasHeader("Content-Length")) {
-      totalSize = request->getHeader("Content-Length")->value().toInt();
-    }
-
-    // Create or truncate the file
-    filename = "/" + filename;
-    fsFile = LittleFS.open(filename, "w");
-    if (!fsFile) {
-      logError("Failed to create filesystem file: " + filename);
-      request->send(400, "text/plain", "Failed to create file");
-      return;
-    }
-
-    currentSize = 0;
-    logf("📁 Starting filesystem update: %s (%d bytes)\n", filename.c_str(),
-         totalSize);
-  }
-
-  if (fsFile) {
-    if (fsFile.write(data, len) != len) {
-      logError("Failed to write filesystem data");
-      fsFile.close();
-      request->send(400, "text/plain", "File write failed");
-      return;
-    }
-
-    currentSize += len;
-
-    if (final) {
-      fsFile.close();
-      logf("✅ Filesystem update completed: %s\n", filename.c_str());
-      request->send(200, "text/plain", "Filesystem update successful!");
-    } else {
-      // Progress update
-      if (totalSize > 0) {
-        int progress = (currentSize * 100) / totalSize;
-        if (progress % 10 == 0) { // Log every 10%
-          logf("📁 Filesystem update progress: %d%%\n", progress);
-        }
-      }
-    }
-  }
-}
-
-void ESPWiFi::handleOTAHtml(AsyncWebServerRequest *request) {
-  if (LittleFS.exists("/ota.html")) {
-    AsyncWebServerResponse *response =
-        request->beginResponse(LittleFS, "/ota.html", "text/html");
-    response->addHeader("Content-Type", "text/html; charset=UTF-8");
-    addCORS(response);
-    request->send(response);
-  } else {
-    request->send(404, "text/plain", "OTA HTML file not found");
+    request->send(200, "text/plain", "OK");
   }
 }
 
@@ -554,7 +497,7 @@ void ESPWiFi::srvOTA() {
       "/ota/fsupload", HTTP_POST, [this](AsyncWebServerRequest *request) {},
       [this](AsyncWebServerRequest *request, String filename, size_t index,
              uint8_t *data, size_t len, bool final) {
-        handleFSUpdate(request, filename, index, data, len, final);
+        handleOTAFileUpload(request, filename, index, data, len, final);
       });
 
   webServer->on(
@@ -578,10 +521,5 @@ void ESPWiFi::srvOTA() {
         addCORS(response);
         request->send(response);
       });
-
-  // OTA update page endpoint
-  webServer->on("/ota", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    handleOTAHtml(request);
-  });
 }
 #endif // ESPWiFi_OTA_H

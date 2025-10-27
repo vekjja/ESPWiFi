@@ -174,14 +174,11 @@ public:
 
   // OTA
   void startOTA();
-  void handleOTAHtml(AsyncWebServerRequest *request);
   void handleOTAStart(AsyncWebServerRequest *request);
   void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                        size_t index, uint8_t *data, size_t len, bool final);
   void handleOTAFileUpload(AsyncWebServerRequest *request, String filename,
                            size_t index, uint8_t *data, size_t len, bool final);
-  void handleFSUpdate(AsyncWebServerRequest *request, String filename,
-                      size_t index, uint8_t *data, size_t len, bool final);
   void resetOTAState();
   // OTA state variables (externally accessible)
   bool otaInProgress;

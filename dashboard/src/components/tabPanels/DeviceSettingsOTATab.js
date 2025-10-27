@@ -9,10 +9,6 @@ import {
   Button,
   LinearProgress,
   Skeleton,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import WebIcon from "@mui/icons-material/Web";
@@ -27,11 +23,18 @@ export default function DeviceSettingsOTATab({ config }) {
   const [otaLoading, setOtaLoading] = useState(false);
   const [otaError, setOtaError] = useState("");
   const [firmwareFile, setFirmwareFile] = useState(null);
-  const [filesystemFile, setFilesystemFile] = useState(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [filesystemFiles, setFilesystemFiles] = useState([]);
+
+  // Firmware upload state
+  const [firmwareUploadProgress, setFirmwareUploadProgress] = useState(0);
+  const [firmwareUploadStatus, setFirmwareUploadStatus] = useState("");
+
+  // Dashboard upload state
+  const [dashboardUploadProgress, setDashboardUploadProgress] = useState(0);
+  const [dashboardUploadStatus, setDashboardUploadStatus] = useState("");
+
+  // Shared state
   const [otaProgress, setOtaProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState("");
-  const [uploadPath, setUploadPath] = useState("/");
   const [isUploading, setIsUploading] = useState(false);
   const [progressPolling, setProgressPolling] = useState(null);
 
@@ -100,8 +103,8 @@ export default function DeviceSettingsOTATab({ config }) {
         clearInterval(progressPolling);
         setProgressPolling(null);
 
-        if (uploadProgress === 100) {
-          setUploadStatus("Device is restarting... Please wait.");
+        if (firmwareUploadProgress === 100) {
+          setFirmwareUploadStatus("Device is restarting... Please wait.");
           // Start checking for device to come back online
           setTimeout(() => {
             checkDeviceStatus();
@@ -119,7 +122,7 @@ export default function DeviceSettingsOTATab({ config }) {
       const fetchUrl = buildApiUrl("/api/ota/status", config?.mdns);
       const response = await fetch(fetchUrl);
       if (response.ok) {
-        setUploadStatus(
+        setFirmwareUploadStatus(
           "Device is back online! Update completed successfully."
         );
         setOtaProgress(100);
@@ -135,15 +138,21 @@ export default function DeviceSettingsOTATab({ config }) {
 
   // Handle file selection
   const handleFileSelect = (event, type) => {
-    const file = event.target.files[0];
     if (type === "firmware") {
+      const file = event.target.files[0];
       setFirmwareFile(file);
       // Automatically start firmware upload when file is selected
       if (file) {
         uploadFirmware(file);
       }
     } else {
-      setFilesystemFile(file);
+      // Handle multiple files for filesystem upload
+      const files = Array.from(event.target.files);
+      setFilesystemFiles(files);
+      // Automatically start dashboard upload when files are selected
+      if (files.length > 0) {
+        uploadFilesystemFiles(files);
+      }
     }
   };
 
@@ -152,9 +161,9 @@ export default function DeviceSettingsOTATab({ config }) {
     if (!file) return;
 
     setIsUploading(true);
-    setUploadProgress(0);
+    setFirmwareUploadProgress(0);
     setOtaProgress(0);
-    setUploadStatus("Initializing firmware update...");
+    setFirmwareUploadStatus("Initializing firmware update...");
 
     try {
       // Step 1: Start OTA update
@@ -183,7 +192,7 @@ export default function DeviceSettingsOTATab({ config }) {
       }
 
       // Step 2: Upload firmware file
-      setUploadStatus("Uploading firmware...");
+      setFirmwareUploadStatus("Uploading firmware...");
       const formData = new FormData();
       formData.append("file", file);
 
@@ -193,7 +202,7 @@ export default function DeviceSettingsOTATab({ config }) {
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
           const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(percentComplete);
+          setFirmwareUploadProgress(percentComplete);
         }
       });
 
@@ -213,7 +222,7 @@ export default function DeviceSettingsOTATab({ config }) {
 
         if (xhr.status === 200) {
           setOtaProgress(100);
-          setUploadStatus("Firmware update completed successfully!");
+          setFirmwareUploadStatus("Firmware update completed successfully!");
 
           // Continue polling for a bit longer to detect successful restart
           setTimeout(() => {
@@ -223,7 +232,7 @@ export default function DeviceSettingsOTATab({ config }) {
             }
           }, 8000);
         } else {
-          setUploadStatus(`Update failed: ${xhr.responseText}`);
+          setFirmwareUploadStatus(`Update failed: ${xhr.responseText}`);
         }
       });
 
@@ -235,15 +244,15 @@ export default function DeviceSettingsOTATab({ config }) {
         }
 
         // Check if this might be a successful restart
-        if (uploadProgress === 100) {
-          setUploadStatus("Upload completed! Device is restarting...");
+        if (firmwareUploadProgress === 100) {
+          setFirmwareUploadStatus("Upload completed! Device is restarting...");
 
           // Try to detect when device comes back online
           setTimeout(() => {
             checkDeviceStatus();
           }, 3000);
         } else {
-          setUploadStatus("Upload failed. Please try again.");
+          setFirmwareUploadStatus("Upload failed. Please try again.");
         }
       });
 
@@ -251,53 +260,89 @@ export default function DeviceSettingsOTATab({ config }) {
       xhr.open("POST", uploadUrl);
       xhr.send(formData);
     } catch (error) {
-      setUploadStatus(`Update failed: ${error.message}`);
+      setFirmwareUploadStatus(`Update failed: ${error.message}`);
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Upload filesystem file
-  const uploadFilesystemFile = async (file) => {
-    if (!file) return;
+  // Upload multiple filesystem files
+  const uploadFilesystemFiles = async (files) => {
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
-    setUploadProgress(0);
-    setUploadStatus("Uploading file...");
+    setDashboardUploadProgress(0);
+    setDashboardUploadStatus(`Uploading ${files.length} files...`);
+
+    let successCount = 0;
+    let failCount = 0;
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", uploadPath);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const progress = ((i + 1) / files.length) * 100;
+        setDashboardUploadProgress(progress);
 
-      const xhr = new XMLHttpRequest();
+        // Preserve folder structure - use webkitRelativePath if available
+        const relativePath = file.webkitRelativePath || file.name;
+        setDashboardUploadStatus(
+          `Uploading ${relativePath} (${i + 1}/${files.length})...`
+        );
 
-      // Track upload progress
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 100;
-          setUploadProgress(percentComplete);
+        try {
+          const formData = new FormData();
+
+          // Use the original file with its relative path
+          formData.append("file", file);
+
+          // Send the relative path to preserve folder structure
+          // Backend will strip the first directory level
+          const uploadPath = "/" + relativePath;
+          formData.append("path", uploadPath);
+
+          const response = await fetch(
+            buildApiUrl("/api/ota/filesystem", config?.mdns),
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result.skipped) {
+              console.log(`Skipped large file: ${file.name}`);
+            }
+            successCount++;
+          } else {
+            failCount++;
+            console.error(
+              `Failed to upload ${file.name}:`,
+              await response.text()
+            );
+          }
+        } catch (error) {
+          failCount++;
+          console.error(`Error uploading ${file.name}:`, error);
         }
-      });
+      }
 
-      xhr.addEventListener("load", () => {
-        if (xhr.status === 200) {
-          setUploadStatus("File upload completed successfully!");
-          setUploadProgress(100);
-        } else {
-          setUploadStatus(`Upload failed: ${xhr.responseText}`);
-        }
-      });
-
-      xhr.addEventListener("error", () => {
-        setUploadStatus("Upload failed. Please try again.");
-      });
-
-      const uploadUrl = buildApiUrl("/api/ota/filesystem", config?.mdns);
-      xhr.open("POST", uploadUrl);
-      xhr.send(formData);
+      if (successCount === files.length) {
+        setDashboardUploadStatus(
+          `All ${files.length} files uploaded successfully!`
+        );
+        setDashboardUploadProgress(100);
+      } else if (successCount > 0) {
+        setDashboardUploadStatus(
+          `Upload completed: ${successCount} successful, ${failCount} failed`
+        );
+        setDashboardUploadProgress(100);
+      } else {
+        setDashboardUploadStatus("All file uploads failed. Please try again.");
+      }
     } catch (error) {
-      setUploadStatus(`Upload failed: ${error.message}`);
+      setDashboardUploadStatus("Upload failed. Please try again.");
+      console.error("Upload error:", error);
     } finally {
       setIsUploading(false);
     }
@@ -307,8 +352,8 @@ export default function DeviceSettingsOTATab({ config }) {
   const handleUploadClick = (type) => {
     if (type === "firmware" && firmwareFile) {
       uploadFirmware(firmwareFile);
-    } else if (type === "filesystem" && filesystemFile) {
-      uploadFilesystemFile(filesystemFile);
+    } else if (type === "filesystem" && filesystemFiles.length > 0) {
+      uploadFilesystemFiles(filesystemFiles);
     } else {
       // Open file picker
       if (type === "firmware") {
@@ -441,7 +486,7 @@ export default function DeviceSettingsOTATab({ config }) {
             )}
 
             {/* Upload Progress */}
-            {uploadProgress > 0 && (
+            {firmwareUploadProgress > 0 && (
               <Box sx={{ mb: 2 }}>
                 <Typography
                   variant="body2"
@@ -452,11 +497,11 @@ export default function DeviceSettingsOTATab({ config }) {
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={uploadProgress}
+                  value={firmwareUploadProgress}
                   sx={{ mb: 1 }}
                 />
                 <Typography variant="body2" align="center">
-                  {Math.round(uploadProgress)}%
+                  {Math.round(firmwareUploadProgress)}%
                 </Typography>
               </Box>
             )}
@@ -483,31 +528,31 @@ export default function DeviceSettingsOTATab({ config }) {
             )}
 
             {/* Status */}
-            {uploadStatus && (
+            {firmwareUploadStatus && (
               <Alert
                 severity={
-                  uploadStatus.includes("success") ||
-                  uploadStatus.includes("completed")
+                  firmwareUploadStatus.includes("success") ||
+                  firmwareUploadStatus.includes("completed")
                     ? "success"
-                    : uploadStatus.includes("error") ||
-                      uploadStatus.includes("failed")
+                    : firmwareUploadStatus.includes("error") ||
+                      firmwareUploadStatus.includes("failed")
                     ? "error"
                     : "info"
                 }
                 sx={{ mb: 2 }}
                 icon={
-                  uploadStatus.includes("success") ||
-                  uploadStatus.includes("completed") ? (
+                  firmwareUploadStatus.includes("success") ||
+                  firmwareUploadStatus.includes("completed") ? (
                     <CheckCircleIcon />
-                  ) : uploadStatus.includes("error") ||
-                    uploadStatus.includes("failed") ? (
+                  ) : firmwareUploadStatus.includes("error") ||
+                    firmwareUploadStatus.includes("failed") ? (
                     <ErrorIcon />
                   ) : (
                     <InfoIcon />
                   )
                 }
               >
-                {uploadStatus}
+                {firmwareUploadStatus}
               </Alert>
             )}
           </CardContent>
@@ -527,29 +572,18 @@ export default function DeviceSettingsOTATab({ config }) {
               Dashboard Update
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Upload dashboard files to update the UI stored on LittleFS.
+              Select multiple dashboard files or entire folders to upload to
+              LittleFS. The first directory level will be automatically
+              stripped.
             </Typography>
 
             <input
               type="file"
               ref={filesystemInputRef}
+              webkitdirectory=""
               style={{ display: "none" }}
               onChange={(e) => handleFileSelect(e, "filesystem")}
             />
-
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Upload Path</InputLabel>
-              <Select
-                value={uploadPath}
-                label="Upload Path"
-                onChange={(e) => setUploadPath(e.target.value)}
-              >
-                <MenuItem value="/">Root (/)</MenuItem>
-                <MenuItem value="/static">Static Files (/static)</MenuItem>
-                <MenuItem value="/data">Data (/data)</MenuItem>
-                <MenuItem value="/config">Config (/config)</MenuItem>
-              </Select>
-            </FormControl>
 
             <Button
               variant="contained"
@@ -557,10 +591,10 @@ export default function DeviceSettingsOTATab({ config }) {
               disabled={isUploading}
               sx={{ mb: 2 }}
             >
-              {filesystemFile ? "Upload File" : "Choose File"}
+              Choose Files/Folders
             </Button>
 
-            {filesystemFile && (
+            {filesystemFiles.length > 0 && (
               <Box
                 sx={{
                   mb: 2,
@@ -577,28 +611,61 @@ export default function DeviceSettingsOTATab({ config }) {
                     fontFamily: "monospace",
                     color: "primary.800",
                     fontWeight: 500,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
+                    mb: 1,
                   }}
                 >
-                  🌐 {filesystemFile.name}
+                  📁 {filesystemFiles.length} file(s) selected:
                 </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "primary.600",
-                    fontFamily: "monospace",
-                    ml: 3,
-                  }}
-                >
-                  Size: {bytesToHumanReadable(filesystemFile.size)}
-                </Typography>
+                {(() => {
+                  // Group files by folder
+                  const folderGroups = {};
+                  filesystemFiles.forEach((file) => {
+                    const path = file.webkitRelativePath || file.name;
+                    const folder = path.includes("/")
+                      ? path.split("/")[0]
+                      : "Root";
+                    if (!folderGroups[folder]) {
+                      folderGroups[folder] = [];
+                    }
+                    folderGroups[folder].push({ file, path });
+                  });
+
+                  return Object.entries(folderGroups).map(([folder, files]) => (
+                    <Box key={folder} sx={{ ml: 1, mb: 1 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "primary.700",
+                          fontFamily: "monospace",
+                          fontWeight: 500,
+                          display: "block",
+                          mb: 0.5,
+                        }}
+                      >
+                        📂 {folder}/
+                      </Typography>
+                      {files.map(({ file, path }, index) => (
+                        <Box key={index} sx={{ ml: 2 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "primary.600",
+                              fontFamily: "monospace",
+                              display: "block",
+                            }}
+                          >
+                            🌐 {path} ({bytesToHumanReadable(file.size)})
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  ));
+                })()}
               </Box>
             )}
 
             {/* Upload Progress */}
-            {uploadProgress > 0 && (
+            {dashboardUploadProgress > 0 && (
               <Box sx={{ mb: 2 }}>
                 <Typography
                   variant="body2"
@@ -609,41 +676,41 @@ export default function DeviceSettingsOTATab({ config }) {
                 </Typography>
                 <LinearProgress
                   variant="determinate"
-                  value={uploadProgress}
+                  value={dashboardUploadProgress}
                   sx={{ mb: 1 }}
                 />
                 <Typography variant="body2" align="center">
-                  {Math.round(uploadProgress)}%
+                  {Math.round(dashboardUploadProgress)}%
                 </Typography>
               </Box>
             )}
 
             {/* Status */}
-            {uploadStatus && (
+            {dashboardUploadStatus && (
               <Alert
                 severity={
-                  uploadStatus.includes("success") ||
-                  uploadStatus.includes("completed")
+                  dashboardUploadStatus.includes("success") ||
+                  dashboardUploadStatus.includes("completed")
                     ? "success"
-                    : uploadStatus.includes("error") ||
-                      uploadStatus.includes("failed")
+                    : dashboardUploadStatus.includes("error") ||
+                      dashboardUploadStatus.includes("failed")
                     ? "error"
                     : "info"
                 }
                 sx={{ mb: 2 }}
                 icon={
-                  uploadStatus.includes("success") ||
-                  uploadStatus.includes("completed") ? (
+                  dashboardUploadStatus.includes("success") ||
+                  dashboardUploadStatus.includes("completed") ? (
                     <CheckCircleIcon />
-                  ) : uploadStatus.includes("error") ||
-                    uploadStatus.includes("failed") ? (
+                  ) : dashboardUploadStatus.includes("error") ||
+                    dashboardUploadStatus.includes("failed") ? (
                     <ErrorIcon />
                   ) : (
                     <InfoIcon />
                   )
                 }
               >
-                {uploadStatus}
+                {dashboardUploadStatus}
               </Alert>
             )}
           </CardContent>

@@ -350,7 +350,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
   cameraOperationInProgress = false;
 }
 
-void ESPWiFi::streamCamera(int frameRate) {
+void ESPWiFi::streamCamera() {
   if (cameraOperationInProgress || !config["camera"]["enabled"]) {
     return;
   }
@@ -368,8 +368,8 @@ void ESPWiFi::streamCamera(int frameRate) {
   int targetFrameRate = 10;
   if (!config["camera"]["frameRate"].isNull()) {
     targetFrameRate = config["camera"]["frameRate"];
-  } else if (frameRate > 0) {
-    targetFrameRate = frameRate;
+  } else {
+    targetFrameRate = 9;
   }
 
   if (targetFrameRate > 30) {

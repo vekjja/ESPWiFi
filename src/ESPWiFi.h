@@ -130,16 +130,15 @@ public:
 #ifdef ESPWiFi_CAMERA_INSTALLED
   camera_config_t camConfig;
   WebSocket *camSoc = nullptr;
+  bool cameraOperationInProgress = false;
   bool initCamera();
   void startCamera();
   void deinitCamera();
+  void streamCamera();
   void clearCameraBuffer();
   void cameraConfigHandler();
   void updateCameraSettings();
-  void streamCamera(int frameRate = 10);
   void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
-  // Camera operation safety
-  bool cameraOperationInProgress = false;
 #endif
 
   // RSSI

@@ -9,10 +9,6 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SettingsModal from "./SettingsModal";
@@ -31,6 +27,7 @@ export default function CameraSettingsModal({
   const isInitialLoad = useRef(true);
   const [cameraSettings, setCameraSettings] = useState({
     frameRate: 10,
+    rotation: 0,
     brightness: 1,
     contrast: 1,
     saturation: 1,
@@ -68,6 +65,7 @@ export default function CameraSettingsModal({
     if (config?.camera) {
       setCameraSettings({
         frameRate: config.camera.frameRate ?? 10,
+        rotation: config.camera.rotation ?? 0,
         brightness: config.camera.brightness ?? 1,
         contrast: config.camera.contrast ?? 1,
         saturation: config.camera.saturation ?? 1,
@@ -78,15 +76,6 @@ export default function CameraSettingsModal({
         white_balance: config.camera.white_balance ?? 1,
         awb_gain: config.camera.awb_gain ?? 1,
         wb_mode: config.camera.wb_mode ?? 0,
-      });
-
-      // Also update rotation in localData if it's in config
-      setLocalData((prevLocalData) => {
-        const newLocalData = { ...prevLocalData };
-        if (config.camera.rotation !== undefined) {
-          newLocalData.rotation = config.camera.rotation;
-        }
-        return newLocalData;
       });
     }
   };
@@ -99,7 +88,6 @@ export default function CameraSettingsModal({
         camera: {
           ...config.camera,
           ...cameraSettings,
-          rotation: localData.rotation,
         },
       };
       saveConfigToDevice(updatedConfig);
@@ -146,22 +134,6 @@ export default function CameraSettingsModal({
           helperText="Local: /camera | Remote: ws://hostname:port/camera | HTTP: http://hostname:port/camera"
         />
 
-        <FormControl fullWidth>
-          <InputLabel>Rotation</InputLabel>
-          <Select
-            value={localData.rotation || 0}
-            label="Rotation"
-            onChange={(e) =>
-              handleDataChange("rotation", parseInt(e.target.value))
-            }
-          >
-            <MenuItem value={0}>0° (No rotation)</MenuItem>
-            <MenuItem value={90}>90° (Clockwise)</MenuItem>
-            <MenuItem value={180}>180° (Upside down)</MenuItem>
-            <MenuItem value={270}>270° (Counter-clockwise)</MenuItem>
-          </Select>
-        </FormControl>
-
         {/* Camera Sensor Settings */}
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -185,6 +157,27 @@ export default function CameraSettingsModal({
                     { value: 10, label: "10" },
                     { value: 30, label: "30" },
                     { value: 60, label: "60" },
+                  ]}
+                  valueLabelDisplay="auto"
+                />
+              </Box>
+
+              {/* Rotation */}
+              <Box>
+                <Typography gutterBottom>Rotation</Typography>
+                <Slider
+                  value={cameraSettings.rotation}
+                  onChange={(e, value) =>
+                    handleCameraSettingChange("rotation", value)
+                  }
+                  min={0}
+                  max={270}
+                  step={90}
+                  marks={[
+                    { value: 0, label: "0°" },
+                    { value: 90, label: "90°" },
+                    { value: 180, label: "180°" },
+                    { value: 270, label: "270°" },
                   ]}
                   valueLabelDisplay="auto"
                 />

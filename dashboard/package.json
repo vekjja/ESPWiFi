@@ -22,6 +22,7 @@
   "scripts": {
     "start": "BROWSER=none react-scripts start",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
+    "pack": "npm run build && cd ../data && zip -r dashboard.zip . && cd -",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "pio:clean": "cd .. && pio run --target clean",
@@ -32,7 +33,7 @@
     "build:uploadfs": "npm run build && npm run pio:uploadfs",
     "build:uploadfs:monitor": "npm run build && npm run pio:uploadfs && npm run pio:monitor",
     "build:uploadfs:pio:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:build && npm run pio:upload && npm run pio:monitor",
-    "deploy": "npm run build && npm run pio:uploadfs && npm run pio:upload && npm run pio:monitor"
+    "deploy": "npm run pack && npm run pio:uploadfs && npm run pio:upload && npm run pio:monitor"
   },
   "eslintConfig": {
     "rules": {

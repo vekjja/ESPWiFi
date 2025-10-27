@@ -105,7 +105,14 @@ void ESPWiFi::startAP() {
     readConfig();
   }
 
-  String ssid = config["ap"]["ssid"];
+  String hostname;
+#ifdef ESP8266
+  hostname = String(WiFi.hostname());
+#else
+  hostname = String(WiFi.getHostname());
+#endif
+
+  String ssid = config["ap"]["ssid"].as<String>() + "-" + hostname;
   String password = config["ap"]["password"];
   log("📡 Starting Access Point:");
   log("\tSSID: " + ssid);

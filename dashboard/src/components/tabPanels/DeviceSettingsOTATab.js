@@ -138,6 +138,10 @@ export default function DeviceSettingsOTATab({ config }) {
     const file = event.target.files[0];
     if (type === "firmware") {
       setFirmwareFile(file);
+      // Automatically start firmware upload when file is selected
+      if (file) {
+        uploadFirmware(file);
+      }
     } else {
       setFilesystemFile(file);
     }
@@ -158,10 +162,24 @@ export default function DeviceSettingsOTATab({ config }) {
         "/api/ota/start?mode=firmware",
         config?.mdns
       );
+      console.log("Starting OTA with URL:", startUrl);
       const startResponse = await fetch(startUrl, { method: "POST" });
+      console.log(
+        "OTA start response:",
+        startResponse.status,
+        startResponse.statusText
+      );
+
       if (!startResponse.ok) {
-        const errorData = await startResponse.json();
-        throw new Error(errorData.error || "Failed to start OTA");
+        let errorMessage = "Failed to start OTA";
+        try {
+          const errorData = await startResponse.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${startResponse.status}: ${startResponse.statusText}`;
+        }
+        console.error("OTA start failed:", errorMessage);
+        throw new Error(errorMessage);
       }
 
       // Step 2: Upload firmware file
@@ -196,11 +214,6 @@ export default function DeviceSettingsOTATab({ config }) {
         if (xhr.status === 200) {
           setOtaProgress(100);
           setUploadStatus("Firmware update completed successfully!");
-
-          // Wait a bit then show restart message
-          setTimeout(() => {
-            setUploadStatus("Device will restart in 5 seconds...");
-          }, 1000);
 
           // Continue polling for a bit longer to detect successful restart
           setTimeout(() => {
@@ -387,14 +400,42 @@ export default function DeviceSettingsOTATab({ config }) {
               disabled={isUploading}
               sx={{ mb: 2 }}
             >
-              {firmwareFile ? "Upload Firmware" : "Choose Firmware File"}
+              Choose Firmware File
             </Button>
 
             {firmwareFile && (
-              <Box sx={{ mb: 2, p: 1, bgcolor: "grey.100", borderRadius: 1 }}>
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {firmwareFile.name} ({bytesToHumanReadable(firmwareFile.size)}
-                  )
+              <Box
+                sx={{
+                  mb: 2,
+                  p: 2,
+                  bgcolor: "primary.50",
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: "primary.200",
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: "monospace",
+                    color: "primary.800",
+                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  📁 {firmwareFile.name}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "primary.600",
+                    fontFamily: "monospace",
+                    ml: 3,
+                  }}
+                >
+                  Size: {bytesToHumanReadable(firmwareFile.size)}
                 </Typography>
               </Box>
             )}
@@ -520,10 +561,38 @@ export default function DeviceSettingsOTATab({ config }) {
             </Button>
 
             {filesystemFile && (
-              <Box sx={{ mb: 2, p: 1, bgcolor: "grey.100", borderRadius: 1 }}>
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {filesystemFile.name} (
-                  {bytesToHumanReadable(filesystemFile.size)})
+              <Box
+                sx={{
+                  mb: 2,
+                  p: 2,
+                  bgcolor: "primary.50",
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: "primary.200",
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: "monospace",
+                    color: "primary.800",
+                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  🌐 {filesystemFile.name}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "primary.600",
+                    fontFamily: "monospace",
+                    ml: 3,
+                  }}
+                >
+                  Size: {bytesToHumanReadable(filesystemFile.size)}
                 </Typography>
               </Box>
             )}

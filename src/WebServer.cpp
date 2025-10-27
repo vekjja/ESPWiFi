@@ -60,6 +60,15 @@ void ESPWiFi::srvRoot() {
       request->send(response);
     }
   });
+
+  // webServer->on("/foo", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  //   if (LittleFS.exists("/index.html")) {
+  //     AsyncWebServerResponse *response =
+  //         request->beginResponse(200, "text/plain", "BAR!");
+  //     addCORS(response);
+  //     request->send(response);
+  //   }
+  // });
 }
 
 void ESPWiFi::srvRestart() {

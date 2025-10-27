@@ -599,7 +599,7 @@ void ESPWiFi::srvFiles() {
         if (fsParam == "lfs" &&
             (filePath == "/config.json" || filePath == "/index.html" ||
              filePath == "/asset-manifest.json" ||
-             filePath.startsWith("/static/") ||
+             filePath == "/dashboard.zip" || filePath.startsWith("/static/") ||
              filePath.startsWith("/system/") ||
              filePath.startsWith("/boot/"))) {
           sendJsonResponse(request, 403,

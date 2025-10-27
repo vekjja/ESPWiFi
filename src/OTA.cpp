@@ -3,18 +3,14 @@
 
 #include "ESPWiFi.h"
 
-// Global variables for OTA state management
-bool otaInProgress = false;
-size_t otaCurrentSize = 0;
-size_t otaTotalSize = 0;
-String otaErrorString = "";
+// OTA state management - these are now class members defined in ESPWiFi.h
 
 void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   // Reset OTA state
-  otaCurrentSize = 0;
-  otaTotalSize = 0;
-  otaErrorString = "";
-  otaInProgress = true;
+  this->otaCurrentSize = 0;
+  this->otaTotalSize = 0;
+  this->otaErrorString = "";
+  this->otaInProgress = true;
 
   // Get mode from parameter (firmware or filesystem)
   String mode = "firmware";
@@ -28,7 +24,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
     logf("📦 OTA MD5 Hash: %s", hash.c_str());
     if (!Update.setMD5(hash.c_str())) {
       logError("Invalid MD5 hash provided");
-      otaInProgress = false;
+      this->otaInProgress = false;
       request->send(400, "text/plain", "MD5 parameter invalid");
       return;
     }
@@ -38,21 +34,23 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   if (mode == "fs" || mode == "filesystem") {
     log("📁 Starting filesystem update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
-      otaErrorString = "Update.begin failed: " + String(Update.getError());
+      this->otaErrorString =
+          "Update.begin failed: " + String(Update.getError());
       logError("Failed to start filesystem update");
-      logError(otaErrorString);
-      otaInProgress = false;
-      request->send(400, "text/plain", otaErrorString);
+      logError(this->otaErrorString);
+      this->otaInProgress = false;
+      request->send(400, "text/plain", this->otaErrorString);
       return;
     }
   } else {
     log("📦 Starting firmware update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-      otaErrorString = "Update.begin failed: " + String(Update.getError());
+      this->otaErrorString =
+          "Update.begin failed: " + String(Update.getError());
       logError("Failed to start firmware update");
-      logError(otaErrorString);
-      otaInProgress = false;
-      request->send(400, "text/plain", otaErrorString);
+      logError(this->otaErrorString);
+      this->otaInProgress = false;
+      request->send(400, "text/plain", this->otaErrorString);
       return;
     }
   }
@@ -65,7 +63,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                               size_t index, uint8_t *data, size_t len,
                               bool final) {
   // Check if OTA is in progress
-  if (!otaInProgress) {
+  if (!this->otaInProgress) {
     // This can happen during polling before OTA starts, handle gracefully
     request->send(200, "application/json",
                   "{\"in_progress\":false,\"progress\":0}");
@@ -74,32 +72,35 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
 
   if (index == 0) {
     // Reset progress on first chunk
-    otaCurrentSize = 0;
+    this->otaCurrentSize = 0;
 
     // Get total size from Content-Length header for progress tracking
     if (request->hasHeader("Content-Length")) {
-      otaTotalSize = request->getHeader("Content-Length")->value().toInt();
+      this->otaTotalSize =
+          request->getHeader("Content-Length")->value().toInt();
     }
 
-    logf("📦 Starting upload: %s (%d bytes)\n", filename.c_str(), otaTotalSize);
+    logf("📦 Starting upload: %s (%d bytes)\n", filename.c_str(),
+         this->otaTotalSize);
   }
 
   // Write chunked data
   if (len > 0) {
     if (Update.write(data, len) != len) {
-      otaErrorString = "Update.write failed: " + String(Update.getError());
+      this->otaErrorString =
+          "Update.write failed: " + String(Update.getError());
       logError("Failed to write firmware data");
-      logError(otaErrorString);
+      logError(this->otaErrorString);
       Update.abort();
-      otaInProgress = false;
+      this->otaInProgress = false;
       request->send(400, "text/plain", "Failed to write chunked data");
       return;
     }
-    otaCurrentSize += len;
+    this->otaCurrentSize += len;
 
     // Progress update every 10%
     if (request->contentLength() > 0) {
-      int progress = (otaCurrentSize * 100) / request->contentLength();
+      int progress = (this->otaCurrentSize * 100) / request->contentLength();
       if (progress % 10 == 0) {
         logf("📦 Upload progress: %d%%\n", progress);
       }
@@ -110,7 +111,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
     // Finalize the update
     if (Update.end(true)) {
       log("✅ OTA update completed successfully");
-      otaInProgress = false;
+      this->otaInProgress = false;
 
       // Send success response
       AsyncWebServerResponse *response =
@@ -124,14 +125,14 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
       log("🔄 Restarting Device...");
       ESP.restart();
     } else {
-      otaErrorString = "Update.end failed: " + String(Update.getError());
+      this->otaErrorString = "Update.end failed: " + String(Update.getError());
       logError("❌ OTA update failed to complete");
-      logError(otaErrorString);
+      logError(this->otaErrorString);
       Update.abort();
-      otaInProgress = false;
+      this->otaInProgress = false;
 
       AsyncWebServerResponse *response =
-          request->beginResponse(400, "text/plain", otaErrorString);
+          request->beginResponse(400, "text/plain", this->otaErrorString);
       response->addHeader("Connection", "close");
       response->addHeader("Access-Control-Allow-Origin", "*");
       request->send(response);
@@ -141,10 +142,10 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
 
 // Reset OTA state (can be called externally if needed)
 void ESPWiFi::resetOTAState() {
-  otaInProgress = false;
-  otaCurrentSize = 0;
-  otaTotalSize = 0;
-  otaErrorString = "";
+  this->otaInProgress = false;
+  this->otaCurrentSize = 0;
+  this->otaTotalSize = 0;
+  this->otaErrorString = "";
   if (Update.isRunning()) {
     Update.abort();
   }
@@ -346,62 +347,62 @@ void ESPWiFi::srvOTA() {
   initWebServer();
 
   // API endpoint for OTA status information
-  webServer->on("/api/ota/status", HTTP_GET,
-                [this](AsyncWebServerRequest *request) {
-                  // Handle CORS preflight requests
-                  if (request->method() == HTTP_OPTIONS) {
-                    handleCorsPreflight(request);
-                    return;
-                  }
+  webServer->on(
+      "/api/ota/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
 
-                  JsonDocument jsonDoc;
-                  jsonDoc["firmware_size"] = ESP.getSketchSize();
-                  jsonDoc["free_space"] = ESP.getFreeSketchSpace();
-                  jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
-                  jsonDoc["chip_model"] = String(ESP.getChipModel());
-                  jsonDoc["in_progress"] = otaInProgress;
-                  jsonDoc["current_size"] = otaCurrentSize;
-                  jsonDoc["total_size"] = otaTotalSize;
-                  jsonDoc["progress"] = 0; // Will be calculated below
+        JsonDocument jsonDoc;
+        jsonDoc["firmware_size"] = ESP.getSketchSize();
+        jsonDoc["free_space"] = ESP.getFreeSketchSpace();
+        jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
+        jsonDoc["chip_model"] = String(ESP.getChipModel());
+        jsonDoc["in_progress"] = this->otaInProgress;
+        jsonDoc["current_size"] = this->otaCurrentSize;
+        jsonDoc["total_size"] = this->otaTotalSize;
+        jsonDoc["progress"] = 0; // Will be calculated below
 
-                  // Calculate progress percentage if we have total size and OTA
-                  // is in progress
-                  if (otaInProgress && otaTotalSize > 0) {
-                    int progress = (otaCurrentSize * 100) / otaTotalSize;
-                    jsonDoc["progress"] = progress;
-                  }
+        // Calculate progress percentage if we have total size and OTA
+        // is in progress
+        if (this->otaInProgress && this->otaTotalSize > 0) {
+          int progress = (this->otaCurrentSize * 100) / this->otaTotalSize;
+          jsonDoc["progress"] = progress;
+        }
 
-                  String jsonResponse;
-                  serializeJson(jsonDoc, jsonResponse);
-                  sendJsonResponse(request, 200, jsonResponse);
-                });
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        sendJsonResponse(request, 200, jsonResponse);
+      });
 
   // API endpoint for OTA progress
-  webServer->on("/api/ota/progress", HTTP_GET,
-                [this](AsyncWebServerRequest *request) {
-                  // Handle CORS preflight requests
-                  if (request->method() == HTTP_OPTIONS) {
-                    handleCorsPreflight(request);
-                    return;
-                  }
+  webServer->on(
+      "/api/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
 
-                  JsonDocument jsonDoc;
-                  jsonDoc["in_progress"] = otaInProgress;
-                  jsonDoc["current_size"] = otaCurrentSize;
-                  jsonDoc["total_size"] = otaTotalSize;
-                  jsonDoc["progress"] = 0; // Will be calculated below
+        JsonDocument jsonDoc;
+        jsonDoc["in_progress"] = this->otaInProgress;
+        jsonDoc["current_size"] = this->otaCurrentSize;
+        jsonDoc["total_size"] = this->otaTotalSize;
+        jsonDoc["progress"] = 0; // Will be calculated below
 
-                  // Calculate progress percentage if we have total size and OTA
-                  // is in progress
-                  if (otaInProgress && otaTotalSize > 0) {
-                    int progress = (otaCurrentSize * 100) / otaTotalSize;
-                    jsonDoc["progress"] = progress;
-                  }
+        // Calculate progress percentage if we have total size and OTA
+        // is in progress
+        if (this->otaInProgress && this->otaTotalSize > 0) {
+          int progress = (this->otaCurrentSize * 100) / this->otaTotalSize;
+          jsonDoc["progress"] = progress;
+        }
 
-                  String jsonResponse;
-                  serializeJson(jsonDoc, jsonResponse);
-                  sendJsonResponse(request, 200, jsonResponse);
-                });
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        sendJsonResponse(request, 200, jsonResponse);
+      });
 
   // API endpoint for starting OTA update
   webServer->on(
@@ -430,34 +431,34 @@ void ESPWiFi::srvOTA() {
         }
 
         // Reset OTA state
-        otaCurrentSize = 0;
-        otaTotalSize = 0;
-        otaErrorString = "";
-        otaInProgress = true;
+        this->otaCurrentSize = 0;
+        this->otaTotalSize = 0;
+        this->otaErrorString = "";
+        this->otaInProgress = true;
 
         // Start update process based on mode
         if (mode == "fs" || mode == "filesystem") {
           log("📁 Starting filesystem update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
-            otaErrorString =
+            this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
             logError("Failed to start filesystem update");
-            logError(otaErrorString);
-            otaInProgress = false;
+            logError(this->otaErrorString);
+            this->otaInProgress = false;
             sendJsonResponse(request, 400,
-                             "{\"error\":\"" + otaErrorString + "\"}");
+                             "{\"error\":\"" + this->otaErrorString + "\"}");
             return;
           }
         } else {
           log("📦 Starting firmware update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
-            otaErrorString =
+            this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
             logError("Failed to start firmware update");
-            logError(otaErrorString);
-            otaInProgress = false;
+            logError(this->otaErrorString);
+            this->otaInProgress = false;
             sendJsonResponse(request, 400,
-                             "{\"error\":\"" + otaErrorString + "\"}");
+                             "{\"error\":\"" + this->otaErrorString + "\"}");
             return;
           }
         }
@@ -524,13 +525,13 @@ void ESPWiFi::srvOTA() {
   webServer->on(
       "/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument jsonDoc;
-        jsonDoc["in_progress"] = otaInProgress;
-        jsonDoc["current_size"] = otaCurrentSize;
-        jsonDoc["total_size"] = otaTotalSize;
+        jsonDoc["in_progress"] = this->otaInProgress;
+        jsonDoc["current_size"] = this->otaCurrentSize;
+        jsonDoc["total_size"] = this->otaTotalSize;
         jsonDoc["progress"] = 0;
 
-        if (otaInProgress && otaTotalSize > 0) {
-          int progress = (otaCurrentSize * 100) / otaTotalSize;
+        if (this->otaInProgress && this->otaTotalSize > 0) {
+          int progress = (this->otaCurrentSize * 100) / this->otaTotalSize;
           jsonDoc["progress"] = progress;
         }
 

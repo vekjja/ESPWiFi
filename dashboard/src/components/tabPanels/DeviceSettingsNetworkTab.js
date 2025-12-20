@@ -153,7 +153,7 @@ export default function DeviceSettingsNetworkTab({
           }}
         >
           <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
-            Access Point Settings
+            WiFi Access Point Settings
           </h4>
           <FormControl fullWidth variant="outlined">
             <TextField

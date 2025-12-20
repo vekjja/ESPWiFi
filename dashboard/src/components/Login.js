@@ -48,6 +48,7 @@ const Login = ({ onLoginSuccess }) => {
     <SettingsModal
       open={true}
       onClose={() => {}} // Prevent closing - user must login
+      disableEscapeKeyDown={true} // Prevent ESC key from closing
       title="ESPWiFi Login"
       maxWidth="sm"
       actions={

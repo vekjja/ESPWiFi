@@ -314,10 +314,6 @@ export default function Modules({
     saveConfigToDevice(updatedConfig); // Save to device
   };
 
-  if (!config) {
-    return <div>Loading configuration...</div>;
-  }
-
   // Create IDs for module items
   const moduleIds = moduleItems.map((module) => `module-${module.key}`);
 

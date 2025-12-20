@@ -17,6 +17,7 @@ export default function SettingsModal({
   actions,
   maxWidth = "sm",
   fullWidth = true,
+  disableEscapeKeyDown = false,
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -28,6 +29,7 @@ export default function SettingsModal({
       maxWidth={maxWidth}
       fullWidth={fullWidth}
       fullScreen={isMobile}
+      disableEscapeKeyDown={disableEscapeKeyDown}
       PaperProps={{
         sx: {
           bgcolor: "background.paper",
@@ -45,6 +47,10 @@ export default function SettingsModal({
       sx={{
         "& .MuiDialog-paper": {
           margin: isMobile ? 0 : "auto",
+        },
+        "& .MuiBackdrop-root": {
+          backdropFilter: "blur(4px)",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
         },
       }}
     >

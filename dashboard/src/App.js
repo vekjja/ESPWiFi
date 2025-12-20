@@ -269,15 +269,6 @@ function App() {
     });
   };
 
-  // Show login page if not authenticated
-  if (!authenticated && !checkingAuth) {
-    return (
-      <ThemeProvider theme={theme}>
-        <Login onLoginSuccess={handleLoginSuccess} />
-      </ThemeProvider>
-    );
-  }
-
   if (loading || checkingAuth) {
     return <LinearProgress color="inherit" />;
   }
@@ -449,43 +440,44 @@ function App() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {localConfig?.["mdns"] || config?.["mdns"]}
+          {localConfig?.["mdns"] || config?.["mdns"] || "ESPWiFi"}
         </Box>
       </Container>
 
-      {localConfig && (
-        <>
-          {/* Responsive Settings Button Bar */}
-          <SettingsButtonBar
-            config={localConfig}
-            deviceOnline={deviceOnline}
-            onNetworkSettings={handleNetworkSettings}
-            onCameraSettings={handleCameraSettings}
-            onRSSISettings={handleRSSISettings}
-            onFileBrowser={handleFileBrowser}
-            onAddModule={handleAddModule}
-            saveConfig={updateLocalConfig}
-            saveConfigToDevice={saveConfigFromButton}
-            onRSSIDataChange={() => {}} // RSSI data is now handled internally by RSSIButton
-            rssiDisplayMode={localConfig?.rssi?.displayMode || "numbers"}
-            getRSSIColor={getRSSIColor}
-            getRSSIIcon={getRSSIIcon}
-            // Camera specific props
-            cameraEnabled={localConfig?.camera?.enabled || false}
-            getCameraColor={() =>
-              localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
-            }
-          />
+      {/* Responsive Settings Button Bar */}
+      <SettingsButtonBar
+        config={localConfig}
+        deviceOnline={deviceOnline}
+        onNetworkSettings={handleNetworkSettings}
+        onCameraSettings={handleCameraSettings}
+        onRSSISettings={handleRSSISettings}
+        onFileBrowser={handleFileBrowser}
+        onAddModule={handleAddModule}
+        saveConfig={updateLocalConfig}
+        saveConfigToDevice={saveConfigFromButton}
+        onRSSIDataChange={() => {}} // RSSI data is now handled internally by RSSIButton
+        rssiDisplayMode={localConfig?.rssi?.displayMode || "numbers"}
+        getRSSIColor={getRSSIColor}
+        getRSSIIcon={getRSSIIcon}
+        // Camera specific props
+        cameraEnabled={localConfig?.camera?.enabled || false}
+        getCameraColor={() =>
+          localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
+        }
+      />
 
-          <Container>
-            <Modules
-              config={localConfig}
-              saveConfig={updateLocalConfig}
-              saveConfigToDevice={saveConfigFromButton}
-              deviceOnline={deviceOnline}
-            />
-          </Container>
-        </>
+      <Container>
+        <Modules
+          config={localConfig}
+          saveConfig={updateLocalConfig}
+          saveConfigToDevice={saveConfigFromButton}
+          deviceOnline={deviceOnline}
+        />
+      </Container>
+
+      {/* Show login modal when not authenticated */}
+      {!authenticated && !checkingAuth && (
+        <Login onLoginSuccess={handleLoginSuccess} />
       )}
     </ThemeProvider>
   );

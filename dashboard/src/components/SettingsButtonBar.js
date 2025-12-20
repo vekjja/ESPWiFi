@@ -40,10 +40,14 @@ export default function SettingsButtonBar({
     >
       <Stack
         direction="row"
-        spacing={1}
+        spacing={0.5}
         justifyContent="center"
         alignItems="center"
-        sx={{ flexWrap: "wrap", gap: 1 }}
+        sx={{
+          flexWrap: "wrap",
+          gap: 0.5,
+          minHeight: "48px", // Ensure consistent height
+        }}
       >
         <DeviceSettingsButton
           config={config}
@@ -62,7 +66,7 @@ export default function SettingsButtonBar({
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
         />
-        {config?.camera?.installed !== false && (
+        {config && config?.camera?.installed !== false && (
           <CameraButton
             config={config}
             deviceOnline={deviceOnline}

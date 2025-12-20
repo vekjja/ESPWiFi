@@ -9,8 +9,11 @@ export default function CameraButton({
   cameraEnabled,
   getCameraColor,
 }) {
+  const isCameraAvailable = config?.camera?.installed !== false;
+  const isDisabled = !deviceOnline || !config || !isCameraAvailable;
+
   const handleClick = () => {
-    if (deviceOnline && onCameraSettings) {
+    if (!isDisabled && onCameraSettings) {
       onCameraSettings();
     }
   };
@@ -18,7 +21,11 @@ export default function CameraButton({
   return (
     <Tooltip
       title={
-        cameraEnabled
+        !config
+          ? "Loading configuration..."
+          : !isCameraAvailable
+          ? "Camera not installed"
+          : cameraEnabled
           ? "Camera Hardware Enabled - Click to Disable"
           : "Camera Hardware Disabled - Click to Enable"
       }
@@ -27,18 +34,16 @@ export default function CameraButton({
         size="medium"
         color="primary"
         onClick={handleClick}
-        disabled={!deviceOnline}
+        disabled={isDisabled}
         sx={{
-          color: !deviceOnline
+          color: isDisabled
             ? "text.disabled"
             : getCameraColor
             ? getCameraColor()
             : "primary.main",
-          backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
+          backgroundColor: isDisabled ? "action.disabled" : "action.hover",
           "&:hover": {
-            backgroundColor: !deviceOnline
-              ? "action.disabled"
-              : "action.selected",
+            backgroundColor: isDisabled ? "action.disabled" : "action.selected",
           },
         }}
       >

@@ -99,7 +99,7 @@ For more control, you can start services individually:
 ESPWiFi espwifi;
 
 void setup() {
-  espwifi.readConfig();        // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
+  espwifi.readConfig();      // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
   espwifi.startAP();         // Explicitly Start Access Point Only
   espwifi.srvGPIO();         // Register Only GPIO endpoints 
 }

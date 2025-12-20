@@ -16,6 +16,9 @@
 - 🔁 WebSocket endpoints for live data (RSSI, camera, custom)
 - 📷 Camera and spectral analyzer support (ESP32)
 - 🧩 Modular: add pins, WebSockets, and more via dashboard
+- 🔐 Configurable authentication (username/password)
+- 📊 Device information dashboard (network, storage, memory, chip details)
+- 🔄 Over-the-air (OTA) firmware and filesystem updates
 - 🛠️ PlatformIO and Arduino IDE compatible
 
 ---
@@ -86,6 +89,11 @@ void loop() {
     "ssid": "ESPWiFi-AP",
     "password": "abcd1234"
   },
+  "auth": {
+    "enabled": false,
+    "username": "admin",
+    "password": "password"
+  },
   "modules": [
     {
       "type": "pin",
@@ -117,9 +125,15 @@ pio run --target uploadfs
 
 The dashboard (in `dashboard/`) is a React app for live device management:
 - Add/remove/reorder Pin and WebSocket modules
-- Edit device/network settings
 - Drag-and-drop UI, Material UI theme
-- Edit and sync JSON config
+- **File Browser**: Browse, upload, download, rename, and delete files on LittleFS and SD card with storage information and folder navigation
+- Comprehensive device settings modal with tabbed interface:
+  - **Info Tab**: View device information including network status, storage usage (LittleFS and SD card), memory statistics, chip details, and system uptime
+  - **Network Tab**: Configure WiFi client/AP mode, SSID/password settings, and mDNS hostname
+  - **Auth Tab**: Enable/disable authentication and configure username/password
+  - **JSON Tab**: Direct JSON configuration editing with validation
+  - **Updates Tab**: Over-the-air firmware and filesystem updates (when OTA is enabled)
+- Real-time device monitoring and status updates
 
 ### Quick Start
 ```bash
@@ -154,12 +168,40 @@ npm run build:uploadfs
 ---
 
 ## 📚 API Endpoints
+
+### Configuration & Device Management
 - `/config` — GET/PUT device config (JSON)
+- `/info` — GET device information (network, storage, memory, chip details)
+- `/restart` — GET reboot device
+
+### Authentication
+- `/api/auth/login` — POST login with username/password (returns Bearer token)
+- `/api/auth/logout` — POST logout and invalidate token
+
+### GPIO Control
 - `/gpio` — POST pin control
+
+### WebSocket Streams
 - `/rssi` — WebSocket for live RSSI
 - `/camera/live` — Camera stream (ESP32)
-- `/log` — Device logs
-- `/restart` — Reboot device
+
+### Over-the-Air Updates
+- `/api/ota/status` — GET OTA status and device information
+- `/api/ota/progress` — GET current OTA update progress
+- `/api/ota/start` — POST start OTA update (firmware or filesystem)
+- `/api/ota/upload` — POST upload firmware binary
+- `/api/ota/filesystem` — POST upload filesystem files (supports multiple files with folder structure)
+
+### File Management
+- `/api/files` — GET list files and directories (supports `fs=sd|lfs` and `path` parameters)
+- `/api/storage` — GET storage information (total, used, free) for filesystem (supports `fs=sd|lfs`)
+- `/api/files/mkdir` — POST create directory
+- `/api/files/rename` — POST rename file or directory
+- `/api/files/delete` — POST delete file or directory
+- `/api/files/upload` — POST upload file to filesystem
+- `/sd/*` — GET serve files from SD card
+- `/lfs/*` — GET serve files from LittleFS
+- `/log` — GET device logs
 
 ---
 

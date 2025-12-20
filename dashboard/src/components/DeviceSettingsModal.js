@@ -24,7 +24,7 @@ export default function DeviceSettingsModal({
 }) {
   const [activeTab, setActiveTab] = useState(0);
 
-  // Check if OTA is enabled
+  // Check if OTA is enabled (default to true if not explicitly set to false)
   const otaEnabled = config?.ota?.enabled !== false;
 
   // Network settings state
@@ -348,6 +348,7 @@ export default function DeviceSettingsModal({
           value={activeTab}
           onChange={handleTabChange}
           aria-label="settings tabs"
+          centered
           sx={{
             "& .MuiTab-root": {
               color: "primary.main",

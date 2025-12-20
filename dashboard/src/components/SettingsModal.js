@@ -49,7 +49,7 @@ export default function SettingsModal({
           margin: isMobile ? 0 : "auto",
         },
         "& .MuiBackdrop-root": {
-          backdropFilter: "blur(4px)",
+          backdropFilter: "blur(2px)",
           backgroundColor: "rgba(0, 0, 0, 0.5)",
         },
       }}

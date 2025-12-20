@@ -9,7 +9,11 @@ import {
   CameraAlt,
 } from "@mui/icons-material";
 import CameraSettingsModal from "./CameraSettingsModal";
-import { buildApiUrl, buildWebSocketUrl } from "../utils/apiUtils";
+import {
+  buildApiUrl,
+  buildWebSocketUrl,
+  getFetchOptions,
+} from "../utils/apiUtils";
 
 export default function CameraModule({
   config,
@@ -78,13 +82,16 @@ export default function CameraModule({
     if (!remoteConfigUrl) return;
 
     try {
-      const response = await fetch(remoteConfigUrl, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-        signal: AbortSignal.timeout(3000), // 3 second timeout
-      });
+      const response = await fetch(
+        remoteConfigUrl,
+        getFetchOptions({
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(3000), // 3 second timeout
+        })
+      );
 
       if (response.ok) {
         const data = await response.json();

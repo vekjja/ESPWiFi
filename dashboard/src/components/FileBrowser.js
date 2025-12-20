@@ -26,6 +26,7 @@ import {
   Breadcrumbs,
   Link,
 } from "@mui/material";
+import { getFetchOptions } from "../utils/apiUtils";
 import {
   Storage,
   Upload,
@@ -92,7 +93,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
       try {
         const response = await fetch(
-          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
+          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`,
+          getFetchOptions()
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -120,7 +122,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
       try {
         const response = await fetch(
-          `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`
+          `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`,
+          getFetchOptions()
         );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -181,17 +184,17 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     setError(null);
 
     try {
-      const response = await fetch(`${apiURL}/api/files/mkdir`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fs: fileSystem,
-          path: currentPath,
-          name: newFolderDialog.folderName.trim(),
-        }),
-      });
+      const response = await fetch(
+        `${apiURL}/api/files/mkdir`,
+        getFetchOptions({
+          method: "POST",
+          body: JSON.stringify({
+            fs: fileSystem,
+            path: currentPath,
+            name: newFolderDialog.folderName.trim(),
+          }),
+        })
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -256,9 +259,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         )}&oldPath=${encodeURIComponent(
           renameDialog.file.path
         )}&newName=${encodeURIComponent(renameDialog.newName.trim())}`,
-        {
-          method: "POST",
-        }
+        getFetchOptions({ method: "POST" })
       );
 
       if (!response.ok) {
@@ -285,9 +286,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           `${apiURL}/api/files/delete?fs=${encodeURIComponent(
             fileSystem
           )}&path=${encodeURIComponent(file.path)}`,
-          {
-            method: "POST",
-          }
+          getFetchOptions({ method: "POST" })
         );
 
         if (!response.ok) {

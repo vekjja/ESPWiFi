@@ -15,7 +15,7 @@ import WebIcon from "@mui/icons-material/Web";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import InfoIcon from "@mui/icons-material/Info";
-import { buildApiUrl } from "../../utils/apiUtils";
+import { buildApiUrl, getFetchOptions } from "../../utils/apiUtils";
 import { bytesToHumanReadable } from "../../utils/formatUtils";
 
 export default function DeviceSettingsOTATab({ config }) {
@@ -53,9 +53,12 @@ export default function DeviceSettingsOTATab({ config }) {
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     try {
-      const response = await fetch(fetchUrl, {
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        fetchUrl,
+        getFetchOptions({
+          signal: controller.signal,
+        })
+      );
 
       clearTimeout(timeoutId);
 
@@ -87,7 +90,7 @@ export default function DeviceSettingsOTATab({ config }) {
     const pollInterval = setInterval(async () => {
       try {
         const fetchUrl = buildApiUrl("/api/ota/progress", config?.mdns);
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, getFetchOptions());
         if (response.ok) {
           const data = await response.json();
           if (data.in_progress && data.progress !== undefined) {
@@ -120,7 +123,7 @@ export default function DeviceSettingsOTATab({ config }) {
   const checkDeviceStatus = async () => {
     try {
       const fetchUrl = buildApiUrl("/api/ota/status", config?.mdns);
-      const response = await fetch(fetchUrl);
+      const response = await fetch(fetchUrl, getFetchOptions());
       if (response.ok) {
         setFirmwareUploadStatus(
           "Device is back online! Update completed successfully."
@@ -172,7 +175,10 @@ export default function DeviceSettingsOTATab({ config }) {
         config?.mdns
       );
       console.log("Starting OTA with URL:", startUrl);
-      const startResponse = await fetch(startUrl, { method: "POST" });
+      const startResponse = await fetch(
+        startUrl,
+        getFetchOptions({ method: "POST" })
+      );
       console.log(
         "OTA start response:",
         startResponse.status,
@@ -302,10 +308,10 @@ export default function DeviceSettingsOTATab({ config }) {
 
           const response = await fetch(
             buildApiUrl("/api/ota/filesystem", config?.mdns),
-            {
+            getFetchOptions({
               method: "POST",
               body: formData,
-            }
+            })
           );
 
           if (response.ok) {

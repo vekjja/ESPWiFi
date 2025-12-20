@@ -6,7 +6,9 @@ import LinearProgress from "@mui/material/LinearProgress";
 import { Save, Delete, Edit, Settings } from "@mui/icons-material";
 import Modules from "./components/Modules";
 import SettingsButtonBar from "./components/SettingsButtonBar";
-import { getApiUrl, buildApiUrl } from "./utils/apiUtils";
+import Login from "./components/Login";
+import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
+import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 
 // Define the theme
 const theme = createTheme({
@@ -94,6 +96,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const apiURL = getApiUrl();
 
@@ -105,11 +109,21 @@ function App() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
 
-        const response = await fetch(buildApiUrl("/config"), {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          buildApiUrl("/config"),
+          getFetchOptions({
+            signal: controller.signal,
+          })
+        );
 
         clearTimeout(timeoutId);
+
+        // Handle 401 Unauthorized - user needs to login
+        if (response.status === 401) {
+          setAuthenticated(false);
+          clearAuthToken();
+          throw new Error("Unauthorized - please login");
+        }
 
         if (!response.ok) {
           throw new Error(
@@ -144,8 +158,15 @@ function App() {
         });
 
         setDeviceOnline(true); // Device is online
+        setAuthenticated(true); // Successfully authenticated
         return data;
       } catch (error) {
+        // Handle authentication errors
+        if (error.message.includes("Unauthorized")) {
+          setAuthenticated(false);
+          return null;
+        }
+
         // Only log errors if we're not already offline to avoid spam
         if (deviceOnline) {
           if (error.name === "AbortError") {
@@ -166,11 +187,39 @@ function App() {
     [apiURL, config, deviceOnline]
   );
 
+  // Check authentication status on mount
   useEffect(() => {
-    // Initial fetch
-    fetchConfig().then(() => {
+    const checkAuth = async () => {
+      setCheckingAuth(true);
+      // If we have a token, try to fetch config to verify it's valid
+      if (isAuthenticated()) {
+        const result = await fetchConfig();
+        if (result) {
+          setAuthenticated(true);
+        } else {
+          setAuthenticated(false);
+        }
+      } else {
+        // No token, try to fetch config anyway (auth might be disabled)
+        const result = await fetchConfig();
+        if (result) {
+          setAuthenticated(true);
+        } else {
+          setAuthenticated(false);
+        }
+      }
+      setCheckingAuth(false);
       setLoading(false);
-    });
+    };
+
+    checkAuth();
+  }, []); // Only run on mount
+
+  useEffect(() => {
+    // Only start polling if authenticated
+    if (!authenticated) {
+      return;
+    }
 
     // Set up intelligent polling
     let pollInterval;
@@ -210,9 +259,26 @@ function App() {
         clearInterval(pollInterval);
       }
     };
-  }, [fetchConfig, deviceOnline]);
+  }, [fetchConfig, deviceOnline, authenticated]);
 
-  if (loading) {
+  // Handle login
+  const handleLoginSuccess = () => {
+    setAuthenticated(true);
+    fetchConfig(true).then(() => {
+      setLoading(false);
+    });
+  };
+
+  // Show login page if not authenticated
+  if (!authenticated && !checkingAuth) {
+    return (
+      <ThemeProvider theme={theme}>
+        <Login onLoginSuccess={handleLoginSuccess} />
+      </ThemeProvider>
+    );
+  }
+
+  if (loading || checkingAuth) {
     return <LinearProgress color="inherit" />;
   }
 
@@ -244,12 +310,14 @@ function App() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for saves
 
-    fetch(buildApiUrl("/config"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(configToSave),
-      signal: controller.signal,
-    })
+    fetch(
+      buildApiUrl("/config"),
+      getFetchOptions({
+        method: "PUT",
+        body: JSON.stringify(configToSave),
+        signal: controller.signal,
+      })
+    )
       .then((response) => {
         clearTimeout(timeoutId);
         if (!response.ok) {

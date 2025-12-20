@@ -4,6 +4,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import { Slider, Box } from "@mui/material";
 import Module from "./Module";
 import PinSettingsModal from "./PinSettingsModal";
+import { getFetchOptions } from "../utils/apiUtils";
 
 export default function PinModule({
   pinNum,
@@ -97,13 +98,13 @@ export default function PinModule({
         requestBody.duty = duty;
       }
 
-      fetch(targetURL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      })
+      fetch(
+        targetURL,
+        getFetchOptions({
+          method: "POST",
+          body: JSON.stringify(requestBody),
+        })
+      )
         .then((response) => {
           if (!response.ok) {
             throw new Error("Failed to update pin state");

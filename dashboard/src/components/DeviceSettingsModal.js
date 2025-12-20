@@ -11,7 +11,7 @@ import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
 import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
 import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
-import { buildApiUrl } from "../utils/apiUtils";
+import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 
 export default function DeviceSettingsModal({
   config,
@@ -115,9 +115,12 @@ export default function DeviceSettingsModal({
     const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
 
     try {
-      const response = await fetch(fetchUrl, {
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        fetchUrl,
+        getFetchOptions({
+          signal: controller.signal,
+        })
+      );
 
       clearTimeout(timeoutId);
 
@@ -205,9 +208,7 @@ export default function DeviceSettingsModal({
 
   const handleRestart = () => {
     const restartUrl = buildApiUrl("/restart");
-    fetch(restartUrl, {
-      method: "GET",
-    }).catch((error) => {
+    fetch(restartUrl, getFetchOptions({ method: "GET" })).catch((error) => {
       // Ignore errors since device will restart
     });
 

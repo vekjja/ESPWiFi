@@ -207,7 +207,7 @@ void ESPWiFi::srvAuth() {
           return;
         }
 
-        // Verify password - only check if password matches OR expectedPassword
+        // Verify password - check if password matches OR expectedPassword
         // is empty
         String expectedPassword = config["auth"]["password"].as<String>();
         if (password != expectedPassword && expectedPassword.length() > 0) {
@@ -229,11 +229,12 @@ void ESPWiFi::srvAuth() {
 
   // Logout endpoint - invalidates token
   webServer->on(
-      "/api/auth/logout", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-
-  webServer->on(
       "/api/auth/logout", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+
         if (!authorized(request)) {
           sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
           return;

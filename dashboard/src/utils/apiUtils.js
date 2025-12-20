@@ -1,3 +1,5 @@
+import { getAuthHeader } from "./authUtils";
+
 /**
  * Get the API base URL for HTTP requests
  * Uses environment variables or falls back to localhost:80
@@ -59,4 +61,28 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
 export const buildWebSocketUrl = (path, mdnsHostname = null) => {
   const wsUrl = getWebSocketUrl(mdnsHostname);
   return `${wsUrl}${path}`;
+};
+
+/**
+ * Get default fetch options with authentication headers
+ * @param {Object} options - Additional fetch options to merge
+ * @returns {Object} Fetch options with auth headers
+ */
+export const getFetchOptions = (options = {}) => {
+  const authHeader = getAuthHeader();
+  const headers = { ...options.headers };
+
+  // Only set Content-Type if not already set and body is not FormData
+  if (!headers["Content-Type"] && !(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  if (authHeader) {
+    headers["Authorization"] = authHeader;
+  }
+
+  return {
+    ...options,
+    headers,
+  };
 };

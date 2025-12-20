@@ -15,6 +15,7 @@
 - 🔧 Web server API for settings, logs, and file management
 - 🔁 WebSocket endpoints for live data (RSSI, camera, custom)
 - 📷 Camera and spectral analyzer support (ESP32)
+- 🎛️ BMI160 accelerometer/gyroscope sensor support
 - 🧩 Modular: add pins, WebSockets, and more via dashboard
 - 🔐 Configurable authentication (username/password)
 - 📊 Device information dashboard (network, storage, memory, chip details)
@@ -183,7 +184,8 @@ npm run build:uploadfs
 
 ### WebSocket Streams
 - `/rssi` — WebSocket for live RSSI
-- `/camera/live` — Camera stream (ESP32)
+- `/camera` — WebSocket for camera stream (ESP32)
+- `/camera/snapshot` — GET capture and download camera snapshot (ESP32)
 
 ### Over-the-Air Updates
 - `/api/ota/status` — GET OTA status and device information

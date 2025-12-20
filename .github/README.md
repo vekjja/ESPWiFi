@@ -162,26 +162,6 @@ The dashboard (in `dashboard/`) is a React app for live device management:
   - **Updates Tab**: Over-the-air firmware and filesystem updates (when OTA is enabled)
 - Real-time device monitoring and status updates
 
-### Quick Start
-```bash
-cd dashboard
-npm install
-npm start
-# Open http://localhost:3000
-```
-
-### Build for ESP device
-```bash
-npm run build:uploadfs
-```
-
-> **Tip:** When developing, you can create a `.env` file in the root of the `dashboard/` directory to set the API endpoint for your ESP device. For example:
-> ```env
-> REACT_APP_API_HOST=espwifi.local
-> REACT_APP_API_PORT=80
-> ```
-> This allows the dashboard to connect to your device on the local network during development.
-
 ---
 
 ## 🧩 Hardware & Sensors

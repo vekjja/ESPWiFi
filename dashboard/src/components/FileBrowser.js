@@ -291,6 +291,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         );
 
         if (!response.ok) {
+          // Close dialog if 403 (Forbidden)
+          if (response.status === 403) {
+            // Close dialog immediately
+            setDeleteDialog((prev) => ({ ...prev, open: false, files: [] }));
+            setError(
+              `Failed to delete files: HTTP ${response.status} - ${response.statusText}`
+            );
+            return;
+          }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
       }
@@ -298,7 +307,11 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       setDeleteDialog({ open: false, files: [] });
       fetchFiles(currentPath, fileSystem);
     } catch (err) {
-      if (err.name === "TypeError" && err.message.includes("fetch")) {
+      // Check if error is related to 403 Forbidden
+      if (err.message && err.message.includes("403")) {
+        setDeleteDialog((prev) => ({ ...prev, open: false, files: [] }));
+        setError(`Failed to delete files: ${err.message}`);
+      } else if (err.name === "TypeError" && err.message.includes("fetch")) {
         setError("Device is offline. Cannot delete files.");
       } else {
         setError(`Failed to delete files: ${err.message}`);

@@ -1,7 +1,7 @@
 #ifdef ESPWiFi_CAMERA
 
-#ifndef ESPWiFi_CAMERA
-#define ESPWiFi_CAMERA
+#ifndef ESPWiFi_CAMERA_CPP
+#define ESPWiFi_CAMERA_CPP
 
 #include <Arduino.h>
 #include <CameraPins.h>
@@ -480,5 +480,5 @@ void ESPWiFi::cameraConfigHandler() {
   }
 }
 
-#endif // ESPWiFi_CAMERA
+#endif // ESPWiFi_CAMERA_CPP
 #endif // ESPWiFi_CAMERA

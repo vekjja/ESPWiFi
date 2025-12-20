@@ -99,6 +99,20 @@ void ESPWiFi::getStorageInfo(const String &fsParam, size_t &totalBytes,
   }
 }
 
+bool ESPWiFi::isRestrictedSystemFile(const String &fsParam,
+                                     const String &filePath) {
+  // Only restrict files on LittleFS, not SD card
+  if (fsParam != "lfs") {
+    return false;
+  }
+
+  // List of restricted system files and directories
+  return (filePath == "/config.json" || filePath == "/index.html" ||
+          filePath == "/asset-manifest.json" || filePath == "/dashboard.zip" ||
+          filePath.startsWith("/static/") || filePath.startsWith("/system/") ||
+          filePath.startsWith("/boot/"));
+}
+
 bool ESPWiFi::fileExists(FS *fs, const String &filePath) {
   if (!fs) {
     logError("File system is null");
@@ -564,6 +578,13 @@ void ESPWiFi::srvFiles() {
           return;
         }
 
+        // Prevent renaming of system files on LittleFS
+        if (isRestrictedSystemFile(fsParam, oldPath)) {
+          sendJsonResponse(request, 403,
+                           "{\"error\":\"Cannot rename system files\"}");
+          return;
+        }
+
         // Get directory path and construct new path
         String dirPath = oldPath.substring(0, oldPath.lastIndexOf('/'));
         String newPath = dirPath + "/" + newName;
@@ -638,12 +659,7 @@ void ESPWiFi::srvFiles() {
         }
 
         // Prevent deletion of system files on LittleFS
-        if (fsParam == "lfs" &&
-            (filePath == "/config.json" || filePath == "/index.html" ||
-             filePath == "/asset-manifest.json" ||
-             filePath == "/dashboard.zip" || filePath.startsWith("/static/") ||
-             filePath.startsWith("/system/") ||
-             filePath.startsWith("/boot/"))) {
+        if (isRestrictedSystemFile(fsParam, filePath)) {
           sendJsonResponse(request, 403,
                            "{\"error\":\"Cannot delete system files\"}");
           return;

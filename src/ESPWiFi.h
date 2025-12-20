@@ -59,6 +59,7 @@ public:
                       size_t &usedBytes, size_t &freeBytes);
   bool writeFile(FS *filesystem, const String &filePath, const uint8_t *data,
                  size_t len);
+  bool isRestrictedSystemFile(const String &fsParam, const String &filePath);
 
   // Logging
   File logFile;

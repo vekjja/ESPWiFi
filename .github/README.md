@@ -20,7 +20,6 @@ It supports both Station (STA) and Access Point (AP) modes, JSON-based configura
 - 🎛️ BMI160 accelerometer/gyroscope sensor support
 - 🧩 Modular: add pins, WebSockets, and more via dashboard
 - 🔐 Configurable authentication (username/password)
-- 📊 Device information dashboard (network, storage, memory, chip details)
 - 🔄 Over-the-air (OTA) firmware and filesystem updates
 - 🛠️ PlatformIO and Arduino IDE compatible
 

@@ -63,6 +63,14 @@ export default function DeviceSettingsNetworkTab({
 
   return (
     <>
+      <FormControl variant="outlined" sx={{ marginTop: 1 }}>
+        <FormControlLabel
+          control={
+            <Switch checked={mode === "client"} onChange={handleModeToggle} />
+          }
+          label={mode === "client" ? "WiFi Client Mode" : "Access Point Mode"}
+        />
+      </FormControl>
       <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
         <TextField
           label="mDNS Hostname"
@@ -70,14 +78,6 @@ export default function DeviceSettingsNetworkTab({
           onChange={handleMDNSChange}
           variant="outlined"
           fullWidth
-        />
-      </FormControl>
-      <FormControl variant="outlined" sx={{ marginTop: 1 }}>
-        <FormControlLabel
-          control={
-            <Switch checked={mode === "client"} onChange={handleModeToggle} />
-          }
-          label={mode === "client" ? "WiFi Client Mode" : "Access Point Mode"}
         />
       </FormControl>
 

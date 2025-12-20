@@ -134,7 +134,7 @@ export default function DeviceSettingsInfoTab({
                         label={`${deviceInfo.rssi} dBm`}
                         color={
                           deviceInfo.rssi > -50
-                            ? "success"
+                            ? "primary"
                             : deviceInfo.rssi > -70
                             ? "warning"
                             : "error"

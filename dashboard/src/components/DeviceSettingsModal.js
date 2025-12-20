@@ -422,7 +422,7 @@ export default function DeviceSettingsModal({
           <Tab label="Network" />
           <Tab label="Auth" />
           <Tab label="JSON" />
-          {otaEnabled && <Tab label="Updates" />}
+          {otaEnabled && <Tab label="Update" />}
         </Tabs>
       </Box>
 

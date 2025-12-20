@@ -68,11 +68,11 @@ The simplest way to use ESPWiFi is with the default `start()` and `runSystem()` 
 ESPWiFi espwifi;
 
 void setup() {
-  espwifi.start();  // Initializes serial, logging, config, WiFi, mDNS, and web server
+  espwifi.start();
 }
 
 void loop() {
-  espwifi.runSystem();  // Handles main system loop, e.g. webserver, websockets, etc.
+  espwifi.runSystem();
 }
 ```
 
@@ -106,7 +106,7 @@ void setup() {
 
 void loop() {
   yield();                 // Allow other tasks to run
-  // Main loop code here
+  // Custom main loop logic here
 }
 ```
 
@@ -144,18 +144,6 @@ void loop() {
     }
   ]
 }
-```
-
-> **Note:** When building the dashboard, place your desired `config.json` in `./dashboard/public` so it is included in the build output. Alternatively, you can manually add `config.json` to the root of the `data` directory before uploading to the ESP device.
-
-
-Upload config with PlatformIO from project root:
-```bash
-pio run --target uploadfs
-````
-Upload config with NPM from dashboard directory:
-```bash
-npm run build:uploadfs
 ```
 
 ---

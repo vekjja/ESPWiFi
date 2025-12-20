@@ -98,9 +98,6 @@ void ESPWiFi::srvInfo() {
     jsonDoc["ap_ssid"] = config["ap"]["ssid"].as<String>() + "-" + hostname;
     jsonDoc["mdns"] = config["mdns"].as<String>() + ".local";
     jsonDoc["chip"] = String(ESP.getChipModel());
-#ifdef ARDUINO_BOARD
-    jsonDoc["board"] = String(ARDUINO_BOARD);
-#endif
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
     jsonDoc["total_heap"] = ESP.getHeapSize();

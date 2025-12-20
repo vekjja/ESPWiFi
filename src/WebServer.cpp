@@ -153,12 +153,29 @@ String ESPWiFi::generateToken() {
 }
 
 bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
+  // Get request information for logging
+  String method = request->methodToString();
+  String url = request->url();
+  String clientIP =
+      request->client() ? request->client()->remoteIP().toString() : "unknown";
+  String userAgent = request->hasHeader("User-Agent")
+                         ? request->getHeader("User-Agent")->value()
+                         : "-";
+
   if (!authEnabled()) {
+    // Log access even when auth is disabled
+    logf("🌐 [ACCESS] %s %s - %s \"%s\" \"%s\" - Auth disabled\n",
+         clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+         "200 OK");
     return true; // Auth disabled, allow all
   }
 
   // Check for Authorization header
   if (!request->hasHeader("Authorization")) {
+    logf("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (no auth "
+         "header)\n",
+         clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+         "401 Unauthorized");
     return false;
   }
 
@@ -167,6 +184,10 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
 
   // Check if it's a Bearer token
   if (!authValue.startsWith("Bearer ")) {
+    logf("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
+         "auth format)\n",
+         clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+         "401 Unauthorized");
     return false;
   }
 
@@ -175,7 +196,20 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
   String expectedToken = config["auth"]["token"].as<String>();
 
   // Compare tokens
-  return token == expectedToken && expectedToken.length() > 0;
+  bool isAuthorized = token == expectedToken && expectedToken.length() > 0;
+
+  if (isAuthorized) {
+    logf("✅ [ACCESS] %s %s - %s \"%s\" \"%s\" - 200 Authorized\n",
+         clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+         "200 OK");
+  } else {
+    logf("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
+         "token)\n",
+         clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+         "401 Unauthorized");
+  }
+
+  return isAuthorized;
 }
 
 void ESPWiFi::srvAuth() {

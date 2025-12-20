@@ -1,12 +1,12 @@
 {
     "mode": "client",
-    "mdns": "FirmaMint",
+    "mdns": "ESPWiFi",
     "client": {
         "ssid": "YOUR_WIFI_SSID",
         "password": "YOUR_WIFI_PASSWORD"
     },
     "ap": {
-        "ssid": "FirmaMint",
+        "ssid": "ESPWiFi",
         "password": "abcd1234"
     },
     "log": {

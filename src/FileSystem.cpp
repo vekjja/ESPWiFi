@@ -263,12 +263,23 @@ void ESPWiFi::srvFiles() {
       return;
     }
 
-    // Check auth for all file requests (except login endpoint)
+    // Allow static files (HTML, JS, CSS, images) without auth - needed for
+    // login page Only protect API endpoints
     String path = request->url();
-    if (!path.startsWith("/api/auth/") && !authorized(request)) {
+    bool isApiEndpoint =
+        path.startsWith("/api/") && !path.startsWith("/api/auth/");
+    bool isStaticFile = path.endsWith(".html") || path.endsWith(".js") ||
+                        path.endsWith(".css") || path.endsWith(".json") ||
+                        path.endsWith(".ico") || path.endsWith(".png") ||
+                        path.endsWith(".jpg") || path.endsWith(".svg") ||
+                        path.startsWith("/static/");
+
+    if (isApiEndpoint && !authorized(request)) {
       sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
       return;
     }
+
+    // Allow static files and non-API routes to pass through
 
     // Check for filesystem prefix (e.g., /sd/path/to/file or
     // /lfs/path/to/file)

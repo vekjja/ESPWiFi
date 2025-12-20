@@ -47,12 +47,8 @@ void ESPWiFi::startWebServer() {
 
 void ESPWiFi::srvRoot() {
   initWebServer();
-  // Serve index.html at root
+  // Serve index.html at root - no auth required (login page needs to load)
   webServer->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
-    }
     if (LittleFS.exists("/index.html")) {
       AsyncWebServerResponse *response =
           request->beginResponse(LittleFS, "/index.html", "text/html");

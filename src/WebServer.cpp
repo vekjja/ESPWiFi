@@ -237,7 +237,7 @@ void ESPWiFi::srvAuth() {
         // Verify username
         String expectedUsername = config["auth"]["username"].as<String>();
         if (username != expectedUsername) {
-          sendJsonResponse(request, 401, "{\"error\":\"Invalid username\"}");
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
           return;
         }
 
@@ -245,7 +245,7 @@ void ESPWiFi::srvAuth() {
         // is empty
         String expectedPassword = config["auth"]["password"].as<String>();
         if (password != expectedPassword && expectedPassword.length() > 0) {
-          sendJsonResponse(request, 401, "{\"error\":\"Invalid password\"}");
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
           return;
         }
 

@@ -10,6 +10,7 @@ import EditButton from "./EditButton";
 import TabPanel from "./tabPanels/TabPanel";
 import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
 import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
+import DeviceSettingsAuthTab from "./tabPanels/DeviceSettingsAuthTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
 import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
@@ -38,6 +39,12 @@ export default function DeviceSettingsModal({
   // Password visibility state
   const [showPassword, setShowPassword] = useState(false);
   const [showApPassword, setShowApPassword] = useState(false);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+
+  // Auth settings state
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
 
   // JSON editing state
   const [jsonConfig, setJsonConfig] = useState("");
@@ -58,10 +65,13 @@ export default function DeviceSettingsModal({
       setApPassword(config.ap?.password || "");
       setMode(config.mode || "client");
       setMdns(config.mdns || "");
+      setAuthEnabled(config.auth?.enabled ?? false);
+      setAuthUsername(config.auth?.username || "");
+      setAuthPassword(config.auth?.password || "");
     }
   }, [config]);
 
-  // Function to update JSON config based on current network settings
+  // Function to update JSON config based on current network and auth settings
   const updateJsonConfig = () => {
     if (!config) return;
     const configToUpdate = {
@@ -76,6 +86,12 @@ export default function DeviceSettingsModal({
         ssid: apSsid,
         password: apPassword,
       },
+      auth: {
+        ...config.auth,
+        enabled: authEnabled,
+        username: authUsername,
+        password: authPassword,
+      },
     };
 
     // Remove apiURL for JSON display
@@ -83,12 +99,23 @@ export default function DeviceSettingsModal({
     setJsonConfig(JSON.stringify(configToUpdate, null, 2));
   };
 
-  // Update JSON config whenever network settings change
+  // Update JSON config whenever network or auth settings change
   useEffect(() => {
     if (config) {
       updateJsonConfig();
     }
-  }, [ssid, password, apSsid, apPassword, mode, mdns, config]);
+  }, [
+    ssid,
+    password,
+    apSsid,
+    apPassword,
+    mode,
+    mdns,
+    authEnabled,
+    authUsername,
+    authPassword,
+    config,
+  ]);
 
   const handleOpenModal = () => {
     // Format the config as pretty JSON when opening the modal, excluding apiURL
@@ -168,7 +195,7 @@ export default function DeviceSettingsModal({
 
   const handleTabChange = (event, newValue) => {
     // Prevent switching to OTA tab if OTA is disabled
-    if (newValue === 3 && !otaEnabled) {
+    if (newValue === 4 && !otaEnabled) {
       return;
     }
     setActiveTab(newValue);
@@ -180,7 +207,7 @@ export default function DeviceSettingsModal({
 
   // Reset activeTab if OTA is disabled and we're on the OTA tab
   useEffect(() => {
-    if (activeTab === 3 && !otaEnabled) {
+    if (activeTab === 4 && !otaEnabled) {
       setActiveTab(0);
     }
   }, [otaEnabled, activeTab]);
@@ -214,6 +241,22 @@ export default function DeviceSettingsModal({
       ap: {
         ssid: apSsid,
         password: apPassword,
+      },
+    };
+
+    // Save to device (not just local config)
+    saveConfigToDevice(configToSave);
+    handleCloseModal();
+  };
+
+  const handleAuthSave = () => {
+    const configToSave = {
+      ...config,
+      auth: {
+        ...config.auth,
+        enabled: authEnabled,
+        username: authUsername,
+        password: authPassword,
       },
     };
 
@@ -293,6 +336,17 @@ export default function DeviceSettingsModal({
         </>
       );
     } else if (activeTab === 2) {
+      // Auth settings tab - Save button on left, restart/logout on right
+      return (
+        <>
+          <SaveButton
+            onClick={handleAuthSave}
+            tooltip="Save Settings to Device"
+          />
+          {commonButtons}
+        </>
+      );
+    } else if (activeTab === 3) {
       // JSON editing tab - Edit and Save on left, restart/logout on right
       return (
         <>
@@ -358,8 +412,9 @@ export default function DeviceSettingsModal({
             },
           }}
         >
-          <Tab label="Device" />
+          <Tab label="Info" />
           <Tab label="Network" />
+          <Tab label="Auth" />
           <Tab label="JSON" />
           {otaEnabled && <Tab label="Updates" />}
         </Tabs>
@@ -395,6 +450,19 @@ export default function DeviceSettingsModal({
       </TabPanel>
 
       <TabPanel value={activeTab} index={2}>
+        <DeviceSettingsAuthTab
+          authEnabled={authEnabled}
+          setAuthEnabled={setAuthEnabled}
+          username={authUsername}
+          setUsername={setAuthUsername}
+          password={authPassword}
+          setPassword={setAuthPassword}
+          showPassword={showAuthPassword}
+          setShowPassword={setShowAuthPassword}
+        />
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={3}>
         <DeviceSettingsJsonTab
           jsonConfig={jsonConfig}
           setJsonConfig={setJsonConfig}
@@ -405,7 +473,7 @@ export default function DeviceSettingsModal({
       </TabPanel>
 
       {otaEnabled && (
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={4}>
           <DeviceSettingsOTATab config={config} />
         </TabPanel>
       )}

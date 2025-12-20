@@ -7,7 +7,7 @@
     },
     "ap": {
         "ssid": "ESPWiFi",
-        "password": "abcd1234"
+        "password": "espwifi123"
     },
     "auth": {
         "token": "",

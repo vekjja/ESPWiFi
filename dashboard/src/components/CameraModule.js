@@ -23,6 +23,7 @@ export default function CameraModule({
   deviceOnline = true,
   saveConfigToDevice,
 }) {
+  const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
@@ -615,6 +616,7 @@ export default function CameraModule({
         open={settingsModalOpen}
         onClose={handleCloseSettings}
         onSave={handleSaveSettings}
+        onDelete={onDelete ? () => onDelete(moduleKey) : undefined}
         cameraData={settingsData}
         onCameraDataChange={setSettingsData}
         config={globalConfig}

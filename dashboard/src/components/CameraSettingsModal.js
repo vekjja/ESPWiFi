@@ -13,11 +13,13 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
+import DeleteButton from "./DeleteButton";
 
 export default function CameraSettingsModal({
   open,
   onClose,
   onSave,
+  onDelete,
   cameraData,
   onCameraDataChange,
   config,
@@ -107,12 +109,26 @@ export default function CameraSettingsModal({
     setCameraSettings((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleDelete = () => {
+    if (onDelete) {
+      onDelete();
+      onClose();
+    }
+  };
+
   return (
     <SettingsModal
       open={open}
       onClose={onClose}
       title="Camera Settings"
-      actions={<SaveButton onClick={handleSave} tooltip="Add Camera Module" />}
+      actions={
+        <>
+          {onDelete && (
+            <DeleteButton onClick={handleDelete} tooltip="Delete Camera" />
+          )}
+          <SaveButton onClick={handleSave} tooltip="Add Camera Module" />
+        </>
+      }
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <TextField

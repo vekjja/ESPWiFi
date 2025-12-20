@@ -1,6 +1,6 @@
 # ESPWiFi
 
-**ESPWiFi** is a modern, extensible library and dashboard for easily connecting ESP8266 and ESP32 boards to WiFi networks, managing device settings, and controlling hardware modules via a web interface.
+**ESPWiFi** is a modern, extensible library and dashboard for easily connecting ESP32 boards to WiFi networks, managing device settings, and controlling hardware modules via a web interface.
 
 It supports both Station (STA) and Access Point (AP) modes, JSON-based configuration stored on LittleFS, a built-in web server, and a drag-and-drop dashboard for live device management.
 

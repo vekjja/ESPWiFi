@@ -107,15 +107,15 @@ void setup() {
   espwifi.startWebServer();    // Start web server
   
   // Optional services (if enabled in config or needed)
-  // espwifi.startCamera();      // Start camera (ESP32-CAM/ESP32-S3)
   // espwifi.startOTA();         // Enable OTA updates
+  // espwifi.startCamera();      // Start camera (ESP32-CAM/ESP32-S3)
   // espwifi.startBMI160();      // Initialize BMI160 sensor
   // espwifi.startLEDMatrix();   // Start LED matrix
   // espwifi.startSpectralAnalyzer(); // Start spectral analyzer
 }
 
 void loop() {
-  yield();
+  yield();                    // Allow other tasks to run
   espwifi.streamRSSI();       // Stream RSSI data via WebSocket
   
   // Optional streaming (if enabled)

@@ -24,6 +24,9 @@ void ESPWiFi::readConfig() {
     file.close();
   }
 
+  // OTA - based on partition table
+  config["ota"]["enabled"] = isOTAEnabled();
+
   log("⚙️  Config Loaded:");
   logf("\tFile: %s\n", configFile.c_str());
 
@@ -105,10 +108,13 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["wb_mode"] = 0;
 
   // RSSI - always enabled
-  defaultConfig["rssi"]["displayMode"] = "numbers";
+  defaultConfig["rssi"]["displayMode"] = "icon";
 
   // SD Card - default: disabled
   defaultConfig["sd"]["enabled"] = false;
+
+  // OTA - based on partition table
+  defaultConfig["ota"]["enabled"] = isOTAEnabled();
 
   return defaultConfig;
 }

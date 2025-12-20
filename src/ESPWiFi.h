@@ -165,6 +165,7 @@ public:
 
   // OTA
   void startOTA();
+  bool isOTAEnabled();
   void handleOTAStart(AsyncWebServerRequest *request);
   void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
                        size_t index, uint8_t *data, size_t len, bool final);

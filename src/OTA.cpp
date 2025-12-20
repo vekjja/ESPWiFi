@@ -2,8 +2,15 @@
 #define ESPWiFi_OTA_H
 
 #include "ESPWiFi.h"
+#include "esp_partition.h"
 
-// OTA state management - these are now class members defined in ESPWiFi.h
+bool ESPWiFi::isOTAEnabled() {
+  // Check if OTA partition (app1/ota_1) exists
+  // If no OTA partition exists, OTA updates are disabled
+  const esp_partition_t *ota_partition = esp_partition_find_first(
+      ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+  return (ota_partition != NULL);
+}
 
 void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   // Reset OTA state
@@ -43,6 +50,15 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
       return;
     }
   } else {
+    // Check if OTA is enabled for firmware updates
+    if (!isOTAEnabled()) {
+      this->otaErrorString = "OTA firmware updates are disabled. Partition "
+                             "table does not support OTA.";
+      logError(this->otaErrorString);
+      this->otaInProgress = false;
+      request->send(400, "text/plain", this->otaErrorString);
+      return;
+    }
     log("📦 Starting firmware update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
       this->otaErrorString =
@@ -303,6 +319,7 @@ void ESPWiFi::srvOTA() {
         jsonDoc["free_space"] = ESP.getFreeSketchSpace();
         jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
         jsonDoc["chip_model"] = String(ESP.getChipModel());
+        jsonDoc["ota_enabled"] = isOTAEnabled();
         jsonDoc["in_progress"] = this->otaInProgress;
         jsonDoc["current_size"] = this->otaCurrentSize;
         jsonDoc["total_size"] = this->otaTotalSize;
@@ -330,6 +347,7 @@ void ESPWiFi::srvOTA() {
         }
 
         JsonDocument jsonDoc;
+        jsonDoc["ota_enabled"] = isOTAEnabled();
         jsonDoc["in_progress"] = this->otaInProgress;
         jsonDoc["current_size"] = this->otaCurrentSize;
         jsonDoc["total_size"] = this->otaTotalSize;
@@ -360,6 +378,14 @@ void ESPWiFi::srvOTA() {
         String mode = "firmware";
         if (request->hasParam("mode")) {
           mode = request->getParam("mode")->value();
+        }
+
+        // Check if OTA is enabled for firmware updates
+        if (mode != "fs" && mode != "filesystem" && !isOTAEnabled()) {
+          sendJsonResponse(request, 400,
+                           "{\"error\":\"OTA firmware updates are disabled. "
+                           "Partition table does not support OTA.\"}");
+          return;
         }
 
         // Get MD5 hash if provided

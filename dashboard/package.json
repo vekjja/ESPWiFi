@@ -28,14 +28,16 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "pio:clean": "cd .. && pio run --target clean",
-    "pio:upload": "cd .. && pio run --target upload --environment ${PIO_ENV:-esp32-s3}",
     "pio:monitor": "cd .. && pio device monitor",
+    "pio:upload": "cd .. && pio run --target upload --environment ${PIO_ENV:-esp32-s3}",
     "pio:uploadfs": "cd .. && pio run --target uploadfs --environment ${PIO_ENV:-esp32-s3}",
     "pio:upload:monitor": "npm run pio:upload && npm run pio:monitor",
-    "build:uploadfs": "npm run build && npm run pio:uploadfs",
-    "build:uploadfs:monitor": "npm run build && npm run pio:uploadfs && npm run pio:monitor",
-    "build:uploadfs:pio:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:build && npm run pio:upload && npm run pio:monitor",
-    "deploy": "npm run build && npm run pio:uploadfs && npm run pio:upload && npm run pio:monitor"
+    "build:pio:uploadfs": "npm run build && npm run pio:uploadfs",
+    "build:pio:uploadfs:monitor": "npm run build && npm run pio:uploadfs && npm run pio:monitor",
+    "build:pio:uploadfs:upload": "npm run build && npm run pio:uploadfs && npm run pio:upload",
+    "build:pio:uploadfs:upload:monitor": "npm run build && npm run pio:uploadfs && npm run pio:upload && npm run pio:monitor",
+    "deploy": "npm run build:pio:uploadfs:upload",
+    "deploy:monitor": "npm run build:pio:uploadfs:upload:monitor"
   },
   "eslintConfig": {
     "rules": {

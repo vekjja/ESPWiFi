@@ -64,7 +64,7 @@ void ESPWiFi::cleanLogFile() {
       }
 
       if (deleted) {
-        log("🗑️  Log file deleted to free up space");
+        log("🗑️  Log file " + logFilePath + " deleted to free up space");
       } else {
         logError("Failed to delete log file");
       }

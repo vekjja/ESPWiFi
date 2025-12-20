@@ -98,28 +98,14 @@ For more control, you can start services individually:
 ESPWiFi espwifi;
 
 void setup() {
-  espwifi.startSerial();      // Initialize serial (optional, defaults to 115200)
-  espwifi.startLogging();     // Start file logging
-  espwifi.readConfig();        // Load config from LittleFS
-  espwifi.startWiFi();         // Connect to WiFi or start AP
-  espwifi.startMDNS();         // Start mDNS service
-  espwifi.srvAll();            // Register all API endpoints (GPIO, files, config, etc.)
-  espwifi.startWebServer();    // Start web server
-  
-  // Optional services (if enabled in config or needed)
-  // espwifi.startOTA();         // Enable OTA updates
-  // espwifi.startCamera();      // Start camera (ESP32-CAM/ESP32-S3)
-  // espwifi.startBMI160();      // Initialize BMI160 sensor
-  // espwifi.startLEDMatrix();   // Start LED matrix
-  // espwifi.startSpectralAnalyzer(); // Start spectral analyzer
+  espwifi.readConfig();        // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
+  espwifi.startAP();         // Explicitly Start Access Point Only
+  espwifi.srvGPIO();         // Register Only GPIO endpoints 
 }
 
 void loop() {
   yield();                    // Allow other tasks to run
-  espwifi.streamRSSI();       // Stream RSSI data via WebSocket
-  
-  // Optional streaming (if enabled)
-  // espwifi.streamCamera();    // Stream camera frames (if enabled)
+  // Your main loop code here
 }
 ```
 
@@ -161,9 +147,14 @@ void loop() {
 
 > **Note:** When building the dashboard, place your desired `config.json` in `./dashboard/public` so it is included in the build output. Alternatively, you can manually add `config.json` to the root of the `data` directory before uploading to the ESP device.
 
-Upload config with:
+
+Upload config with PlatformIO from project root:
 ```bash
 pio run --target uploadfs
+````
+Upload config with NPM from dashboard directory:
+```bash
+npm run build:uploadfs
 ```
 
 ---

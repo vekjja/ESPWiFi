@@ -678,10 +678,10 @@ void ESPWiFi::srvFiles() {
           // Determine filesystem name for logging
           String fsName = (fsParam == "sd") ? "SD Card" : "LittleFS";
           if (isDirectory) {
-            logf("🗑️ Deleted directory on %s: %s\n", fsName.c_str(),
+            logf("🗑️  Deleted directory on %s: %s\n", fsName.c_str(),
                  filePath.c_str());
           } else {
-            logf("🗑️ Deleted file on %s: %s\n", fsName.c_str(),
+            logf("🗑️  Deleted file on %s: %s\n", fsName.c_str(),
                  filePath.c_str());
           }
           sendJsonResponse(request, 200, "{\"success\":true}");

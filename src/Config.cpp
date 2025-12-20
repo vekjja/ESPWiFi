@@ -81,7 +81,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Access Point
   String hostname = String(WiFi.getHostname());
   defaultConfig["ap"]["ssid"] = "ESPWiFi-" + hostname;
-  defaultConfig["ap"]["password"] = "abcd1234";
+  defaultConfig["ap"]["password"] = "espwifi123";
 
   // WiFi Client
   defaultConfig["client"]["ssid"] = "";

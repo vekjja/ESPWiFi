@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Tabs, Tab, Box } from "@mui/material";
+import { Tabs, Tab, Box, useTheme, useMediaQuery } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -23,6 +23,8 @@ export default function DeviceSettingsModal({
   open = false,
   onClose,
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [activeTab, setActiveTab] = useState(0);
 
   // Check if OTA is enabled (default to true if not explicitly set to false)
@@ -402,13 +404,17 @@ export default function DeviceSettingsModal({
           value={activeTab}
           onChange={handleTabChange}
           aria-label="settings tabs"
-          centered
+          variant={isMobile ? "scrollable" : "standard"}
+          scrollButtons="auto"
+          centered={!isMobile}
           sx={{
             "& .MuiTab-root": {
               color: "primary.main",
               "&.Mui-selected": {
                 color: "primary.main",
               },
+              minWidth: isMobile ? "auto" : undefined,
+              padding: isMobile ? "12px 16px" : undefined,
             },
           }}
         >

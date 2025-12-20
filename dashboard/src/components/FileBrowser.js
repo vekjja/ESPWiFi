@@ -27,6 +27,7 @@ import {
   Link,
 } from "@mui/material";
 import { getFetchOptions } from "../utils/apiUtils";
+import { getAuthHeader } from "../utils/authUtils";
 import {
   Storage,
   Upload,
@@ -422,6 +423,13 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
     // Start the upload
     xhr.open("POST", url);
+
+    // Add authentication header
+    const authHeader = getAuthHeader();
+    if (authHeader) {
+      xhr.setRequestHeader("Authorization", authHeader);
+    }
+
     xhr.send(formData);
   };
 

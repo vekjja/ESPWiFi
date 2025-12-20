@@ -9,7 +9,11 @@ import {
   Chip,
   Skeleton,
 } from "@mui/material";
-import InfoIcon from "@mui/icons-material/Info";
+import DeveloperBoardIcon from "@mui/icons-material/DeveloperBoard";
+import WifiIcon from "@mui/icons-material/Wifi";
+import StorageIcon from "@mui/icons-material/Storage";
+import SdCardIcon from "@mui/icons-material/SdCard";
+import MemoryIcon from "@mui/icons-material/Memory";
 import { bytesToHumanReadable, formatUptime } from "../../utils/formatUtils";
 
 export default function DeviceSettingsInfoTab({
@@ -58,8 +62,13 @@ export default function DeviceSettingsInfoTab({
       <Grid item xs={12} md={6}>
         <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Network Information
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <WifiIcon color="primary" />
+              Network
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -147,7 +156,12 @@ export default function DeviceSettingsInfoTab({
       <Grid item xs={12} md={6}>
         <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <StorageIcon color="primary" />
               Device Storage
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -240,7 +254,12 @@ export default function DeviceSettingsInfoTab({
         <Grid item xs={12} md={6}>
           <Card sx={{ height: "100%", minHeight: 280 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
+              <Typography
+                variant="h6"
+                gutterBottom
+                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <SdCardIcon color="primary" />
                 SD Card Storage
               </Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -330,8 +349,13 @@ export default function DeviceSettingsInfoTab({
       <Grid item xs={12} md={6}>
         <Card sx={{ height: "100%", minHeight: 280 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Memory Information
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <MemoryIcon color="primary" />
+              Memory Usage
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>
@@ -418,8 +442,8 @@ export default function DeviceSettingsInfoTab({
               gutterBottom
               sx={{ display: "flex", alignItems: "center", gap: 1 }}
             >
-              <InfoIcon color="primary" />
-              Chip Information
+              <DeveloperBoardIcon color="primary" />
+              Board
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Box sx={{ display: "flex", justifyContent: "space-between" }}>

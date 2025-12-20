@@ -41,7 +41,9 @@ void ESPWiFi::startWebServer() {
   webServer->begin();
   webServerStarted = true;
   log("🗄️ HTTP Web Server Started:");
-  logf("\tURL: http://%s\n", WiFi.localIP().toString().c_str());
+  String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
+                                       : WiFi.softAPIP().toString();
+  logf("\tURL: http://%s\n", serverIP.c_str());
   logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
 }
 
@@ -98,7 +100,8 @@ void ESPWiFi::srvInfo() {
     }
     JsonDocument jsonDoc;
     jsonDoc["uptime"] = millis() / 1000;
-    jsonDoc["ip"] = WiFi.localIP().toString();
+    jsonDoc["ip"] = WiFi.isConnected() ? WiFi.localIP().toString()
+                                       : WiFi.softAPIP().toString();
     jsonDoc["mac"] = WiFi.macAddress();
 
     // Construct AP SSID from config the same way as when starting AP

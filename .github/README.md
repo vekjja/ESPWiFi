@@ -44,13 +44,31 @@ lib_deps =
 
 ```
 ESPWiFi/
-├── src/
-│   └── ESPWiFi.h / .cpp
+├── src/                 # Core library source files
+│   ├── ESPWiFi.h        # Main library header
+│   ├── Device.cpp       # Device initialization
+│   ├── WiFi.cpp         # WiFi connection management
+│   ├── WebServer.cpp    # HTTP server and API endpoints
+│   └── ...              # Other core modules
+├── include/             # Hardware libraries and headers
+│   ├── WebSocket.h      # WebSocket implementation
+│   ├── DFRobot_BMI160.h # BMI160 sensor library
+│   ├── SpectralAnalyzer.h
+│   ├── LED/             # LED matrix support
+│   └── 2D/              # 2D physics engine
 ├── dashboard/           # React web dashboard
-├── include/             # Hardware, sensors, camera, etc.
+│   ├── src/
+│   │   ├── components/  # React components
+│   │   └── utils/       # Utility functions
+│   ├── public/
+│   │   └── config.json  # Dashboard config
+│   └── package.json
 ├── examples/
-│   └── config.json      # Example config
-├── library.json
+│   └── config.json      # Example device configuration
+├── data/                # Built dashboard files (for upload)
+├── release/             # Pre-built firmware binaries
+├── platformio.ini       # PlatformIO configuration
+├── library.json         # Library metadata
 └── README.md
 ```
 

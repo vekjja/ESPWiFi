@@ -54,59 +54,6 @@ export default function DeviceSettingsInfoTab({
 
   return (
     <Grid container spacing={2}>
-      {/* Device Information */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
-          <CardContent>
-            <Typography
-              variant="h6"
-              gutterBottom
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
-            >
-              <InfoIcon color="primary" />
-              Chip Information
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Hostname:
-                </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontWeight: 600, color: "primary.main" }}
-                >
-                  {deviceInfo.hostname || "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Chip Model:
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {deviceInfo.chip || "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  SDK Version:
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {deviceInfo.sdk_version || "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  System Uptime:
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {formatUptime(deviceInfo.uptime)}
-                </Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
       {/* Network Information */}
       <Grid item xs={12} md={6}>
         <Card sx={{ height: "100%", minHeight: 280 }}>
@@ -289,93 +236,95 @@ export default function DeviceSettingsInfoTab({
       </Grid>
 
       {/* SD Card Storage Information */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              SD Card Storage
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Total Storage:
-                </Typography>
-                <Typography
-                  variant="body1"
-                  sx={{ fontWeight: 600, color: "primary.main" }}
-                >
-                  {deviceInfo.sd_total
-                    ? bytesToHumanReadable(deviceInfo.sd_total)
-                    : "Not Available"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Used Storage:
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {deviceInfo.sd_used
-                    ? bytesToHumanReadable(deviceInfo.sd_used)
-                    : "Not Available"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Free Storage:
-                </Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                  {deviceInfo.sd_free
-                    ? bytesToHumanReadable(deviceInfo.sd_free)
-                    : "Not Available"}
-                </Typography>
-              </Box>
-              {deviceInfo.sd_total && deviceInfo.sd_used && (
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
+      {deviceInfo.sd_total && (
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: "100%", minHeight: 280 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                SD Card Storage
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Storage:
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    sx={{ fontWeight: 600, color: "primary.main" }}
                   >
-                    <Typography variant="body2" color="text.secondary">
-                      Usage:
-                    </Typography>
-                    <Typography
-                      variant="h6"
-                      sx={{ fontWeight: 600, color: "primary.main" }}
-                    >
-                      {Math.round(
-                        (deviceInfo.sd_used / deviceInfo.sd_total) * 100
-                      )}
-                      %
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: "100%",
-                      height: 8,
-                      backgroundColor: "grey.300",
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
+                    {deviceInfo.sd_total
+                      ? bytesToHumanReadable(deviceInfo.sd_total)
+                      : "Not Available"}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Used Storage:
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    {deviceInfo.sd_used
+                      ? bytesToHumanReadable(deviceInfo.sd_used)
+                      : "Not Available"}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Free Storage:
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    {deviceInfo.sd_free
+                      ? bytesToHumanReadable(deviceInfo.sd_free)
+                      : "Not Available"}
+                  </Typography>
+                </Box>
+                {deviceInfo.sd_total && deviceInfo.sd_used && (
+                  <Box sx={{ mt: 1 }}>
                     <Box
                       sx={{
-                        width: `${
-                          (deviceInfo.sd_used / deviceInfo.sd_total) * 100
-                        }%`,
-                        height: "100%",
-                        backgroundColor: "primary.main",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        mb: 0.5,
                       }}
-                    />
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        Usage:
+                      </Typography>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 600, color: "primary.main" }}
+                      >
+                        {Math.round(
+                          (deviceInfo.sd_used / deviceInfo.sd_total) * 100
+                        )}
+                        %
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        width: "100%",
+                        height: 8,
+                        backgroundColor: "grey.300",
+                        borderRadius: 1,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: `${
+                            (deviceInfo.sd_used / deviceInfo.sd_total) * 100
+                          }%`,
+                          height: "100%",
+                          backgroundColor: "primary.main",
+                        }}
+                      />
+                    </Box>
                   </Box>
-                </Box>
-              )}
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
 
       {/* Memory Information */}
       <Grid item xs={12} md={6}>
@@ -455,6 +404,59 @@ export default function DeviceSettingsInfoTab({
                   </Box>
                 </Box>
               )}
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
+      {/* Device Information */}
+      <Grid item xs={12} md={6}>
+        <Card sx={{ height: "100%", minHeight: 280 }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <InfoIcon color="primary" />
+              Chip Information
+            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  Hostname:
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ fontWeight: 600, color: "primary.main" }}
+                >
+                  {deviceInfo.hostname || "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  Chip Model:
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {deviceInfo.chip || "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  SDK Version:
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {deviceInfo.sdk_version || "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  System Uptime:
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  {formatUptime(deviceInfo.uptime)}
+                </Typography>
+              </Box>
             </Box>
           </CardContent>
         </Card>

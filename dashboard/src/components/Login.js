@@ -1,16 +1,8 @@
 import React, { useState } from "react";
-import {
-  Box,
-  Container,
-  TextField,
-  Button,
-  Typography,
-  Paper,
-  Alert,
-  CircularProgress,
-} from "@mui/material";
+import { Box, TextField, Button, Alert, CircularProgress } from "@mui/material";
 import { buildApiUrl } from "../utils/apiUtils";
 import { setAuthToken } from "../utils/authUtils";
+import SettingsModal from "./SettingsModal";
 
 const Login = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState("");
@@ -53,73 +45,58 @@ const Login = ({ onLoginSuccess }) => {
   };
 
   return (
-    <Container
+    <SettingsModal
+      open={true}
+      onClose={() => {}} // Prevent closing - user must login
+      title="ESPWiFi Login"
       maxWidth="sm"
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-      }}
+      actions={
+        <Button
+          type="submit"
+          form="login-form"
+          variant="contained"
+          disabled={loading}
+          fullWidth
+        >
+          {loading ? <CircularProgress size={24} /> : "Login"}
+        </Button>
+      }
     >
-      <Paper
-        elevation={3}
-        sx={{
-          p: 4,
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          gap: 3,
-        }}
+      <Box
+        component="form"
+        id="login-form"
+        onSubmit={handleSubmit}
+        sx={{ display: "flex", flexDirection: "column", gap: 2 }}
       >
-        <Typography variant="h4" component="h1" align="center" gutterBottom>
-          ESPWiFi Login
-        </Typography>
-
         {error && (
           <Alert severity="error" onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
-          sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-        >
-          <TextField
-            label="Username"
-            variant="outlined"
-            fullWidth
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            disabled={loading}
-            autoComplete="username"
-          />
-          <TextField
-            label="Password"
-            type="password"
-            variant="outlined"
-            fullWidth
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={loading}
-            autoComplete="current-password"
-          />
-          <Button
-            type="submit"
-            variant="contained"
-            fullWidth
-            disabled={loading}
-            sx={{ mt: 2 }}
-          >
-            {loading ? <CircularProgress size={24} /> : "Login"}
-          </Button>
-        </Box>
-      </Paper>
-    </Container>
+        <TextField
+          label="Username"
+          variant="outlined"
+          fullWidth
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+          disabled={loading}
+          autoComplete="username"
+        />
+        <TextField
+          label="Password"
+          type="password"
+          variant="outlined"
+          fullWidth
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={loading}
+          autoComplete="current-password"
+        />
+      </Box>
+    </SettingsModal>
   );
 };
 

@@ -2,19 +2,22 @@
     "mode": "client",
     "mdns": "ESPWiFi",
     "client": {
-        "ssid": "YOUR_WIFI_SSID",
-        "password": "YOUR_WIFI_PASSWORD"
+        "ssid": "YOUR_SSID",
+        "password": "YOUR_PASSWORD"
     },
     "ap": {
         "ssid": "ESPWiFi",
         "password": "abcd1234"
     },
-    "log": {
-        "enabled": true
+    "auth": {
+        "token": "",
+        "enabled": true,
+        "username": "admin",
+        "password": "admin"
     },
-    "camera": {
-        "enabled": false,
-        "frameRate": 10
+    "log": {
+        "enabled": true,
+        "level": "info"
     },
     "rssi": {
         "displayMode": "icon"

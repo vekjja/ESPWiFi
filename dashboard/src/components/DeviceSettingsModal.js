@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Tabs, Tab, Box } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
+import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
@@ -12,6 +13,7 @@ import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
 import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
+import { clearAuthToken } from "../utils/authUtils";
 
 export default function DeviceSettingsModal({
   config,
@@ -218,6 +220,13 @@ export default function DeviceSettingsModal({
     }, 1000);
   };
 
+  const handleLogout = () => {
+    clearAuthToken();
+    handleCloseModal();
+    // Reload page to trigger login screen
+    window.location.reload();
+  };
+
   // JSON editing handlers
   const handleJsonSave = () => {
     try {
@@ -243,41 +252,36 @@ export default function DeviceSettingsModal({
 
   // Determine which actions to show based on active tab
   const getActions = () => {
+    // Common buttons (restart and logout) - always shown on the right
+    const commonButtons = (
+      <>
+        <IButton
+          Icon={RestartIcon}
+          onClick={handleRestart}
+          tooltip={"Restart Device"}
+        />
+        <IButton Icon={LogoutIcon} onClick={handleLogout} tooltip={"Logout"} />
+      </>
+    );
+
     if (activeTab === 0) {
-      // Info tab - only show restart button
-      return (
-        <>
-          <IButton
-            Icon={RestartIcon}
-            onClick={handleRestart}
-            tooltip={"Restart Device"}
-          />
-        </>
-      );
+      // Info tab - only show restart and logout buttons
+      return commonButtons;
     } else if (activeTab === 1) {
-      // Network settings tab
+      // Network settings tab - Save button on left, restart/logout on right
       return (
         <>
-          <IButton
-            Icon={RestartIcon}
-            onClick={handleRestart}
-            tooltip={"Restart Device"}
-          />
           <SaveButton
             onClick={handleNetworkSave}
             tooltip="Save Settings to Device"
           />
+          {commonButtons}
         </>
       );
     } else if (activeTab === 2) {
-      // JSON editing tab
+      // JSON editing tab - Edit and Save on left, restart/logout on right
       return (
         <>
-          <IButton
-            Icon={RestartIcon}
-            onClick={handleRestart}
-            tooltip={"Restart Device"}
-          />
           <EditButton
             onClick={toggleEditability}
             tooltip={isEditable ? "Stop Editing" : "Edit"}
@@ -287,19 +291,12 @@ export default function DeviceSettingsModal({
             onClick={handleJsonSave}
             tooltip="Save Configuration to Device"
           />
+          {commonButtons}
         </>
       );
     } else {
-      // OTA tab - only show restart button
-      return (
-        <>
-          <IButton
-            Icon={RestartIcon}
-            onClick={handleRestart}
-            tooltip={"Restart Device"}
-          />
-        </>
-      );
+      // OTA tab - only show restart and logout buttons
+      return commonButtons;
     }
   };
 

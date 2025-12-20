@@ -57,23 +57,69 @@ ESPWiFi/
 
 ## 🔧 Firmware Usage (C++/Arduino)
 
+### Quick Start (Default Configuration)
+
+The simplest way to use ESPWiFi is with the default `start()` and `runSystem()` methods:
+
 ```cpp
 #include <ESPWiFi.h>
 
-ESPWiFi wifi;
+ESPWiFi espwifi;
 
 void setup() {
-  wifi.startLog();
-  wifi.startWiFi();
-  wifi.startMDNS();
-  wifi.startGPIO();
-  wifi.srvAll();
-  wifi.startWebServer();
+  espwifi.start();  // Initializes serial, logging, config, WiFi, mDNS, and web server
+}
+
+void loop() {
+  espwifi.runSystem();  // Handles RSSI streaming and camera (if enabled)
+}
+```
+
+The `start()` method automatically:
+- Initializes serial communication
+- Starts logging
+- Reads configuration from LittleFS
+- Connects to WiFi (or starts AP mode)
+- Starts mDNS
+- Starts the web server
+- Handles configuration-based services (GPIO, camera, etc.)
+
+The `runSystem()` method handles:
+- RSSI streaming
+- Camera streaming (if enabled in config)
+
+### Manual Service Configuration
+
+For more control, you can start services individually:
+
+```cpp
+#include <ESPWiFi.h>
+
+ESPWiFi espwifi;
+
+void setup() {
+  espwifi.startSerial();      // Initialize serial (optional, defaults to 115200)
+  espwifi.startLogging();     // Start file logging
+  espwifi.readConfig();        // Load config from LittleFS
+  espwifi.startWiFi();         // Connect to WiFi or start AP
+  espwifi.startMDNS();         // Start mDNS service
+  espwifi.srvAll();            // Register all API endpoints (GPIO, files, config, etc.)
+  espwifi.startWebServer();    // Start web server
+  
+  // Optional services (if enabled in config or needed)
+  // espwifi.startCamera();      // Start camera (ESP32-CAM/ESP32-S3)
+  // espwifi.startOTA();         // Enable OTA updates
+  // espwifi.startBMI160();      // Initialize BMI160 sensor
+  // espwifi.startLEDMatrix();   // Start LED matrix
+  // espwifi.startSpectralAnalyzer(); // Start spectral analyzer
 }
 
 void loop() {
   yield();
-  wifi.streamRSSI();
+  espwifi.streamRSSI();       // Stream RSSI data via WebSocket
+  
+  // Optional streaming (if enabled)
+  // espwifi.streamCamera();    // Stream camera frames (if enabled)
 }
 ```
 

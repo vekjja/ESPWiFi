@@ -61,7 +61,7 @@ ESPWiFi/
 ### Quick Start (Default Configuration)
 
 The simplest way to use ESPWiFi is with the default `start()` and `runSystem()` methods:
-
+###### ESPWiFi will generate a default `config.json` file if not present.
 ```cpp
 #include <ESPWiFi.h>
 
@@ -91,24 +91,7 @@ The `runSystem()` method handles:
 
 ### Manual Service Configuration
 
-For more control, you can start services individually:
-
-```cpp
-#include <ESPWiFi.h>
-
-ESPWiFi espwifi;
-
-void setup() {
-  espwifi.readConfig();      // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
-  espwifi.startAP();         // Explicitly Start Access Point Only
-  espwifi.srvGPIO();         // Register Only GPIO endpoints 
-}
-
-void loop() {
-  yield();                 // Allow other tasks to run
-  // Custom main loop logic here
-}
-```
+For more control, you can use `config.json` to configure the device and start services individually:
 
 ### Example `config.json`
 ```json
@@ -143,6 +126,24 @@ void loop() {
       "name": "RSSI"
     }
   ]
+}
+```
+
+### Example Firmware Usage
+```cpp
+#include <ESPWiFi.h>
+
+ESPWiFi espwifi;
+
+void setup() {
+  espwifi.readConfig();      // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
+  espwifi.startAP();         // Explicitly Start Access Point Only
+  espwifi.srvGPIO();         // Register Only GPIO endpoints 
+}
+
+void loop() {
+  yield();                 // Allow other tasks to run
+  // Custom main loop logic here
 }
 ```
 

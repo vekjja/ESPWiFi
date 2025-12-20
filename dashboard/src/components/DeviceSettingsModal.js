@@ -24,6 +24,9 @@ export default function DeviceSettingsModal({
 }) {
   const [activeTab, setActiveTab] = useState(0);
 
+  // Check if OTA is enabled
+  const otaEnabled = config?.ota?.enabled !== false;
+
   // Network settings state
   const [ssid, setSsid] = useState("");
   const [mdns, setMdns] = useState(config?.["mdns"] || "");
@@ -164,12 +167,23 @@ export default function DeviceSettingsModal({
   };
 
   const handleTabChange = (event, newValue) => {
+    // Prevent switching to OTA tab if OTA is disabled
+    if (newValue === 3 && !otaEnabled) {
+      return;
+    }
     setActiveTab(newValue);
     // Fetch device info when switching to Info tab
     if (newValue === 0) {
       fetchDeviceInfo();
     }
   };
+
+  // Reset activeTab if OTA is disabled and we're on the OTA tab
+  useEffect(() => {
+    if (activeTab === 3 && !otaEnabled) {
+      setActiveTab(0);
+    }
+  }, [otaEnabled, activeTab]);
 
   // Fetch device info when Info tab is first rendered
   React.useEffect(() => {
@@ -346,7 +360,7 @@ export default function DeviceSettingsModal({
           <Tab label="Device" />
           <Tab label="Network" />
           <Tab label="JSON" />
-          <Tab label="Updates" />
+          {otaEnabled && <Tab label="Updates" />}
         </Tabs>
       </Box>
 
@@ -389,9 +403,11 @@ export default function DeviceSettingsModal({
         />
       </TabPanel>
 
-      <TabPanel value={activeTab} index={3}>
-        <DeviceSettingsOTATab config={config} />
-      </TabPanel>
+      {otaEnabled && (
+        <TabPanel value={activeTab} index={3}>
+          <DeviceSettingsOTATab config={config} />
+        </TabPanel>
+      )}
     </SettingsModal>
   );
 }

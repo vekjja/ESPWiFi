@@ -1,17 +1,10 @@
 #ifndef ESPWiFi_LOG
 #define ESPWiFi_LOG
 
-// Platform-specific includes
-#ifdef ESP8266
-#include <FS.h>
-#include <LittleFS.h>
-#include <SD.h>
-#elif defined(ESP32)
 #include <FS.h>
 #include <LittleFS.h>
 #include <SD.h>
 #include <SPI.h>
-#endif
 
 #include "ESPWiFi.h"
 #include <stdarg.h>

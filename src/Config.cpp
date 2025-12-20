@@ -71,24 +71,25 @@ void ESPWiFi::handleConfig() {
 
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
-  String hostname;
-
-#ifdef ESP8266
-  hostname = String(WiFi.hostname());
-#else
-  hostname = String(WiFi.getHostname());
-#endif
 
   defaultConfig["mode"] = "accessPoint";
   defaultConfig["mdns"] = "ESPWiFi";
 
+  // Access Point
+  String hostname = String(WiFi.getHostname());
   defaultConfig["ap"]["ssid"] = "ESPWiFi-" + hostname;
   defaultConfig["ap"]["password"] = "abcd1234";
 
+  // WiFi Client
   defaultConfig["client"]["ssid"] = "";
   defaultConfig["client"]["password"] = "";
 
-  // Camera settings
+// Camera
+#ifdef ESPWiFi_CAMERA_INSTALLED
+  defaultConfig["camera"]["installed"] = true;
+#else
+  defaultConfig["camera"]["installed"] = false;
+#endif
   defaultConfig["camera"]["enabled"] = false;
   defaultConfig["camera"]["frameRate"] = 10;
   defaultConfig["camera"]["rotation"] = 0;
@@ -103,18 +104,11 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["awb_gain"] = 1;
   defaultConfig["camera"]["wb_mode"] = 0;
 
-  // RSSI settings - always enabled
+  // RSSI - always enabled
   defaultConfig["rssi"]["displayMode"] = "numbers";
 
-  // SD Card settings - default to disabled to prevent errors if no SD card is
-  // connected
+  // SD Card - default: disabled
   defaultConfig["sd"]["enabled"] = false;
-
-#ifdef ESPWiFi_CAMERA_INSTALLED
-  defaultConfig["camera"]["installed"] = true;
-#else
-  defaultConfig["camera"]["installed"] = false;
-#endif
 
   return defaultConfig;
 }

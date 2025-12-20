@@ -22,10 +22,6 @@ void ESPWiFi::runSystem() {
     streamCamera();
   }
 #endif
-
-#ifdef ESP8266
-  updateMDNS();
-#endif
 }
 
 #endif

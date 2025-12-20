@@ -6,19 +6,13 @@
 #include <AsyncJson.h>
 #include <AsyncWebSocket.h>
 #include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
 #include <IntervalTimer.h>
 #include <LittleFS.h>
 #include <SD.h>
 #include <Update.h>
-#include <WiFiClient.h>
-
-#ifdef ESP8266
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#elif defined(ESP32)
-#include <ESPmDNS.h>
 #include <WiFi.h>
-#endif
+#include <WiFiClient.h>
 
 #ifdef ESPWiFi_CAMERA_INSTALLED
 #include <esp_camera.h>
@@ -105,9 +99,6 @@ public:
 
   // mDNS
   void startMDNS();
-#ifdef ESP8266
-  void updateMDNS();
-#endif
 
   // WebServer
   void srvAll();
@@ -180,11 +171,11 @@ public:
   void handleOTAFileUpload(AsyncWebServerRequest *request, String filename,
                            size_t index, uint8_t *data, size_t len, bool final);
   void resetOTAState();
-  // OTA state variables (externally accessible)
   bool otaInProgress;
   size_t otaCurrentSize;
   size_t otaTotalSize;
   String otaErrorString;
+  String otaMD5Hash;
 };
 
 #endif // ESPWiFi

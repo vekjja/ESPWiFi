@@ -5,14 +5,8 @@
 #include <WiFiClient.h>
 
 #include "ESPWiFi.h"
-
-#ifdef ESP8266
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#else
 #include <ESPmDNS.h>
 #include <WiFi.h>
-#endif
 
 void ESPWiFi::startWiFi() {
   if (config["mode"].isNull()) {
@@ -105,12 +99,7 @@ void ESPWiFi::startAP() {
     readConfig();
   }
 
-  String hostname;
-#ifdef ESP8266
-  hostname = String(WiFi.hostname());
-#else
-  hostname = String(WiFi.getHostname());
-#endif
+  String hostname = String(WiFi.getHostname());
 
   String ssid = config["ap"]["ssid"].as<String>() + "-" + hostname;
   String password = config["ap"]["password"];
@@ -149,18 +138,5 @@ void ESPWiFi::startMDNS() {
     log("\tDomain Name: " + domain + ".local");
   }
 }
-
-#ifdef ESP8266
-void ESPWiFi::updateMDNS() {
-  if (config["mdns"].isNull()) {
-    readConfig();
-  }
-
-  static IntervalTimer mDNSUpdateTimer(1000);
-  if (mDNSUpdateTimer.shouldRun()) {
-    MDNS.update();
-  }
-}
-#endif
 
 #endif // ESPWiFi_WIFI

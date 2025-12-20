@@ -8,7 +8,8 @@ void ESPWiFi::addCORS(AsyncWebServerResponse *response) {
   response->addHeader("Access-Control-Allow-Origin", "*");
   response->addHeader("Access-Control-Allow-Methods",
                       "GET, POST, OPTIONS, PUT, DELETE");
-  response->addHeader("Access-Control-Allow-Headers", "Content-Type");
+  response->addHeader("Access-Control-Allow-Headers",
+                      "Content-Type, Authorization");
 }
 
 void ESPWiFi::handleCorsPreflight(AsyncWebServerRequest *request) {
@@ -48,6 +49,10 @@ void ESPWiFi::srvRoot() {
   initWebServer();
   // Serve index.html at root
   webServer->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     if (LittleFS.exists("/index.html")) {
       AsyncWebServerResponse *response =
           request->beginResponse(LittleFS, "/index.html", "text/html");
@@ -74,6 +79,10 @@ void ESPWiFi::srvRoot() {
 void ESPWiFi::srvRestart() {
   initWebServer();
   webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     AsyncWebServerResponse *response =
         request->beginResponse(200, "text/plain", "Restarting...");
     addCORS(response);
@@ -87,6 +96,10 @@ void ESPWiFi::srvInfo() {
   initWebServer();
   // Device info endpoint
   webServer->on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     JsonDocument jsonDoc;
     jsonDoc["uptime"] = millis() / 1000;
     jsonDoc["ip"] = WiFi.localIP().toString();
@@ -132,7 +145,115 @@ void ESPWiFi::srvInfo() {
   });
 }
 
+bool ESPWiFi::authEnabled() { return config["auth"]["enabled"].as<bool>(); }
+
+String ESPWiFi::generateToken() {
+  // Generate a simple token from MAC address + timestamp
+  // In production, you might want a more secure token generation
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  unsigned long now = millis();
+  return mac + String(now, HEX);
+}
+
+bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
+  if (!authEnabled()) {
+    return true; // Auth disabled, allow all
+  }
+
+  // Check for Authorization header
+  if (!request->hasHeader("Authorization")) {
+    return false;
+  }
+
+  const AsyncWebHeader *authHeader = request->getHeader("Authorization");
+  String authValue = authHeader->value();
+
+  // Check if it's a Bearer token
+  if (!authValue.startsWith("Bearer ")) {
+    return false;
+  }
+
+  // Extract token
+  String token = authValue.substring(7); // Remove "Bearer "
+  String expectedToken = config["auth"]["token"].as<String>();
+
+  // Compare tokens
+  return token == expectedToken && expectedToken.length() > 0;
+}
+
+void ESPWiFi::srvAuth() {
+  initWebServer();
+
+  // Login endpoint - no auth required
+  webServer->on(
+      "/api/auth/login", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
+      "/api/auth/login",
+      [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        JsonObject reqJson = json.as<JsonObject>();
+        String username = reqJson["username"] | "";
+        String password = reqJson["password"] | "";
+
+        // Check if auth is enabled
+        if (!authEnabled()) {
+          sendJsonResponse(request, 200,
+                           "{\"token\":\"\",\"message\":\"Auth disabled\"}");
+          return;
+        }
+
+        // Verify username
+        String expectedUsername = config["auth"]["username"].as<String>();
+        if (username != expectedUsername) {
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid username\"}");
+          return;
+        }
+
+        // Verify password - only check if password matches OR expectedPassword
+        // is empty
+        String expectedPassword = config["auth"]["password"].as<String>();
+        if (password != expectedPassword && expectedPassword.length() > 0) {
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid password\"}");
+          return;
+        }
+
+        // Generate or get existing token
+        String token = config["auth"]["token"].as<String>();
+        if (token.length() == 0) {
+          token = generateToken();
+          config["auth"]["token"] = token;
+          saveConfig();
+        }
+
+        String response = "{\"token\":\"" + token + "\"}";
+        sendJsonResponse(request, 200, response);
+      }));
+
+  // Logout endpoint - invalidates token
+  webServer->on(
+      "/api/auth/logout", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->on(
+      "/api/auth/logout", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
+
+        // Invalidate token by generating a new one
+        String newToken = generateToken();
+        config["auth"]["token"] = newToken;
+        saveConfig();
+
+        sendJsonResponse(request, 200, "{\"message\":\"Logged out\"}");
+      });
+}
+
 void ESPWiFi::srvAll() {
+  srvAuth(); // Auth endpoints must be registered first
   srvRoot();
   srvOTA();
   srvInfo();

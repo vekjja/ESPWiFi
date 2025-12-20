@@ -14,6 +14,10 @@ void ESPWiFi::srvGPIO() {
   // JSON POST handler
   webServer->addHandler(new AsyncCallbackJsonWebHandler(
       "/gpio", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         JsonObject reqJson = json.as<JsonObject>();
         AsyncWebServerResponse *response = nullptr;
         int pinNum = reqJson["num"] | -1;

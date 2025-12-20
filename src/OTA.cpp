@@ -313,6 +313,10 @@ void ESPWiFi::srvOTA() {
           handleCorsPreflight(request);
           return;
         }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
         JsonDocument jsonDoc;
         jsonDoc["firmware_size"] = ESP.getSketchSize();
@@ -345,6 +349,10 @@ void ESPWiFi::srvOTA() {
           handleCorsPreflight(request);
           return;
         }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
         JsonDocument jsonDoc;
         jsonDoc["ota_enabled"] = isOTAEnabled();
@@ -371,6 +379,10 @@ void ESPWiFi::srvOTA() {
         // Handle CORS preflight requests
         if (request->method() == HTTP_OPTIONS) {
           handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
           return;
         }
 
@@ -437,17 +449,21 @@ void ESPWiFi::srvOTA() {
       });
 
   // API endpoint for resetting OTA state
-  webServer->on("/api/ota/reset", HTTP_POST,
-                [this](AsyncWebServerRequest *request) {
-                  // Handle CORS preflight requests
-                  if (request->method() == HTTP_OPTIONS) {
-                    handleCorsPreflight(request);
-                    return;
-                  }
+  webServer->on(
+      "/api/ota/reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
-                  resetOTAState();
-                  sendJsonResponse(request, 200, "{\"success\":true}");
-                });
+        resetOTAState();
+        sendJsonResponse(request, 200, "{\"success\":true}");
+      });
 
   // API endpoint for firmware upload using OTA pattern
   webServer->on(
@@ -456,6 +472,10 @@ void ESPWiFi::srvOTA() {
         // Handle CORS preflight requests
         if (request->method() == HTTP_OPTIONS) {
           handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
           return;
         }
         // This will be handled by the upload handler
@@ -474,6 +494,10 @@ void ESPWiFi::srvOTA() {
           handleCorsPreflight(request);
           return;
         }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         // This will be handled by the upload handler
       },
       [this](AsyncWebServerRequest *request, String filename, size_t index,
@@ -483,16 +507,28 @@ void ESPWiFi::srvOTA() {
 
   // Legacy endpoints for backward compatibility
   webServer->on("/ota/start", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     handleOTAStart(request);
   });
 
   webServer->on("/ota/reset", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     resetOTAState();
     request->send(200, "text/plain", "OTA state reset");
   });
 
   webServer->on(
       "/ota/progress", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         JsonDocument jsonDoc;
         jsonDoc["in_progress"] = this->otaInProgress;
         jsonDoc["current_size"] = this->otaCurrentSize;
@@ -513,14 +549,26 @@ void ESPWiFi::srvOTA() {
       });
 
   webServer->on(
-      "/ota/upload", HTTP_POST, [this](AsyncWebServerRequest *request) {},
+      "/ota/upload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
+      },
       [this](AsyncWebServerRequest *request, String filename, size_t index,
              uint8_t *data, size_t len, bool final) {
         handleOTAUpdate(request, filename, index, data, len, final);
       });
 
   webServer->on(
-      "/ota/fsupload", HTTP_POST, [this](AsyncWebServerRequest *request) {},
+      "/ota/fsupload", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
+      },
       [this](AsyncWebServerRequest *request, String filename, size_t index,
              uint8_t *data, size_t len, bool final) {
         handleOTAFileUpload(request, filename, index, data, len, final);

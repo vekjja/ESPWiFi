@@ -17,7 +17,7 @@ void ESPWiFi::runSystem() {
   yield();
   streamRSSI();
 
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
   if (config["camera"]["enabled"]) {
     streamCamera();
   }

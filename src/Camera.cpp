@@ -1,4 +1,4 @@
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
 
 #ifndef ESPWiFi_CAMERA
 #define ESPWiFi_CAMERA
@@ -221,6 +221,10 @@ void ESPWiFi::startCamera() {
   initWebServer();
   webServer->on(
       "/camera/snapshot", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         if (!lfs) {
           initLittleFS();
           if (!config.isNull() && config["sd"]["enabled"] == true) {
@@ -477,4 +481,4 @@ void ESPWiFi::cameraConfigHandler() {
 }
 
 #endif // ESPWiFi_CAMERA
-#endif // ESPWiFi_CAMERA_INSTALLED
+#endif // ESPWiFi_CAMERA

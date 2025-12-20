@@ -263,7 +263,12 @@ void ESPWiFi::srvFiles() {
       return;
     }
 
+    // Check auth for all file requests (except login endpoint)
     String path = request->url();
+    if (!path.startsWith("/api/auth/") && !authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
 
     // Check for filesystem prefix (e.g., /sd/path/to/file or
     // /lfs/path/to/file)
@@ -316,6 +321,11 @@ void ESPWiFi::srvFiles() {
     // Handle CORS preflight requests
     if (request->method() == HTTP_OPTIONS) {
       handleCorsPreflight(request);
+      return;
+    }
+
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
       return;
     }
 
@@ -388,38 +398,51 @@ void ESPWiFi::srvFiles() {
   });
 
   // API endpoint for storage information
-  webServer->on("/api/storage", HTTP_GET,
-                [this](AsyncWebServerRequest *request) {
-                  // Handle CORS preflight requests
-                  if (request->method() == HTTP_OPTIONS) {
-                    handleCorsPreflight(request);
-                    return;
-                  }
+  webServer->on(
+      "/api/storage", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        // Handle CORS preflight requests
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
 
-                  String fsParam = "lfs";
-                  if (request->hasParam("fs")) {
-                    fsParam = request->getParam("fs")->value();
-                  }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
-                  size_t totalBytes, usedBytes, freeBytes;
-                  getStorageInfo(fsParam, totalBytes, usedBytes, freeBytes);
+        String fsParam = "lfs";
+        if (request->hasParam("fs")) {
+          fsParam = request->getParam("fs")->value();
+        }
 
-                  // Create JSON response
-                  JsonDocument jsonDoc;
-                  jsonDoc["total"] = totalBytes;
-                  jsonDoc["used"] = usedBytes;
-                  jsonDoc["free"] = freeBytes;
-                  jsonDoc["filesystem"] = fsParam;
+        size_t totalBytes, usedBytes, freeBytes;
+        getStorageInfo(fsParam, totalBytes, usedBytes, freeBytes);
 
-                  String jsonResponse;
-                  serializeJson(jsonDoc, jsonResponse);
-                  sendJsonResponse(request, 200, jsonResponse);
-                });
+        // Create JSON response
+        JsonDocument jsonDoc;
+        jsonDoc["total"] = totalBytes;
+        jsonDoc["used"] = usedBytes;
+        jsonDoc["free"] = freeBytes;
+        jsonDoc["filesystem"] = fsParam;
+
+        String jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+        sendJsonResponse(request, 200, jsonResponse);
+      });
 
   // API endpoint for creating directories
   webServer->on(
       "/api/files/mkdir", HTTP_POST,
       [this](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+          handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         // Defer response until body is received
       },
       NULL,
@@ -490,6 +513,10 @@ void ESPWiFi::srvFiles() {
           handleCorsPreflight(request);
           return;
         }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
         // Get parameters from URL
         String fsParam = "";
@@ -544,6 +571,10 @@ void ESPWiFi::srvFiles() {
       "/api/files/delete", HTTP_POST, [this](AsyncWebServerRequest *request) {
         if (request->method() == HTTP_OPTIONS) {
           handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
           return;
         }
 
@@ -655,6 +686,10 @@ void ESPWiFi::srvFiles() {
       [this](AsyncWebServerRequest *request) {
         if (request->method() == HTTP_OPTIONS) {
           handleCorsPreflight(request);
+          return;
+        }
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
           return;
         }
         // This will be handled by the upload handler

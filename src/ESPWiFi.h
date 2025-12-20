@@ -14,7 +14,7 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
 #include <esp_camera.h>
 #endif
 
@@ -109,6 +109,7 @@ public:
   void srvFiles();
   void srvConfig();
   void srvRestart();
+  void srvAuth();
   void initWebServer();
   void startWebServer();
   bool webServerStarted = false;
@@ -116,9 +117,12 @@ public:
   void handleCorsPreflight(AsyncWebServerRequest *request);
   void sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
                         const String &jsonBody);
+  bool authorized(AsyncWebServerRequest *request);
+  String generateToken();
+  bool authEnabled();
 
   // Camera
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
   camera_config_t camConfig;
   WebSocket *camSoc = nullptr;
   bool cameraOperationInProgress = false;

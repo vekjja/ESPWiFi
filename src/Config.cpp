@@ -64,7 +64,7 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
 }
 
 void ESPWiFi::handleConfig() {
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
   cameraConfigHandler();
 #else
   config["camera"]["enabled"] = false;
@@ -88,7 +88,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["client"]["password"] = "";
 
 // Camera
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA
   defaultConfig["camera"]["installed"] = true;
 #else
   defaultConfig["camera"]["installed"] = false;
@@ -116,6 +116,12 @@ JsonDocument ESPWiFi::defaultConfig() {
   // OTA - based on partition table
   defaultConfig["ota"]["enabled"] = isOTAEnabled();
 
+  // Auth
+  defaultConfig["auth"]["token"] = "";
+  defaultConfig["auth"]["enabled"] = false;
+  defaultConfig["auth"]["password"] = "admin";
+  defaultConfig["auth"]["username"] = "admin";
+
   return defaultConfig;
 }
 
@@ -128,6 +134,10 @@ void ESPWiFi::srvConfig() {
       [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
 
   webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
     String responseStr;
     serializeJson(config, responseStr);
     AsyncWebServerResponse *response =
@@ -138,6 +148,10 @@ void ESPWiFi::srvConfig() {
 
   webServer->addHandler(new AsyncCallbackJsonWebHandler(
       "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
         if (json.isNull()) {
           AsyncWebServerResponse *response = request->beginResponse(
               400, "application/json", "{\"error\":\"EmptyInput\"}");

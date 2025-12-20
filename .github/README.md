@@ -72,7 +72,7 @@ void setup() {
 }
 
 void loop() {
-  espwifi.runSystem();  // Handles RSSI streaming and camera (if enabled)
+  espwifi.runSystem();  // Handles main system loop, e.g. webserver, websockets, etc.
 }
 ```
 
@@ -105,8 +105,8 @@ void setup() {
 }
 
 void loop() {
-  yield();                    // Allow other tasks to run
-  // Your main loop code here
+  yield();                 // Allow other tasks to run
+  // Main loop code here
 }
 ```
 

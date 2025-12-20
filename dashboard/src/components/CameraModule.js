@@ -38,6 +38,7 @@ export default function CameraModule({
   const wsRef = useRef(null);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
+  const isMountedRef = useRef(true);
 
   // Function to check if camera URL is for a remote device
   const isRemoteCamera = () => {
@@ -79,6 +80,9 @@ export default function CameraModule({
 
   // Function to poll remote camera status
   const pollRemoteCameraStatus = async () => {
+    // Don't poll if component is unmounted
+    if (!isMountedRef.current) return;
+
     const remoteConfigUrl = getRemoteConfigUrl();
     if (!remoteConfigUrl) return;
 
@@ -94,6 +98,9 @@ export default function CameraModule({
         })
       );
 
+      // Check if still mounted before updating state
+      if (!isMountedRef.current) return;
+
       if (response.ok) {
         const data = await response.json();
         setCameraStatus(data.camera?.enabled ? "enabled" : "disabled");
@@ -101,13 +108,19 @@ export default function CameraModule({
         setCameraStatus("unknown");
       }
     } catch (error) {
-      console.error("Error polling remote camera status:", error);
-      setCameraStatus("unknown");
+      // Only log error if component is still mounted
+      if (isMountedRef.current) {
+        console.error("Error polling remote camera status:", error);
+        setCameraStatus("unknown");
+      }
     }
   };
 
   // Function to update camera status based on global config and device online status
   const updateCameraStatus = () => {
+    // Don't update if component is unmounted
+    if (!isMountedRef.current) return;
+
     if (isRemoteCamera()) {
       // For remote cameras, poll their status
       pollRemoteCameraStatus();
@@ -191,7 +204,10 @@ export default function CameraModule({
 
     // Set up polling every 10 seconds for remote cameras (frequent but smart)
     const pollInterval = setInterval(() => {
-      updateCameraStatus();
+      // Only poll if component is still mounted
+      if (isMountedRef.current) {
+        updateCameraStatus();
+      }
     }, 10000);
 
     // Cleanup interval on unmount
@@ -396,6 +412,9 @@ export default function CameraModule({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Mark component as unmounted to prevent further API calls
+      isMountedRef.current = false;
+
       // Clean up object URL
       if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
         URL.revokeObjectURL(imageUrlRef.current);

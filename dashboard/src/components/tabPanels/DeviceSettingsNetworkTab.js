@@ -91,7 +91,6 @@ export default function DeviceSettingsNetworkTab({
         {/* WiFi Client Settings */}
         <Box
           sx={{
-            order: mode === "client" ? 1 : 2,
             border: mode === "client" ? 2 : 2,
             borderColor: mode === "client" ? "primary.main" : "transparent",
             borderRadius: 1,
@@ -143,7 +142,6 @@ export default function DeviceSettingsNetworkTab({
         <Box
           sx={{
             marginTop: 2,
-            order: mode === "ap" ? 1 : 2,
             border: mode === "ap" ? 2 : 2,
             borderColor: mode === "ap" ? "primary.main" : "transparent",
             borderRadius: 1,

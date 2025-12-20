@@ -3,6 +3,7 @@ import { Tabs, Tab, Box, useTheme, useMediaQuery } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
+import DescriptionIcon from "@mui/icons-material/Description";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
@@ -286,6 +287,13 @@ export default function DeviceSettingsModal({
     window.location.reload();
   };
 
+  const handleViewLogs = () => {
+    // Try SD card first (preferred), then LittleFS
+    const apiUrl = config?.apiURL || buildApiUrl("");
+    // Open log file (tries SD card first, user can manually try /lfs/log if needed)
+    window.open(`${apiUrl}/sd/log`, "_blank");
+  };
+
   // JSON editing handlers
   const handleJsonSave = () => {
     try {
@@ -311,9 +319,14 @@ export default function DeviceSettingsModal({
 
   // Determine which actions to show based on active tab
   const getActions = () => {
-    // Common buttons (restart and logout) - always shown on the right
+    // Common buttons (view logs, restart and logout) - always shown on the right
     const commonButtons = (
       <>
+        <IButton
+          Icon={DescriptionIcon}
+          onClick={handleViewLogs}
+          tooltip={"View Logs"}
+        />
         <IButton
           Icon={RestartIcon}
           onClick={handleRestart}

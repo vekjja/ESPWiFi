@@ -431,6 +431,7 @@ export default function DeviceSettingsModal({
           deviceInfo={deviceInfo}
           infoLoading={infoLoading}
           infoError={infoError}
+          mode={mode}
         />
       </TabPanel>
 

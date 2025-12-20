@@ -20,6 +20,7 @@ export default function DeviceSettingsInfoTab({
   deviceInfo,
   infoLoading,
   infoError,
+  mode,
 }) {
   if (infoLoading) {
     return (
@@ -109,44 +110,55 @@ export default function DeviceSettingsInfoTab({
                   {deviceInfo.mac || "N/A"}
                 </Typography>
               </Box>
-              {deviceInfo.client_ssid && (
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Connected Network:
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                    {deviceInfo.client_ssid}
-                  </Typography>
-                </Box>
+              {/* Client mode: show connected network and RSSI */}
+              {mode === "client" && deviceInfo.client_ssid && (
+                <>
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Connected Network:
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {deviceInfo.client_ssid}
+                    </Typography>
+                  </Box>
+                  {deviceInfo.rssi && (
+                    <Box
+                      sx={{ display: "flex", justifyContent: "space-between" }}
+                    >
+                      <Typography variant="body2" color="text.secondary">
+                        Signal Strength:
+                      </Typography>
+                      <Chip
+                        label={`${deviceInfo.rssi} dBm`}
+                        color={
+                          deviceInfo.rssi > -50
+                            ? "success"
+                            : deviceInfo.rssi > -70
+                            ? "warning"
+                            : "error"
+                        }
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </Box>
+                  )}
+                </>
               )}
-              {deviceInfo.rssi && (
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Signal Strength:
-                  </Typography>
-                  <Chip
-                    label={`${deviceInfo.rssi} dBm`}
-                    color={
-                      deviceInfo.rssi > -50
-                        ? "success"
-                        : deviceInfo.rssi > -70
-                        ? "warning"
-                        : "error"
-                    }
-                    sx={{ fontWeight: 600 }}
-                  />
-                </Box>
-              )}
-              {deviceInfo.ap_ssid && (
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Access Point:
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                    {deviceInfo.ap_ssid}
-                  </Typography>
-                </Box>
-              )}
+              {/* AP mode: show access point name */}
+              {(mode === "accessPoint" || mode === "ap") &&
+                deviceInfo.ap_ssid && (
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Access Point:
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {deviceInfo.ap_ssid}
+                    </Typography>
+                  </Box>
+                )}
             </Box>
           </CardContent>
         </Card>

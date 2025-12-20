@@ -91,18 +91,25 @@ void ESPWiFi::srvInfo() {
     jsonDoc["uptime"] = millis() / 1000;
     jsonDoc["ip"] = WiFi.localIP().toString();
     jsonDoc["mac"] = WiFi.macAddress();
-    jsonDoc["ap_ssid"] = WiFi.softAPSSID();
-    if (WiFi.isConnected()) {
-      jsonDoc["client_ssid"] = WiFi.SSID();
-      jsonDoc["rssi"] = WiFi.RSSI();
-    }
-    jsonDoc["hostname"] = WiFi.getHostname();
+
+    // Construct AP SSID from config the same way as when starting AP
+    String hostname = String(WiFi.getHostname());
+    jsonDoc["hostname"] = hostname;
+    jsonDoc["ap_ssid"] = config["ap"]["ssid"].as<String>() + "-" + hostname;
     jsonDoc["mdns"] = config["mdns"].as<String>() + ".local";
     jsonDoc["chip"] = String(ESP.getChipModel());
+#ifdef ARDUINO_BOARD
+    jsonDoc["board"] = String(ARDUINO_BOARD);
+#endif
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
     jsonDoc["total_heap"] = ESP.getHeapSize();
     jsonDoc["used_heap"] = ESP.getHeapSize() - ESP.getFreeHeap();
+
+    if (WiFi.isConnected()) {
+      jsonDoc["client_ssid"] = WiFi.SSID();
+      jsonDoc["rssi"] = WiFi.RSSI();
+    }
 
     size_t totalBytes = LittleFS.totalBytes();
     size_t usedBytes = LittleFS.usedBytes();

@@ -6,8 +6,8 @@
 void ESPWiFi::readConfig() {
 
   initLittleFS();
-
   File file = LittleFS.open(configFile, "r");
+
   if (!file) {
     log("⚠️  Failed to open config file\nUsing default config");
     config = defaultConfig();

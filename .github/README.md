@@ -89,47 +89,40 @@ The `runSystem()` method handles:
 - RSSI streaming
 - Camera streaming (if enabled in config)
 
-### Manual Service Configuration
+### Manual Configuration
 
 For more control, you can use `config.json` to configure the device and start services individually:
 
 ### Example `config.json`
 ```json
 {
-  "mode": "client", // or "ap"
-  "mdns": "esp32",
-  "client": {
-    "ssid": "YourWiFi",
-    "password": "YourPassword"
-  },
-  "ap": {
-    "ssid": "ESPWiFi-AP",
-    "password": "abcd1234"
-  },
-  "auth": {
-    "enabled": false,
-    "username": "admin",
-    "password": "password"
-  },
-  "modules": [
-    {
-      "type": "pin",
-      "number": 5,
-      "mode": "out",
-      "state": "low",
-      "name": "LED"
+    "mode": "client",
+    "mdns": "ESPWiFi",
+    "client": {
+        "ssid": "YOUR_SSID",
+        "password": "YOUR_PASSWORD"
     },
-    {
-      "type": "webSocket",
-      "url": "/rssi",
-      "payload": "text",
-      "name": "RSSI"
-    }
-  ]
+    "ap": {
+        "ssid": "ESPWiFi",
+        "password": "espwifi123"
+    },
+    "auth": {
+        "enabled": true,
+        "username": "admin",
+        "password": "adminpassword"
+    },
+    "log": {
+        "enabled": true,
+        "level": "info"
+    },
+    "rssi": {
+        "displayMode": "icon"
+    },
+    "modules": []
 }
 ```
 
-### Example Firmware Usage
+### Example Custom Firmware Usage
 ```cpp
 #include <ESPWiFi.h>
 

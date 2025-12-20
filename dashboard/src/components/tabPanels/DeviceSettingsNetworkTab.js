@@ -81,82 +81,115 @@ export default function DeviceSettingsNetworkTab({
         />
       </FormControl>
 
-      {/* WiFi Client Settings */}
-      <Box sx={{ marginTop: 2 }}>
-        <h4 style={{ margin: "0 0 8px 0", color: "primary.secondary" }}>
-          WiFi Client Settings
-        </h4>
-        <FormControl fullWidth variant="outlined">
-          <TextField
-            label="Client SSID"
-            value={ssid}
-            onChange={handleSsidChange}
-            variant="outlined"
-            fullWidth
-          />
-          <TextField
-            type={showPassword ? "text" : "password"}
-            label="Client Password"
-            value={password}
-            onChange={handlePasswordChange}
-            variant="outlined"
-            fullWidth
-            sx={{ marginTop: 1 }}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={handleTogglePasswordVisibility}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </FormControl>
-      </Box>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          marginTop: 2,
+        }}
+      >
+        {/* WiFi Client Settings */}
+        <Box
+          sx={{
+            order: mode === "client" ? 1 : 2,
+            border: mode === "client" ? 2 : 2,
+            borderColor: mode === "client" ? "primary.main" : "transparent",
+            borderRadius: 1,
+            padding: 2,
+            opacity: mode === "client" ? 1 : 0.5,
+            transition: "border-color 0.3s ease, opacity 0.3s ease",
+          }}
+        >
+          <h4 style={{ margin: "0 0 8px 0", color: "primary.secondary" }}>
+            WiFi Client Settings
+          </h4>
+          <FormControl fullWidth variant="outlined">
+            <TextField
+              label="Client SSID"
+              value={ssid}
+              onChange={handleSsidChange}
+              variant="outlined"
+              fullWidth
+            />
+            <TextField
+              type={showPassword ? "text" : "password"}
+              label="Client Password"
+              value={password}
+              onChange={handlePasswordChange}
+              variant="outlined"
+              fullWidth
+              sx={{ marginTop: 1 }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={handleTogglePasswordVisibility}
+                      edge="end"
+                    >
+                      {showPassword ? (
+                        <VisibilityOffIcon />
+                      ) : (
+                        <VisibilityIcon />
+                      )}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </FormControl>
+        </Box>
 
-      {/* Access Point Settings */}
-      <Box sx={{ marginTop: 2 }}>
-        <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
-          Access Point Settings
-        </h4>
-        <FormControl fullWidth variant="outlined">
-          <TextField
-            label="AP SSID"
-            value={apSsid}
-            onChange={handleApSsidChange}
-            variant="outlined"
-            fullWidth
-          />
-          <TextField
-            type={showApPassword ? "text" : "password"}
-            label="AP Password"
-            value={apPassword}
-            onChange={handleApPasswordChange}
-            variant="outlined"
-            fullWidth
-            sx={{ marginTop: 1 }}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={handleToggleApPasswordVisibility}
-                    edge="end"
-                  >
-                    {showApPassword ? (
-                      <VisibilityOffIcon />
-                    ) : (
-                      <VisibilityIcon />
-                    )}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-        </FormControl>
+        {/* Access Point Settings */}
+        <Box
+          sx={{
+            marginTop: 2,
+            order: mode === "ap" ? 1 : 2,
+            border: mode === "ap" ? 2 : 2,
+            borderColor: mode === "ap" ? "primary.main" : "transparent",
+            borderRadius: 1,
+            padding: 2,
+            opacity: mode === "ap" ? 1 : 0.5,
+            transition: "border-color 0.3s ease, opacity 0.3s ease",
+          }}
+        >
+          <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
+            Access Point Settings
+          </h4>
+          <FormControl fullWidth variant="outlined">
+            <TextField
+              label="AP SSID"
+              value={apSsid}
+              onChange={handleApSsidChange}
+              variant="outlined"
+              fullWidth
+            />
+            <TextField
+              type={showApPassword ? "text" : "password"}
+              label="AP Password"
+              value={apPassword}
+              onChange={handleApPasswordChange}
+              variant="outlined"
+              fullWidth
+              sx={{ marginTop: 1 }}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={handleToggleApPasswordVisibility}
+                      edge="end"
+                    >
+                      {showApPassword ? (
+                        <VisibilityOffIcon />
+                      ) : (
+                        <VisibilityIcon />
+                      )}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </FormControl>
+        </Box>
       </Box>
     </>
   );

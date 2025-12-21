@@ -291,8 +291,7 @@ export default function DeviceSettingsModal({
   const handleViewLogs = () => {
     // Try SD card first (preferred), then LittleFS
     const apiUrl = config?.apiURL || buildApiUrl("");
-    // Open log file (tries SD card first, user can manually try /lfs/log if needed)
-    window.open(`${apiUrl}/sd/log`, "_blank");
+    window.open(`${apiUrl}/log`, "_blank");
   };
 
   // JSON editing handlers

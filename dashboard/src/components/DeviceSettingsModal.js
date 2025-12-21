@@ -275,9 +275,10 @@ export default function DeviceSettingsModal({
     });
 
     handleCloseModal();
+    // Wait longer for device to restart (ESP32 typically takes 2-4 seconds)
     setTimeout(() => {
       window.location.reload();
-    }, 1000);
+    }, 5000);
   };
 
   const handleLogout = () => {
@@ -411,8 +412,7 @@ export default function DeviceSettingsModal({
       }
       maxWidth={false}
       actions={getActions()}
-    >
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+      tabs={
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
@@ -437,66 +437,68 @@ export default function DeviceSettingsModal({
           <Tab label="JSON" />
           {otaEnabled && <Tab label="Update" />}
         </Tabs>
-      </Box>
-
-      <TabPanel value={activeTab} index={0}>
-        <DeviceSettingsInfoTab
-          deviceInfo={deviceInfo}
-          infoLoading={infoLoading}
-          infoError={infoError}
-          mode={mode}
-        />
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={1}>
-        <DeviceSettingsNetworkTab
-          ssid={ssid}
-          setSsid={setSsid}
-          password={password}
-          setPassword={setPassword}
-          apSsid={apSsid}
-          setApSsid={setApSsid}
-          apPassword={apPassword}
-          setApPassword={setApPassword}
-          mode={mode}
-          setMode={setMode}
-          mdns={mdns}
-          setMdns={setMdns}
-          showPassword={showPassword}
-          setShowPassword={setShowPassword}
-          showApPassword={showApPassword}
-          setShowApPassword={setShowApPassword}
-        />
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={2}>
-        <DeviceSettingsAuthTab
-          authEnabled={authEnabled}
-          setAuthEnabled={setAuthEnabled}
-          username={authUsername}
-          setUsername={setAuthUsername}
-          password={authPassword}
-          setPassword={setAuthPassword}
-          showPassword={showAuthPassword}
-          setShowPassword={setShowAuthPassword}
-        />
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={3}>
-        <DeviceSettingsJsonTab
-          jsonConfig={jsonConfig}
-          setJsonConfig={setJsonConfig}
-          jsonError={jsonError}
-          setJsonError={setJsonError}
-          isEditable={isEditable}
-        />
-      </TabPanel>
-
-      {otaEnabled && (
-        <TabPanel value={activeTab} index={4}>
-          <DeviceSettingsOTATab config={config} />
+      }
+    >
+      <Box>
+        <TabPanel value={activeTab} index={0}>
+          <DeviceSettingsInfoTab
+            deviceInfo={deviceInfo}
+            infoLoading={infoLoading}
+            infoError={infoError}
+            mode={mode}
+          />
         </TabPanel>
-      )}
+
+        <TabPanel value={activeTab} index={1}>
+          <DeviceSettingsNetworkTab
+            ssid={ssid}
+            setSsid={setSsid}
+            password={password}
+            setPassword={setPassword}
+            apSsid={apSsid}
+            setApSsid={setApSsid}
+            apPassword={apPassword}
+            setApPassword={setApPassword}
+            mode={mode}
+            setMode={setMode}
+            mdns={mdns}
+            setMdns={setMdns}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+            showApPassword={showApPassword}
+            setShowApPassword={setShowApPassword}
+          />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={2}>
+          <DeviceSettingsAuthTab
+            authEnabled={authEnabled}
+            setAuthEnabled={setAuthEnabled}
+            username={authUsername}
+            setUsername={setAuthUsername}
+            password={authPassword}
+            setPassword={setAuthPassword}
+            showPassword={showAuthPassword}
+            setShowPassword={setShowAuthPassword}
+          />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={3}>
+          <DeviceSettingsJsonTab
+            jsonConfig={jsonConfig}
+            setJsonConfig={setJsonConfig}
+            jsonError={jsonError}
+            setJsonError={setJsonError}
+            isEditable={isEditable}
+          />
+        </TabPanel>
+
+        {otaEnabled && (
+          <TabPanel value={activeTab} index={4}>
+            <DeviceSettingsOTATab config={config} />
+          </TabPanel>
+        )}
+      </Box>
     </SettingsModal>
   );
 }

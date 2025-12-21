@@ -61,7 +61,7 @@ export default function DeviceSettingsInfoTab({
     <Grid container spacing={2}>
       {/* Network Information */}
       <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
+        <Card sx={{ height: "100%", minHeight: 200 }}>
           <CardContent>
             <Typography
               variant="h6"
@@ -164,9 +164,97 @@ export default function DeviceSettingsInfoTab({
         </Card>
       </Grid>
 
+      {/* Memory Information */}
+      <Grid item xs={12} md={6}>
+        <Card sx={{ height: "100%", minHeight: 200 }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              <MemoryIcon color="primary" />
+              Memory Usage
+            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  Total Heap:
+                </Typography>
+                <Typography variant="body2">
+                  {deviceInfo.total_heap
+                    ? bytesToHumanReadable(deviceInfo.total_heap)
+                    : "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  Used:
+                </Typography>
+                <Typography variant="body2">
+                  {deviceInfo.used_heap
+                    ? bytesToHumanReadable(deviceInfo.used_heap)
+                    : "N/A"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                <Typography variant="body2" color="text.secondary">
+                  Free:
+                </Typography>
+                <Typography variant="body2">
+                  {deviceInfo.free_heap
+                    ? bytesToHumanReadable(deviceInfo.free_heap)
+                    : "N/A"}
+                </Typography>
+              </Box>
+              {deviceInfo.total_heap && deviceInfo.used_heap && (
+                <Box sx={{ mt: 1 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      mb: 0.5,
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Usage:
+                    </Typography>
+                    <Typography variant="body2">
+                      {Math.round(
+                        (deviceInfo.used_heap / deviceInfo.total_heap) * 100
+                      )}
+                      %
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      width: "100%",
+                      height: 8,
+                      backgroundColor: "grey.300",
+                      borderRadius: 1,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${
+                          (deviceInfo.used_heap / deviceInfo.total_heap) * 100
+                        }%`,
+                        height: "100%",
+                        backgroundColor: "primary.main",
+                      }}
+                    />
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+
       {/* LittleFS Storage Information */}
       <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
+        <Card sx={{ height: "100%", minHeight: 200 }}>
           <CardContent>
             <Typography
               variant="h6"
@@ -264,7 +352,7 @@ export default function DeviceSettingsInfoTab({
       {/* SD Card Storage Information */}
       {deviceInfo.sd_total && (
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: "100%", minHeight: 280 }}>
+          <Card sx={{ height: "100%", minHeight: 200 }}>
             <CardContent>
               <Typography
                 variant="h6"
@@ -357,97 +445,9 @@ export default function DeviceSettingsInfoTab({
         </Grid>
       )}
 
-      {/* Memory Information */}
-      <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
-          <CardContent>
-            <Typography
-              variant="h6"
-              gutterBottom
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
-            >
-              <MemoryIcon color="primary" />
-              Memory Usage
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Total Heap:
-                </Typography>
-                <Typography variant="body2">
-                  {deviceInfo.total_heap
-                    ? bytesToHumanReadable(deviceInfo.total_heap)
-                    : "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Used:
-                </Typography>
-                <Typography variant="body2">
-                  {deviceInfo.used_heap
-                    ? bytesToHumanReadable(deviceInfo.used_heap)
-                    : "N/A"}
-                </Typography>
-              </Box>
-              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography variant="body2" color="text.secondary">
-                  Free:
-                </Typography>
-                <Typography variant="body2">
-                  {deviceInfo.free_heap
-                    ? bytesToHumanReadable(deviceInfo.free_heap)
-                    : "N/A"}
-                </Typography>
-              </Box>
-              {deviceInfo.total_heap && deviceInfo.used_heap && (
-                <Box sx={{ mt: 1 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 0.5,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      Usage:
-                    </Typography>
-                    <Typography variant="body2">
-                      {Math.round(
-                        (deviceInfo.used_heap / deviceInfo.total_heap) * 100
-                      )}
-                      %
-                    </Typography>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: "100%",
-                      height: 8,
-                      backgroundColor: "grey.300",
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: `${
-                          (deviceInfo.used_heap / deviceInfo.total_heap) * 100
-                        }%`,
-                        height: "100%",
-                        backgroundColor: "primary.main",
-                      }}
-                    />
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-
       {/* Device Information */}
       <Grid item xs={12} md={6}>
-        <Card sx={{ height: "100%", minHeight: 280 }}>
+        <Card sx={{ height: "100%", minHeight: 200 }}>
           <CardContent>
             <Typography
               variant="h6"

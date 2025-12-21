@@ -191,23 +191,44 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       setCheckingAuth(true);
-      // If we have a token, try to fetch config to verify it's valid
-      if (isAuthenticated()) {
-        const result = await fetchConfig();
-        if (result) {
-          setAuthenticated(true);
+      setLoading(true);
+
+      // Small delay to ensure loading bar is visible
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Retry logic to handle device restarts
+      const maxRetries = 5;
+      const retryDelay = 1000; // 1 second between retries
+      let result = null;
+
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        // If we have a token, try to fetch config to verify it's valid
+        if (isAuthenticated()) {
+          result = await fetchConfig();
+          if (result) {
+            setAuthenticated(true);
+            break;
+          }
         } else {
-          setAuthenticated(false);
+          // No token, try to fetch config anyway (auth might be disabled)
+          result = await fetchConfig();
+          if (result) {
+            setAuthenticated(true);
+            break;
+          }
         }
-      } else {
-        // No token, try to fetch config anyway (auth might be disabled)
-        const result = await fetchConfig();
-        if (result) {
-          setAuthenticated(true);
-        } else {
-          setAuthenticated(false);
+
+        // If we didn't succeed and there are retries left, wait before retrying
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
       }
+
+      // If all retries failed, set authenticated to false
+      if (!result) {
+        setAuthenticated(false);
+      }
+
       setCheckingAuth(false);
       setLoading(false);
     };

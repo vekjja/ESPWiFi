@@ -15,6 +15,7 @@ export default function SettingsModal({
   title,
   children,
   actions,
+  tabs,
   maxWidth = "sm",
   fullWidth = true,
   disableEscapeKeyDown = false,
@@ -38,7 +39,7 @@ export default function SettingsModal({
           height: isMobile ? "auto" : "auto",
           minWidth: isMobile ? "90%" : maxWidth === false ? "650px" : "400px",
           maxWidth: isMobile ? "90%" : maxWidth === false ? "650px" : "600px",
-          maxHeight: isMobile ? "90%" : "80vh",
+          maxHeight: isMobile ? "90%" : "81vh",
           borderRadius: theme.shape.borderRadius,
           display: "flex",
           flexDirection: "column",
@@ -66,6 +67,17 @@ export default function SettingsModal({
       >
         {title}
       </DialogTitle>
+      {tabs && (
+        <Box
+          sx={{
+            borderBottom: 1,
+            borderColor: "divider",
+            px: isMobile ? 3 : 2,
+          }}
+        >
+          {tabs}
+        </Box>
+      )}
       <DialogContent
         sx={{
           flex: 1,

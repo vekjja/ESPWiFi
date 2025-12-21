@@ -7,6 +7,7 @@
 #include <CameraPins.h>
 #include <WebSocket.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <esp_camera.h>
 
 #include "ESPWiFi.h"
@@ -96,14 +97,145 @@ bool ESPWiFi::initCamera() {
   if (camConfig.pin_pwdn != -1) {
     pinMode(camConfig.pin_pwdn, OUTPUT);
     digitalWrite(camConfig.pin_pwdn, LOW);
+    delay(100); // Give camera more time to power up
   }
 
-  // Initialize the camera
-  esp_err_t err = esp_camera_init(&camConfig);
-  if (err != ESP_OK) {
+  // Reset the camera if RESET pin is defined
+  if (camConfig.pin_reset != -1) {
+    pinMode(camConfig.pin_reset, OUTPUT);
+    digitalWrite(camConfig.pin_reset, LOW);
+    delay(10);
+    digitalWrite(camConfig.pin_reset, HIGH);
+    delay(50); // Longer delay after reset
+  }
+
+  // Check I2C bus for camera sensor before initialization (quiet check)
+  // OV2640 typically at 0x30, OV5640/OV3660 at 0x3C, OV3660 sometimes at 0x60
+  Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
+  delay(50);
+
+  bool cameraDetected = false;
+  uint8_t cameraAddress = 0;
+  String cameraType = "Unknown";
+  if (checkI2CDevice(0x30)) {
+    logf("\tCamera detected on I2C at 0x30 (OV2640)\n");
+    cameraDetected = true;
+    cameraAddress = 0x30;
+    cameraType = "OV2640";
+  } else if (checkI2CDevice(0x3C)) {
+    logf("\tCamera detected on I2C at 0x3C (OV5640/OV3660)\n");
+    cameraDetected = true;
+    cameraAddress = 0x3C;
+    cameraType = "OV5640/OV3660";
+  } else if (checkI2CDevice(0x60)) {
+    logf("\tCamera detected on I2C at 0x60 (OV3660)\n");
+    cameraDetected = true;
+    cameraAddress = 0x60;
+    cameraType = "OV3660";
+  }
+  // Only log if camera is detected - no need to log "not detected" messages
+
+  delay(100);
+  yield();
+
+  // Try different combinations of XCLK frequencies and frame sizes
+  int xclkFreqs[] = {20000000, 16000000, 10000000};
+  framesize_t frameSizes[] = {FRAMESIZE_QQVGA, FRAMESIZE_QVGA, FRAMESIZE_CIF,
+                              FRAMESIZE_VGA};
+  const char *frameSizeNames[] = {"QQVGA", "QVGA", "CIF", "VGA"};
+  esp_err_t err = ESP_FAIL;
+  bool initSuccess = false;
+
+  // First try with original frame size settings
+  for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
+    camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
+    logf("\tTrying XCLK frequency: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
+         psramFound() ? "SVGA" : "QVGA");
+
+    delay(100);
+    yield();
+
+    err = esp_camera_init(&camConfig);
+    if (err == ESP_OK) {
+      logf("\tCamera initialized successfully with XCLK: %d Hz\n",
+           camConfig.xclk_freq_hz);
+      initSuccess = true;
+      break;
+    } else {
+      logf("\tCamera init failed with XCLK %d Hz, error: %d\n",
+           camConfig.xclk_freq_hz, err);
+      esp_camera_deinit();
+      delay(50);
+    }
+  }
+
+  // If that failed, try with smaller frame sizes
+  if (!initSuccess) {
+    log("📷 Trying smaller frame sizes...");
+    for (int sizeIdx = 0; sizeIdx < 4 && !initSuccess; sizeIdx++) {
+      camConfig.frame_size = frameSizes[sizeIdx];
+      if (psramFound()) {
+        camConfig.fb_location = CAMERA_FB_IN_PSRAM;
+        camConfig.fb_count = 2; // Reduce buffer count for smaller sizes
+      } else {
+        camConfig.fb_location = CAMERA_FB_IN_DRAM;
+        camConfig.fb_count = 1; // Minimal buffer for DRAM
+      }
+
+      for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
+        camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
+        logf("\tTrying XCLK: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
+             frameSizeNames[sizeIdx]);
+
+        delay(100);
+        yield();
+
+        err = esp_camera_init(&camConfig);
+        if (err == ESP_OK) {
+          logf("\tCamera initialized successfully!\n");
+          logf("\tXCLK: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
+               frameSizeNames[sizeIdx]);
+          initSuccess = true;
+          break;
+        } else {
+          logf("\tFailed - XCLK: %d Hz, Frame: %s, Error: %d\n",
+               camConfig.xclk_freq_hz, frameSizeNames[sizeIdx], err);
+          esp_camera_deinit();
+          delay(50);
+        }
+      }
+    }
+  }
+
+  if (!initSuccess) {
     logError("📷 Camera Init Failed: " + String(err));
+    logError("📷 Tried multiple XCLK frequencies and frame sizes");
+    if (cameraDetected) {
+      logError("📷 Camera detected on I2C but initialization failed");
+      logError("📷 I2C address: 0x" + String(cameraAddress, HEX) + " (" +
+               cameraType + ")");
+    } else {
+      logError("📷 Camera not detected on I2C bus - check connections");
+    }
     initInProgress = false;
     return false;
+  }
+
+  // Get sensor info after successful initialization
+  s = esp_camera_sensor_get();
+  if (s != NULL) {
+    logf("\tCamera sensor detected - ID: 0x%02X\n", s->id.PID);
+    if (s->id.PID == 0x26) {
+      log("\tSensor type: OV2640");
+    } else if (s->id.PID == 0x36) {
+      log("\tSensor type: OV3660");
+    } else if (s->id.PID == 0x56) {
+      log("\tSensor type: OV5640");
+    } else if (s->id.PID == 0x77) {
+      log("\tSensor type: OV7670");
+    } else {
+      logf("\tSensor type: Unknown (PID: 0x%02X)\n", s->id.PID);
+    }
   }
 
   // Set camera settings from config

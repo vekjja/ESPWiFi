@@ -18,9 +18,5 @@
     "log": {
         "enabled": true,
         "level": "info"
-    },
-    "rssi": {
-        "displayMode": "icon"
-    },
-    "modules": []
+    }
 }

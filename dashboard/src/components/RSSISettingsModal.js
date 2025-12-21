@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  FormControlLabel,
-  RadioGroup,
-  Radio,
-  Typography,
-  Box,
-} from "@mui/material";
+import { Typography, Box } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SettingsModal from "./SettingsModal";
 import { buildWebSocketUrl } from "../utils/apiUtils";
@@ -18,20 +12,9 @@ export default function RSSISettingsModal({
   onClose,
   onRSSIDataChange,
 }) {
-  // Remove internal modal state - use external open prop
-
-  // RSSI settings state (for modal editing)
-  const [displayMode, setDisplayMode] = useState("icon"); // "icon", "numbers"
-
   // RSSI data state
   const [rssiValue, setRssiValue] = useState(null);
   const wsRef = useRef(null);
-
-  useEffect(() => {
-    if (config?.rssi) {
-      setDisplayMode(config.rssi.displayMode || "icon");
-    }
-  }, [config]);
 
   // WebSocket connection for RSSI data - always connect
   useEffect(() => {
@@ -146,29 +129,6 @@ export default function RSSISettingsModal({
     if (onClose) onClose();
   };
 
-  // RSSI is always enabled, no need for enable/disable handler
-
-  const handleDisplayModeChange = (event) => {
-    const newDisplayMode = event.target.value;
-    setDisplayMode(newDisplayMode);
-
-    // Apply changes immediately
-    const configToSave = {
-      ...config,
-      rssi: {
-        displayMode: newDisplayMode,
-      },
-    };
-
-    // Save to device immediately
-    saveConfigToDevice(configToSave);
-
-    // Close modal after selection
-    handleCloseModal();
-  };
-
-  // No save button needed - changes apply immediately
-
   return (
     <SettingsModal
       open={open}
@@ -189,32 +149,6 @@ export default function RSSISettingsModal({
       }
       actions={null}
     >
-      <Box sx={{ marginTop: 1 }}>
-        <RadioGroup
-          value={displayMode}
-          onChange={handleDisplayModeChange}
-          sx={{
-            "& .MuiRadio-root": {
-              color: "primary.main",
-            },
-            "& .MuiRadio-root.Mui-checked": {
-              color: "primary.main",
-            },
-          }}
-        >
-          <FormControlLabel
-            value="icon"
-            control={<Radio />}
-            label="Icon (Signal Bars)"
-          />
-          <FormControlLabel
-            value="numbers"
-            control={<Radio />}
-            label="Numbers (dBm)"
-          />
-        </RadioGroup>
-      </Box>
-
       <Box
         sx={{
           marginTop: 2,

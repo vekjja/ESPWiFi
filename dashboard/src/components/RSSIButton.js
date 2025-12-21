@@ -14,7 +14,6 @@ export default function RSSIButton({
   saveConfig,
   saveConfigToDevice,
   onRSSIDataChange,
-  rssiDisplayMode,
   getRSSIColor,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -194,9 +193,7 @@ export default function RSSIButton({
         },
       }}
     >
-      {rssiDisplayMode === "numbers" && rssiValue !== null
-        ? rssiValue
-        : getRSSIIconComponent(rssiValue)}
+      {getRSSIIconComponent(rssiValue)}
     </Fab>
   );
 

@@ -109,9 +109,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["awb_gain"] = 1;
   defaultConfig["camera"]["wb_mode"] = 0;
 
-  // RSSI - always enabled
-  defaultConfig["rssi"]["displayMode"] = "icon";
-
   // SD Card - default: disabled
   defaultConfig["sd"]["enabled"] = false;
 
@@ -127,6 +124,13 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Bluetooth
   defaultConfig["bluetooth"]["address"] = "";
   defaultConfig["bluetooth"]["enabled"] = false;
+// Map ESPWiFi_* flags to CONFIG_* for ESP-IDF compatibility
+#if defined(ESPWiFi_BT_ENABLED) && !defined(CONFIG_BT_ENABLED)
+#define CONFIG_BT_ENABLED 1
+#endif
+#if defined(ESPWiFi_BLUEDROID_ENABLED) && !defined(CONFIG_BLUEDROID_ENABLED)
+#define CONFIG_BLUEDROID_ENABLED 1
+#endif
 #if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BLUEDROID_ENABLED) &&         \
     !defined(CONFIG_IDF_TARGET_ESP32C3)
   defaultConfig["bluetooth"]["installed"] = true;

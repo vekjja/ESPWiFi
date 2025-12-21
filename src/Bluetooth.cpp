@@ -5,6 +5,13 @@
 
 // ESP32-C3 only supports BLE, not Bluetooth Classic (SPP)
 // BluetoothSerial requires Bluetooth Classic support
+// Map ESPWiFi_* flags to CONFIG_* for ESP-IDF compatibility
+#if defined(ESPWiFi_BT_ENABLED) && !defined(CONFIG_BT_ENABLED)
+#define CONFIG_BT_ENABLED 1
+#endif
+#if defined(ESPWiFi_BLUEDROID_ENABLED) && !defined(CONFIG_BLUEDROID_ENABLED)
+#define CONFIG_BLUEDROID_ENABLED 1
+#endif
 #if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BLUEDROID_ENABLED) &&         \
     !defined(CONFIG_IDF_TARGET_ESP32C3)
 #include "BluetoothSerial.h"

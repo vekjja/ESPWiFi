@@ -18,7 +18,6 @@ export default function SettingsButtonBar({
   saveConfig,
   saveConfigToDevice,
   onRSSIDataChange,
-  rssiDisplayMode,
   getRSSIColor,
   getRSSIIcon,
   // Camera specific props
@@ -63,7 +62,6 @@ export default function SettingsButtonBar({
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           onRSSIDataChange={onRSSIDataChange}
-          rssiDisplayMode={rssiDisplayMode}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
         />

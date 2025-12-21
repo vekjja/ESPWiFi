@@ -469,6 +469,10 @@ export default function CameraModule({
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "4px",
+                transform: config?.rotation
+                  ? `rotate(${config.rotation}deg)`
+                  : undefined,
+                transition: "transform 0.3s ease",
               }}
             />
           ) : (
@@ -640,6 +644,8 @@ export default function CameraModule({
         onCameraDataChange={setSettingsData}
         config={globalConfig}
         saveConfigToDevice={saveConfigToDevice}
+        moduleConfig={config}
+        onModuleUpdate={onUpdate}
       />
     </>
   );

@@ -24,6 +24,8 @@ export default function CameraSettingsModal({
   onCameraDataChange,
   config,
   saveConfigToDevice,
+  moduleConfig,
+  onModuleUpdate,
 }) {
   const [localData, setLocalData] = useState(cameraData);
   const isInitialLoad = useRef(true);
@@ -60,14 +62,16 @@ export default function CameraSettingsModal({
     if (open) {
       loadCameraSettings();
     }
-  }, [open, config]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, config, moduleConfig]);
 
   const loadCameraSettings = () => {
     // Load camera settings from config
+    // Rotation is per-module, other settings are global
     if (config?.camera) {
       setCameraSettings({
         frameRate: config.camera.frameRate ?? 10,
-        rotation: config.camera.rotation ?? 0,
+        rotation: moduleConfig?.rotation ?? config.camera.rotation ?? 0,
         brightness: config.camera.brightness ?? 1,
         contrast: config.camera.contrast ?? 1,
         saturation: config.camera.saturation ?? 1,
@@ -83,15 +87,35 @@ export default function CameraSettingsModal({
   };
 
   const handleSave = () => {
-    // Save camera settings to global config
+    // Save camera settings
+    // Rotation is per-module, other settings are global
     if (config && saveConfigToDevice) {
       const updatedConfig = {
         ...config,
         camera: {
           ...config.camera,
-          ...cameraSettings,
+          // Save global camera settings (excluding rotation)
+          frameRate: cameraSettings.frameRate,
+          brightness: cameraSettings.brightness,
+          contrast: cameraSettings.contrast,
+          saturation: cameraSettings.saturation,
+          exposure_level: cameraSettings.exposure_level,
+          exposure_value: cameraSettings.exposure_value,
+          agc_gain: cameraSettings.agc_gain,
+          gain_ceiling: cameraSettings.gain_ceiling,
+          white_balance: cameraSettings.white_balance,
+          awb_gain: cameraSettings.awb_gain,
+          wb_mode: cameraSettings.wb_mode,
         },
       };
+
+      // Save rotation to module config if module update function is provided
+      if (onModuleUpdate && moduleConfig?.key) {
+        onModuleUpdate(moduleConfig.key, {
+          rotation: cameraSettings.rotation,
+        });
+      }
+
       saveConfigToDevice(updatedConfig);
     }
 

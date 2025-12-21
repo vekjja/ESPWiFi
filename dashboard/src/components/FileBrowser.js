@@ -818,9 +818,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                 <ListItemText
                   primary={file.name}
                   secondary={
-                    file.isDirectory
-                      ? "Folder"
-                      : `${(file.size / 1024).toFixed(1)} KB`
+                    file.isDirectory ? "Folder" : formatBytes(file.size)
                   }
                   sx={{
                     "& .MuiListItemText-primary": {

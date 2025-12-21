@@ -22,8 +22,8 @@ export default function DeviceSettingsNetworkTab({
   setApPassword,
   mode,
   setMode,
-  mdns,
-  setMdns,
+  deviceName,
+  setDeviceName,
   showPassword,
   setShowPassword,
   showApPassword,
@@ -49,8 +49,8 @@ export default function DeviceSettingsNetworkTab({
     setMode(event.target.checked ? "client" : "ap");
   };
 
-  const handleMDNSChange = (event) => {
-    setMdns(event.target.value);
+  const handleDeviceNameChange = (event) => {
+    setDeviceName(event.target.value);
   };
 
   const handleTogglePasswordVisibility = () => {
@@ -73,9 +73,9 @@ export default function DeviceSettingsNetworkTab({
       </FormControl>
       <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
         <TextField
-          label="mDNS Hostname"
-          value={mdns}
-          onChange={handleMDNSChange}
+          label="Device Name"
+          value={deviceName}
+          onChange={handleDeviceNameChange}
           variant="outlined"
           fullWidth
         />

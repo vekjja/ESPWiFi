@@ -26,6 +26,7 @@ void ESPWiFi::readConfig() {
 
   // OTA - based on partition table
   config["ota"]["enabled"] = isOTAEnabled();
+  config["hostname"] = String(WiFi.getHostname());
 
   log("⚙️  Config Loaded:");
   logf("\tFile: %s\n", configFile.c_str());
@@ -64,6 +65,7 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
 }
 
 void ESPWiFi::handleConfig() {
+  bluetoothConfigHandler();
 #ifdef ESPWiFi_CAMERA
   cameraConfigHandler();
 #else
@@ -76,11 +78,11 @@ JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
 
   defaultConfig["mode"] = "accessPoint";
-  defaultConfig["mdns"] = "ESPWiFi";
+  defaultConfig["deviceName"] = "ESPWiFi";
 
   // Access Point
-  String hostname = String(WiFi.getHostname());
-  defaultConfig["ap"]["ssid"] = "ESPWiFi-" + hostname;
+  String hostname = "ESPWiFi-" + String(WiFi.getHostname());
+  defaultConfig["ap"]["ssid"] = hostname;
   defaultConfig["ap"]["password"] = "espwifi123";
 
   // WiFi Client
@@ -121,6 +123,16 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["auth"]["enabled"] = false;
   defaultConfig["auth"]["password"] = "admin";
   defaultConfig["auth"]["username"] = "admin";
+
+  // Bluetooth
+  defaultConfig["bluetooth"]["address"] = "";
+  defaultConfig["bluetooth"]["enabled"] = false;
+#if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BLUEDROID_ENABLED) &&         \
+    !defined(CONFIG_IDF_TARGET_ESP32C3)
+  defaultConfig["bluetooth"]["installed"] = true;
+#else
+  defaultConfig["bluetooth"]["installed"] = false;
+#endif
 
   return defaultConfig;
 }

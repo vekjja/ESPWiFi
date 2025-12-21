@@ -461,7 +461,11 @@ function App() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {localConfig?.["mdns"] || config?.["mdns"] || "ESPWiFi"}
+          {localConfig?.["deviceName"] ||
+            config?.["deviceName"] ||
+            localConfig?.["mdns"] ||
+            config?.["mdns"] ||
+            "ESPWiFi"}
         </Box>
       </Container>
 

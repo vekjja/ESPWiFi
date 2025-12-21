@@ -124,11 +124,11 @@ void ESPWiFi::startAP() {
 }
 
 void ESPWiFi::startMDNS() {
-  if (config["mdns"].isNull()) {
+  if (config["deviceName"].isNull()) {
     readConfig();
   }
 
-  String domain = config["mdns"];
+  String domain = config["deviceName"];
   if (!MDNS.begin(domain)) {
     logError("Error setting up MDNS responder!");
   } else {

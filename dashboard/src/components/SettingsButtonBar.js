@@ -4,6 +4,7 @@ import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
 import FileBrowserButton from "./FileBrowserButton";
+import BluetoothButton from "./BluetoothButton";
 import AddModuleButton from "./AddModuleButton";
 
 export default function SettingsButtonBar({
@@ -80,6 +81,14 @@ export default function SettingsButtonBar({
           deviceOnline={deviceOnline}
           onFileBrowser={onFileBrowser}
         />
+        {config && config?.bluetooth?.installed !== false && (
+          <BluetoothButton
+            config={config}
+            deviceOnline={deviceOnline}
+            saveConfig={saveConfig}
+            saveConfigToDevice={saveConfigToDevice}
+          />
+        )}
         <AddModuleButton
           config={config}
           deviceOnline={deviceOnline}

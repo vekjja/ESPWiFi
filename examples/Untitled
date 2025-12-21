@@ -1,0 +1,25 @@
+{
+    "deviceName": "ESPWiFi",
+    "bluetooth": {
+        "enabled": false
+    },
+    "mode": "client",
+    "client": {
+        "ssid": "YOUR_SSID",
+        "password": "YOUR_PASSWORD"
+    },
+    "ap": {
+        "ssid": "ESPWiFi",
+        "password": "espwifi!"
+    },
+    "auth": {
+        "enabled": false,
+        "username": "admin",
+        "password": "admin"
+    },
+    "log": {
+        "enabled": true,
+        "level": "info"
+    },
+    "modules": []
+}

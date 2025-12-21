@@ -10,6 +10,7 @@ void ESPWiFi::start() {
   startWiFi();
   startMDNS();
   startWebServer();
+  startBluetooth();
   handleConfig();
 }
 

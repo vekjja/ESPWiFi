@@ -111,6 +111,7 @@ public:
   void srvConfig();
   void srvRestart();
   void srvAuth();
+  void srvBluetooth();
   void initWebServer();
   void startWebServer();
   bool webServerStarted = false;
@@ -182,6 +183,13 @@ public:
   size_t otaTotalSize;
   String otaErrorString;
   String otaMD5Hash;
+
+  // Bluetooth
+  bool startBluetooth();
+  void stopBluetooth();
+  bool isBluetoothConnected();
+  void bluetoothConfigHandler();
+  void scanBluetoothDevices();
 };
 
 #endif // ESPWiFi

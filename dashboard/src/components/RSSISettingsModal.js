@@ -38,7 +38,7 @@ export default function RSSISettingsModal({
     // Add a delay to allow the backend to start the RSSI service
     const connectTimeout = setTimeout(() => {
       // Construct WebSocket URL
-      const mdnsHostname = config?.mdns;
+      const mdnsHostname = config?.deviceName || config?.mdns;
       const wsUrl = buildWebSocketUrl("/rssi", mdnsHostname);
 
       // Connect to RSSI WebSocket
@@ -239,8 +239,10 @@ export default function RSSISettingsModal({
           sx={{ marginTop: 1, color: "primary.main", display: "block" }}
         >
           WebSocket URL: ws://
-          {config?.mdns ? `${config.mdns}.local` : window.location.hostname}:
-          {window.location.port || 80}/rssi
+          {config?.deviceName || config?.mdns
+            ? `${config.deviceName || config.mdns}.local`
+            : window.location.hostname}
+          :{window.location.port || 80}/rssi
         </Typography>
       </Box>
     </SettingsModal>

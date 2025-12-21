@@ -43,7 +43,10 @@ export default function DeviceSettingsOTATab({ config }) {
 
   // Fetch OTA status information
   const fetchOTAStatus = async () => {
-    const fetchUrl = buildApiUrl("/api/ota/status", config?.mdns);
+    const fetchUrl = buildApiUrl(
+      "/api/ota/status",
+      config?.deviceName || config?.mdns
+    );
     console.log("Fetching OTA status from:", fetchUrl);
 
     setOtaLoading(true);
@@ -89,7 +92,10 @@ export default function DeviceSettingsOTATab({ config }) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const fetchUrl = buildApiUrl("/api/ota/progress", config?.mdns);
+        const fetchUrl = buildApiUrl(
+          "/api/ota/progress",
+          config?.deviceName || config?.mdns
+        );
         const response = await fetch(fetchUrl, getFetchOptions());
         if (response.ok) {
           const data = await response.json();
@@ -122,7 +128,10 @@ export default function DeviceSettingsOTATab({ config }) {
   // Check if device is back online after restart
   const checkDeviceStatus = async () => {
     try {
-      const fetchUrl = buildApiUrl("/api/ota/status", config?.mdns);
+      const fetchUrl = buildApiUrl(
+        "/api/ota/status",
+        config?.deviceName || config?.mdns
+      );
       const response = await fetch(fetchUrl, getFetchOptions());
       if (response.ok) {
         setFirmwareUploadStatus(
@@ -172,7 +181,7 @@ export default function DeviceSettingsOTATab({ config }) {
       // Step 1: Start OTA update
       const startUrl = buildApiUrl(
         "/api/ota/start?mode=firmware",
-        config?.mdns
+        config?.deviceName || config?.mdns
       );
       console.log("Starting OTA with URL:", startUrl);
       const startResponse = await fetch(

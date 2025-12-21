@@ -44,7 +44,7 @@ void ESPWiFi::startWebServer() {
   String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
                                        : WiFi.softAPIP().toString();
   logf("\tURL: http://%s\n", serverIP.c_str());
-  logf("\tURL: http://%s.local\n", config["mdns"].as<String>().c_str());
+  logf("\tURL: http://%s.local\n", config["deviceName"].as<String>().c_str());
 }
 
 void ESPWiFi::srvRoot() {
@@ -108,7 +108,7 @@ void ESPWiFi::srvInfo() {
     String hostname = String(WiFi.getHostname());
     jsonDoc["hostname"] = hostname;
     jsonDoc["ap_ssid"] = config["ap"]["ssid"].as<String>() + "-" + hostname;
-    jsonDoc["mdns"] = config["mdns"].as<String>() + ".local";
+    jsonDoc["mdns"] = config["deviceName"].as<String>() + ".local";
     jsonDoc["chip"] = String(ESP.getChipModel());
     jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
     jsonDoc["free_heap"] = ESP.getFreeHeap();
@@ -294,6 +294,7 @@ void ESPWiFi::srvAll() {
   srvGPIO();
   srvFiles();
   srvConfig();
+  srvBluetooth();
   srvRestart();
 }
 

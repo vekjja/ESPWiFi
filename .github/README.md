@@ -125,18 +125,15 @@ For more control, you can use `config.json` to configure the device and start se
         "password": "espwifi123"
     },
     "auth": {
+        "token": "",
         "enabled": true,
         "username": "admin",
-        "password": "adminpassword"
+        "password": "admin"
     },
     "log": {
         "enabled": true,
         "level": "info"
-    },
-    "rssi": {
-        "displayMode": "icon"
-    },
-    "modules": []
+    }
 }
 ```
 

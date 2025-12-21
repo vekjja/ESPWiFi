@@ -33,7 +33,9 @@ export default function DeviceSettingsModal({
 
   // Network settings state
   const [ssid, setSsid] = useState("");
-  const [mdns, setMdns] = useState(config?.["mdns"] || "");
+  const [deviceName, setDeviceName] = useState(
+    config?.["deviceName"] || config?.["mdns"] || ""
+  );
   const [password, setPassword] = useState("");
   const [apSsid, setApSsid] = useState("");
   const [apPassword, setApPassword] = useState("");
@@ -67,7 +69,7 @@ export default function DeviceSettingsModal({
       setApSsid(config.ap?.ssid || "");
       setApPassword(config.ap?.password || "");
       setMode(config.mode || "client");
-      setMdns(config.mdns || "");
+      setDeviceName(config.deviceName || config.mdns || "");
       setAuthEnabled(config.auth?.enabled ?? false);
       setAuthUsername(config.auth?.username || "");
       setAuthPassword(config.auth?.password || "");
@@ -80,7 +82,7 @@ export default function DeviceSettingsModal({
     const configToUpdate = {
       ...config,
       mode: mode,
-      mdns: mdns,
+      deviceName: deviceName,
       client: {
         ssid: ssid,
         password: password,
@@ -113,7 +115,7 @@ export default function DeviceSettingsModal({
     apSsid,
     apPassword,
     mode,
-    mdns,
+    deviceName,
     authEnabled,
     authUsername,
     authPassword,
@@ -228,15 +230,15 @@ export default function DeviceSettingsModal({
   };
 
   const handleNetworkSave = () => {
-    if (!isValidHostname(mdns)) {
-      alert("Invalid mDNS hostname. Please enter a valid hostname.");
+    if (!isValidHostname(deviceName)) {
+      alert("Invalid device name. Please enter a valid hostname.");
       return;
     }
 
     const configToSave = {
       ...config,
       mode: mode,
-      mdns: mdns,
+      deviceName: deviceName,
       client: {
         ssid: ssid,
         password: password,
@@ -299,9 +301,15 @@ export default function DeviceSettingsModal({
     try {
       const parsedConfig = JSON.parse(jsonConfig);
 
-      if (!parsedConfig.mdns) {
-        setJsonError("Configuration must include 'mdns' field");
+      if (!parsedConfig.deviceName && !parsedConfig.mdns) {
+        setJsonError("Configuration must include 'deviceName' field");
         return;
+      }
+
+      // Migrate mdns to deviceName if needed
+      if (parsedConfig.mdns && !parsedConfig.deviceName) {
+        parsedConfig.deviceName = parsedConfig.mdns;
+        delete parsedConfig.mdns;
       }
 
       delete parsedConfig.apiURL;
@@ -460,8 +468,8 @@ export default function DeviceSettingsModal({
             setApPassword={setApPassword}
             mode={mode}
             setMode={setMode}
-            mdns={mdns}
-            setMdns={setMdns}
+            deviceName={deviceName}
+            setDeviceName={setDeviceName}
             showPassword={showPassword}
             setShowPassword={setShowPassword}
             showApPassword={showApPassword}

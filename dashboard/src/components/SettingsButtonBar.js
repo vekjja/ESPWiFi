@@ -65,6 +65,14 @@ export default function SettingsButtonBar({
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
         />
+        {config && config?.bluetooth?.installed !== false && (
+          <BluetoothButton
+            config={config}
+            deviceOnline={deviceOnline}
+            saveConfig={saveConfig}
+            saveConfigToDevice={saveConfigToDevice}
+          />
+        )}
         {config && config?.camera?.installed !== false && (
           <CameraButton
             config={config}
@@ -79,14 +87,6 @@ export default function SettingsButtonBar({
           deviceOnline={deviceOnline}
           onFileBrowser={onFileBrowser}
         />
-        {config && config?.bluetooth?.installed !== false && (
-          <BluetoothButton
-            config={config}
-            deviceOnline={deviceOnline}
-            saveConfig={saveConfig}
-            saveConfigToDevice={saveConfigToDevice}
-          />
-        )}
         <AddModuleButton
           config={config}
           deviceOnline={deviceOnline}

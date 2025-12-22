@@ -167,16 +167,24 @@ export default function RSSISettingsModal({
           >
             Received Signal Strength Indicator (RSSI)
           </a>
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{ marginTop: 1, color: "primary.main", display: "block" }}
-        >
+          <br /> <br />
           WebSocket URL: ws://
           {config?.deviceName || config?.mdns
             ? `${config.deviceName || config.mdns}.local`
             : window.location.hostname}
           :{window.location.port || 80}/rssi
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{ marginTop: 1, color: "primary.main", display: "block" }}
+        >
+          RSSI (Received Signal Strength Indicator) is a device-reported measure
+          of radio signal power at the receiver. It’s often shown in dBm
+          (negative values), where numbers closer to 0 mean stronger signal:
+          around −30 dBm is excellent, about −67 dBm is solid for Wi‑Fi/VoIP,
+          −75 to −85 dBm is weak, and below −90 dBm is likely unusable. RSSI
+          isn’t an absolute standard—scales vary by chipset—so treat it as a
+          relative indicator for link quality, range, and placement.
         </Typography>
       </Box>
     </SettingsModal>

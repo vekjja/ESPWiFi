@@ -1,16 +1,18 @@
 {
-    "mode": "client",
-    "mdns": "ESPWiFi",
-    "client": {
-        "ssid": "YOUR_SSID",
-        "password": "YOUR_PASSWORD"
-    },
-    "ap": {
-        "ssid": "ESPWiFi",
-        "password": "espwifi123"
+    "deviceName": "ESPWiFi",
+    "wifi": {
+        "enabled": true,
+        "mode": "client",
+        "client": {
+            "ssid": "YOUR_SSID",
+            "password": "YOUR_PASSWORD"
+        },
+        "ap": {
+            "ssid": "ESPWiFi",
+            "password": "espwifi123"
+        }
     },
     "auth": {
-        "token": "",
         "enabled": true,
         "username": "admin",
         "password": "admin"

@@ -6,11 +6,13 @@
 void ESPWiFi::start() {
   startSerial();
   startLogging();
+  setMaxPower();
   readConfig();
   startWiFi();
   startMDNS();
   startWebServer();
   startBluetooth();
+  startRSSIWebSocket();
   handleConfig();
 }
 
@@ -25,4 +27,4 @@ void ESPWiFi::runSystem() {
 #endif
 }
 
-#endif
+#endif // ESPWiFi_DEVICE

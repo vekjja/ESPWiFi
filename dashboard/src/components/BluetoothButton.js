@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Fab, Tooltip } from "@mui/material";
 import {
   Bluetooth as BluetoothIcon,
@@ -21,8 +21,8 @@ export default function BluetoothButton({
     address: "",
   });
 
-  // Fetch Bluetooth status
-  const fetchBluetoothStatus = async () => {
+  // Fetch Bluetooth status - memoized to prevent unnecessary re-renders
+  const fetchBluetoothStatus = useCallback(async () => {
     if (!deviceOnline) return;
 
     try {
@@ -43,16 +43,22 @@ export default function BluetoothButton({
     } catch (error) {
       console.error("Error fetching Bluetooth status:", error);
     }
-  };
+  }, [deviceOnline]);
 
   // Fetch status on mount and when device comes online
   useEffect(() => {
+    if (!deviceOnline) return;
+
+    // Fetch immediately
     fetchBluetoothStatus();
-    if (deviceOnline) {
-      const interval = setInterval(fetchBluetoothStatus, 5000); // Poll every 5 seconds
-      return () => clearInterval(interval);
-    }
-  }, [deviceOnline]);
+
+    // Poll every 30 seconds - Bluetooth status doesn't change frequently
+    const interval = setInterval(() => {
+      fetchBluetoothStatus();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [deviceOnline, fetchBluetoothStatus]);
 
   const handleClick = () => {
     if (deviceOnline) {
@@ -90,10 +96,8 @@ export default function BluetoothButton({
           sx={{
             color: isDisabled
               ? "text.disabled"
-              : isConnected
-              ? "primary.main"
               : isEnabled
-              ? "text.secondary"
+              ? "primary.main"
               : "text.disabled",
             backgroundColor: isDisabled ? "action.disabled" : "action.hover",
             "&:hover": {

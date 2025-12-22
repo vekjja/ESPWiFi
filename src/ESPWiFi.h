@@ -140,9 +140,11 @@ public:
 
   // RSSI
   WebSocket *rssiWebSocket = nullptr;
+  void startRSSIWebSocket();
   void streamRSSI();
 
   // Utils
+  void setMaxPower();
   String getContentType(String filename);
   String bytesToHumanReadable(size_t bytes);
   String getFileExtension(const String &filename);
@@ -188,8 +190,9 @@ public:
   bool startBluetooth();
   void stopBluetooth();
   bool isBluetoothConnected();
-  void bluetoothConfigHandler();
   void scanBluetoothDevices();
+  bool bluetoothStarted = false;
+  void bluetoothConfigHandler();
 };
 
 #endif // ESPWiFi

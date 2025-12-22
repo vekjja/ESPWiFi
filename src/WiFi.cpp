@@ -9,36 +9,41 @@
 #include <WiFi.h>
 
 void ESPWiFi::startWiFi() {
-  if (config["mode"].isNull()) {
-    readConfig();
+  // if (config["wifi"]["mode"].isNull()) {
+  //   readConfig();
+  // }
+
+  if (!config["wifi"]["enabled"].as<bool>()) {
+    log("🛜  WiFi Disabled");
+    return;
   }
 
-  String mode = config["mode"];
+  String mode = config["wifi"]["mode"];
   mode.toLowerCase();
   if (strcmp(mode.c_str(), "client") == 0) {
     startClient();
-  } else if (strcmp(mode.c_str(), "accesspoint") == 0 ||
+  } else if (strcmp(mode.c_str(), "accessPoint") == 0 ||
              strcmp(mode.c_str(), "ap") == 0) {
     startAP();
   } else {
     log("⚠️  Invalid Mode: " + mode);
-    config["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
+    config["wifi"]["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
     startAP();
   }
 }
 
 void ESPWiFi::startClient() {
-  if (config["client"]["ssid"].isNull() ||
-      config["client"]["password"].isNull()) {
-    readConfig();
-  }
+  // if (config["wifi"]["client"]["ssid"].isNull() ||
+  //     config["wifi"]["client"]["password"].isNull()) {
+  //   readConfig();
+  // }
 
-  String ssid = config["client"]["ssid"];
-  String password = config["client"]["password"];
+  String ssid = config["wifi"]["client"]["ssid"];
+  String password = config["wifi"]["client"]["password"];
 
   if (ssid.isEmpty()) {
     log("⚠️  Warning: SSID or Password: Cannot be empty");
-    config["mode"] = "accessPoint";
+    config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
@@ -66,7 +71,7 @@ void ESPWiFi::startClient() {
 
   if (WiFi.status() != WL_CONNECTED) {
     logError("Failed to connect to WiFi");
-    config["mode"] = "accessPoint";
+    config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
@@ -95,14 +100,15 @@ int ESPWiFi::selectBestChannel() {
 }
 
 void ESPWiFi::startAP() {
-  if (config["ap"]["ssid"].isNull() || config["ap"]["password"].isNull()) {
-    readConfig();
-  }
+  // if (config["wifi"]["ap"]["ssid"].isNull() ||
+  //     config["wifi"]["ap"]["password"].isNull()) {
+  //   readConfig();
+  // }
 
   String hostname = String(WiFi.getHostname());
 
-  String ssid = config["ap"]["ssid"].as<String>() + "-" + hostname;
-  String password = config["ap"]["password"];
+  String ssid = config["wifi"]["ap"]["ssid"].as<String>() + "-" + hostname;
+  String password = config["wifi"]["ap"]["password"];
   log("📡 Starting Access Point:");
   log("\tSSID: " + ssid);
   log("\tPassword: " + password);
@@ -124,8 +130,12 @@ void ESPWiFi::startAP() {
 }
 
 void ESPWiFi::startMDNS() {
-  if (config["deviceName"].isNull()) {
-    readConfig();
+  // if (config["deviceName"].isNull()) {
+  //   readConfig();
+  // }
+  if (!config["wifi"]["enabled"].as<bool>()) {
+    log("🏷️  mDNS Disabled");
+    return;
   }
 
   String domain = config["deviceName"];
@@ -133,7 +143,7 @@ void ESPWiFi::startMDNS() {
     logError("Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
-    log("📛 mDNS Started:");
+    log("🏷️  mDNS Started:");
     domain.toLowerCase();
     log("\tDomain Name: " + domain + ".local");
   }

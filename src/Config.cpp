@@ -4,6 +4,11 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::readConfig() {
+  static bool readingConfig = false;
+  if (readingConfig) {
+    return; // Prevent recursive calls
+  }
+  readingConfig = true;
 
   initLittleFS();
   File file = LittleFS.open(configFile, "r");
@@ -17,15 +22,24 @@ void ESPWiFi::readConfig() {
     if (error) {
       log("⚠️  Failed to read config file: " + String(error.c_str()) +
           "\nUsing default config");
-      JsonDocument defaultConfigDoc = defaultConfig();
-      mergeConfig(defaultConfigDoc);
+      config = defaultConfig();
+    } else {
+      mergeConfig(loadedConfig);
     }
-    mergeConfig(loadedConfig);
     file.close();
   }
 
   // OTA - based on partition table
   config["ota"]["enabled"] = isOTAEnabled();
+
+  // Bluetooth
+#if defined(CONFIG_BT_ENABLED)
+  config["bluetooth"]["installed"] = true;
+#else
+  config["bluetooth"]["installed"] = false;
+  config["bluetooth"]["enabled"] = false;
+#endif
+
   config["hostname"] = String(WiFi.getHostname());
 
   log("⚙️  Config Loaded:");
@@ -33,6 +47,8 @@ void ESPWiFi::readConfig() {
 
   printConfig();
   file.close();
+
+  readingConfig = false;
 }
 
 void ESPWiFi::saveConfig() {
@@ -77,17 +93,20 @@ void ESPWiFi::handleConfig() {
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
 
-  defaultConfig["mode"] = "accessPoint";
   defaultConfig["deviceName"] = "ESPWiFi";
 
+  // WiFi configuration - nested under wifi
+  defaultConfig["wifi"]["mode"] = "accessPoint";
+  defaultConfig["wifi"]["enabled"] = true;
+
   // Access Point
-  String hostname = "ESPWiFi-" + String(WiFi.getHostname());
-  defaultConfig["ap"]["ssid"] = hostname;
-  defaultConfig["ap"]["password"] = "espwifi123";
+  String ssid = "ESPWiFi-" + String(WiFi.getHostname());
+  defaultConfig["wifi"]["ap"]["ssid"] = ssid;
+  defaultConfig["wifi"]["ap"]["password"] = "espwifi123";
 
   // WiFi Client
-  defaultConfig["client"]["ssid"] = "";
-  defaultConfig["client"]["password"] = "";
+  defaultConfig["wifi"]["client"]["ssid"] = "";
+  defaultConfig["wifi"]["client"]["password"] = "";
 
 // Camera
 #ifdef ESPWiFi_CAMERA
@@ -121,18 +140,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["auth"]["password"] = "admin";
   defaultConfig["auth"]["username"] = "admin";
 
-  // Bluetooth
-  defaultConfig["bluetooth"]["address"] = "";
+  // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
   defaultConfig["bluetooth"]["enabled"] = false;
-// Map ESPWiFi_* flags to CONFIG_* for ESP-IDF compatibility
-#if defined(ESPWiFi_BT_ENABLED) && !defined(CONFIG_BT_ENABLED)
-#define CONFIG_BT_ENABLED 1
-#endif
-#if defined(ESPWiFi_BLUEDROID_ENABLED) && !defined(CONFIG_BLUEDROID_ENABLED)
-#define CONFIG_BLUEDROID_ENABLED 1
-#endif
-#if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BLUEDROID_ENABLED) &&         \
-    !defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_BT_ENABLED)
   defaultConfig["bluetooth"]["installed"] = true;
 #else
   defaultConfig["bluetooth"]["installed"] = false;

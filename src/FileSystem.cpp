@@ -26,6 +26,7 @@ void ESPWiFi::initSDCard() {
   }
 
 #if defined(CONFIG_IDF_TARGET_ESP32) // ESP32-CAM
+
   if (!SD_MMC.begin()) {
     config["sd"]["enabled"] = false;
     log("⚠️  Failed to mount SD card");
@@ -33,13 +34,14 @@ void ESPWiFi::initSDCard() {
   }
   sd = &SD_MMC;
   config["sd"]["enabled"] = true;
-#else // ESP32-S2, ESP32-S3, ESP32-C3
 
+#else                                  // ESP32-S2, ESP32-S3, ESP32-C3
 #if defined(CONFIG_IDF_TARGET_ESP32S3) // ESP32-S3
   int sdCardPin = 21;
 #else
   int sdCardPin = 4;
 #endif
+
   if (!SD.begin(sdCardPin)) {
     config["sd"]["enabled"] = false;
     log("⚠️  Failed to mount SD card");
@@ -47,7 +49,8 @@ void ESPWiFi::initSDCard() {
   }
   sd = &SD;
   config["sd"]["enabled"] = true;
-#endif
+
+#endif // ESP32-S2, ESP32-S3, ESP32-C3
 
   sdCardInitialized = true;
   log("💾 SD Card Initialized");

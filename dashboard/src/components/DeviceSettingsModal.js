@@ -64,11 +64,11 @@ export default function DeviceSettingsModal({
 
   useEffect(() => {
     if (config) {
-      setSsid(config.client?.ssid || "");
-      setPassword(config.client?.password || "");
-      setApSsid(config.ap?.ssid || "");
-      setApPassword(config.ap?.password || "");
-      setMode(config.mode || "client");
+      setSsid(config.wifi?.client?.ssid || "");
+      setPassword(config.wifi?.client?.password || "");
+      setApSsid(config.wifi?.ap?.ssid || "");
+      setApPassword(config.wifi?.ap?.password || "");
+      setMode(config.wifi?.mode || "client");
       setDeviceName(config.deviceName || config.mdns || "");
       setAuthEnabled(config.auth?.enabled ?? false);
       setAuthUsername(config.auth?.username || "");
@@ -81,15 +81,18 @@ export default function DeviceSettingsModal({
     if (!config) return;
     const configToUpdate = {
       ...config,
-      mode: mode,
       deviceName: deviceName,
-      client: {
-        ssid: ssid,
-        password: password,
-      },
-      ap: {
-        ssid: apSsid,
-        password: apPassword,
+      wifi: {
+        ...config.wifi,
+        mode: mode,
+        client: {
+          ssid: ssid,
+          password: password,
+        },
+        ap: {
+          ssid: apSsid,
+          password: apPassword,
+        },
       },
       auth: {
         ...config.auth,
@@ -237,15 +240,18 @@ export default function DeviceSettingsModal({
 
     const configToSave = {
       ...config,
-      mode: mode,
       deviceName: deviceName,
-      client: {
-        ssid: ssid,
-        password: password,
-      },
-      ap: {
-        ssid: apSsid,
-        password: apPassword,
+      wifi: {
+        ...config.wifi,
+        mode: mode,
+        client: {
+          ssid: ssid,
+          password: password,
+        },
+        ap: {
+          ssid: apSsid,
+          password: apPassword,
+        },
       },
     };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   TextField,
@@ -7,8 +7,6 @@ import {
   FormControlLabel,
   Button,
   Divider,
-  Alert,
-  CircularProgress,
   List,
   ListItem,
   ListItemText,
@@ -34,124 +32,70 @@ export default function BluetoothSettingsModal({
   bluetoothStatus,
   onStatusChange,
 }) {
-  const [enabled, setEnabled] = useState(bluetoothStatus?.enabled || false);
-  const [deviceName, setDeviceName] = useState(
-    bluetoothStatus?.deviceName || config?.bluetooth?.deviceName || ""
-  );
+  const [enabled, setEnabled] = useState(config?.bluetooth?.enabled || false);
   const [connected, setConnected] = useState(
     bluetoothStatus?.connected || false
   );
   const [address, setAddress] = useState(bluetoothStatus?.address || "");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [filePath, setFilePath] = useState("");
   const [sendFileFs, setSendFileFs] = useState("sd");
   const [receiveFileFs, setReceiveFileFs] = useState("sd");
+  const initializedRef = useRef(false);
 
-  // Update state when bluetoothStatus prop changes
+  // Reset state when modal opens - load current config values
+  // Only initialize once when modal opens, don't sync while modal is open
+  useEffect(() => {
+    if (open && !initializedRef.current) {
+      setEnabled(config?.bluetooth?.enabled || false);
+      initializedRef.current = true;
+      if (onStatusChange) {
+        onStatusChange();
+      }
+    } else if (!open) {
+      // Reset the ref when modal closes so it can initialize again next time
+      initializedRef.current = false;
+    }
+    // Only reset when modal opens/closes, not when config or onStatusChange changes
+    // This prevents the enabled state from being reset when user toggles it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Update status display when bluetoothStatus prop changes
   useEffect(() => {
     if (bluetoothStatus) {
-      setEnabled(bluetoothStatus.enabled || false);
-      setDeviceName(
-        bluetoothStatus.deviceName || config?.bluetooth?.deviceName || ""
-      );
       setConnected(bluetoothStatus.connected || false);
       setAddress(bluetoothStatus.address || "");
     }
-  }, [bluetoothStatus, config]);
+  }, [bluetoothStatus]);
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (open && onStatusChange) {
-      onStatusChange();
-    }
-  }, [open, onStatusChange]);
-
-  const handleToggleEnabled = async (event) => {
-    const newEnabled = event.target.checked;
-    setEnabled(newEnabled);
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/bluetooth/enable"),
-        getFetchOptions({
-          method: "POST",
-          body: JSON.stringify({ enabled: newEnabled }),
-        })
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update Bluetooth status");
-      }
-
-      setSuccess(`Bluetooth ${newEnabled ? "enabled" : "disabled"}`);
-      if (onStatusChange) {
-        setTimeout(() => onStatusChange(), 500);
-      }
-    } catch (err) {
-      setError(err.message);
-      setEnabled(!newEnabled); // Revert on error
-    } finally {
-      setLoading(false);
-    }
+  const handleToggleEnabled = (event) => {
+    setEnabled(event.target.checked);
   };
 
-  const handleSaveDeviceName = async () => {
-    if (!deviceName.trim()) {
-      setError("Device name cannot be empty");
+  const handleSave = () => {
+    if (!config || !saveConfigToDevice) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
+    const configToSave = {
+      ...config,
+      bluetooth: {
+        ...config.bluetooth,
+        enabled: enabled,
+      },
+    };
 
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/bluetooth/name"),
-        getFetchOptions({
-          method: "POST",
-          body: JSON.stringify({ deviceName: deviceName.trim() }),
-        })
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update device name");
-      }
-
-      setSuccess("Device name updated successfully");
-      if (onStatusChange) {
-        setTimeout(() => onStatusChange(), 500);
-      }
-
-      // Update config
-      if (saveConfig && config) {
-        const updatedConfig = {
-          ...config,
-          bluetooth: {
-            ...config.bluetooth,
-            deviceName: deviceName.trim(),
-          },
-        };
-        saveConfig(updatedConfig);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    // Save to device (not just local config)
+    saveConfigToDevice(configToSave);
+    if (onStatusChange) {
+      setTimeout(() => onStatusChange(), 500);
     }
+    onClose();
   };
 
   const handleDisconnect = async () => {
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const response = await fetch(
@@ -162,35 +106,25 @@ export default function BluetoothSettingsModal({
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to disconnect");
+        throw new Error("Failed to disconnect");
       }
 
-      setSuccess("Disconnected successfully");
       if (onStatusChange) {
         setTimeout(() => onStatusChange(), 500);
       }
     } catch (err) {
-      setError(err.message);
+      console.error("Error disconnecting Bluetooth:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendFile = async () => {
-    if (!filePath.trim()) {
-      setError("Please enter a file path");
-      return;
-    }
-
-    if (!connected) {
-      setError("Bluetooth must be connected to send files");
+    if (!filePath.trim() || !connected) {
       return;
     }
 
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const url = buildApiUrl(
@@ -201,15 +135,12 @@ export default function BluetoothSettingsModal({
       const response = await fetch(url, getFetchOptions({ method: "POST" }));
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to send file");
+        throw new Error("Failed to send file");
       }
 
-      const data = await response.json();
-      setSuccess(`File sent successfully (${data.bytesSent} bytes)`);
       setFilePath(""); // Clear input
     } catch (err) {
-      setError(err.message);
+      console.error("Error sending file:", err);
     } finally {
       setLoading(false);
     }
@@ -217,13 +148,10 @@ export default function BluetoothSettingsModal({
 
   const handleReceiveFile = async () => {
     if (!connected) {
-      setError("Bluetooth must be connected to receive files");
       return;
     }
 
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const url = buildApiUrl(
@@ -232,16 +160,10 @@ export default function BluetoothSettingsModal({
       const response = await fetch(url, getFetchOptions());
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to receive file");
+        throw new Error("Failed to receive file");
       }
-
-      const data = await response.json();
-      setSuccess(
-        `File received successfully: ${data.filePath} (${data.bytesReceived} bytes)`
-      );
     } catch (err) {
-      setError(err.message);
+      console.error("Error receiving file:", err);
     } finally {
       setLoading(false);
     }
@@ -260,32 +182,14 @@ export default function BluetoothSettingsModal({
       title="Bluetooth Settings"
       maxWidth="md"
       actions={
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          {loading && <CircularProgress size={24} />}
-          <SaveButton
-            onClick={handleSaveDeviceName}
-            disabled={loading || !enabled || !deviceOnline}
-            label="Save Name"
-          />
-        </Box>
+        <SaveButton
+          onClick={handleSave}
+          disabled={!deviceOnline}
+          tooltip="Save Settings to Device"
+        />
       }
     >
       <Box sx={{ mt: 2 }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        {success && (
-          <Alert
-            severity="success"
-            sx={{ mb: 2 }}
-            onClose={() => setSuccess(null)}
-          >
-            {success}
-          </Alert>
-        )}
-
         {/* Enable/Disable Bluetooth */}
         <FormControlLabel
           control={
@@ -315,11 +219,11 @@ export default function BluetoothSettingsModal({
                     secondary={connected ? "Connected" : "Not Connected"}
                   />
                 </ListItem>
-                {deviceName && (
+                {bluetoothStatus?.deviceName && (
                   <ListItem>
                     <ListItemText
                       primary="Device Name"
-                      secondary={deviceName}
+                      secondary={bluetoothStatus.deviceName}
                     />
                   </ListItem>
                 )}
@@ -348,27 +252,6 @@ export default function BluetoothSettingsModal({
               >
                 <RefreshIcon />
               </IconButton>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* Device Name */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Device Name
-              </Typography>
-              <TextField
-                fullWidth
-                value={deviceName}
-                onChange={(e) => setDeviceName(e.target.value)}
-                placeholder="Enter Bluetooth device name"
-                disabled={loading || !deviceOnline}
-                sx={{ mb: 1 }}
-              />
-              <Typography variant="caption" color="text.secondary">
-                This name will be visible to other devices when scanning for
-                Bluetooth devices.
-              </Typography>
             </Box>
 
             <Divider sx={{ my: 2 }} />

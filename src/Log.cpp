@@ -17,7 +17,7 @@ void ESPWiFi::startSerial(int baudRate) {
   Serial.begin(baudRate);
   Serial.setDebugOutput(true);
   serialStarted = true;
-  delay(999); // wait for serial to start
+  delay(1500); // wait for serial to start
   Serial.println(timestamp() + "⛓️  Serial Started:");
   Serial.printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
 }

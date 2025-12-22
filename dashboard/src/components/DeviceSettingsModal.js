@@ -14,6 +14,7 @@ import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
 import DeviceSettingsAuthTab from "./tabPanels/DeviceSettingsAuthTab";
 import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
 import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
+import DeviceSettingsLogsTab from "./tabPanels/DeviceSettingsLogsTab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 import { clearAuthToken } from "../utils/authUtils";
 
@@ -203,7 +204,8 @@ export default function DeviceSettingsModal({
 
   const handleTabChange = (event, newValue) => {
     // Prevent switching to OTA tab if OTA is disabled
-    if (newValue === 4 && !otaEnabled) {
+    // OTA tab is now at index 5 (after adding Logs tab at index 4)
+    if (newValue === 5 && !otaEnabled) {
       return;
     }
     setActiveTab(newValue);
@@ -215,7 +217,8 @@ export default function DeviceSettingsModal({
 
   // Reset activeTab if OTA is disabled and we're on the OTA tab
   useEffect(() => {
-    if (activeTab === 4 && !otaEnabled) {
+    // OTA tab is now at index 5 (after adding Logs tab at index 4)
+    if (activeTab === 5 && !otaEnabled) {
       setActiveTab(0);
     }
   }, [otaEnabled, activeTab]);
@@ -386,6 +389,9 @@ export default function DeviceSettingsModal({
           {commonButtons}
         </>
       );
+    } else if (activeTab === 4) {
+      // Logs tab - only show restart and logout buttons
+      return commonButtons;
     } else {
       // OTA tab - only show restart and logout buttons
       return commonButtons;
@@ -466,6 +472,7 @@ export default function DeviceSettingsModal({
           <Tab label="Network" />
           <Tab label="Auth" />
           <Tab label="JSON" />
+          <Tab label="Logs" />
           {otaEnabled && <Tab label="Update" />}
         </Tabs>
       }
@@ -524,8 +531,15 @@ export default function DeviceSettingsModal({
           />
         </TabPanel>
 
+        <TabPanel value={activeTab} index={4}>
+          <DeviceSettingsLogsTab
+            config={config}
+            saveConfigToDevice={saveConfigToDevice}
+          />
+        </TabPanel>
+
         {otaEnabled && (
-          <TabPanel value={activeTab} index={4}>
+          <TabPanel value={activeTab} index={5}>
             <DeviceSettingsOTATab config={config} />
           </TabPanel>
         )}

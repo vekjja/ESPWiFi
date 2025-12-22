@@ -348,21 +348,68 @@ export default function BluetoothSettingsModal({
   // Download file from buffer to device (phone/Mac/browser downloads folder)
   const downloadFileFromBuffer = useCallback((bufferArray, filename) => {
     try {
+      console.log("Web Bluetooth - Starting file download from buffer:", {
+        filename,
+        chunks: bufferArray.length,
+      });
+
       // Combine all chunks into a single ArrayBuffer
-      const totalLength = bufferArray.reduce(
-        (sum, chunk) => sum + chunk.byteLength,
-        0
+      // Handle both ArrayBuffer and ArrayBufferView types
+      const totalLength = bufferArray.reduce((sum, chunk) => {
+        if (chunk instanceof ArrayBuffer) {
+          return sum + chunk.byteLength;
+        } else if (chunk.buffer instanceof ArrayBuffer) {
+          return sum + chunk.byteLength;
+        } else {
+          console.warn(
+            "Web Bluetooth - Unknown chunk type:",
+            typeof chunk,
+            chunk
+          );
+          return sum + (chunk.byteLength || 0);
+        }
+      }, 0);
+
+      console.log(
+        "Web Bluetooth - Combining buffers, total length:",
+        totalLength
       );
+
       const combinedBuffer = new Uint8Array(totalLength);
       let offset = 0;
       for (const chunk of bufferArray) {
-        combinedBuffer.set(new Uint8Array(chunk.buffer), offset);
-        offset += chunk.byteLength;
+        let chunkData;
+        if (chunk instanceof ArrayBuffer) {
+          chunkData = new Uint8Array(chunk);
+        } else if (chunk.buffer instanceof ArrayBuffer) {
+          // Handle DataView, TypedArray, etc.
+          chunkData = new Uint8Array(
+            chunk.buffer,
+            chunk.byteOffset || 0,
+            chunk.byteLength
+          );
+        } else {
+          console.warn("Web Bluetooth - Skipping invalid chunk:", chunk);
+          continue;
+        }
+
+        combinedBuffer.set(chunkData, offset);
+        offset += chunkData.byteLength;
       }
+
+      console.log("Web Bluetooth - Combined buffer complete:", {
+        totalBytes: combinedBuffer.byteLength,
+        filename,
+      });
 
       // Create blob
       const blob = new Blob([combinedBuffer], {
         type: "application/octet-stream",
+      });
+
+      console.log("Web Bluetooth - Blob created:", {
+        size: blob.size,
+        type: blob.type,
       });
 
       // Create download link
@@ -375,6 +422,8 @@ export default function BluetoothSettingsModal({
       // Append to body, click, then remove
       document.body.appendChild(a);
       a.click();
+
+      console.log("Web Bluetooth - Download triggered for:", filename);
 
       // Clean up after a short delay to ensure download starts
       setTimeout(() => {

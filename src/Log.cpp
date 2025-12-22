@@ -74,6 +74,11 @@ void ESPWiFi::cleanLogFile() {
 }
 
 void ESPWiFi::writeLog(String message) {
+  // Check if log file is valid, if not try to recreate it
+  if (!logFile) {
+    openLogFile();
+  }
+
   if (logFile) {
     logFile.print(message);
     logFile.flush(); // Ensure data is written immediately
@@ -162,6 +167,92 @@ void ESPWiFi::openLogFile() {
   if (!logFile) {
     logError("Failed to open log file");
   }
+}
+
+void ESPWiFi::srvLog() {
+  initWebServer();
+
+  // CORS preflight
+  webServer->on("/log", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
+    handleCorsPreflight(request);
+  });
+
+  // GET /log - return log file content
+  webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+
+    // Try SD card first, then LittleFS
+    FS *filesystem = nullptr;
+    if (sdCardInitialized && sd && sd->exists(logFilePath)) {
+      filesystem = sd;
+    } else if (lfs && lfs->exists(logFilePath)) {
+      filesystem = lfs;
+    }
+
+    if (!filesystem) {
+      sendJsonResponse(request, 404, "{\"error\":\"Log file not found\"}");
+      return;
+    }
+
+    // Use the filesystem response method for efficient streaming
+    AsyncWebServerResponse *response =
+        request->beginResponse(*filesystem, logFilePath, "text/plain");
+    addCORS(response);
+    response->addHeader("Content-Type", "text/plain; charset=utf-8");
+    request->send(response);
+  });
+
+  // PUT /api/log - update log settings (enabled, level)
+  webServer->on(
+      "/api/log", HTTP_OPTIONS,
+      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
+
+  webServer->addHandler(new AsyncCallbackJsonWebHandler(
+      "/api/log", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
+
+        if (request->method() != HTTP_PUT) {
+          sendJsonResponse(request, 405, "{\"error\":\"Method not allowed\"}");
+          return;
+        }
+
+        JsonObject reqJson = json.as<JsonObject>();
+
+        if (reqJson["enabled"].is<bool>()) {
+          config["log"]["enabled"] = reqJson["enabled"].as<bool>();
+        }
+
+        if (reqJson["level"].is<const char *>()) {
+          String level = reqJson["level"].as<String>();
+          level.toLowerCase();
+          if (level == "debug" || level == "info" || level == "warning" ||
+              level == "error") {
+            config["log"]["level"] = level;
+          } else {
+            sendJsonResponse(request, 400,
+                             "{\"error\":\"Invalid log level. Must be: debug, "
+                             "info, warning, or error\"}");
+            return;
+          }
+        }
+
+        saveConfig();
+
+        JsonDocument responseDoc;
+        responseDoc["enabled"] = config["log"]["enabled"].as<bool>();
+        responseDoc["level"] = config["log"]["level"].as<String>();
+        responseDoc["success"] = true;
+
+        String jsonResponse;
+        serializeJson(responseDoc, jsonResponse);
+        sendJsonResponse(request, 200, jsonResponse);
+      }));
 }
 
 #endif // ESPWiFi_LOG

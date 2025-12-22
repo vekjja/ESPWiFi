@@ -148,6 +148,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["bluetooth"]["installed"] = false;
 #endif
 
+  // Logging
+  defaultConfig["log"]["enabled"] = true;
+  defaultConfig["log"]["level"] = "info"; // debug, info, warning, error
+
   return defaultConfig;
 }
 

@@ -304,6 +304,7 @@ void ESPWiFi::srvAll() {
   srvFiles();
   srvConfig();
   srvBluetooth();
+  srvLog();
   srvRestart();
 }
 

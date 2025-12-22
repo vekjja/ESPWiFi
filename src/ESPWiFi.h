@@ -112,6 +112,7 @@ public:
   void srvRestart();
   void srvAuth();
   void srvBluetooth();
+  void srvLog();
   void initWebServer();
   void startWebServer();
   bool webServerStarted = false;

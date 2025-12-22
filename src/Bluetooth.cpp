@@ -21,6 +21,12 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 String bleDeviceName = "";
 
+// Track multiple connection handles (ESP32 typically supports 5-10 simultaneous
+// connections)
+#define MAX_BLE_CONNECTIONS 10
+uint16_t connectionHandles[MAX_BLE_CONNECTIONS];
+uint8_t connectionCount = 0;
+
 // Forward declaration
 class ESPWiFi;
 
@@ -33,29 +39,70 @@ public:
   MyServerCallbacks(ESPWiFi *esp) : espWiFi(esp) {}
 
   void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) {
-    deviceConnected = true;
-    oldDeviceConnected = true;
+    uint16_t handle = connInfo.getConnHandle();
+
+    // Add connection handle to list if not at max
+    if (connectionCount < MAX_BLE_CONNECTIONS) {
+      connectionHandles[connectionCount++] = handle;
+      deviceConnected = true;
+      oldDeviceConnected = true;
+
+      // Update config with connection status
+      if (espWiFi) {
+        espWiFi->config["bluetooth"]["connected"] = true;
+        espWiFi->config["bluetooth"]["connectionCount"] = (int)connectionCount;
+      }
+    }
 
     String address = String(connInfo.getAddress().toString().c_str());
 
     // Log directly to Serial first as fallback
     Serial.print("[BLE] Device Connected - Address: ");
-    Serial.println(address);
+    Serial.print(address);
+    Serial.print(", Connections: ");
+    Serial.println(connectionCount);
 
     if (espWiFi) {
       espWiFi->log("📱 Bluetooth Device Connected");
       espWiFi->logf("\tAddress: %s\n", address.c_str());
+      espWiFi->logf("\tConnection Handle: %d\n", handle);
+      espWiFi->logf("\tTotal Connections: %d\n", connectionCount);
     } else {
       Serial.println("[BLE] Warning: ESPWiFi pointer is null!");
     }
 
     // Update connection parameters for better reliability
-    pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
+    pServer->updateConnParams(handle, 24, 48, 0, 180);
+
+    // Continue advertising to allow more connections (unless at max)
+    if (connectionCount < MAX_BLE_CONNECTIONS) {
+      NimBLEDevice::startAdvertising();
+    }
   }
 
   void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo,
                     int reason) {
-    deviceConnected = false;
+    uint16_t handle = connInfo.getConnHandle();
+
+    // Remove connection handle from list
+    for (uint8_t i = 0; i < connectionCount; i++) {
+      if (connectionHandles[i] == handle) {
+        // Shift remaining handles down
+        for (uint8_t j = i; j < connectionCount - 1; j++) {
+          connectionHandles[j] = connectionHandles[j + 1];
+        }
+        connectionCount--;
+        break;
+      }
+    }
+
+    deviceConnected = (connectionCount > 0);
+
+    // Update config with connection status
+    if (espWiFi) {
+      espWiFi->config["bluetooth"]["connected"] = deviceConnected;
+      espWiFi->config["bluetooth"]["connectionCount"] = (int)connectionCount;
+    }
 
     String address = String(connInfo.getAddress().toString().c_str());
 
@@ -63,17 +110,20 @@ public:
     Serial.print("[BLE] Device Disconnected - Address: ");
     Serial.print(address);
     Serial.print(", Reason: ");
-    Serial.println(reason);
+    Serial.print(reason);
+    Serial.print(", Remaining Connections: ");
+    Serial.println(connectionCount);
 
     if (espWiFi) {
       espWiFi->log("📱 Bluetooth Device Disconnected");
       espWiFi->logf("\tAddress: %s\n", address.c_str());
       espWiFi->logf("\tReason: %d\n", reason);
+      espWiFi->logf("\tRemaining Connections: %d\n", connectionCount);
     } else {
       Serial.println("[BLE] Warning: ESPWiFi pointer is null!");
     }
 
-    // Restart advertising when disconnected
+    // Restart advertising when disconnected to allow new connections
     delay(500);
     NimBLEDevice::startAdvertising();
   }
@@ -156,10 +206,12 @@ bool ESPWiFi::startBluetooth() {
   pAdvertising->setScanResponse(true);
   pAdvertising->start();
 
-  // Store MAC address and mode for status endpoint
+  // Store MAC address and mode in config
   String macAddress = String(NimBLEDevice::getAddress().toString().c_str());
   config["bluetooth"]["address"] = macAddress;
   config["bluetooth"]["mode"] = "BLE";
+  config["bluetooth"]["connected"] = false;
+  config["bluetooth"]["connectionCount"] = 0;
 
   log("📱 Bluetooth Started:");
   logf("\tMode: BLE\n");
@@ -181,6 +233,12 @@ void ESPWiFi::stopBluetooth() {
   pRxCharacteristic = nullptr;
   deviceConnected = false;
   oldDeviceConnected = false;
+  connectionCount = 0;
+  for (uint8_t i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+    connectionHandles[i] = 0xFFFF;
+  }
+  config["bluetooth"]["connected"] = false;
+  config["bluetooth"]["connectionCount"] = 0;
   bluetoothStarted = false;
   log("📱 Bluetooth Stopped\n");
 }
@@ -196,10 +254,27 @@ void ESPWiFi::bluetoothConfigHandler() {
     if (bluetoothEnabled) {
       config["bluetooth"]["enabled"] = false;
     }
+    config["bluetooth"]["connected"] = false;
+    config["bluetooth"]["connectionCount"] = 0;
     if (bluetoothStarted) {
       stopBluetooth();
     }
     return;
+  }
+
+  // Update connection status in config based on current state
+  if (bluetoothStarted && pServer != nullptr) {
+    uint16_t connCount = pServer->getConnectedCount();
+    if (connCount != connectionCount) {
+      connectionCount =
+          (connCount > MAX_BLE_CONNECTIONS) ? MAX_BLE_CONNECTIONS : connCount;
+      deviceConnected = (connectionCount > 0);
+    }
+    config["bluetooth"]["connected"] = deviceConnected;
+    config["bluetooth"]["connectionCount"] = (int)connectionCount;
+  } else {
+    config["bluetooth"]["connected"] = false;
+    config["bluetooth"]["connectionCount"] = 0;
   }
 
   static String lastDeviceName = "";
@@ -239,79 +314,6 @@ void ESPWiFi::scanBluetoothDevices() {
 
 void ESPWiFi::srvBluetooth() {
   initWebServer();
-
-  // Get Bluetooth status
-  webServer->on(
-      "/api/bluetooth/status", HTTP_GET,
-      [this](AsyncWebServerRequest *request) {
-        if (request->method() == HTTP_OPTIONS) {
-          handleCorsPreflight(request);
-          return;
-        }
-        if (!authorized(request)) {
-          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-          return;
-        }
-
-        JsonDocument jsonDoc;
-        bool btInstalled = config["bluetooth"]["installed"].as<bool>();
-        bool btEnabled = config["bluetooth"]["enabled"].as<bool>();
-
-        // If Bluetooth is not installed, it cannot be enabled
-        if (!btInstalled) {
-          btEnabled = false;
-        }
-
-        jsonDoc["enabled"] = btEnabled;
-        jsonDoc["installed"] = btInstalled;
-        jsonDoc["deviceName"] = config["deviceName"].as<String>();
-
-        bool btConnected = false;
-        String btAddress = "";
-
-        // Only get connection status and address if Bluetooth is installed
-        // and enabled
-        if (btInstalled && btEnabled) {
-          // Check both deviceConnected flag and server connection count as
-          // backup
-          btConnected = deviceConnected;
-          if (pServer != nullptr) {
-            // Also verify by checking if server has any connected clients
-            uint16_t connCount = pServer->getConnectedCount();
-            if (connCount > 0 && !btConnected) {
-              // If server shows connections but flag doesn't, update the flag
-              // This might happen if onConnect callback didn't fire
-              deviceConnected = true;
-              btConnected = true;
-              log("📱 Bluetooth Connection Detected (via status check)");
-              logf("\tConnection count: %d\n", connCount);
-            } else if (connCount == 0 && btConnected) {
-              // If server shows no connections but flag does, update the flag
-              deviceConnected = false;
-              btConnected = false;
-              log("📱 Bluetooth Disconnection Detected (via status check)");
-            }
-          }
-
-          btAddress = config["bluetooth"]["address"].as<String>();
-
-          // Try to get address from BLE if not in config (only if BLE is
-          // initialized)
-          if (btAddress.length() == 0 && pServer != nullptr) {
-            btAddress = String(NimBLEDevice::getAddress().toString().c_str());
-            if (btAddress.length() > 0) {
-              config["bluetooth"]["address"] = btAddress;
-            }
-          }
-        }
-
-        jsonDoc["address"] = btAddress;
-        jsonDoc["connected"] = btConnected;
-
-        String jsonResponse;
-        serializeJson(jsonDoc, jsonResponse);
-        sendJsonResponse(request, 200, jsonResponse);
-      });
 
   // Enable/Disable Bluetooth
   webServer->addHandler(new AsyncCallbackJsonWebHandler(
@@ -506,25 +508,56 @@ void ESPWiFi::srvBluetooth() {
       "/api/bluetooth/disconnect", HTTP_OPTIONS,
       [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
 
-  webServer->on("/api/bluetooth/disconnect", HTTP_POST,
-                [this](AsyncWebServerRequest *request) {
-                  if (!authorized(request)) {
-                    sendJsonResponse(request, 401,
-                                     "{\"error\":\"Unauthorized\"}");
-                    return;
-                  }
+  webServer->on(
+      "/api/bluetooth/disconnect", HTTP_POST,
+      [this](AsyncWebServerRequest *request) {
+        if (!authorized(request)) {
+          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
+          return;
+        }
 
-                  // For BLE, clients disconnect themselves
-                  // We can't force disconnect without tracking connection IDs
-                  // Just return success - the client will disconnect when ready
-                  JsonDocument responseDoc;
-                  responseDoc["success"] = true;
-                  responseDoc["message"] = "BLE clients disconnect themselves";
+        JsonDocument responseDoc;
 
-                  String jsonResponse;
-                  serializeJson(responseDoc, jsonResponse);
-                  sendJsonResponse(request, 200, jsonResponse);
-                });
+        if (!bluetoothStarted || pServer == nullptr) {
+          responseDoc["success"] = false;
+          responseDoc["error"] = "Bluetooth not started";
+          String jsonResponse;
+          serializeJson(responseDoc, jsonResponse);
+          sendJsonResponse(request, 400, jsonResponse);
+          return;
+        }
+
+        if (connectionCount == 0) {
+          responseDoc["success"] = false;
+          responseDoc["error"] = "No active connections";
+          String jsonResponse;
+          serializeJson(responseDoc, jsonResponse);
+          sendJsonResponse(request, 400, jsonResponse);
+          return;
+        }
+
+        // Disconnect all BLE clients
+        log("📱 Disconnecting Bluetooth clients");
+        logf("\tConnection count: %d\n", connectionCount);
+
+        uint8_t disconnected = 0;
+        for (uint8_t i = 0; i < connectionCount; i++) {
+          pServer->disconnect(connectionHandles[i]);
+          disconnected++;
+        }
+
+        // Note: The onDisconnect callback will be called
+        // automatically for each connection and will update
+        // connectionCount and deviceConnected
+
+        responseDoc["success"] = true;
+        responseDoc["message"] = "Disconnect initiated for all connections";
+        responseDoc["disconnected"] = disconnected;
+
+        String jsonResponse;
+        serializeJson(responseDoc, jsonResponse);
+        sendJsonResponse(request, 200, jsonResponse);
+      });
 }
 
 #else // CONFIG_BT_ENABLED
@@ -545,25 +578,7 @@ void ESPWiFi::bluetoothConfigHandler() {}
 void ESPWiFi::scanBluetoothDevices() {}
 
 void ESPWiFi::srvBluetooth() {
-  initWebServer();
-  webServer->on("/api/bluetooth/status", HTTP_GET,
-                [this](AsyncWebServerRequest *request) {
-                  if (!authorized(request)) {
-                    sendJsonResponse(request, 401,
-                                     "{\"error\":\"Unauthorized\"}");
-                    return;
-                  }
-                  JsonDocument jsonDoc;
-                  jsonDoc["enabled"] = false;
-                  jsonDoc["installed"] = false;
-                  jsonDoc["deviceName"] = config["deviceName"].as<String>();
-                  jsonDoc["address"] = "";
-                  jsonDoc["connected"] = false;
-
-                  String jsonResponse;
-                  serializeJson(jsonDoc, jsonResponse);
-                  sendJsonResponse(request, 200, jsonResponse);
-                });
+  // initWebServer();
 }
 #endif
 

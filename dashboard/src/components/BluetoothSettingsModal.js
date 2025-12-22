@@ -20,6 +20,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tooltip,
 } from "@mui/material";
 import {
   BluetoothDisabled as BluetoothDisabledIcon,
@@ -534,8 +535,7 @@ export default function BluetoothSettingsModal({
                       Download File to Device
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Select a file from the ESP32 to download to your phone or
-                      Mac
+                      Select a file to download
                     </Typography>
                   </Box>
                 </Box>
@@ -699,12 +699,36 @@ export default function BluetoothSettingsModal({
                       Connection:
                     </Typography>
                     <Box sx={{ minWidth: 140 }}>
-                      <Chip
-                        icon={connected ? <CheckCircleIcon /> : <CancelIcon />}
-                        label={connected ? "Connected" : "Not Connected"}
-                        color={connected ? "success" : "default"}
-                        size="small"
-                      />
+                      {(() => {
+                        let connectionLabel = "Not Connected";
+                        let connectionColor = "default";
+                        let connectionIcon = <CancelIcon />;
+                        let connectionTooltip = "No Bluetooth connection";
+
+                        if (webBleConnected) {
+                          connectionLabel = "Connected";
+                          connectionColor = "success";
+                          connectionIcon = <CheckCircleIcon />;
+                          connectionTooltip = "Connected via Web Bluetooth";
+                        } else if (connected) {
+                          connectionLabel = "Remote";
+                          connectionColor = "info";
+                          connectionIcon = <CheckCircleIcon />;
+                          connectionTooltip =
+                            "Remote connection active (another device is connected)";
+                        }
+
+                        return (
+                          <Tooltip title={connectionTooltip}>
+                            <Chip
+                              icon={connectionIcon}
+                              label={connectionLabel}
+                              color={connectionColor}
+                              size="small"
+                            />
+                          </Tooltip>
+                        );
+                      })()}
                     </Box>
                   </Box>
                 </Grid>
@@ -741,25 +765,6 @@ export default function BluetoothSettingsModal({
                     </Box>
                   )}
                 </Grid>
-                {webBleConnected && (
-                  <Grid item xs={12}>
-                    <Box sx={{ display: "flex", alignItems: "center" }}>
-                      <Typography
-                        variant="subtitle2"
-                        color="text.secondary"
-                        sx={{ mr: 1.5, minWidth: 120 }}
-                      >
-                        Web Bluetooth:
-                      </Typography>
-                      <Chip
-                        icon={<CheckCircleIcon />}
-                        label="Connected"
-                        color="success"
-                        size="small"
-                      />
-                    </Box>
-                  </Grid>
-                )}
               </Grid>
               {webBleConnected ? (
                 <Button
@@ -772,9 +777,9 @@ export default function BluetoothSettingsModal({
                   size="large"
                   sx={{ mb: connected ? 2 : 0 }}
                 >
-                  Disconnect Web Bluetooth
+                  Disconnect
                 </Button>
-              ) : (
+              ) : !connected ? (
                 <Button
                   variant="contained"
                   color="primary"
@@ -795,8 +800,8 @@ export default function BluetoothSettingsModal({
                     ? "Connecting..."
                     : "Connect via Web Bluetooth"}
                 </Button>
-              )}
-              {connected && (
+              ) : null}
+              {connected && !webBleConnected && (
                 <Button
                   variant="outlined"
                   color="error"
@@ -805,7 +810,7 @@ export default function BluetoothSettingsModal({
                   disabled={loading}
                   fullWidth
                 >
-                  Disconnect All Devices
+                  Disconnect Remote Devices
                 </Button>
               )}
             </CardContent>

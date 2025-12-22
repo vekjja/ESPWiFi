@@ -39,18 +39,60 @@ public:
   MyServerCallbacks(ESPWiFi *esp) : espWiFi(esp) {}
 
   void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) {
+    // Always log to Serial first - critical for debugging
+    Serial.println("[BLE] ===== onConnect CALLBACK TRIGGERED =====");
+
     uint16_t handle = connInfo.getConnHandle();
+    Serial.printf("[BLE] Connection Handle: %d\n", handle);
 
     // Add connection handle to list if not at max
+    bool connectionAdded = false;
     if (connectionCount < MAX_BLE_CONNECTIONS) {
-      connectionHandles[connectionCount++] = handle;
+      // Check if this handle is already in our list (avoid duplicates)
+      bool handleExists = false;
+      for (uint8_t i = 0; i < connectionCount; i++) {
+        if (connectionHandles[i] == handle) {
+          handleExists = true;
+          Serial.printf("[BLE] WARNING: Handle %d already in list!\n", handle);
+          break;
+        }
+      }
+
+      if (!handleExists) {
+        connectionHandles[connectionCount++] = handle;
+        connectionAdded = true;
+        Serial.printf("[BLE] Added handle, connectionCount: %d\n",
+                      connectionCount);
+      }
+    } else {
+      Serial.printf(
+          "[BLE] WARNING: Max connections reached (%d), cannot add handle %d\n",
+          MAX_BLE_CONNECTIONS, handle);
+    }
+
+    // Update connection state if we added a new connection
+    if (connectionAdded) {
       deviceConnected = true;
       oldDeviceConnected = true;
 
-      // Update config with connection status
+      // Update config with connection status immediately
       if (espWiFi) {
         espWiFi->config["bluetooth"]["connected"] = true;
         espWiFi->config["bluetooth"]["connectionCount"] = (int)connectionCount;
+        Serial.printf("[BLE] Config updated: connected=true, count=%d\n",
+                      connectionCount);
+
+        // Also check server's actual count
+        uint16_t serverCount = pServer->getConnectedCount();
+        Serial.printf("[BLE] Server getConnectedCount(): %d\n", serverCount);
+
+        if (serverCount != connectionCount) {
+          Serial.printf(
+              "[BLE] WARNING: Mismatch! Server says %d, we track %d\n",
+              serverCount, connectionCount);
+        }
+      } else {
+        Serial.println("[BLE] ERROR: ESPWiFi pointer is null in onConnect!");
       }
     }
 
@@ -82,7 +124,11 @@ public:
 
   void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo,
                     int reason) {
+    // Always log to Serial first - critical for debugging
+    Serial.println("[BLE] ===== onDisconnect CALLBACK TRIGGERED =====");
+
     uint16_t handle = connInfo.getConnHandle();
+    Serial.printf("[BLE] Disconnect Handle: %d, Reason: %d\n", handle, reason);
 
     // Remove connection handle from list
     for (uint8_t i = 0; i < connectionCount; i++) {
@@ -92,16 +138,29 @@ public:
           connectionHandles[j] = connectionHandles[j + 1];
         }
         connectionCount--;
+        connectionHandles[connectionCount] = 0xFFFF; // Clear the last slot
+        Serial.printf("[BLE] Removed handle, new count: %d\n", connectionCount);
         break;
       }
     }
 
     deviceConnected = (connectionCount > 0);
+    Serial.printf("[BLE] deviceConnected set to: %s\n",
+                  deviceConnected ? "true" : "false");
 
-    // Update config with connection status
+    // Update config with connection status immediately
+    // Note: bluetoothConfigHandler() will sync with server's actual count
     if (espWiFi) {
       espWiFi->config["bluetooth"]["connected"] = deviceConnected;
       espWiFi->config["bluetooth"]["connectionCount"] = (int)connectionCount;
+      Serial.printf("[BLE] Config updated: connected=%s, count=%d\n",
+                    deviceConnected ? "true" : "false", connectionCount);
+
+      // Verify with server's count
+      uint16_t serverCount = pServer->getConnectedCount();
+      Serial.printf("[BLE] Server getConnectedCount(): %d\n", serverCount);
+    } else {
+      Serial.println("[BLE] ERROR: ESPWiFi pointer is null in onDisconnect!");
     }
 
     String address = String(connInfo.getAddress().toString().c_str());
@@ -245,6 +304,110 @@ void ESPWiFi::stopBluetooth() {
 
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }
 
+void ESPWiFi::checkBluetoothConnectionStatus() {
+  // Only check if Bluetooth is started
+  if ((!bluetoothStarted || pServer == nullptr) ||
+      !config["bluetooth"]["enabled"].as<bool>()) {
+    return;
+  }
+
+  // Get server's actual connection count (source of truth)
+  uint16_t serverConnCount = pServer->getConnectedCount();
+  bool serverIsConnected = (serverConnCount > 0);
+  uint8_t actualConnCount = (serverConnCount > MAX_BLE_CONNECTIONS)
+                                ? MAX_BLE_CONNECTIONS
+                                : (uint8_t)serverConnCount;
+
+  // Detect state change
+  bool stateChanged = (serverConnCount != connectionCount) ||
+                      (serverIsConnected != deviceConnected);
+
+  if (stateChanged) {
+    bool wasConnected = deviceConnected;
+
+    // Serial.printf("[BLE Poll] Connection state change detected!\n");
+    Serial.printf("  Server count: %d (was %d), Connected: %s (was %s)\n",
+                  serverConnCount, connectionCount,
+                  serverIsConnected ? "true" : "false",
+                  deviceConnected ? "true" : "false");
+
+    // Update tracked state
+    connectionCount = actualConnCount;
+    deviceConnected = serverIsConnected;
+
+    // Log connection/disconnection events
+    if (serverIsConnected && !wasConnected) {
+      // Serial.println("[BLE Poll] *** CONNECTION DETECTED ***");
+      log("📱 Bluetooth Device Connected");
+
+      // Try to get connection info for connected devices
+      // First check if we already have tracked handles
+      bool loggedInfo = false;
+      for (uint8_t i = 0; i < connectionCount && i < MAX_BLE_CONNECTIONS; i++) {
+        if (connectionHandles[i] != 0xFFFF) {
+          try {
+            NimBLEConnInfo connInfo =
+                pServer->getPeerInfo(connectionHandles[i]);
+            String address = String(connInfo.getAddress().toString().c_str());
+            logf("\tAddress: %s\n", address.c_str());
+            logf("\tConnection Handle: %d\n", connectionHandles[i]);
+            loggedInfo = true;
+            break; // Log first connection
+          } catch (...) {
+            // Handle not valid, continue
+          }
+        }
+      }
+
+      // If we don't have handles yet (callback didn't fire), try to discover
+      // them by checking a reasonable range (BLE handles are typically low
+      // numbers)
+      if (!loggedInfo && actualConnCount > 0) {
+        for (uint16_t handle = 0; handle < 100 && !loggedInfo; handle++) {
+          // Check if this handle is already in our list
+          bool alreadyTracked = false;
+          for (uint8_t i = 0; i < connectionCount; i++) {
+            if (connectionHandles[i] == handle) {
+              alreadyTracked = true;
+              break;
+            }
+          }
+
+          if (!alreadyTracked) {
+            try {
+              NimBLEConnInfo connInfo = pServer->getPeerInfo(handle);
+              String address = String(connInfo.getAddress().toString().c_str());
+              logf("\tAddress: %s\n", address.c_str());
+              logf("\tConnection Handle: %d\n", handle);
+              // Add to tracked list if we have space
+              if (connectionCount < MAX_BLE_CONNECTIONS) {
+                connectionHandles[connectionCount - 1] = handle;
+              }
+              loggedInfo = true;
+            } catch (...) {
+              // Handle not valid, continue searching
+            }
+          }
+        }
+      }
+      logf("\tTotal Connections: %d\n", actualConnCount);
+    } else if (!serverIsConnected && wasConnected) {
+      Serial.println("[BLE Poll] *** DISCONNECTION DETECTED ***");
+      log("📱 Bluetooth Device Disconnected");
+      logf("\tRemaining Connections: %d\n", actualConnCount);
+
+      // Clear connection handles when disconnected
+      for (uint8_t i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+        connectionHandles[i] = 0xFFFF;
+      }
+    }
+
+    // Update config immediately
+    config["bluetooth"]["connected"] = serverIsConnected;
+    config["bluetooth"]["connectionCount"] = (int)actualConnCount;
+  }
+}
+
 void ESPWiFi::bluetoothConfigHandler() {
   bool btInstalled = config["bluetooth"]["installed"].as<bool>();
   bool bluetoothEnabled = config["bluetooth"]["enabled"].as<bool>();
@@ -263,18 +426,121 @@ void ESPWiFi::bluetoothConfigHandler() {
   }
 
   // Update connection status in config based on current state
+  // Always use server's actual connection count as source of truth
+  // This is critical because callbacks may not fire reliably
   if (bluetoothStarted && pServer != nullptr) {
-    uint16_t connCount = pServer->getConnectedCount();
-    if (connCount != connectionCount) {
-      connectionCount =
-          (connCount > MAX_BLE_CONNECTIONS) ? MAX_BLE_CONNECTIONS : connCount;
-      deviceConnected = (connectionCount > 0);
+    uint16_t serverConnCount = pServer->getConnectedCount();
+    bool serverIsConnected = (serverConnCount > 0);
+    uint8_t actualConnCount = (serverConnCount > MAX_BLE_CONNECTIONS)
+                                  ? MAX_BLE_CONNECTIONS
+                                  : (uint8_t)serverConnCount;
+
+    // Detect connection state change
+    bool wasConnected = deviceConnected;
+    bool connectionChanged = (serverConnCount != connectionCount) ||
+                             (serverIsConnected != deviceConnected);
+
+    // Debug logging (only when state changes to reduce noise)
+    if (connectionChanged) {
+      Serial.printf("[BLE ConfigHandler] Connection state change detected!\n");
+      Serial.printf("  Server count: %d, Tracked count: %d\n", serverConnCount,
+                    connectionCount);
+      Serial.printf("  Server connected: %s, Tracked connected: %s\n",
+                    serverIsConnected ? "true" : "false",
+                    deviceConnected ? "true" : "false");
     }
-    config["bluetooth"]["connected"] = deviceConnected;
-    config["bluetooth"]["connectionCount"] = (int)connectionCount;
-  } else {
+
+    // Always sync our tracked state with server's actual state (server is
+    // source of truth) This handles cases where callbacks might not fire or get
+    // out of sync
+    if (connectionChanged) {
+      Serial.printf(
+          "[BLE ConfigHandler] Syncing: count %d -> %d, connected %s -> %s\n",
+          connectionCount, actualConnCount, deviceConnected ? "true" : "false",
+          serverIsConnected ? "true" : "false");
+
+      connectionCount = actualConnCount;
+      deviceConnected = serverIsConnected;
+
+      // Log connection/disconnection events when state changes
+      if (serverIsConnected && !wasConnected) {
+        // Serial.println("[BLE ConfigHandler] *** CONNECTION DETECTED ***");
+        log("📱 Bluetooth Device Connected");
+
+        // Try to get connection info for connected devices
+        bool loggedInfo = false;
+        for (uint8_t i = 0; i < connectionCount && i < MAX_BLE_CONNECTIONS;
+             i++) {
+          if (connectionHandles[i] != 0xFFFF) {
+            try {
+              NimBLEConnInfo connInfo =
+                  pServer->getPeerInfo(connectionHandles[i]);
+              String address = String(connInfo.getAddress().toString().c_str());
+              logf("\tAddress: %s\n", address.c_str());
+              logf("\tConnection Handle: %d\n", connectionHandles[i]);
+              loggedInfo = true;
+              break; // Log first connection
+            } catch (...) {
+              // Handle not valid, continue
+            }
+          }
+        }
+
+        // If we don't have handles yet, try to discover them
+        if (!loggedInfo && actualConnCount > 0) {
+          for (uint16_t handle = 0; handle < 100 && !loggedInfo; handle++) {
+            try {
+              NimBLEConnInfo connInfo = pServer->getPeerInfo(handle);
+              bool alreadyTracked = false;
+              for (uint8_t i = 0; i < connectionCount; i++) {
+                if (connectionHandles[i] == handle) {
+                  alreadyTracked = true;
+                  break;
+                }
+              }
+              if (!alreadyTracked) {
+                String address =
+                    String(connInfo.getAddress().toString().c_str());
+                logf("\tAddress: %s\n", address.c_str());
+                logf("\tConnection Handle: %d\n", handle);
+                if (connectionCount < MAX_BLE_CONNECTIONS) {
+                  connectionHandles[connectionCount - 1] = handle;
+                }
+                loggedInfo = true;
+              }
+            } catch (...) {
+              // Handle not valid, continue
+            }
+          }
+        }
+
+        logf("\tTotal Connections: %d\n", actualConnCount);
+      } else if (!serverIsConnected && wasConnected) {
+        // Serial.println("[BLE ConfigHandler] *** DISCONNECTION DETECTED ***");
+        log("📱 Bluetooth Device Disconnected");
+        logf("\tRemaining Connections: %d\n", actualConnCount);
+      }
+
+      // If count dropped to 0, clear connection handles
+      if (connectionCount == 0) {
+        for (uint8_t i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+          connectionHandles[i] = 0xFFFF;
+        }
+      }
+    }
+
+    // Always update config with server's actual state (source of truth)
+    config["bluetooth"]["connected"] = serverIsConnected;
+    config["bluetooth"]["connectionCount"] = (int)actualConnCount;
+  } else if (!bluetoothStarted) {
+    // Bluetooth not started, ensure config reflects this
     config["bluetooth"]["connected"] = false;
     config["bluetooth"]["connectionCount"] = 0;
+    deviceConnected = false;
+    connectionCount = 0;
+    for (uint8_t i = 0; i < MAX_BLE_CONNECTIONS; i++) {
+      connectionHandles[i] = 0xFFFF;
+    }
   }
 
   static String lastDeviceName = "";

@@ -193,6 +193,7 @@ public:
   void scanBluetoothDevices();
   bool bluetoothStarted = false;
   void bluetoothConfigHandler();
+  void checkBluetoothConnectionStatus();
 };
 
 #endif // ESPWiFi

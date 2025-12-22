@@ -117,8 +117,11 @@ public:
     }
 
     // Restart advertising when disconnected to allow new connections
-    delay(500);
-    NimBLEDevice::startAdvertising();
+    // (unless we're at max connections)
+    if (connectionCount < MAX_BLE_CONNECTIONS) {
+      delay(500);
+      NimBLEDevice::startAdvertising();
+    }
   }
 };
 
@@ -169,9 +172,6 @@ bool ESPWiFi::startBluetooth() {
   pServer = NimBLEDevice::createServer();
   MyServerCallbacks *serverCallbacks = new MyServerCallbacks(this);
   pServer->setCallbacks(serverCallbacks);
-
-  // Verify callback setup
-  log("📱 Bluetooth Callbacks initialized");
 
   // Create BLE service
   NimBLEService *pService = pServer->createService(SERVICE_UUID);
@@ -660,7 +660,9 @@ void ESPWiFi::srvBluetooth() {
           return;
         }
 
-        if (connectionCount == 0) {
+        // Get actual connection count from server (source of truth)
+        uint16_t serverConnCount = pServer->getConnectedCount();
+        if (serverConnCount == 0) {
           responseDoc["success"] = false;
           responseDoc["error"] = "No active connections";
           String jsonResponse;
@@ -669,14 +671,80 @@ void ESPWiFi::srvBluetooth() {
           return;
         }
 
-        // Disconnect all BLE clients
+        // Disconnect all BLE clients by finding valid connection handles
         log("📱 Disconnecting Bluetooth clients");
-        logf("\tConnection count: %d\n", connectionCount);
+        logf("\tServer connection count: %d\n", serverConnCount);
+        logf("\tTracked connection count: %d\n", connectionCount);
 
         uint8_t disconnected = 0;
-        for (uint8_t i = 0; i < connectionCount; i++) {
-          pServer->disconnect(connectionHandles[i]);
-          disconnected++;
+
+        // First, try to disconnect using tracked handles
+        for (uint8_t i = 0; i < connectionCount && i < MAX_BLE_CONNECTIONS;
+             i++) {
+          if (connectionHandles[i] != 0xFFFF) {
+            uint16_t handle = connectionHandles[i];
+            try {
+              NimBLEConnInfo connInfo = pServer->getPeerInfo(handle);
+              String address = String(connInfo.getAddress().toString().c_str());
+              logf("\tDisconnecting tracked handle %d (address: %s)\n", handle,
+                   address.c_str());
+              pServer->disconnect(handle);
+              disconnected++;
+            } catch (...) {
+              // Handle might be invalid, continue
+            }
+          }
+        }
+
+        // If we haven't disconnected all connections, try to find them
+        // by iterating through potential handles
+        if (disconnected < serverConnCount) {
+          logf("\tSearching for additional connections...\n");
+          for (uint16_t handle = 0;
+               handle < 100 && disconnected < serverConnCount; handle++) {
+            // Skip handles we already tried
+            bool alreadyTried = false;
+            for (uint8_t i = 0; i < connectionCount && i < MAX_BLE_CONNECTIONS;
+                 i++) {
+              if (connectionHandles[i] == handle) {
+                alreadyTried = true;
+                break;
+              }
+            }
+            if (alreadyTried) {
+              continue;
+            }
+
+            try {
+              NimBLEConnInfo connInfo = pServer->getPeerInfo(handle);
+              String address = String(connInfo.getAddress().toString().c_str());
+              logf("\tDisconnecting discovered handle %d (address: %s)\n",
+                   handle, address.c_str());
+              pServer->disconnect(handle);
+              disconnected++;
+            } catch (...) {
+              // Handle not valid, continue
+            }
+          }
+        }
+
+        logf("\tTotal disconnected: %d\n", disconnected);
+
+        // Stop advertising to prevent immediate reconnection
+        // After disconnection, wait a bit then restart advertising if needed
+        NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
+        pAdvertising->stop();
+        logf("\tAdvertising stopped to prevent immediate reconnection\n");
+
+        // Wait a bit for disconnection to complete, then restart advertising
+        // This prevents immediate reconnection while still allowing new
+        // connections
+        delay(2000);
+        if (pServer->getConnectedCount() == 0) {
+          pAdvertising->start();
+          logf("\tAdvertising restarted (no active connections)\n");
+        } else {
+          logf("\tAdvertising remains stopped (connection still active)\n");
         }
 
         // Note: The onDisconnect callback will be called
@@ -686,6 +754,7 @@ void ESPWiFi::srvBluetooth() {
         responseDoc["success"] = true;
         responseDoc["message"] = "Disconnect initiated for all connections";
         responseDoc["disconnected"] = disconnected;
+        responseDoc["serverConnCount"] = serverConnCount;
 
         String jsonResponse;
         serializeJson(responseDoc, jsonResponse);

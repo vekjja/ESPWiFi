@@ -25,6 +25,7 @@ import {
 import {
   BluetoothDisabled as BluetoothDisabledIcon,
   Bluetooth as BluetoothIcon,
+  BluetoothConnected as BluetoothConnectedIcon,
   GetApp as GetAppIcon,
   ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon,
@@ -44,28 +45,48 @@ export default function BluetoothSettingsModal({
   saveConfig,
   saveConfigToDevice,
   deviceOnline,
+  webBleConnected,
+  setWebBleConnected,
+  webBleDevice,
+  setWebBleDevice,
+  webBleServer,
+  setWebBleServer,
+  webBleService,
+  setWebBleService,
+  webBleTxCharacteristic,
+  setWebBleTxCharacteristic,
+  webBleRxCharacteristic,
+  setWebBleRxCharacteristic,
 }) {
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(config?.bluetooth?.enabled || false);
   const initializedRef = useRef(false);
+
+  // Update enabled state when config changes (but only if modal is already initialized)
+  useEffect(() => {
+    if (initializedRef.current && config?.bluetooth?.enabled !== undefined) {
+      setEnabled(config.bluetooth.enabled);
+    }
+  }, [config?.bluetooth?.enabled]);
   const [fileSystem, setFileSystem] = useState("sd");
   const [files, setFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [selectedFile, setSelectedFile] = useState("");
   const [fileError, setFileError] = useState(null);
-  const [webBleConnected, setWebBleConnected] = useState(false);
-  const [webBleDevice, setWebBleDevice] = useState(null);
-  // eslint-disable-next-line no-unused-vars
-  const [webBleServer, setWebBleServer] = useState(null); // Reserved for future use (sending files)
-  // eslint-disable-next-line no-unused-vars
-  const [webBleService, setWebBleService] = useState(null); // Reserved for future use
-  const [webBleTxCharacteristic, setWebBleTxCharacteristic] = useState(null);
-  // eslint-disable-next-line no-unused-vars
-  const [webBleRxCharacteristic, setWebBleRxCharacteristic] = useState(null); // Reserved for future use (sending files)
   const [webBleConnecting, setWebBleConnecting] = useState(false);
   const [webBleDownloading, setWebBleDownloading] = useState(false);
 
-  const connected = config?.bluetooth?.connected || false;
+  // Use a state variable for connected so we can update it when config changes
+  const [connected, setConnected] = useState(
+    config?.bluetooth?.connected || false
+  );
+
+  // Update connected state when config changes
+  useEffect(() => {
+    if (config?.bluetooth?.connected !== undefined) {
+      setConnected(config.bluetooth.connected);
+    }
+  }, [config?.bluetooth?.connected]);
 
   // Recursively fetch all files from the filesystem
   const fetchAllFiles = useCallback(
@@ -131,25 +152,31 @@ export default function BluetoothSettingsModal({
     }
   }, [open, enabled, connected, deviceOnline, fileSystem, fetchAllFiles]);
 
-  // Reset state when modal opens - load current config values
   // Only initialize once when modal opens, don't sync while modal is open
   useEffect(() => {
     if (open && !initializedRef.current) {
       setEnabled(config?.bluetooth?.enabled || false);
+
       initializedRef.current = true;
     } else if (!open) {
       // Reset the ref when modal closes so it can initialize again next time
       initializedRef.current = false;
       setSelectedFile("");
       setFileError(null);
+      // Web Bluetooth state persists in parent component (BluetoothButton)
     }
     // Only reset when modal opens/closes, not when config changes
     // This prevents the enabled state from being reset when user toggles it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, webBleDevice, webBleTxCharacteristic]);
 
   const handleDisconnect = async () => {
+    if (loading || !deviceOnline) {
+      return;
+    }
+
     setLoading(true);
+    setFileError(null);
 
     try {
       const response = await fetch(
@@ -160,10 +187,18 @@ export default function BluetoothSettingsModal({
       );
 
       if (!response.ok) {
-        throw new Error("Failed to disconnect");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to disconnect");
       }
+
+      const data = await response.json();
+      console.log("Disconnect response:", data);
+
+      // Clear any error messages on success
+      setFileError(null);
     } catch (err) {
       console.error("Error disconnecting Bluetooth:", err);
+      setFileError(err.message || "Failed to disconnect remote devices");
     } finally {
       setLoading(false);
     }
@@ -222,6 +257,36 @@ export default function BluetoothSettingsModal({
     if (!navigator.bluetooth) {
       setFileError("Web Bluetooth API is not supported in this browser");
       return;
+    }
+
+    // Enable Bluetooth first if it's disabled
+    if (!enabled) {
+      try {
+        setEnabled(true);
+        setLoading(true);
+
+        const configToSave = {
+          ...config,
+          bluetooth: {
+            ...config.bluetooth,
+            enabled: true,
+          },
+        };
+
+        await saveConfigToDevice(configToSave);
+        // Wait a bit for Bluetooth to start
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error("Error enabling Bluetooth:", err);
+        setFileError(
+          "Failed to enable Bluetooth: " + (err.message || "Unknown error")
+        );
+        setEnabled(false);
+        setLoading(false);
+        return;
+      } finally {
+        setLoading(false);
+      }
     }
 
     setWebBleConnecting(true);
@@ -286,15 +351,24 @@ export default function BluetoothSettingsModal({
   // Handle Web Bluetooth disconnection
   const handleWebBleDisconnect = async () => {
     try {
+      // Try to stop notifications - may fail if already disconnected
       if (webBleTxCharacteristic) {
-        await webBleTxCharacteristic.stopNotifications();
+        try {
+          await webBleTxCharacteristic.stopNotifications();
+        } catch (err) {
+          // Already disconnected, ignore
+          console.log("Notifications already stopped:", err.message);
+        }
       }
+      // Disconnect if still connected
       if (webBleDevice?.gatt?.connected) {
         webBleDevice.gatt.disconnect();
       }
     } catch (err) {
-      console.error("Error disconnecting Web Bluetooth:", err);
+      // Connection may already be closed, which is fine
+      console.log("Web Bluetooth disconnect:", err.message);
     } finally {
+      // Always reset state regardless of errors
       setWebBleDevice(null);
       setWebBleServer(null);
       setWebBleService(null);
@@ -463,26 +537,53 @@ export default function BluetoothSettingsModal({
     }
   };
 
-  // Handle device disconnection and cleanup
+  // Re-subscribe to notifications when webBleTxCharacteristic is restored (e.g., modal reopens)
+  useEffect(() => {
+    if (webBleTxCharacteristic && webBleDevice?.gatt?.connected) {
+      webBleTxCharacteristic
+        .startNotifications()
+        .then(() => {
+          if (webBleTxCharacteristic) {
+            webBleTxCharacteristic.addEventListener(
+              "characteristicvaluechanged",
+              handleWebBleNotification
+            );
+          }
+        })
+        .catch(() => {
+          // Already subscribed or failed, that's okay
+        });
+    }
+
+    return () => {
+      // Cleanup: remove event listener when characteristic changes or component unmounts
+      if (webBleTxCharacteristic) {
+        // Note: We don't stop notifications here to allow connection to persist
+        // The event listener will be cleaned up automatically
+      }
+    };
+  }, [webBleTxCharacteristic, webBleDevice, handleWebBleNotification]);
+
+  // Handle device disconnection event (but don't disconnect on modal close)
   useEffect(() => {
     if (!webBleDevice) return;
 
     const handleDisconnect = () => {
+      // Only handle disconnection if it happens naturally (not on modal close)
       handleWebBleDisconnect();
     };
 
     webBleDevice.addEventListener("gattserverdisconnected", handleDisconnect);
 
     return () => {
+      // Only clean up event listener, don't disconnect the device
+      // This allows the connection to persist when the modal is closed
       webBleDevice.removeEventListener(
         "gattserverdisconnected",
         handleDisconnect
       );
-      if (webBleDevice?.gatt?.connected) {
-        handleWebBleDisconnect();
-      }
     };
-  }, [webBleDevice]);
+  }, [webBleDevice, handleWebBleDisconnect]);
 
   const deviceName = config?.deviceName || "";
   const address = config?.bluetooth?.address || "";
@@ -500,7 +601,15 @@ export default function BluetoothSettingsModal({
             gap: 1,
           }}
         >
-          <BluetoothIcon sx={{ color: "primary.main" }} />
+          {(() => {
+            if (webBleConnected || connected) {
+              return <BluetoothConnectedIcon sx={{ color: "success.main" }} />;
+            } else if (enabled) {
+              return <BluetoothIcon sx={{ color: "primary.main" }} />;
+            } else {
+              return <BluetoothDisabledIcon sx={{ color: "text.disabled" }} />;
+            }
+          })()}
           Bluetooth Settings
         </Box>
       }
@@ -515,146 +624,6 @@ export default function BluetoothSettingsModal({
     >
       <Box>
         <Stack spacing={3}>
-          {/* File Download - Only show when Web Bluetooth is connected */}
-          {webBleConnected && (
-            <Card
-              elevation={3}
-              sx={{
-                bgcolor: "background.paper",
-                border: 2,
-                borderColor: "primary.main",
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <CloudDownloadIcon
-                    sx={{ mr: 1.5, fontSize: 28, color: "primary.main" }}
-                  />
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Download File to Device
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Select a file to download
-                    </Typography>
-                  </Box>
-                </Box>
-
-                {fileError && (
-                  <Alert severity="error" sx={{ mb: 2 }}>
-                    {fileError}
-                  </Alert>
-                )}
-
-                {/* Filesystem Selector */}
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    <StorageIcon
-                      sx={{ fontSize: 16, mr: 0.5, verticalAlign: "middle" }}
-                    />
-                    Storage Location
-                  </Typography>
-                  <ToggleButtonGroup
-                    value={fileSystem}
-                    exclusive
-                    onChange={(e, newFs) => {
-                      if (newFs !== null) {
-                        setFileSystem(newFs);
-                        setSelectedFile("");
-                      }
-                    }}
-                    aria-label="file system"
-                    fullWidth
-                    sx={{
-                      "& .MuiToggleButton-root": {
-                        py: 1.5,
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                      },
-                    }}
-                  >
-                    <ToggleButton value="sd" aria-label="SD card">
-                      SD Card
-                    </ToggleButton>
-                    <ToggleButton value="lfs" aria-label="LittleFS">
-                      LittleFS
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-
-                {/* File Selector */}
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Select File</InputLabel>
-                  <Select
-                    value={selectedFile}
-                    onChange={(e) => setSelectedFile(e.target.value)}
-                    label="Select File"
-                    disabled={loadingFiles || webBleDownloading}
-                    sx={{
-                      "& .MuiSelect-select": {
-                        py: 1.5,
-                      },
-                    }}
-                  >
-                    {loadingFiles ? (
-                      <MenuItem disabled>
-                        <CircularProgress size={20} sx={{ mr: 1 }} />
-                        Loading files...
-                      </MenuItem>
-                    ) : files.length === 0 ? (
-                      <MenuItem disabled>No files available</MenuItem>
-                    ) : (
-                      files.map((file) => (
-                        <MenuItem key={file.display} value={file.display}>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              width: "100%",
-                            }}
-                          >
-                            <Typography>{file.display}</Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ ml: 2 }}
-                            >
-                              {(file.size / 1024).toFixed(2)} KB
-                            </Typography>
-                          </Box>
-                        </MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-
-                {/* Download Button */}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  startIcon={
-                    webBleDownloading ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <GetAppIcon />
-                    )
-                  }
-                  onClick={handleWebBleDownloadFile}
-                  disabled={!selectedFile || webBleDownloading || loadingFiles}
-                  fullWidth
-                  sx={{
-                    py: 1.5,
-                    fontSize: "1rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  {webBleDownloading ? "Downloading..." : "Download to Device"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Bluetooth Info Card */}
           <Card
             elevation={2}
@@ -663,6 +632,11 @@ export default function BluetoothSettingsModal({
             }}
           >
             <CardContent>
+              {fileError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {fileError}
+                </Alert>
+              )}
               {/* Status Information - Better aligned */}
               <Grid container spacing={3} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6}>
@@ -675,19 +649,27 @@ export default function BluetoothSettingsModal({
                       Status:
                     </Typography>
                     <Box sx={{ minWidth: 140 }}>
-                      <Chip
-                        icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
-                        label={enabled ? "Enabled" : "Disabled"}
-                        color={enabled ? "success" : "default"}
-                        size="small"
-                        onClick={handleToggleEnabled}
-                        sx={{
-                          cursor: "pointer",
-                          "&:hover": {
-                            opacity: 0.8,
-                          },
-                        }}
-                      />
+                      <Tooltip
+                        title={
+                          enabled
+                            ? "Click to disable Bluetooth"
+                            : "Click to enable Bluetooth"
+                        }
+                      >
+                        <Chip
+                          icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
+                          label={enabled ? "Enabled" : "Disabled"}
+                          color={enabled ? "success" : "default"}
+                          size="small"
+                          onClick={handleToggleEnabled}
+                          sx={{
+                            cursor: "pointer",
+                            "&:hover": {
+                              opacity: 0.8,
+                            },
+                          }}
+                        />
+                      </Tooltip>
                     </Box>
                   </Box>
                   <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
@@ -703,21 +685,38 @@ export default function BluetoothSettingsModal({
                         let connectionLabel = "Not Connected";
                         let connectionColor = "default";
                         let connectionIcon = <CancelIcon />;
-                        let connectionTooltip = "No Bluetooth connection";
+                        let connectionTooltip =
+                          "Click to connect via Web Bluetooth";
+                        let isClickable = false;
 
                         if (webBleConnected) {
                           connectionLabel = "Connected";
                           connectionColor = "success";
                           connectionIcon = <CheckCircleIcon />;
-                          connectionTooltip = "Connected via Web Bluetooth";
+                          connectionTooltip =
+                            "Click to disconnect Web Bluetooth";
+                          isClickable = true;
                         } else if (connected) {
                           connectionLabel = "Remote";
-                          connectionColor = "info";
-                          connectionIcon = <CheckCircleIcon />;
+                          connectionColor = "warning";
+                          connectionIcon = <InfoIcon />;
                           connectionTooltip =
                             "Remote connection active (another device is connected)";
+                          isClickable = false;
+                        } else {
+                          // Not Connected - make it clickable
+                          isClickable = true;
                         }
 
+                        const canClick =
+                          isClickable && !webBleConnecting && !loading;
+                        const handleClick = () => {
+                          if (webBleConnected) {
+                            handleWebBleDisconnect();
+                          } else if (isClickable) {
+                            handleWebBleConnect();
+                          }
+                        };
                         return (
                           <Tooltip title={connectionTooltip}>
                             <Chip
@@ -725,6 +724,17 @@ export default function BluetoothSettingsModal({
                               label={connectionLabel}
                               color={connectionColor}
                               size="small"
+                              onClick={canClick ? handleClick : undefined}
+                              sx={
+                                canClick
+                                  ? {
+                                      cursor: "pointer",
+                                      "&:hover": {
+                                        opacity: 0.8,
+                                      },
+                                    }
+                                  : undefined
+                              }
                             />
                           </Tooltip>
                         );
@@ -766,41 +776,129 @@ export default function BluetoothSettingsModal({
                   )}
                 </Grid>
               </Grid>
-              {webBleConnected ? (
-                <Button
-                  variant="contained"
-                  color="error"
-                  startIcon={<BluetoothDisabledIcon />}
-                  onClick={handleWebBleDisconnect}
-                  disabled={webBleConnecting}
-                  fullWidth
-                  size="large"
-                  sx={{ mb: connected ? 2 : 0 }}
-                >
-                  Disconnect
-                </Button>
-              ) : !connected ? (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={
-                    webBleConnecting ? (
-                      <CircularProgress size={20} color="inherit" />
-                    ) : (
-                      <BluetoothIcon />
-                    )
-                  }
-                  onClick={handleWebBleConnect}
-                  disabled={webBleConnecting || !enabled}
-                  fullWidth
-                  size="large"
-                  sx={{ mb: connected ? 2 : 0 }}
-                >
-                  {webBleConnecting
-                    ? "Connecting..."
-                    : "Connect via Web Bluetooth"}
-                </Button>
-              ) : null}
+              {/* File Download - Only show when Web Bluetooth is connected */}
+              {webBleConnected && (
+                <Box sx={{ mt: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                    <CloudDownloadIcon
+                      sx={{ mr: 1.5, fontSize: 24, color: "primary.main" }}
+                    />
+                    <Typography variant="h6">
+                      Download File to Device
+                    </Typography>
+                  </Box>
+
+                  {/* Filesystem Selector */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      <StorageIcon
+                        sx={{ fontSize: 16, mr: 0.5, verticalAlign: "middle" }}
+                      />
+                      Storage Location
+                    </Typography>
+                    <ToggleButtonGroup
+                      value={fileSystem}
+                      exclusive
+                      onChange={(e, newFs) => {
+                        if (newFs !== null) {
+                          setFileSystem(newFs);
+                          setSelectedFile("");
+                        }
+                      }}
+                      aria-label="file system"
+                      fullWidth
+                      sx={{
+                        "& .MuiToggleButton-root": {
+                          py: 1.5,
+                          fontSize: "0.875rem",
+                          fontWeight: 500,
+                        },
+                      }}
+                    >
+                      <ToggleButton value="sd" aria-label="SD card">
+                        SD Card
+                      </ToggleButton>
+                      <ToggleButton value="lfs" aria-label="LittleFS">
+                        LittleFS
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </Box>
+
+                  {/* File Selector */}
+                  <FormControl fullWidth sx={{ mb: 3 }}>
+                    <InputLabel>Select File</InputLabel>
+                    <Select
+                      value={selectedFile}
+                      onChange={(e) => setSelectedFile(e.target.value)}
+                      label="Select File"
+                      disabled={loadingFiles || webBleDownloading}
+                      sx={{
+                        "& .MuiSelect-select": {
+                          py: 1.5,
+                        },
+                      }}
+                    >
+                      {loadingFiles ? (
+                        <MenuItem disabled>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Loading files...
+                        </MenuItem>
+                      ) : files.length === 0 ? (
+                        <MenuItem disabled>No files available</MenuItem>
+                      ) : (
+                        files.map((file) => (
+                          <MenuItem key={file.display} value={file.display}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                width: "100%",
+                              }}
+                            >
+                              <Typography>{file.display}</Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ ml: 2 }}
+                              >
+                                {(file.size / 1024).toFixed(2)} KB
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+
+                  {/* Download Button */}
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    startIcon={
+                      webBleDownloading ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <GetAppIcon />
+                      )
+                    }
+                    onClick={handleWebBleDownloadFile}
+                    disabled={
+                      !selectedFile || webBleDownloading || loadingFiles
+                    }
+                    fullWidth
+                    sx={{
+                      py: 1.5,
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {webBleDownloading
+                      ? "Downloading..."
+                      : "Download to Device"}
+                  </Button>
+                </Box>
+              )}
               {connected && !webBleConnected && (
                 <Button
                   variant="outlined"

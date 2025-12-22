@@ -49,6 +49,7 @@ const theme = createTheme({
     },
     error: {
       main: "#FE4245",
+      alt: "#FF4186",
     },
     success: {
       main: "#17EB9D",

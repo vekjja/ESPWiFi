@@ -342,6 +342,7 @@ export default function BluetoothSettingsModal({
     fileSize: 0,
     received: 0,
     headerProcessed: false,
+    lastReceivedTimestamp: null, // Track when we last received data
   });
 
   // Download file from buffer to device (phone/Mac/browser downloads folder)
@@ -394,14 +395,65 @@ export default function BluetoothSettingsModal({
   const handleWebBleNotification = useCallback(
     (event) => {
       const value = event.target.value;
+      if (!value) {
+        console.log(
+          "Web Bluetooth notification received but value is null/undefined"
+        );
+        return;
+      }
+
+      // Extract ArrayBuffer from DataView
+      // value is a DataView, we need to get the underlying buffer
+      let buffer;
+      let byteLength;
+      if (value.buffer) {
+        // It's a DataView, extract the ArrayBuffer
+        // Note: DataView might have offset/byteLength, so we slice appropriately
+        byteLength = value.byteLength;
+        if (
+          value.byteOffset === 0 &&
+          value.byteLength === value.buffer.byteLength
+        ) {
+          // No offset, can use buffer directly
+          buffer = value.buffer;
+        } else {
+          // Has offset, need to slice
+          buffer = value.buffer.slice(
+            value.byteOffset,
+            value.byteOffset + value.byteLength
+          );
+        }
+      } else if (value instanceof ArrayBuffer) {
+        buffer = value;
+        byteLength = buffer.byteLength;
+      } else {
+        console.error(
+          "Web Bluetooth - unexpected value type:",
+          typeof value,
+          value
+        );
+        return;
+      }
+
       const decoder = new TextDecoder("utf-8");
       const state = fileReceiveStateRef.current;
 
       if (!state.headerProcessed) {
         // Try to parse file header
-        const text = decoder.decode(value);
-        const headerMatch = text.match(/^FILE:(.+?):(\d+)\n/);
+        const text = decoder.decode(new Uint8Array(buffer), { stream: true });
+        console.log("Web Bluetooth notification - header check:", {
+          textLength: text.length,
+          firstChars: text.substring(0, 50),
+          byteLength: byteLength,
+        });
+
+        // Try multiple header formats (header might be split across packets)
+        const headerMatch = text.match(/FILE:(.+?):(\d+)\n/);
         if (headerMatch) {
+          console.log("Web Bluetooth - header matched:", {
+            fileName: headerMatch[1],
+            fileSize: headerMatch[2],
+          });
           state.fileName = headerMatch[1];
           state.fileSize = parseInt(headerMatch[2], 10);
           state.received = 0;
@@ -411,28 +463,99 @@ export default function BluetoothSettingsModal({
 
           // Extract data after header
           const headerEnd = text.indexOf("\n") + 1;
-          if (headerEnd < value.byteLength) {
-            const dataAfterHeader = value.slice(headerEnd);
-            state.buffer.push(dataAfterHeader);
+          if (headerEnd < text.length) {
+            // Need to convert back to bytes for the remaining data
+            const remainingText = text.substring(headerEnd);
+            const encoder = new TextEncoder();
+            const dataAfterHeader = encoder.encode(remainingText);
+            state.buffer.push(dataAfterHeader.buffer);
             state.received += dataAfterHeader.byteLength;
+            console.log(
+              "Web Bluetooth - data after header:",
+              dataAfterHeader.byteLength,
+              "bytes"
+            );
+          }
+        } else {
+          // Header might be incomplete, store the partial data
+          console.log(
+            "Web Bluetooth - header not matched, might be partial or binary data"
+          );
+          // Store the buffer for later processing
+          state.buffer = state.buffer || [];
+          state.buffer.push(buffer);
+          state.received = (state.received || 0) + byteLength;
+
+          // Try to find header in accumulated buffer
+          if (state.received > 20) {
+            // We have some data, try to decode accumulated buffer
+            const accumulatedText = decoder.decode(
+              new Uint8Array(
+                state.buffer.reduce((acc, buf) => {
+                  const combined = new Uint8Array(
+                    acc.byteLength + buf.byteLength
+                  );
+                  combined.set(new Uint8Array(acc), 0);
+                  combined.set(new Uint8Array(buf), acc.byteLength);
+                  return combined.buffer;
+                }, new ArrayBuffer(0))
+              ),
+              { stream: true }
+            );
+            const accumulatedMatch =
+              accumulatedText.match(/FILE:(.+?):(\d+)\n/);
+            if (accumulatedMatch) {
+              console.log("Web Bluetooth - header found in accumulated buffer");
+              state.fileName = accumulatedMatch[1];
+              state.fileSize = parseInt(accumulatedMatch[2], 10);
+              const headerEnd = accumulatedText.indexOf("\n") + 1;
+              // Reset buffer with data after header
+              const encoder = new TextEncoder();
+              const dataAfterHeader = encoder.encode(
+                accumulatedText.substring(headerEnd)
+              );
+              state.buffer = [dataAfterHeader.buffer];
+              state.received = dataAfterHeader.byteLength;
+              state.headerProcessed = true;
+              setWebBleDownloading(true);
+            }
           }
         }
       } else {
         // Continuation of file data
-        state.buffer.push(value);
-        state.received += value.byteLength;
+        state.buffer.push(buffer);
+        state.received += byteLength;
+        state.lastReceivedTimestamp = Date.now(); // Update timestamp
 
-        // Check if we've received the complete file
-        if (state.received >= state.fileSize) {
+        console.log("Web Bluetooth - data chunk received:", {
+          chunkSize: byteLength,
+          totalReceived: state.received,
+          fileSize: state.fileSize,
+          remaining: state.fileSize - state.received,
+          progress: ((state.received / state.fileSize) * 100).toFixed(1) + "%",
+        });
+
+        // Check if we've received the complete file (allow small rounding errors)
+        // Use a threshold since we might receive slightly more or less due to header handling
+        const threshold = 10; // Allow 10 bytes difference
+        if (state.received >= state.fileSize - threshold) {
+          console.log("Web Bluetooth - file complete, triggering download:", {
+            fileName: state.fileName,
+            fileSize: state.fileSize,
+            received: state.received,
+            difference: state.received - state.fileSize,
+            chunks: state.buffer.length,
+          });
           // File complete - trigger download
           downloadFileFromBuffer(state.buffer, state.fileName);
 
           // Reset state
-          state.buffer = null;
+          state.buffer = [];
           state.fileName = null;
           state.fileSize = 0;
           state.received = 0;
           state.headerProcessed = false;
+          state.lastReceivedTimestamp = null;
           setWebBleDownloading(false);
         }
       }
@@ -453,43 +576,141 @@ export default function BluetoothSettingsModal({
       return;
     }
 
+    if (!webBleTxCharacteristic) {
+      setFileError("Web Bluetooth characteristic not available");
+      return;
+    }
+
     setWebBleDownloading(true);
     setFileError(null);
 
     // Reset file receive state
     fileReceiveStateRef.current = {
-      buffer: null,
+      buffer: [],
       fileName: null,
       fileSize: 0,
       received: 0,
       headerProcessed: false,
     };
 
+    console.log("Web Bluetooth - Starting file download:", {
+      file: file.display,
+      path: file.path,
+      fs: file.fs,
+      characteristic: !!webBleTxCharacteristic,
+      deviceConnected: webBleDevice?.gatt?.connected,
+    });
+
     try {
       // Request file from ESP32 via HTTP (trigger send)
       // This will cause the ESP32 to send the file via BLE
-      const response = await fetch(
-        buildApiUrl(
-          `/api/bluetooth/send?fs=${file.fs}&path=${encodeURIComponent(
-            file.path
-          )}`
-        ),
-        getFetchOptions({
-          method: "POST",
-        })
+      const url = buildApiUrl(
+        `/api/bluetooth/send?fs=${file.fs}&path=${encodeURIComponent(
+          file.path
+        )}`
       );
+      console.log("Web Bluetooth - Requesting file send via HTTP:", url);
+
+      const response = await fetch(url, getFetchOptions({ method: "POST" }));
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to trigger file send");
       }
 
-      await response.json();
+      const result = await response.json();
+      console.log(
+        "Web Bluetooth - File send triggered, waiting for BLE notifications:",
+        result
+      );
+
       // File will be received via BLE notifications and handled by handleWebBleNotification
-      // The download will be triggered automatically when the file is complete
+      // Set up periodic checking to detect stalled downloads
+      const startTime = Date.now();
+      const downloadCheckInterval = setInterval(() => {
+        const state = fileReceiveStateRef.current;
+        const now = Date.now();
+
+        if (state.headerProcessed) {
+          // Check if file is complete (with small threshold for rounding)
+          const threshold = 10;
+          if (state.received >= state.fileSize - threshold) {
+            // File should be complete - clear interval (download will trigger in handler)
+            clearInterval(downloadCheckInterval);
+            return;
+          }
+
+          // Check if download is stalled (no new data for 5 seconds)
+          if (state.lastReceivedTimestamp) {
+            const timeSinceLastData = now - state.lastReceivedTimestamp;
+            if (timeSinceLastData > 5000) {
+              // No new data for 5 seconds - consider stalled
+              const progress = (
+                (state.received / state.fileSize) *
+                100
+              ).toFixed(1);
+              console.warn("Web Bluetooth - Download stalled, no new data:", {
+                received: state.received,
+                expected: state.fileSize,
+                progress: progress + "%",
+                timeSinceLastData: timeSinceLastData,
+              });
+              clearInterval(downloadCheckInterval);
+              setFileError(
+                `Download stalled at ${progress}%. No new data received for ${(
+                  timeSinceLastData / 1000
+                ).toFixed(1)} seconds. Received ${state.received} of ${
+                  state.fileSize
+                } bytes.`
+              );
+              setWebBleDownloading(false);
+              return;
+            }
+          }
+        } else {
+          // No header received yet
+          const timeSinceStart = now - startTime;
+          if (timeSinceStart > 10000) {
+            // 10 seconds with no header
+            console.error("Web Bluetooth - No file header received");
+            clearInterval(downloadCheckInterval);
+            setFileError(
+              "No file data received via Web Bluetooth. Please check connection."
+            );
+            setWebBleDownloading(false);
+          }
+        }
+
+        // Overall timeout check (absolute maximum time)
+        const totalTime = now - startTime;
+        const estimatedTimeout = Math.max(120000, (result.fileSize || 0) / 50); // At least 2 minutes, or ~50 bytes/second
+        if (totalTime > estimatedTimeout) {
+          console.warn("Web Bluetooth - Download timeout:", {
+            received: state.received,
+            expected: state.fileSize,
+            totalTime: (totalTime / 1000).toFixed(1) + "s",
+          });
+          clearInterval(downloadCheckInterval);
+          if (state.headerProcessed && state.received < state.fileSize - 10) {
+            const progress = ((state.received / state.fileSize) * 100).toFixed(
+              1
+            );
+            setFileError(
+              `Download timed out at ${progress}% after ${(
+                totalTime / 1000
+              ).toFixed(1)} seconds. Received ${state.received} of ${
+                state.fileSize
+              } bytes.`
+            );
+          } else {
+            setFileError("Download timeout - no file data received.");
+          }
+          setWebBleDownloading(false);
+        }
+      }, 1000); // Check every second
     } catch (err) {
-      setFileError(err.message || "Failed to download file");
       console.error("Error downloading file:", err);
+      setFileError(err.message || "Failed to download file");
       setWebBleDownloading(false);
     }
   };

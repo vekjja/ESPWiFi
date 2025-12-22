@@ -538,18 +538,49 @@ void ESPWiFi::srvBluetooth() {
         delay(20); // Small delay for BLE transmission
 
         // Send file data in chunks
-        while (file.available() && deviceConnected) {
+        while (file.available()) {
+          // Check connection status - re-read from server to ensure accuracy
+          if (pServer) {
+            uint16_t connCount = pServer->getConnectedCount();
+            if (connCount == 0 || pTxCharacteristic == nullptr) {
+              logf(
+                  "⚠️  Bluetooth connection lost during file send at %d bytes\n",
+                  bytesSent);
+              break;
+            }
+          } else if (!deviceConnected || pTxCharacteristic == nullptr) {
+            logf("⚠️  Bluetooth connection lost during file send at %d bytes\n",
+                 bytesSent);
+            break;
+          }
+
           size_t bytesRead = file.read(buffer, sizeof(buffer));
           if (bytesRead > 0) {
-            pTxCharacteristic->setValue(buffer, bytesRead);
-            pTxCharacteristic->notify();
-            bytesSent += bytesRead;
-            delay(20); // Small delay for BLE transmission
+            try {
+              pTxCharacteristic->setValue(buffer, bytesRead);
+              pTxCharacteristic->notify(); // notify() returns void
+              bytesSent += bytesRead;
+              delay(30); // Increased delay for BLE transmission reliability
 
-            // Yield periodically to prevent watchdog
-            if (bytesSent % 4096 == 0) {
-              yield();
+              // Yield more frequently to prevent watchdog and allow connection
+              // checks
+              if (bytesSent % 2048 == 0) {
+                yield();
+                // Re-check connection after yield
+                if (pServer && pServer->getConnectedCount() == 0) {
+                  logf("⚠️  Connection lost during yield at %d bytes\n",
+                       bytesSent);
+                  break;
+                }
+              }
+            } catch (...) {
+              logf("⚠️  Exception during BLE send at %d bytes, stopping\n",
+                   bytesSent);
+              break;
             }
+          } else {
+            // No more data to read
+            break;
           }
         }
 

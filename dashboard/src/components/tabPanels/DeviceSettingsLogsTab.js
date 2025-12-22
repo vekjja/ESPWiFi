@@ -13,6 +13,8 @@ import {
   Button,
   TextField,
   Paper,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -20,6 +22,9 @@ import { buildApiUrl, getFetchOptions } from "../../utils/apiUtils";
 import IButton from "../IButton";
 
 export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   const [logs, setLogs] = useState("");
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState("");
@@ -309,20 +314,41 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
           boxShadow: 2,
         }}
       >
-        <CardContent sx={{ py: 2, px: 3 }}>
+        <CardContent sx={{ py: isMobile ? 1.5 : 2, px: isMobile ? 2 : 3 }}>
           <Box
             sx={{
               display: "flex",
+              flexDirection: isMobile ? "column" : "row",
               justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 4,
+              alignItems: isMobile ? "stretch" : "flex-start",
+              gap: isMobile ? 2 : 4,
             }}
           >
             {/* Toggle Options on the Left - Stacked in rows */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: isMobile ? 1 : 0,
+              }}
+            >
               {/* Enable/Disable Logging */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <FormLabel sx={{ whiteSpace: "nowrap", minWidth: 130 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  flexWrap: "wrap",
+                }}
+              >
+                <FormLabel
+                  sx={{
+                    whiteSpace: "nowrap",
+                    minWidth: isMobile ? "auto" : 130,
+                    flex: isMobile ? "0 0 auto" : "none",
+                  }}
+                >
                   Enable Logging
                 </FormLabel>
                 <Switch
@@ -341,7 +367,13 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   flexWrap: "wrap",
                 }}
               >
-                <FormLabel sx={{ whiteSpace: "nowrap", minWidth: 130 }}>
+                <FormLabel
+                  sx={{
+                    whiteSpace: "nowrap",
+                    minWidth: isMobile ? "auto" : 130,
+                    flex: isMobile ? "0 0 auto" : "none",
+                  }}
+                >
                   Auto Refresh
                 </FormLabel>
                 <Switch
@@ -361,14 +393,31 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                     }
                     size="small"
                     inputProps={{ min: 1, max: 60 }}
-                    sx={{ width: 130, ml: 1 }}
+                    sx={{
+                      width: isMobile ? "100%" : 130,
+                      ml: isMobile ? 0 : 1,
+                      mt: isMobile ? 1 : 0,
+                    }}
                   />
                 )}
               </Box>
 
               {/* Auto Scroll */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <FormLabel sx={{ whiteSpace: "nowrap", minWidth: 130 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  flexWrap: "wrap",
+                }}
+              >
+                <FormLabel
+                  sx={{
+                    whiteSpace: "nowrap",
+                    minWidth: isMobile ? "auto" : 130,
+                    flex: isMobile ? "0 0 auto" : "none",
+                  }}
+                >
                   Auto Scroll
                 </FormLabel>
                 <Switch
@@ -389,9 +438,20 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
             </Box>
 
             {/* Controls on the Right - Stacked vertically */}
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                flex: isMobile ? 1 : 0,
+                minWidth: isMobile ? "100%" : 120,
+              }}
+            >
               {/* Log Level */}
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl
+                size="small"
+                sx={{ minWidth: isMobile ? "100%" : 120 }}
+              >
                 <FormLabel sx={{ mb: 0.5, fontSize: "0.875rem" }}>
                   Log Level
                 </FormLabel>
@@ -408,13 +468,24 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
               </FormControl>
 
               {/* Refresh Button and View Logs Icon */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                }}
+              >
                 <Button
                   variant="contained"
                   startIcon={<RefreshIcon />}
                   onClick={fetchLogs}
                   disabled={logLoading}
                   size="small"
+                  sx={{
+                    flex: isMobile ? "1 1 auto" : "none",
+                    minWidth: isMobile ? "auto" : "none",
+                  }}
                 >
                   {logLoading ? "Loading..." : "Refresh"}
                 </Button>

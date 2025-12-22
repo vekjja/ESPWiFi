@@ -674,19 +674,21 @@ export default function BluetoothSettingsModal({
                     >
                       Status:
                     </Typography>
-                    <Chip
-                      icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
-                      label={enabled ? "Enabled" : "Disabled"}
-                      color={enabled ? "success" : "default"}
-                      size="small"
-                      onClick={handleToggleEnabled}
-                      sx={{
-                        cursor: "pointer",
-                        "&:hover": {
-                          opacity: 0.8,
-                        },
-                      }}
-                    />
+                    <Box sx={{ minWidth: 140 }}>
+                      <Chip
+                        icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
+                        label={enabled ? "Enabled" : "Disabled"}
+                        color={enabled ? "success" : "default"}
+                        size="small"
+                        onClick={handleToggleEnabled}
+                        sx={{
+                          cursor: "pointer",
+                          "&:hover": {
+                            opacity: 0.8,
+                          },
+                        }}
+                      />
+                    </Box>
                   </Box>
                   <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                     <Typography
@@ -696,35 +698,15 @@ export default function BluetoothSettingsModal({
                     >
                       Connection:
                     </Typography>
-                    <Chip
-                      icon={connected ? <CheckCircleIcon /> : <CancelIcon />}
-                      label={connected ? "Connected" : "Not Connected"}
-                      color={connected ? "success" : "default"}
-                      size="small"
-                    />
-                  </Box>
-                  {config?.bluetooth?.installed !== undefined && (
-                    <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                      <Typography
-                        variant="subtitle2"
-                        color="text.secondary"
-                        sx={{ mr: 1.5, minWidth: 140 }}
-                      >
-                        Antenna:
-                      </Typography>
+                    <Box sx={{ minWidth: 140 }}>
                       <Chip
-                        label={
-                          config.bluetooth.installed
-                            ? "Installed"
-                            : "Not Available"
-                        }
-                        color={
-                          config.bluetooth.installed ? "success" : "default"
-                        }
+                        icon={connected ? <CheckCircleIcon /> : <CancelIcon />}
+                        label={connected ? "Connected" : "Not Connected"}
+                        color={connected ? "success" : "default"}
                         size="small"
                       />
                     </Box>
-                  )}
+                  </Box>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   {deviceName && (

@@ -54,6 +54,9 @@ const theme = createTheme({
     success: {
       main: "#17EB9D",
     },
+    warning: {
+      main: "#ffa726", // Default Material-UI warning color for dark mode (yellow/orange)
+    },
   },
   components: {
     MuiTooltip: {

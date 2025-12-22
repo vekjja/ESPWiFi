@@ -35,7 +35,6 @@ import {
   Info as InfoIcon,
 } from "@mui/icons-material";
 import SettingsModal from "./SettingsModal";
-import SaveButton from "./SaveButton";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 
 export default function BluetoothSettingsModal({
@@ -170,40 +169,6 @@ export default function BluetoothSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, webBleDevice, webBleTxCharacteristic]);
 
-  const handleDisconnect = async () => {
-    if (loading || !deviceOnline) {
-      return;
-    }
-
-    setLoading(true);
-    setFileError(null);
-
-    try {
-      const response = await fetch(
-        buildApiUrl("/api/bluetooth/disconnect"),
-        getFetchOptions({
-          method: "POST",
-        })
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to disconnect");
-      }
-
-      const data = await response.json();
-      console.log("Disconnect response:", data);
-
-      // Clear any error messages on success
-      setFileError(null);
-    } catch (err) {
-      console.error("Error disconnecting Bluetooth:", err);
-      setFileError(err.message || "Failed to disconnect remote devices");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleToggleEnabled = async () => {
     if (loading || !deviceOnline || !config || !saveConfigToDevice) {
       return;
@@ -234,29 +199,17 @@ export default function BluetoothSettingsModal({
     }
   };
 
-  const handleSave = () => {
-    if (!config || !saveConfigToDevice) {
-      return;
-    }
-
-    const configToSave = {
-      ...config,
-      bluetooth: {
-        ...config.bluetooth,
-        enabled: enabled,
-      },
-    };
-
-    // Save to device (not just local config)
-    saveConfigToDevice(configToSave);
-    onClose();
-  };
-
   // Web Bluetooth API - Connect to ESP32 via BLE
   const handleWebBleConnect = async () => {
     if (!navigator.bluetooth) {
       setFileError("Web Bluetooth API is not supported in this browser");
       return;
+    }
+
+    // Optimistically clear any remote connection state when starting to connect
+    // This prevents showing "Remote" during the connection process
+    if (connected && !webBleConnected) {
+      setConnected(false);
     }
 
     // Enable Bluetooth first if it's disabled
@@ -350,6 +303,11 @@ export default function BluetoothSettingsModal({
 
   // Handle Web Bluetooth disconnection
   const handleWebBleDisconnect = async () => {
+    // Optimistically clear connection state immediately to prevent showing "Remote"
+    // while waiting for config to update
+    setWebBleConnected(false);
+    setConnected(false);
+
     try {
       // Try to stop notifications - may fail if already disconnected
       if (webBleTxCharacteristic) {
@@ -374,7 +332,6 @@ export default function BluetoothSettingsModal({
       setWebBleService(null);
       setWebBleTxCharacteristic(null);
       setWebBleRxCharacteristic(null);
-      setWebBleConnected(false);
     }
   };
 
@@ -602,8 +559,10 @@ export default function BluetoothSettingsModal({
           }}
         >
           {(() => {
-            if (webBleConnected || connected) {
-              return <BluetoothConnectedIcon sx={{ color: "success.main" }} />;
+            if (webBleConnected) {
+              return <BluetoothConnectedIcon sx={{ color: "primary.main" }} />;
+            } else if (connected) {
+              return <BluetoothConnectedIcon sx={{ color: "warning.main" }} />;
             } else if (enabled) {
               return <BluetoothIcon sx={{ color: "primary.main" }} />;
             } else {
@@ -614,13 +573,6 @@ export default function BluetoothSettingsModal({
         </Box>
       }
       maxWidth="md"
-      actions={
-        <SaveButton
-          onClick={handleSave}
-          disabled={!deviceOnline}
-          tooltip="Save Settings to Device"
-        />
-      }
     >
       <Box>
         <Stack spacing={3}>
@@ -696,7 +648,9 @@ export default function BluetoothSettingsModal({
                           connectionTooltip =
                             "Click to disconnect Web Bluetooth";
                           isClickable = true;
-                        } else if (connected) {
+                        } else if (connected && !webBleConnecting) {
+                          // Only show "Remote" if we're not currently connecting via Web Bluetooth
+                          // This prevents the jarring transition from "Remote" to "Connected"
                           connectionLabel = "Remote";
                           connectionColor = "warning";
                           connectionIcon = <InfoIcon />;
@@ -898,18 +852,6 @@ export default function BluetoothSettingsModal({
                       : "Download to Device"}
                   </Button>
                 </Box>
-              )}
-              {connected && !webBleConnected && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<BluetoothDisabledIcon />}
-                  onClick={handleDisconnect}
-                  disabled={loading}
-                  fullWidth
-                >
-                  Disconnect Remote Devices
-                </Button>
               )}
             </CardContent>
           </Card>

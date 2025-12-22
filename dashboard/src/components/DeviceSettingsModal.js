@@ -333,14 +333,9 @@ export default function DeviceSettingsModal({
 
   // Determine which actions to show based on active tab
   const getActions = () => {
-    // Common buttons (view logs, restart and logout) - always shown on the right
+    // Common buttons (restart and logout) - always shown on the right
     const commonButtons = (
       <>
-        <IButton
-          Icon={DescriptionIcon}
-          onClick={handleViewLogs}
-          tooltip={"View Logs"}
-        />
         <IButton
           Icon={RestartIcon}
           onClick={handleRestart}
@@ -410,18 +405,41 @@ export default function DeviceSettingsModal({
       open={open}
       onClose={handleCloseModal}
       title={
-        <span
-          style={{
+        <Box
+          sx={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
             width: "100%",
+            position: "relative",
           }}
         >
-          <SettingsIcon color="primary" />
-          Device Settings
-        </span>
+          <Box
+            sx={{
+              position: "absolute",
+              right: 0,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <IButton
+              Icon={DescriptionIcon}
+              onClick={handleViewLogs}
+              tooltip={"View Logs"}
+            />
+          </Box>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1,
+              width: "100%",
+            }}
+          >
+            <SettingsIcon color="primary" />
+            <span>Device Settings</span>
+          </Box>
+        </Box>
       }
       maxWidth={false}
       actions={getActions()}

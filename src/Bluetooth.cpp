@@ -62,6 +62,7 @@ bool ESPWiFi::startBluetooth() {
   }
 
   if (!config["bluetooth"]["enabled"].as<bool>()) {
+    log("📱 Bluetooth Disabled");
     return false;
   }
 
@@ -111,9 +112,16 @@ bool ESPWiFi::startBluetooth() {
   pAdvertising->setScanResponse(true);
   pAdvertising->start();
 
-  // Store MAC address for status endpoint
+  // Store MAC address and mode for status endpoint
   String macAddress = String(NimBLEDevice::getAddress().toString().c_str());
   config["bluetooth"]["address"] = macAddress;
+  config["bluetooth"]["mode"] = "BLE";
+
+  log("📱 Bluetooth Started:");
+  logf("\tMode: BLE\n");
+  logf("\tDevice Name: %s\n", bleDeviceName.c_str());
+  logf("\tMAC: %s\n", macAddress.c_str());
+
   bluetoothStarted = true;
   return true;
 }
@@ -130,6 +138,7 @@ void ESPWiFi::stopBluetooth() {
   deviceConnected = false;
   oldDeviceConnected = false;
   bluetoothStarted = false;
+  log("📱 Bluetooth Stopped\n");
 }
 
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }

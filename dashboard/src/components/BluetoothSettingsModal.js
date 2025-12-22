@@ -1,22 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
-  TextField,
   Typography,
-  Switch,
-  FormControlLabel,
   Button,
   Divider,
   List,
   ListItem,
   ListItemText,
   IconButton,
+  Paper,
+  Grid,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import {
-  Send as SendIcon,
-  Download as DownloadIcon,
   Refresh as RefreshIcon,
   BluetoothDisabled as BluetoothDisabledIcon,
+  Bluetooth as BluetoothIcon,
 } from "@mui/icons-material";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
@@ -32,15 +32,8 @@ export default function BluetoothSettingsModal({
   bluetoothStatus,
   onStatusChange,
 }) {
-  const [enabled, setEnabled] = useState(config?.bluetooth?.enabled || false);
-  const [connected, setConnected] = useState(
-    bluetoothStatus?.connected || false
-  );
-  const [address, setAddress] = useState(bluetoothStatus?.address || "");
   const [loading, setLoading] = useState(false);
-  const [filePath, setFilePath] = useState("");
-  const [sendFileFs, setSendFileFs] = useState("sd");
-  const [receiveFileFs, setReceiveFileFs] = useState("sd");
+  const [enabled, setEnabled] = useState(config?.bluetooth?.enabled || false);
   const initializedRef = useRef(false);
 
   // Reset state when modal opens - load current config values
@@ -60,39 +53,6 @@ export default function BluetoothSettingsModal({
     // This prevents the enabled state from being reset when user toggles it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  // Update status display when bluetoothStatus prop changes
-  useEffect(() => {
-    if (bluetoothStatus) {
-      setConnected(bluetoothStatus.connected || false);
-      setAddress(bluetoothStatus.address || "");
-    }
-  }, [bluetoothStatus]);
-
-  const handleToggleEnabled = (event) => {
-    setEnabled(event.target.checked);
-  };
-
-  const handleSave = () => {
-    if (!config || !saveConfigToDevice) {
-      return;
-    }
-
-    const configToSave = {
-      ...config,
-      bluetooth: {
-        ...config.bluetooth,
-        enabled: enabled,
-      },
-    };
-
-    // Save to device (not just local config)
-    saveConfigToDevice(configToSave);
-    if (onStatusChange) {
-      setTimeout(() => onStatusChange(), 500);
-    }
-    onClose();
-  };
 
   const handleDisconnect = async () => {
     setLoading(true);
@@ -119,67 +79,57 @@ export default function BluetoothSettingsModal({
     }
   };
 
-  const handleSendFile = async () => {
-    if (!filePath.trim() || !connected) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const url = buildApiUrl(
-        `/api/bluetooth/send?fs=${sendFileFs}&path=${encodeURIComponent(
-          filePath
-        )}`
-      );
-      const response = await fetch(url, getFetchOptions({ method: "POST" }));
-
-      if (!response.ok) {
-        throw new Error("Failed to send file");
-      }
-
-      setFilePath(""); // Clear input
-    } catch (err) {
-      console.error("Error sending file:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReceiveFile = async () => {
-    if (!connected) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const url = buildApiUrl(
-        `/api/bluetooth/receive?fs=${receiveFileFs}&path=/`
-      );
-      const response = await fetch(url, getFetchOptions());
-
-      if (!response.ok) {
-        throw new Error("Failed to receive file");
-      }
-    } catch (err) {
-      console.error("Error receiving file:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRefresh = () => {
     if (onStatusChange) {
       onStatusChange();
     }
   };
 
+  const handleToggleEnabled = (event) => {
+    setEnabled(event.target.checked);
+  };
+
+  const handleSave = () => {
+    if (!config || !saveConfigToDevice) {
+      return;
+    }
+
+    const configToSave = {
+      ...config,
+      bluetooth: {
+        ...config.bluetooth,
+        enabled: enabled,
+      },
+    };
+
+    // Save to device (not just local config)
+    saveConfigToDevice(configToSave);
+    if (onStatusChange) {
+      setTimeout(() => onStatusChange(), 500);
+    }
+    onClose();
+  };
+  const connected = bluetoothStatus?.connected || false;
+  const deviceName = bluetoothStatus?.deviceName || "";
+  const address = bluetoothStatus?.address || "";
+
   return (
     <SettingsModal
       open={open}
       onClose={onClose}
-      title="Bluetooth Settings"
+      title={
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+          }}
+        >
+          <BluetoothIcon sx={{ color: "primary.main" }} />
+          Bluetooth Settings
+        </Box>
+      }
       maxWidth="md"
       actions={
         <SaveButton
@@ -203,33 +153,72 @@ export default function BluetoothSettingsModal({
           sx={{ mb: 2 }}
         />
 
-        {enabled && (
+        {!enabled ? (
+          <Paper
+            sx={{ p: 3, textAlign: "center", bgcolor: "background.default" }}
+          >
+            <Typography variant="body1" color="text.secondary">
+              Bluetooth is disabled
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ mt: 1, display: "block" }}
+            >
+              Enable Bluetooth to view status information
+            </Typography>
+          </Paper>
+        ) : (
           <>
-            <Divider sx={{ my: 2 }} />
-
             {/* Connection Status */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Connection Status
-              </Typography>
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+                <IconButton
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  size="small"
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </Box>
               <List dense>
                 <ListItem>
                   <ListItemText
                     primary="Status"
-                    secondary={connected ? "Connected" : "Not Connected"}
+                    secondary={
+                      <Typography
+                        variant="body2"
+                        color={connected ? "success.main" : "text.secondary"}
+                        sx={{ fontWeight: connected ? 500 : 400 }}
+                      >
+                        {connected ? "Connected" : "Not Connected"}
+                      </Typography>
+                    }
                   />
                 </ListItem>
-                {bluetoothStatus?.deviceName && (
+                {deviceName && (
                   <ListItem>
                     <ListItemText
                       primary="Device Name"
-                      secondary={bluetoothStatus.deviceName}
+                      secondary={deviceName}
                     />
                   </ListItem>
                 )}
                 {address && (
                   <ListItem>
                     <ListItemText primary="MAC Address" secondary={address} />
+                  </ListItem>
+                )}
+                {bluetoothStatus?.installed !== undefined && (
+                  <ListItem>
+                    <ListItemText
+                      primary="Bluetooth Support"
+                      secondary={
+                        bluetoothStatus.installed
+                          ? "Installed"
+                          : "Not Available"
+                      }
+                    />
                   </ListItem>
                 )}
               </List>
@@ -240,101 +229,73 @@ export default function BluetoothSettingsModal({
                   startIcon={<BluetoothDisabledIcon />}
                   onClick={handleDisconnect}
                   disabled={loading}
-                  sx={{ mt: 1 }}
+                  sx={{ mt: 2 }}
                 >
                   Disconnect
                 </Button>
               )}
-              <IconButton
-                onClick={handleRefresh}
-                disabled={loading}
-                sx={{ ml: 1 }}
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* BLE Service Information */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                BLE Service Information
+              </Typography>
+              <Paper
+                variant="outlined"
+                sx={{ p: 2, bgcolor: "background.default" }}
               >
-                <RefreshIcon />
-              </IconButton>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      Service UUID
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: "monospace" }}
+                    >
+                      0000ff00-0000-1000-8000-00805f9b34fb
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      TX Characteristic
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: "monospace" }}
+                    >
+                      0000ff01-0000-1000-8000-00805f9b34fb
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      RX Characteristic
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: "monospace" }}
+                    >
+                      0000ff02-0000-1000-8000-00805f9b34fb
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
             </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* File Sharing - Send */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Send File via Bluetooth
-              </Typography>
-              <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
-                <TextField
-                  select
-                  value={sendFileFs}
-                  onChange={(e) => setSendFileFs(e.target.value)}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 100 }}
-                >
-                  <option value="sd">SD Card</option>
-                  <option value="lfs">LittleFS</option>
-                </TextField>
-                <TextField
-                  fullWidth
-                  value={filePath}
-                  onChange={(e) => setFilePath(e.target.value)}
-                  placeholder="/path/to/file"
-                  disabled={loading || !connected}
-                />
-                <Button
-                  variant="contained"
-                  startIcon={<SendIcon />}
-                  onClick={handleSendFile}
-                  disabled={loading || !connected || !filePath.trim()}
-                >
-                  Send
-                </Button>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                Enter the full path to the file you want to send (e.g.,
-                /photos/image.jpg).
-              </Typography>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* File Sharing - Receive */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Receive File via Bluetooth
-              </Typography>
-              <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
-                <TextField
-                  select
-                  value={receiveFileFs}
-                  onChange={(e) => setReceiveFileFs(e.target.value)}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 100 }}
-                >
-                  <option value="sd">SD Card</option>
-                  <option value="lfs">LittleFS</option>
-                </TextField>
-                <Button
-                  variant="contained"
-                  startIcon={<DownloadIcon />}
-                  onClick={handleReceiveFile}
-                  disabled={loading || !connected}
-                  fullWidth
-                >
-                  Receive File
-                </Button>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                Click to receive data from the connected Bluetooth device. Files
-                will be saved to the selected filesystem.
-              </Typography>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            <Typography variant="caption" color="text.secondary">
-              <strong>Note:</strong> Bluetooth file sharing uses Serial Port
-              Profile (SPP). Make sure the connected device supports SPP and is
-              properly paired.
-            </Typography>
           </>
         )}
       </Box>

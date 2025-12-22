@@ -49,6 +49,8 @@ export default function BluetoothSettingsModal({
   const [receiveLoading, setReceiveLoading] = useState(false);
   const [fileError, setFileError] = useState(null);
 
+  const connected = config?.bluetooth?.connected || false;
+
   // Recursively fetch all files from the filesystem
   const fetchAllFiles = useCallback(
     async (path = "/", fs = fileSystem, allFiles = []) => {
@@ -90,9 +92,9 @@ export default function BluetoothSettingsModal({
     [fileSystem]
   );
 
-  // Load files when modal opens and Bluetooth is enabled
+  // Load files when modal opens and Bluetooth is enabled and connected
   useEffect(() => {
-    if (open && enabled && deviceOnline && !loadingFiles) {
+    if (open && enabled && connected && deviceOnline) {
       setLoadingFiles(true);
       setFileError(null);
       fetchAllFiles("/", fileSystem, [])
@@ -106,8 +108,12 @@ export default function BluetoothSettingsModal({
         .finally(() => {
           setLoadingFiles(false);
         });
+    } else if (!connected) {
+      // Clear files when disconnected
+      setFiles([]);
+      setSelectedFile("");
     }
-  }, [open, enabled, deviceOnline, fileSystem, fetchAllFiles, loadingFiles]);
+  }, [open, enabled, connected, deviceOnline, fileSystem, fetchAllFiles]);
 
   // Reset state when modal opens - load current config values
   // Only initialize once when modal opens, don't sync while modal is open
@@ -242,7 +248,7 @@ export default function BluetoothSettingsModal({
       setReceiveLoading(false);
     }
   };
-  const connected = config?.bluetooth?.connected || false;
+
   const deviceName = config?.deviceName || "";
   const address = config?.bluetooth?.address || "";
   const connectionCount = config?.bluetooth?.connectionCount || 0;
@@ -304,6 +310,119 @@ export default function BluetoothSettingsModal({
           </Paper>
         ) : (
           <>
+            {/* File Transfer - Show at top when connected */}
+            {connected && (
+              <>
+                <Divider sx={{ my: 3 }} />
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    File Transfer
+                  </Typography>
+
+                  {fileError && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {fileError}
+                    </Alert>
+                  )}
+
+                  {/* Filesystem Selector */}
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <ToggleButtonGroup
+                      value={fileSystem}
+                      exclusive
+                      onChange={(e, newFs) => {
+                        if (newFs !== null) {
+                          setFileSystem(newFs);
+                          setSelectedFile("");
+                        }
+                      }}
+                      aria-label="file system"
+                    >
+                      <ToggleButton value="sd" aria-label="SD card">
+                        SD Card
+                      </ToggleButton>
+                      <ToggleButton value="lfs" aria-label="LittleFS">
+                        LittleFS
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </FormControl>
+
+                  {/* Send File */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Send File to Bluetooth Device
+                    </Typography>
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                      <InputLabel>Select File</InputLabel>
+                      <Select
+                        value={selectedFile}
+                        onChange={(e) => setSelectedFile(e.target.value)}
+                        label="Select File"
+                        disabled={loadingFiles || sendLoading}
+                      >
+                        {loadingFiles ? (
+                          <MenuItem disabled>
+                            <CircularProgress size={20} sx={{ mr: 1 }} />
+                            Loading files...
+                          </MenuItem>
+                        ) : files.length === 0 ? (
+                          <MenuItem disabled>No files available</MenuItem>
+                        ) : (
+                          files.map((file) => (
+                            <MenuItem key={file.display} value={file.display}>
+                              {file.display} ({file.size} bytes)
+                            </MenuItem>
+                          ))
+                        )}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={
+                        sendLoading ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <SendIcon />
+                        )
+                      }
+                      onClick={handleSendFile}
+                      disabled={!selectedFile || sendLoading || loadingFiles}
+                      fullWidth
+                    >
+                      {sendLoading ? "Sending..." : "Send File"}
+                    </Button>
+                  </Box>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  {/* Receive File */}
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Receive File from Bluetooth Device
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="secondary"
+                      startIcon={
+                        receiveLoading ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <GetAppIcon />
+                        )
+                      }
+                      onClick={handleReceiveFile}
+                      disabled={receiveLoading}
+                      fullWidth
+                    >
+                      {receiveLoading ? "Receiving..." : "Receive File"}
+                    </Button>
+                  </Box>
+                </Box>
+                <Divider sx={{ my: 3 }} />
+              </>
+            )}
+
             {/* Connection Status */}
             <Box sx={{ mb: 3 }}>
               <List dense>
@@ -370,119 +489,6 @@ export default function BluetoothSettingsModal({
                 </Button>
               )}
             </Box>
-
-            <Divider sx={{ my: 3 }} />
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* File Transfer */}
-            {connected && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  File Transfer
-                </Typography>
-
-                {fileError && (
-                  <Alert severity="error" sx={{ mb: 2 }}>
-                    {fileError}
-                  </Alert>
-                )}
-
-                {/* Filesystem Selector */}
-                <FormControl fullWidth sx={{ mb: 2 }}>
-                  <ToggleButtonGroup
-                    value={fileSystem}
-                    exclusive
-                    onChange={(e, newFs) => {
-                      if (newFs !== null) {
-                        setFileSystem(newFs);
-                        setSelectedFile("");
-                      }
-                    }}
-                    aria-label="file system"
-                  >
-                    <ToggleButton value="sd" aria-label="SD card">
-                      SD Card
-                    </ToggleButton>
-                    <ToggleButton value="lfs" aria-label="LittleFS">
-                      LittleFS
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </FormControl>
-
-                {/* Send File */}
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Send File to Bluetooth Device
-                  </Typography>
-                  <FormControl fullWidth sx={{ mb: 2 }}>
-                    <InputLabel>Select File</InputLabel>
-                    <Select
-                      value={selectedFile}
-                      onChange={(e) => setSelectedFile(e.target.value)}
-                      label="Select File"
-                      disabled={loadingFiles || sendLoading}
-                    >
-                      {loadingFiles ? (
-                        <MenuItem disabled>
-                          <CircularProgress size={20} sx={{ mr: 1 }} />
-                          Loading files...
-                        </MenuItem>
-                      ) : files.length === 0 ? (
-                        <MenuItem disabled>No files available</MenuItem>
-                      ) : (
-                        files.map((file) => (
-                          <MenuItem key={file.display} value={file.display}>
-                            {file.display} ({file.size} bytes)
-                          </MenuItem>
-                        ))
-                      )}
-                    </Select>
-                  </FormControl>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={
-                      sendLoading ? (
-                        <CircularProgress size={16} />
-                      ) : (
-                        <SendIcon />
-                      )
-                    }
-                    onClick={handleSendFile}
-                    disabled={!selectedFile || sendLoading || loadingFiles}
-                    fullWidth
-                  >
-                    {sendLoading ? "Sending..." : "Send File"}
-                  </Button>
-                </Box>
-
-                <Divider sx={{ my: 2 }} />
-
-                {/* Receive File */}
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Receive File from Bluetooth Device
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    startIcon={
-                      receiveLoading ? (
-                        <CircularProgress size={16} />
-                      ) : (
-                        <GetAppIcon />
-                      )
-                    }
-                    onClick={handleReceiveFile}
-                    disabled={receiveLoading}
-                    fullWidth
-                  >
-                    {receiveLoading ? "Receiving..." : "Receive File"}
-                  </Button>
-                </Box>
-              </Box>
-            )}
 
             <Divider sx={{ my: 3 }} />
 

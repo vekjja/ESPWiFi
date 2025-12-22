@@ -350,7 +350,7 @@ export default function BluetoothSettingsModal({
                   {/* Send File */}
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="subtitle2" gutterBottom>
-                      Send File to Bluetooth Device
+                      Send File to Connected Client
                     </Typography>
                     <FormControl fullWidth sx={{ mb: 2 }}>
                       <InputLabel>Select File</InputLabel>
@@ -399,7 +399,7 @@ export default function BluetoothSettingsModal({
                   {/* Receive File */}
                   <Box>
                     <Typography variant="subtitle2" gutterBottom>
-                      Receive File from Bluetooth Device
+                      Receive File from Connected Client
                     </Typography>
                     <Button
                       variant="contained"

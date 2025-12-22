@@ -3,6 +3,7 @@ import { Fab, Tooltip } from "@mui/material";
 import {
   Bluetooth as BluetoothIcon,
   BluetoothConnected as BluetoothConnectedIcon,
+  BluetoothDisabled as BluetoothDisabledIcon,
 } from "@mui/icons-material";
 import BluetoothSettingsModal from "./BluetoothSettingsModal";
 
@@ -62,7 +63,13 @@ export default function BluetoothButton({
             },
           }}
         >
-          {isConnected ? <BluetoothConnectedIcon /> : <BluetoothIcon />}
+          {isConnected ? (
+            <BluetoothConnectedIcon />
+          ) : isEnabled ? (
+            <BluetoothIcon />
+          ) : (
+            <BluetoothDisabledIcon />
+          )}
         </Fab>
       </Tooltip>
 

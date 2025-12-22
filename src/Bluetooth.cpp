@@ -239,6 +239,14 @@ void ESPWiFi::stopBluetooth() {
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }
 
 void ESPWiFi::checkBluetoothConnectionStatus() {
+  // Periodically check Bluetooth connection status (callbacks may not fire)
+  static unsigned long lastBtCheck = 0;
+  unsigned long now = millis();
+  if (now - lastBtCheck < 1000) { // Check every second
+    return;
+  }
+  lastBtCheck = now;
+
   // Only check if Bluetooth is started
   if ((!bluetoothStarted || pServer == nullptr) ||
       !config["bluetooth"]["enabled"].as<bool>()) {

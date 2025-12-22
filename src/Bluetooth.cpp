@@ -21,11 +21,34 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 String bleDeviceName = "";
 
+// Forward declaration
+class ESPWiFi;
+
 // Callback for device connection events
 class MyServerCallbacks : public NimBLEServerCallbacks {
+private:
+  ESPWiFi *espWiFi;
+
+public:
+  MyServerCallbacks(ESPWiFi *esp) : espWiFi(esp) {}
+
   void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) {
     deviceConnected = true;
     oldDeviceConnected = true;
+
+    String address = String(connInfo.getAddress().toString().c_str());
+
+    // Log directly to Serial first as fallback
+    Serial.print("[BLE] Device Connected - Address: ");
+    Serial.println(address);
+
+    if (espWiFi) {
+      espWiFi->log("📱 Bluetooth Device Connected");
+      espWiFi->logf("\tAddress: %s\n", address.c_str());
+    } else {
+      Serial.println("[BLE] Warning: ESPWiFi pointer is null!");
+    }
+
     // Update connection parameters for better reliability
     pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
   }
@@ -33,6 +56,23 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo,
                     int reason) {
     deviceConnected = false;
+
+    String address = String(connInfo.getAddress().toString().c_str());
+
+    // Log directly to Serial first as fallback
+    Serial.print("[BLE] Device Disconnected - Address: ");
+    Serial.print(address);
+    Serial.print(", Reason: ");
+    Serial.println(reason);
+
+    if (espWiFi) {
+      espWiFi->log("📱 Bluetooth Device Disconnected");
+      espWiFi->logf("\tAddress: %s\n", address.c_str());
+      espWiFi->logf("\tReason: %d\n", reason);
+    } else {
+      Serial.println("[BLE] Warning: ESPWiFi pointer is null!");
+    }
+
     // Restart advertising when disconnected
     delay(500);
     NimBLEDevice::startAdvertising();
@@ -66,7 +106,7 @@ bool ESPWiFi::startBluetooth() {
     return false;
   }
 
-  // ESP32-C3 BLE and WiFi share the same radio, so WiFi must be initialized
+  // ESP32 BLE and WiFi share the same radio, so WiFi must be initialized
   // even if WiFi is disabled. Initialize WiFi in STA mode for BLE
   // compatibility.
   if (!config["wifi"]["enabled"].as<bool>()) {
@@ -84,7 +124,11 @@ bool ESPWiFi::startBluetooth() {
 
   // Create BLE server
   pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+  MyServerCallbacks *serverCallbacks = new MyServerCallbacks(this);
+  pServer->setCallbacks(serverCallbacks);
+
+  // Verify callback setup
+  log("📱 Bluetooth Callbacks initialized");
 
   // Create BLE service
   NimBLEService *pService = pServer->createService(SERVICE_UUID);
@@ -228,7 +272,27 @@ void ESPWiFi::srvBluetooth() {
         // Only get connection status and address if Bluetooth is installed
         // and enabled
         if (btInstalled && btEnabled) {
+          // Check both deviceConnected flag and server connection count as
+          // backup
           btConnected = deviceConnected;
+          if (pServer != nullptr) {
+            // Also verify by checking if server has any connected clients
+            uint16_t connCount = pServer->getConnectedCount();
+            if (connCount > 0 && !btConnected) {
+              // If server shows connections but flag doesn't, update the flag
+              // This might happen if onConnect callback didn't fire
+              deviceConnected = true;
+              btConnected = true;
+              log("📱 Bluetooth Connection Detected (via status check)");
+              logf("\tConnection count: %d\n", connCount);
+            } else if (connCount == 0 && btConnected) {
+              // If server shows no connections but flag does, update the flag
+              deviceConnected = false;
+              btConnected = false;
+              log("📱 Bluetooth Disconnection Detected (via status check)");
+            }
+          }
+
           btAddress = config["bluetooth"]["address"].as<String>();
 
           // Try to get address from BLE if not in config (only if BLE is

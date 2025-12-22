@@ -7,14 +7,12 @@ import {
   List,
   ListItem,
   ListItemText,
-  IconButton,
   Paper,
   Grid,
   Switch,
   FormControlLabel,
 } from "@mui/material";
 import {
-  Refresh as RefreshIcon,
   BluetoothDisabled as BluetoothDisabledIcon,
   Bluetooth as BluetoothIcon,
 } from "@mui/icons-material";
@@ -76,12 +74,6 @@ export default function BluetoothSettingsModal({
       console.error("Error disconnecting Bluetooth:", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRefresh = () => {
-    if (onStatusChange) {
-      onStatusChange();
     }
   };
 
@@ -172,15 +164,6 @@ export default function BluetoothSettingsModal({
           <>
             {/* Connection Status */}
             <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
-                <IconButton
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  size="small"
-                >
-                  <RefreshIcon />
-                </IconButton>
-              </Box>
               <List dense>
                 <ListItem>
                   <ListItemText

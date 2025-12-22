@@ -45,20 +45,29 @@ export default function BluetoothButton({
     }
   }, [deviceOnline]);
 
-  // Fetch status on mount and when device comes online
+  // Initialize status from config when component mounts or config changes
   useEffect(() => {
-    if (!deviceOnline) return;
+    if (config?.bluetooth?.enabled !== undefined) {
+      setBluetoothStatus((prev) => ({
+        ...prev,
+        enabled: config.bluetooth.enabled || false,
+      }));
+    }
+  }, [config]);
 
-    // Fetch immediately
-    fetchBluetoothStatus();
-
-    // Poll every 30 seconds - Bluetooth status doesn't change frequently
-    const interval = setInterval(() => {
+  // Fetch status when component mounts or device comes online
+  useEffect(() => {
+    if (deviceOnline && config) {
       fetchBluetoothStatus();
-    }, 30000);
+    }
+  }, [deviceOnline, config, fetchBluetoothStatus]);
 
-    return () => clearInterval(interval);
-  }, [deviceOnline, fetchBluetoothStatus]);
+  // Fetch status when modal opens (in case status changed)
+  useEffect(() => {
+    if (modalOpen && deviceOnline) {
+      fetchBluetoothStatus();
+    }
+  }, [modalOpen, deviceOnline, fetchBluetoothStatus]);
 
   const handleClick = () => {
     if (deviceOnline) {
@@ -68,7 +77,6 @@ export default function BluetoothButton({
 
   const handleCloseModal = () => {
     setModalOpen(false);
-    fetchBluetoothStatus(); // Refresh status when modal closes
   };
 
   const isDisabled = !deviceOnline || !config;

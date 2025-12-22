@@ -26,43 +26,42 @@ class MyServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo) {
     deviceConnected = true;
     oldDeviceConnected = true;
-    Serial.printf("[BLE] 🔵 Device Connected: %s\n",
-                  connInfo.getAddress().toString().c_str());
-
     // Update connection parameters for better reliability
-    // Args: connection handle, min interval, max interval, latency, timeout
-    // Units: Min/Max Intervals: 1.25ms increments, Latency: intervals to skip,
-    // Timeout: 10ms increments
     pServer->updateConnParams(connInfo.getConnHandle(), 24, 48, 0, 180);
   }
 
   void onDisconnect(NimBLEServer *pServer, NimBLEConnInfo &connInfo,
                     int reason) {
     deviceConnected = false;
-    Serial.printf("[BLE] 🔵 Device Disconnected: %s (reason: %d)\n",
-                  connInfo.getAddress().toString().c_str(), reason);
     // Restart advertising when disconnected
     delay(500);
     NimBLEDevice::startAdvertising();
-    Serial.println("[BLE] 🔵 Advertising Restarted");
   }
 };
 
-// Callback for RX characteristic (data received from client)
+// Callback for characteristics
 class MyCallbacks : public NimBLECharacteristicCallbacks {
+  void onRead(NimBLECharacteristic *pCharacteristic, NimBLEConnInfo &connInfo) {
+    // Characteristic read
+  }
+
   void onWrite(NimBLECharacteristic *pCharacteristic,
                NimBLEConnInfo &connInfo) {
     // Data received, handled in receive endpoint
+  }
+
+  void onSubscribe(NimBLECharacteristic *pCharacteristic,
+                   NimBLEConnInfo &connInfo, uint16_t subValue) {
+    // Client subscribed to notifications/indications
   }
 };
 
 bool ESPWiFi::startBluetooth() {
   if (bluetoothStarted) {
-    return true; // Already started
+    return true;
   }
 
   if (!config["bluetooth"]["enabled"].as<bool>()) {
-    log("🔵 Bluetooth Disabled");
     return false;
   }
 
@@ -76,14 +75,10 @@ bool ESPWiFi::startBluetooth() {
 
   bleDeviceName = config["deviceName"].as<String>();
 
-  // Following NimBLE-Arduino New User Guide quick start pattern:
-  // https://github.com/h2zero/NimBLE-Arduino/blob/master/docs/New_user_guide.md#creating-a-server
+  // Following NimBLE-Arduino Server example pattern:
+  // https://github.com/h2zero/NimBLE-Arduino/blob/master/examples/NimBLE_Server/NimBLE_Server.ino
 
-  // Initialize NimBLE device
-  if (NimBLEDevice::getInitialized()) {
-    NimBLEDevice::deinit(true);
-    delay(100);
-  }
+  // Initialize NimBLE and set the device name
   NimBLEDevice::init(bleDeviceName.c_str());
 
   // Create BLE server
@@ -104,38 +99,20 @@ bool ESPWiFi::startBluetooth() {
       NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   pRxCharacteristic->setCallbacks(new MyCallbacks());
 
-  // Start the service
+  // Start the service when finished creating all Characteristics
   pService->start();
 
-  // Start advertising - following guide order exactly
-  // Optimized for macOS/iOS discoverability
+  // Create an advertising instance and add the service to the advertised data
   NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(
-      SERVICE_UUID); // advertise the UUID of our service
-  pAdvertising->setName(bleDeviceName.c_str()); // advertise the device name
-
-  // Enable scan response for better macOS/iOS discoverability
-  // This allows more data to be sent in response to scan requests
+  pAdvertising->setName(bleDeviceName.c_str());
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  // If your device is battery powered you may consider setting scan response
+  // to false as it will extend battery life at the expense of less data sent.
   pAdvertising->setScanResponse(true);
+  pAdvertising->start();
 
-  // Start advertising
-  if (!pAdvertising->start()) {
-    log("⚠️  Failed to start BLE advertising");
-    return false;
-  }
-
-  // Give advertising time to start
-  delay(200);
-
-  // Logging
-  log("🔵 Bluetooth LE Started:");
-  logf("\tDevice Name: %s\n", bleDeviceName.c_str());
+  // Store MAC address for status endpoint
   String macAddress = String(NimBLEDevice::getAddress().toString().c_str());
-  logf("\tMAC Address: %s\n", macAddress.c_str());
-  logf("\tService UUID: %s\n", SERVICE_UUID);
-  log("🔵 Advertising active - device should be discoverable");
-  log("🔵 Waiting for connections...");
-
   config["bluetooth"]["address"] = macAddress;
   bluetoothStarted = true;
   return true;
@@ -143,13 +120,7 @@ bool ESPWiFi::startBluetooth() {
 
 void ESPWiFi::stopBluetooth() {
   if (!bluetoothStarted) {
-    return; // Already stopped
-  }
-
-  if (deviceConnected) {
-    log("🔵 Disconnecting BLE clients");
-    // In NimBLE, deinit will disconnect all clients
-    delay(100);
+    return;
   }
 
   NimBLEDevice::deinit(true);
@@ -159,7 +130,6 @@ void ESPWiFi::stopBluetooth() {
   deviceConnected = false;
   oldDeviceConnected = false;
   bluetoothStarted = false;
-  log("🔵 Bluetooth LE Stopped");
 }
 
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }
@@ -211,7 +181,7 @@ void ESPWiFi::bluetoothConfigHandler() {
 }
 
 void ESPWiFi::scanBluetoothDevices() {
-  log("🔵 BLE scanning not yet implemented");
+  // BLE scanning not yet implemented
 }
 
 void ESPWiFi::srvBluetooth() {
@@ -352,9 +322,6 @@ void ESPWiFi::srvBluetooth() {
         uint8_t buffer[512]; // BLE supports up to 512 bytes per packet
 
         String filename = filePath.substring(filePath.lastIndexOf('/') + 1);
-        log("🔵 Sending file via BLE:");
-        logf("\tFile: %s\n", filename.c_str());
-        logf("\tSize: %d bytes\n", fileSize);
 
         // Send file header: FILE:filename:size\n
         String header = "FILE:" + filename + ":" + String(fileSize) + "\n";
@@ -379,8 +346,6 @@ void ESPWiFi::srvBluetooth() {
         }
 
         file.close();
-
-        logf("🔵 File sent: %d/%d bytes\n", bytesSent, fileSize);
 
         JsonDocument responseDoc;
         responseDoc["success"] = true;
@@ -430,14 +395,9 @@ void ESPWiFi::srvBluetooth() {
           return;
         }
 
-        log("🔵 Receiving file via BLE:");
-        logf("\tSave Path: %s\n", savePath.c_str());
-        logf("\tFile System: %s\n", fsParam.c_str());
-
         // Read available data from RX characteristic
         NimBLEAttValue rxValue = pRxCharacteristic->getValue();
         if (rxValue.length() > 0) {
-          logf("🔵 Received %d bytes from BLE\n", rxValue.length());
           String filename = "bt_received_" + timestampForFilename() + ".bin";
           String filePath =
               savePath + (savePath.endsWith("/") ? "" : "/") + filename;
@@ -451,9 +411,6 @@ void ESPWiFi::srvBluetooth() {
 
           size_t bytesReceived = file.write(rxValue.data(), rxValue.length());
           file.close();
-
-          logf("🔵 File received: %d bytes saved to %s\n", bytesReceived,
-               filePath.c_str());
 
           // Clear the characteristic value after reading
           pRxCharacteristic->setValue((uint8_t *)"", 0);
@@ -501,7 +458,6 @@ void ESPWiFi::srvBluetooth() {
 
 // Bluetooth not available - stub implementations
 bool ESPWiFi::startBluetooth() {
-  log("🔵 Bluetooth not available on this device");
   config["bluetooth"]["enabled"] = false;
   config["bluetooth"]["installed"] = false;
   return false;

@@ -31,10 +31,10 @@
     "monitor": "cd .. && pio device monitor",
     "upload": "cd .. && pio run --target upload",
     "uploadfs": "cd .. && pio run --target uploadfs",
-    "build:uploadfs": "npm run build && npm run uploadfs && npm run monitor",
+    "build:monitor": "npm run build && npm run uploadfs && npm run monitor",
     "upload:monitor": "npm run upload && npm run monitor",
-    "deploy": "npm run upload && npm run build && npm run uploadfs",
-    "deploy:monitor": "npm run upload && npm run build && npm run uploadfs && npm run monitor"
+    "deploy": "npm run build && npm run uploadfs && npm run upload",
+    "deploy:monitor": "npm run  deploy && npm run monitor"
   },
   "eslintConfig": {
     "rules": {

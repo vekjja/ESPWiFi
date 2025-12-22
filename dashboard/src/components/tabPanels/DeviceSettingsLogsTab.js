@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Alert,
@@ -28,8 +28,72 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [refreshInterval, setRefreshInterval] = useState(2); // seconds
   const logContainerRef = useRef(null);
   const refreshIntervalRef = useRef(null);
-  const userScrolledUpRef = useRef(false);
-  const isScrollingProgrammaticallyRef = useRef(false);
+  const scrollSentinelRef = useRef(null);
+  const observerRef = useRef(null);
+  const hasScrolledInitiallyRef = useRef(false);
+  const prevAutoScrollRef = useRef(autoScroll);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  // Use Intersection Observer API (industry standard) to detect if user is at bottom
+  useEffect(() => {
+    if (!autoScroll) {
+      setIsAtBottom(true); // Default to true when auto-scroll is disabled
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+      return;
+    }
+
+    // Wait for next tick to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      const container = logContainerRef.current;
+      const sentinel = scrollSentinelRef.current;
+
+      if (!container || !sentinel) {
+        return;
+      }
+
+      // Clean up existing observer
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+
+      // Create Intersection Observer to watch the sentinel element
+      const observer = new IntersectionObserver(
+        (entries) => {
+          // If sentinel is visible, user is at (or near) bottom
+          setIsAtBottom(entries[0].isIntersecting);
+        },
+        {
+          root: container, // Observe within the scroll container
+          rootMargin: "0px 0px 100px 0px", // Consider "at bottom" if within 100px
+          threshold: 0,
+        }
+      );
+
+      observer.observe(sentinel);
+      observerRef.current = observer;
+
+      // Initial check - if sentinel is already visible, we're at bottom
+      const rect = sentinel.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      if (
+        rect.top >= containerRect.top &&
+        rect.bottom <= containerRect.bottom + 100
+      ) {
+        setIsAtBottom(true);
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+    };
+  }, [autoScroll, logs]); // Re-run when logs change to ensure observer is set up after DOM update
 
   // Fetch logs from device
   const fetchLogs = async () => {
@@ -77,84 +141,58 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     }
   };
 
-  // Handle scroll events to detect if user scrolled up manually
-  useEffect(() => {
+  // Scroll to bottom of log container
+  const scrollToBottom = useCallback(() => {
     const container = logContainerRef.current;
-    if (!container || !autoScroll) return;
+    if (!container) return;
 
-    let scrollTimeout;
-    const handleScroll = () => {
-      // Ignore programmatic scrolling
-      if (isScrollingProgrammaticallyRef.current) {
-        isScrollingProgrammaticallyRef.current = false;
-        return;
-      }
+    // Use double requestAnimationFrame for reliable DOM timing
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+          // Verify we're at bottom after scrolling
+          const isReallyAtBottom =
+            Math.abs(
+              container.scrollHeight -
+                container.scrollTop -
+                container.clientHeight
+            ) < 10;
+          if (isReallyAtBottom) {
+            setIsAtBottom(true);
+          }
+        }
+      });
+    });
+  }, []);
 
-      // Clear any pending timeout
-      clearTimeout(scrollTimeout);
-
-      // Set a timeout to check scroll position after scrolling stops
-      scrollTimeout = setTimeout(() => {
-        if (!container || !autoScroll) return;
-
-        const { scrollTop, scrollHeight, clientHeight } = container;
-        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-        // If user is more than 50px from bottom, they scrolled up manually
-        userScrolledUpRef.current = distanceFromBottom > 50;
-      }, 100); // Wait 100ms after scroll stops
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      container.removeEventListener("scroll", handleScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [autoScroll]);
-
-  // Auto-scroll to bottom when logs update
+  // Auto-scroll to bottom when logs update or autoScroll is enabled (if user is at bottom)
   useEffect(() => {
-    if (!autoScroll || !logContainerRef.current) return;
-
-    // Only auto-scroll if user hasn't manually scrolled up
-    if (userScrolledUpRef.current) {
+    if (!autoScroll || !logContainerRef.current || !logs) {
+      prevAutoScrollRef.current = autoScroll;
       return;
     }
 
-    // Simple, direct scroll approach
-    const scrollToBottom = () => {
-      const container = logContainerRef.current;
-      if (!container || !autoScroll || userScrolledUpRef.current) return;
+    // Check if autoScroll was just enabled (transitioned from false to true)
+    const wasJustEnabled = !prevAutoScrollRef.current && autoScroll;
+    prevAutoScrollRef.current = autoScroll;
 
-      // Mark as programmatic scroll
-      isScrollingProgrammaticallyRef.current = true;
+    // Only auto-scroll if user is at bottom (hasn't manually scrolled up)
+    // Exception: always scroll on initial load, toggle-on, or when logs change and we're at bottom
+    if (!isAtBottom && hasScrolledInitiallyRef.current && !wasJustEnabled) {
+      return;
+    }
 
-      // Scroll to bottom
-      container.scrollTop = container.scrollHeight;
-
-      // Reset flag after a short delay
-      setTimeout(() => {
-        isScrollingProgrammaticallyRef.current = false;
-      }, 300);
-    };
-
-    // Use multiple strategies to ensure scroll happens
-    // Immediate attempt
-    scrollToBottom();
-
-    // Also try after a short delay to catch any DOM updates
-    const timeout1 = setTimeout(scrollToBottom, 100);
-
-    // And after requestAnimationFrame
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-    });
+    // Wait for DOM to update with new log content, then scroll
+    const timeoutId = setTimeout(() => {
+      scrollToBottom();
+      hasScrolledInitiallyRef.current = true;
+    }, 150);
 
     return () => {
-      clearTimeout(timeout1);
+      clearTimeout(timeoutId);
     };
-  }, [logs, autoScroll]);
+  }, [logs, autoScroll, isAtBottom, scrollToBottom]);
 
   // Auto-refresh setup
   useEffect(() => {
@@ -187,29 +225,26 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
   // Update log settings
   const updateLogSettings = async (enabled, level) => {
-    const updateUrl = buildApiUrl("/api/log");
-
     try {
-      const response = await fetch(
-        updateUrl,
-        getFetchOptions({
-          method: "PUT",
-          body: JSON.stringify({
-            enabled: enabled,
-            level: level,
-          }),
-        })
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Validate log level
+      const validLevels = ["debug", "info", "warning", "error"];
+      if (level && !validLevels.includes(level)) {
+        throw new Error(
+          "Invalid log level. Must be: debug, info, warning, or error"
+        );
       }
 
-      const data = await response.json();
-      console.log("Log settings updated:", data);
+      // Create partial config with just the log section
+      const partialConfig = {
+        log: {
+          enabled: enabled,
+          level: level,
+        },
+      };
 
-      // Backend already saved the config, no need to save again
-      // The local state will be updated via the useEffect that watches config changes
+      // Use saveConfigToDevice which handles PUT /config
+      await saveConfigToDevice(partialConfig);
+      console.log("Log settings updated");
     } catch (error) {
       console.error("Failed to update log settings:", error);
       setLogError(`Failed to update log settings: ${error.message}`);
@@ -235,6 +270,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   // Initial fetch on mount
   useEffect(() => {
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update local state when config changes
@@ -333,16 +369,10 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                     const newValue = e.target.checked;
                     setAutoScroll(newValue);
                     if (newValue) {
-                      // Reset scroll state when enabling auto-scroll
-                      userScrolledUpRef.current = false;
-                      // Scroll to bottom immediately
-                      setTimeout(() => {
-                        if (logContainerRef.current) {
-                          isScrollingProgrammaticallyRef.current = true;
-                          logContainerRef.current.scrollTop =
-                            logContainerRef.current.scrollHeight;
-                        }
-                      }, 0);
+                      // Reset state when enabling auto-scroll
+                      // The effect will handle scrolling when autoScroll changes
+                      hasScrolledInitiallyRef.current = false;
+                      setIsAtBottom(true);
                     }
                   }}
                   size="small"
@@ -415,6 +445,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
               minHeight: 0, // Important for flex children
               textAlign: "left",
               direction: "ltr",
+              position: "relative",
             }}
           >
             {logLoading && logs === "" ? (
@@ -424,7 +455,14 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                 No logs available. Click "Refresh" to fetch.
               </Typography>
             ) : (
-              logs
+              <>
+                {logs}
+                {/* Invisible sentinel element for Intersection Observer */}
+                <div
+                  ref={scrollSentinelRef}
+                  style={{ height: "1px", width: "100%" }}
+                />
+              </>
             )}
           </Paper>
         </CardContent>

@@ -1,6 +1,3 @@
-#ifndef ESPWiFi_LOG
-#define ESPWiFi_LOG
-
 #include <FS.h>
 #include <LittleFS.h>
 #include <SD.h>
@@ -204,55 +201,25 @@ void ESPWiFi::srvLog() {
     response->addHeader("Content-Type", "text/plain; charset=utf-8");
     request->send(response);
   });
-
-  // PUT /api/log - update log settings (enabled, level)
-  webServer->on(
-      "/api/log", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-
-  webServer->addHandler(new AsyncCallbackJsonWebHandler(
-      "/api/log", [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (!authorized(request)) {
-          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-          return;
-        }
-
-        if (request->method() != HTTP_PUT) {
-          sendJsonResponse(request, 405, "{\"error\":\"Method not allowed\"}");
-          return;
-        }
-
-        JsonObject reqJson = json.as<JsonObject>();
-
-        if (reqJson["enabled"].is<bool>()) {
-          config["log"]["enabled"] = reqJson["enabled"].as<bool>();
-        }
-
-        if (reqJson["level"].is<const char *>()) {
-          String level = reqJson["level"].as<String>();
-          level.toLowerCase();
-          if (level == "debug" || level == "info" || level == "warning" ||
-              level == "error") {
-            config["log"]["level"] = level;
-          } else {
-            sendJsonResponse(request, 400,
-                             "{\"error\":\"Invalid log level. Must be: debug, "
-                             "info, warning, or error\"}");
-            return;
-          }
-        }
-
-        saveConfig();
-
-        JsonDocument responseDoc;
-        responseDoc["enabled"] = config["log"]["enabled"].as<bool>();
-        responseDoc["level"] = config["log"]["level"].as<String>();
-        responseDoc["success"] = true;
-
-        String jsonResponse;
-        serializeJson(responseDoc, jsonResponse);
-        sendJsonResponse(request, 200, jsonResponse);
-      }));
 }
 
-#endif // ESPWiFi_LOG
+void ESPWiFi::logConfigHandler() {
+  static bool lastEnabled = true;
+  static String lastLevel = "info";
+
+  bool currentEnabled = config["log"]["enabled"].as<bool>();
+  String currentLevel = config["log"]["level"].as<String>();
+
+  // Log when enabled state changes
+  if (currentEnabled != lastEnabled) {
+    logf("📝 Logging %s\n", currentEnabled ? "enabled" : "disabled");
+    lastEnabled = currentEnabled;
+  }
+
+  // Log when level changes
+  if (currentLevel != lastLevel) {
+    logf("📝 Log level changed: %s -> %s\n", lastLevel.c_str(),
+         currentLevel.c_str());
+    lastLevel = currentLevel;
+  }
+}

@@ -83,6 +83,7 @@ public:
   void log(String message);
   void log(IPAddress ip) { log(ip.toString()); }
   template <typename T> void log(T value) { log(String(value)); };
+  void logConfigHandler();
 
   // Config
   void saveConfig();

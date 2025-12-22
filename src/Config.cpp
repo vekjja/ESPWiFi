@@ -88,6 +88,7 @@ void ESPWiFi::handleConfig() {
   config["camera"]["enabled"] = false;
   config["camera"]["installed"] = false;
 #endif
+  logConfigHandler();
 }
 
 JsonDocument ESPWiFi::defaultConfig() {

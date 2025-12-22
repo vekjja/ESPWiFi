@@ -15,7 +15,9 @@ import {
   Paper,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import DescriptionIcon from "@mui/icons-material/Description";
 import { buildApiUrl, getFetchOptions } from "../../utils/apiUtils";
+import IButton from "../IButton";
 
 export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [logs, setLogs] = useState("");
@@ -267,6 +269,12 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     updateLogSettings(logEnabled, newValue);
   };
 
+  // Handle view logs in new window
+  const handleViewLogs = () => {
+    const apiUrl = config?.apiURL || buildApiUrl("");
+    window.open(`${apiUrl}/log`, "_blank");
+  };
+
   // Initial fetch on mount
   useEffect(() => {
     fetchLogs();
@@ -399,17 +407,23 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                 </Select>
               </FormControl>
 
-              {/* Manual Refresh Button */}
-              <Button
-                variant="contained"
-                startIcon={<RefreshIcon />}
-                onClick={fetchLogs}
-                disabled={logLoading}
-                size="small"
-                sx={{ alignSelf: "flex-start" }}
-              >
-                {logLoading ? "Loading..." : "Refresh"}
-              </Button>
+              {/* Refresh Button and View Logs Icon */}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<RefreshIcon />}
+                  onClick={fetchLogs}
+                  disabled={logLoading}
+                  size="small"
+                >
+                  {logLoading ? "Loading..." : "Refresh"}
+                </Button>
+                <IButton
+                  Icon={DescriptionIcon}
+                  onClick={handleViewLogs}
+                  tooltip="View Logs"
+                />
+              </Box>
             </Box>
           </Box>
         </CardContent>

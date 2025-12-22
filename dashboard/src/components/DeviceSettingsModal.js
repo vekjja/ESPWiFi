@@ -3,7 +3,6 @@ import { Tabs, Tab, Box, useTheme, useMediaQuery } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
-import DescriptionIcon from "@mui/icons-material/Description";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
@@ -299,12 +298,6 @@ export default function DeviceSettingsModal({
     window.location.reload();
   };
 
-  const handleViewLogs = () => {
-    // Try SD card first (preferred), then LittleFS
-    const apiUrl = config?.apiURL || buildApiUrl("");
-    window.open(`${apiUrl}/log`, "_blank");
-  };
-
   // JSON editing handlers
   const handleJsonSave = () => {
     try {
@@ -415,36 +408,13 @@ export default function DeviceSettingsModal({
           sx={{
             display: "flex",
             alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
             width: "100%",
-            position: "relative",
           }}
         >
-          <Box
-            sx={{
-              position: "absolute",
-              right: 0,
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            <IButton
-              Icon={DescriptionIcon}
-              onClick={handleViewLogs}
-              tooltip={"View Logs"}
-            />
-          </Box>
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              width: "100%",
-            }}
-          >
-            <SettingsIcon color="primary" />
-            <span>Device Settings</span>
-          </Box>
+          <SettingsIcon color="primary" />
+          <span>Device Settings</span>
         </Box>
       }
       maxWidth={false}

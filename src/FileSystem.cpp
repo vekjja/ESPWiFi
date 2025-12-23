@@ -17,7 +17,7 @@ void ESPWiFi::initLittleFS() {
 
   lfs = &LittleFS;
   littleFsInitialized = true;
-  log("💾 LittleFS Initialized");
+  logln("💾 LittleFS Initialized");
 }
 
 void ESPWiFi::initSDCard() {
@@ -29,7 +29,7 @@ void ESPWiFi::initSDCard() {
 
   if (!SD_MMC.begin()) {
     config["sd"]["enabled"] = false;
-    log("⚠️  Failed to mount SD card");
+    logln("⚠️  Failed to mount SD card");
     return;
   }
   sd = &SD_MMC;
@@ -44,7 +44,7 @@ void ESPWiFi::initSDCard() {
 
   if (!SD.begin(sdCardPin)) {
     config["sd"]["enabled"] = false;
-    log("⚠️  Failed to mount SD card");
+    logln("⚠️  Failed to mount SD card");
     return;
   }
   sd = &SD;
@@ -53,7 +53,7 @@ void ESPWiFi::initSDCard() {
 #endif // ESP32-S2, ESP32-S3, ESP32-C3
 
   sdCardInitialized = true;
-  log("💾 SD Card Initialized");
+  logln("💾 SD Card Initialized");
 }
 
 String ESPWiFi::sanitizeFilename(const String &filename) {

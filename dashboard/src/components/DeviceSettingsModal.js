@@ -66,9 +66,11 @@ export default function DeviceSettingsModal({
     if (config) {
       setSsid(config.wifi?.client?.ssid || "");
       setPassword(config.wifi?.client?.password || "");
-      setApSsid(config.wifi?.ap?.ssid || "");
-      setApPassword(config.wifi?.ap?.password || "");
-      setMode(config.wifi?.mode || "client");
+      setApSsid(config.wifi?.accessPoint?.ssid || "");
+      setApPassword(config.wifi?.accessPoint?.password || "");
+      // Handle backward compatibility: "ap" mode is now "accessPoint"
+      const wifiMode = config.wifi?.mode || "client";
+      setMode(wifiMode === "ap" ? "accessPoint" : wifiMode);
       setDeviceName(config.deviceName || config.mdns || "");
       setAuthEnabled(config.auth?.enabled ?? false);
       setAuthUsername(config.auth?.username || "");
@@ -89,7 +91,7 @@ export default function DeviceSettingsModal({
           ssid: ssid,
           password: password,
         },
-        ap: {
+        accessPoint: {
           ssid: apSsid,
           password: apPassword,
         },
@@ -250,7 +252,7 @@ export default function DeviceSettingsModal({
           ssid: ssid,
           password: password,
         },
-        ap: {
+        accessPoint: {
           ssid: apSsid,
           password: apPassword,
         },
@@ -329,7 +331,7 @@ export default function DeviceSettingsModal({
 
   // Determine which actions to show based on active tab
   const getActions = () => {
-    // Common buttons (restart and logout) - always shown on the right
+    // Common buttons (restart and logout) - logout only shown when auth is enabled
     const commonButtons = (
       <>
         <IButton
@@ -337,7 +339,13 @@ export default function DeviceSettingsModal({
           onClick={handleRestart}
           tooltip={"Restart Device"}
         />
-        <IButton Icon={LogoutIcon} onClick={handleLogout} tooltip={"Logout"} />
+        {authEnabled && (
+          <IButton
+            Icon={LogoutIcon}
+            onClick={handleLogout}
+            tooltip={"Logout"}
+          />
+        )}
       </>
     );
 

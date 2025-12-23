@@ -67,17 +67,6 @@ export default function CameraSettingsModal({
     isInitialLoad.current = false;
   }, [localData, onCameraDataChange]);
 
-  // Update enabled state when config changes (but only if modal is already initialized)
-  useEffect(() => {
-    if (
-      initializedRef.current &&
-      config?.camera?.enabled !== undefined &&
-      isDeviceLevel
-    ) {
-      setEnabled(config.camera.enabled);
-    }
-  }, [config?.camera?.enabled, isDeviceLevel]);
-
   // Only initialize once when modal opens, don't sync while modal is open
   useEffect(() => {
     if (open && !initializedRef.current) {
@@ -93,9 +82,12 @@ export default function CameraSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Load camera settings when modal opens
+  // Update enabled state and camera settings when config changes (while modal is open)
   useEffect(() => {
-    if (open) {
+    if (open && initializedRef.current) {
+      if (isDeviceLevel && config?.camera?.enabled !== undefined) {
+        setEnabled(config.camera.enabled);
+      }
       loadCameraSettings();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -2,14 +2,16 @@ import React from "react";
 import {
   TextField,
   FormControl,
-  FormControlLabel,
-  Switch,
   Box,
   InputAdornment,
   IconButton,
+  Tooltip,
+  Typography,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import WifiIcon from "@mui/icons-material/Wifi";
+import RouterIcon from "@mui/icons-material/Router";
 
 export default function DeviceSettingsNetworkTab({
   ssid,
@@ -45,8 +47,12 @@ export default function DeviceSettingsNetworkTab({
     setApPassword(event.target.value);
   };
 
-  const handleModeToggle = (event) => {
-    setMode(event.target.checked ? "client" : "ap");
+  const handleSelectClientMode = () => {
+    setMode("client");
+  };
+
+  const handleSelectApMode = () => {
+    setMode("accessPoint");
   };
 
   const handleDeviceNameChange = (event) => {
@@ -63,14 +69,6 @@ export default function DeviceSettingsNetworkTab({
 
   return (
     <>
-      <FormControl variant="outlined" sx={{ marginTop: 1 }}>
-        <FormControlLabel
-          control={
-            <Switch checked={mode === "client"} onChange={handleModeToggle} />
-          }
-          label={mode === "client" ? "WiFi Client Mode" : "Access Point Mode"}
-        />
-      </FormControl>
       <FormControl fullWidth variant="outlined" sx={{ marginTop: 1 }}>
         <TextField
           label="Device Name"
@@ -99,9 +97,38 @@ export default function DeviceSettingsNetworkTab({
             transition: "border-color 0.3s ease, opacity 0.3s ease",
           }}
         >
-          <h4 style={{ margin: "0 0 8px 0", color: "primary.secondary" }}>
-            WiFi Client Settings
-          </h4>
+          <Tooltip title="Click to select WiFi Client Mode">
+            <Box
+              onClick={handleSelectClientMode}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1,
+                marginBottom: 1,
+                cursor: "pointer",
+                "&:hover": {
+                  opacity: 0.8,
+                },
+              }}
+            >
+              <WifiIcon
+                sx={{
+                  color: mode === "client" ? "primary.main" : "text.disabled",
+                }}
+              />
+              <Typography
+                variant="h6"
+                sx={{
+                  margin: 0,
+                  color: mode === "client" ? "primary.main" : "text.disabled",
+                  pointerEvents: "none",
+                }}
+              >
+                WiFi Client
+              </Typography>
+            </Box>
+          </Tooltip>
           <FormControl fullWidth variant="outlined">
             <TextField
               label="Client SSID"
@@ -142,17 +169,49 @@ export default function DeviceSettingsNetworkTab({
         <Box
           sx={{
             marginTop: 2,
-            border: mode === "ap" ? 2 : 2,
-            borderColor: mode === "ap" ? "primary.main" : "transparent",
+            border: mode === "accessPoint" ? 2 : 2,
+            borderColor:
+              mode === "accessPoint" ? "primary.main" : "transparent",
             borderRadius: 1,
             padding: 2,
-            opacity: mode === "ap" ? 1 : 0.5,
+            opacity: mode === "accessPoint" ? 1 : 0.5,
             transition: "border-color 0.3s ease, opacity 0.3s ease",
           }}
         >
-          <h4 style={{ margin: "0 0 8px 0", color: "primary.main" }}>
-            WiFi Access Point Settings
-          </h4>
+          <Tooltip title="Click to select Access Point Mode">
+            <Box
+              onClick={handleSelectApMode}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1,
+                marginBottom: 1,
+                cursor: "pointer",
+                "&:hover": {
+                  opacity: 0.8,
+                },
+              }}
+            >
+              <RouterIcon
+                sx={{
+                  color:
+                    mode === "accessPoint" ? "primary.main" : "text.disabled",
+                }}
+              />
+              <Typography
+                variant="h6"
+                sx={{
+                  margin: 0,
+                  color:
+                    mode === "accessPoint" ? "primary.main" : "text.disabled",
+                  pointerEvents: "none",
+                }}
+              >
+                WiFi Access Point
+              </Typography>
+            </Box>
+          </Tooltip>
           <FormControl fullWidth variant="outlined">
             <TextField
               label="AP SSID"

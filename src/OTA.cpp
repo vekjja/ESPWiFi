@@ -39,7 +39,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
 
   // Start update process based on mode
   if (mode == "fs" || mode == "filesystem") {
-    log("📁 Starting filesystem update");
+    logln("📁 Starting filesystem update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
       this->otaErrorString =
           "Update.begin failed: " + String(Update.getError());
@@ -59,7 +59,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
       request->send(400, "text/plain", this->otaErrorString);
       return;
     }
-    log("📦 Starting firmware update");
+    logln("📦 Starting firmware update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
       this->otaErrorString =
           "Update.begin failed: " + String(Update.getError());
@@ -71,7 +71,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
     }
   }
 
-  log("✅ OTA update initialized successfully");
+  logln("✅ OTA update initialized successfully");
   request->send(200, "text/plain", "OK");
 }
 
@@ -126,7 +126,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
   if (final) {
     // Finalize the update
     if (Update.end(true)) {
-      log("✅ OTA update completed successfully");
+      logln("✅ OTA update completed successfully");
       this->otaInProgress = false;
 
       // Send success response
@@ -138,7 +138,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
       delay(3000);
 
       // Restart device after a longer delay to allow UI to receive response
-      log("🔄 Restarting Device...");
+      logln("🔄 Restarting Device...");
       ESP.restart();
     } else {
       this->otaErrorString = "Update.end failed: " + String(Update.getError());
@@ -419,7 +419,7 @@ void ESPWiFi::srvOTA() {
 
         // Start update process based on mode
         if (mode == "fs" || mode == "filesystem") {
-          log("📁 Starting filesystem update");
+          logln("📁 Starting filesystem update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
             this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
@@ -431,7 +431,7 @@ void ESPWiFi::srvOTA() {
             return;
           }
         } else {
-          log("📦 Starting firmware update");
+          logln("📦 Starting firmware update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
             this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
@@ -444,7 +444,7 @@ void ESPWiFi::srvOTA() {
           }
         }
 
-        log("✅ OTA update initialized successfully");
+        logln("✅ OTA update initialized successfully");
         sendJsonResponse(request, 200, "{\"success\":true}");
       });
 

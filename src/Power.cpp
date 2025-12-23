@@ -6,7 +6,7 @@
 #include "esp_task_wdt.h"
 
 void ESPWiFi::setMaxPower() {
-  log("⚡️ Power Mode: Performance");
+  logln("⚡️ Power Mode: Performance");
 
   // Set CPU frequency to maximum based on chip variant
   // #if defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -63,7 +63,7 @@ void ESPWiFi::setMaxPower() {
   // Optimize PSRAM speed if available (ESP32-S3 and some ESP32 variants)
 #if defined(CONFIG_SPIRAM_SUPPORT) || defined(CONFIG_ESP32S3_SPIRAM_SUPPORT)
   if (psramFound()) {
-    log("\tPSRAM: Enabled and Optimized");
+    logInfo("\tPSRAM: Enabled and Optimized");
   }
 #endif
 }

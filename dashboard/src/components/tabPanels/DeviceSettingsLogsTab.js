@@ -5,21 +5,22 @@ import {
   Typography,
   Card,
   CardContent,
-  FormControl,
-  FormLabel,
-  Select,
-  MenuItem,
-  Switch,
-  Button,
-  TextField,
   Paper,
   useTheme,
   useMediaQuery,
+  IconButton,
+  Tooltip,
+  Menu,
+  MenuItem,
 } from "@mui/material";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import DescriptionIcon from "@mui/icons-material/Description";
+import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
+import PowerOffIcon from "@mui/icons-material/PowerOff";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
+import VerticalAlignBottomIcon from "@mui/icons-material/VerticalAlignBottom";
+import VerticalAlignBottomOutlinedIcon from "@mui/icons-material/VerticalAlignBottomOutlined";
+import FilterListIcon from "@mui/icons-material/FilterList";
 import { buildApiUrl, getFetchOptions } from "../../utils/apiUtils";
-import IButton from "../IButton";
 
 export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const theme = useTheme();
@@ -30,9 +31,10 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [logError, setLogError] = useState("");
   const [logEnabled, setLogEnabled] = useState(config?.log?.enabled !== false);
   const [logLevel, setLogLevel] = useState(config?.log?.level || "info");
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  // Auto refresh interval: null (disabled) or 3 seconds
+  const [refreshInterval, setRefreshInterval] = useState(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(2); // seconds
+  const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);
   const refreshIntervalRef = useRef(null);
   const scrollSentinelRef = useRef(null);
@@ -203,7 +205,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
   // Auto-refresh setup
   useEffect(() => {
-    if (autoRefresh && refreshInterval > 0) {
+    if (refreshInterval && refreshInterval > 0) {
       // Initial fetch
       fetchLogs();
 
@@ -228,7 +230,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshInterval]);
+  }, [refreshInterval]);
 
   // Update log settings
   const updateLogSettings = async (enabled, level) => {
@@ -259,19 +261,27 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   };
 
   // Handle log enabled change
-  const handleLogEnabledChange = (event) => {
-    const newValue = event.target.checked;
+  const handleLogEnabledChange = () => {
+    const newValue = !logEnabled;
     setLogEnabled(newValue);
     // Update immediately
     updateLogSettings(newValue, logLevel);
   };
 
   // Handle log level change
-  const handleLogLevelChange = (event) => {
-    const newValue = event.target.value;
+  const handleLogLevelChange = (newValue) => {
     setLogLevel(newValue);
+    setLogLevelMenuAnchor(null);
     // Update immediately
     updateLogSettings(logEnabled, newValue);
+  };
+
+  const handleLogLevelMenuOpen = (event) => {
+    setLogLevelMenuAnchor(event.currentTarget);
+  };
+
+  const handleLogLevelMenuClose = () => {
+    setLogLevelMenuAnchor(null);
   };
 
   // Handle view logs in new window
@@ -318,112 +328,71 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
           <Box
             sx={{
               display: "flex",
-              flexDirection: isMobile ? "column" : "row",
-              justifyContent: "space-between",
-              alignItems: isMobile ? "stretch" : "flex-start",
-              gap: isMobile ? 2 : 4,
+              flexDirection: "column",
+              gap: 2,
             }}
           >
-            {/* Toggle Options on the Left - Stacked in rows */}
+            {/* Top Row: Enable and Auto Options */}
             <Box
               sx={{
                 display: "flex",
-                flexDirection: "column",
+                flexDirection: isMobile ? "column" : "row",
+                flexWrap: "wrap",
+                alignItems: "center",
                 gap: 2,
-                flex: isMobile ? 1 : 0,
               }}
             >
               {/* Enable/Disable Logging */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                  flexWrap: "wrap",
-                }}
+              <Tooltip
+                title={
+                  logEnabled
+                    ? "Click to disable Logging"
+                    : "Click to enable Logging"
+                }
               >
-                <FormLabel
+                <Box
+                  onClick={handleLogEnabledChange}
                   sx={{
-                    whiteSpace: "nowrap",
-                    minWidth: isMobile ? "auto" : 130,
-                    flex: isMobile ? "0 0 auto" : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    cursor: "pointer",
+                    "&:hover": {
+                      opacity: 0.8,
+                    },
                   }}
                 >
-                  Enable Logging
-                </FormLabel>
-                <Switch
-                  checked={logEnabled}
-                  onChange={handleLogEnabledChange}
-                  size="small"
-                />
-              </Box>
-
-              {/* Auto Refresh */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                  flexWrap: "wrap",
-                }}
-              >
-                <FormLabel
-                  sx={{
-                    whiteSpace: "nowrap",
-                    minWidth: isMobile ? "auto" : 130,
-                    flex: isMobile ? "0 0 auto" : "none",
-                  }}
-                >
-                  Auto Refresh
-                </FormLabel>
-                <Switch
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  size="small"
-                />
-                {autoRefresh && (
-                  <TextField
-                    type="number"
-                    label="Interval (sec)"
-                    value={refreshInterval}
-                    onChange={(e) =>
-                      setRefreshInterval(
-                        Math.max(1, parseInt(e.target.value) || 1)
-                      )
-                    }
-                    size="small"
-                    inputProps={{ min: 1, max: 60 }}
+                  <IconButton
                     sx={{
-                      width: isMobile ? "100%" : 130,
-                      ml: isMobile ? 0 : 1,
-                      mt: isMobile ? 1 : 0,
+                      color: logEnabled ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
                     }}
-                  />
-                )}
-              </Box>
+                  >
+                    {logEnabled ? <PowerSettingsNewIcon /> : <PowerOffIcon />}
+                  </IconButton>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: logEnabled ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {logEnabled ? "Logging Enabled" : "Logging Disabled"}
+                  </Typography>
+                </Box>
+              </Tooltip>
 
-              {/* Auto Scroll */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 2,
-                  flexWrap: "wrap",
-                }}
+              {/* Auto Scroll - Toggle */}
+              <Tooltip
+                title={
+                  autoScroll
+                    ? "Click to disable Auto Scroll"
+                    : "Click to enable Auto Scroll"
+                }
               >
-                <FormLabel
-                  sx={{
-                    whiteSpace: "nowrap",
-                    minWidth: isMobile ? "auto" : 130,
-                    flex: isMobile ? "0 0 auto" : "none",
-                  }}
-                >
-                  Auto Scroll
-                </FormLabel>
-                <Switch
-                  checked={autoScroll}
-                  onChange={(e) => {
-                    const newValue = e.target.checked;
+                <Box
+                  onClick={() => {
+                    const newValue = !autoScroll;
                     setAutoScroll(newValue);
                     if (newValue) {
                       // Reset state when enabling auto-scroll
@@ -432,69 +401,211 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                       setIsAtBottom(true);
                     }
                   }}
-                  size="small"
-                />
-              </Box>
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    cursor: "pointer",
+                    "&:hover": {
+                      opacity: 0.8,
+                    },
+                  }}
+                >
+                  <IconButton
+                    sx={{
+                      color: autoScroll ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {autoScroll ? (
+                      <VerticalAlignBottomIcon />
+                    ) : (
+                      <VerticalAlignBottomOutlinedIcon />
+                    )}
+                  </IconButton>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: autoScroll ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Auto Scroll
+                  </Typography>
+                </Box>
+              </Tooltip>
+
+              {/* Auto Refresh - Toggles between disabled and 3s, also acts as refresh button */}
+              <Tooltip
+                title={
+                  logLoading
+                    ? "Loading logs..."
+                    : refreshInterval
+                    ? `Auto Refresh: ${refreshInterval}s (Click to disable or refresh)`
+                    : "Click to enable Auto Refresh (3s) or refresh now"
+                }
+              >
+                <Box
+                  onClick={() => {
+                    if (logLoading) return;
+
+                    // Always fetch logs when clicked
+                    fetchLogs();
+
+                    // Toggle between: null (disabled) <-> 3s
+                    if (refreshInterval === null) {
+                      setRefreshInterval(3);
+                    } else {
+                      setRefreshInterval(null);
+                    }
+                  }}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    cursor: logLoading ? "not-allowed" : "pointer",
+                    opacity: logLoading ? 0.6 : 1,
+                    "&:hover": logLoading
+                      ? {}
+                      : {
+                          opacity: 0.8,
+                        },
+                  }}
+                >
+                  <IconButton
+                    sx={{
+                      color: refreshInterval ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
+                    }}
+                    disabled={logLoading}
+                  >
+                    <AutorenewIcon />
+                  </IconButton>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: refreshInterval ? "primary.main" : "text.disabled",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {logLoading
+                      ? "Loading..."
+                      : `Auto Refresh${
+                          refreshInterval ? ` (${refreshInterval}s)` : ""
+                        }`}
+                  </Typography>
+                </Box>
+              </Tooltip>
             </Box>
 
-            {/* Controls on the Right - Stacked vertically */}
+            {/* Bottom Row: Other Options */}
             <Box
               sx={{
                 display: "flex",
-                flexDirection: "column",
+                flexDirection: isMobile ? "column" : "row",
+                flexWrap: "wrap",
+                alignItems: "center",
                 gap: 2,
-                flex: isMobile ? 1 : 0,
-                minWidth: isMobile ? "100%" : 120,
               }}
             >
-              {/* Log Level */}
-              <FormControl
-                size="small"
-                sx={{ minWidth: isMobile ? "100%" : 120 }}
-              >
-                <FormLabel sx={{ mb: 0.5, fontSize: "0.875rem" }}>
-                  Log Level
-                </FormLabel>
-                <Select
-                  value={logLevel}
-                  onChange={handleLogLevelChange}
-                  size="small"
-                >
-                  <MenuItem value="debug">Debug</MenuItem>
-                  <MenuItem value="info">Info</MenuItem>
-                  <MenuItem value="warning">Warning</MenuItem>
-                  <MenuItem value="error">Error</MenuItem>
-                </Select>
-              </FormControl>
-
-              {/* Refresh Button and View Logs Icon */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  flexWrap: isMobile ? "wrap" : "nowrap",
-                }}
-              >
-                <Button
-                  variant="contained"
-                  startIcon={<RefreshIcon />}
-                  onClick={fetchLogs}
-                  disabled={logLoading}
-                  size="small"
+              {/* Log Level - Filter */}
+              <Tooltip title="Click to change log level">
+                <Box
+                  onClick={handleLogLevelMenuOpen}
                   sx={{
-                    flex: isMobile ? "1 1 auto" : "none",
-                    minWidth: isMobile ? "auto" : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    cursor: "pointer",
+                    "&:hover": {
+                      opacity: 0.8,
+                    },
                   }}
                 >
-                  {logLoading ? "Loading..." : "Refresh"}
-                </Button>
-                <IButton
-                  Icon={DescriptionIcon}
+                  <IconButton
+                    sx={{
+                      color: "primary.main",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <FilterListIcon />
+                  </IconButton>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "primary.main",
+                      pointerEvents: "none",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    Log Level: {logLevel}
+                  </Typography>
+                </Box>
+              </Tooltip>
+              <Menu
+                anchorEl={logLevelMenuAnchor}
+                open={Boolean(logLevelMenuAnchor)}
+                onClose={handleLogLevelMenuClose}
+              >
+                <MenuItem
+                  onClick={() => handleLogLevelChange("debug")}
+                  selected={logLevel === "debug"}
+                >
+                  Debug
+                </MenuItem>
+                <MenuItem
+                  onClick={() => handleLogLevelChange("info")}
+                  selected={logLevel === "info"}
+                >
+                  Info
+                </MenuItem>
+                <MenuItem
+                  onClick={() => handleLogLevelChange("warning")}
+                  selected={logLevel === "warning"}
+                >
+                  Warning
+                </MenuItem>
+                <MenuItem
+                  onClick={() => handleLogLevelChange("error")}
+                  selected={logLevel === "error"}
+                >
+                  Error
+                </MenuItem>
+              </Menu>
+
+              {/* View Logs */}
+              <Tooltip title="Open logs in new tab">
+                <Box
                   onClick={handleViewLogs}
-                  tooltip="View Logs"
-                />
-              </Box>
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    cursor: "pointer",
+                    "&:hover": {
+                      opacity: 0.8,
+                    },
+                  }}
+                >
+                  <IconButton
+                    sx={{
+                      color: "primary.main",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <DescriptionIcon />
+                  </IconButton>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "primary.main",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Open in new tab
+                  </Typography>
+                </Box>
+              </Tooltip>
             </Box>
           </Box>
         </CardContent>

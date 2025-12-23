@@ -14,13 +14,13 @@ void ESPWiFi::readConfig() {
   File file = LittleFS.open(configFile, "r");
 
   if (!file) {
-    log("⚠️  Failed to open config file\nUsing default config");
+    logln("⚠️  Failed to open config file\nUsing default config");
     config = defaultConfig();
   } else {
     JsonDocument loadedConfig;
     DeserializationError error = deserializeJson(loadedConfig, file);
     if (error) {
-      log("⚠️  Failed to read config file: " + String(error.c_str()) +
+      logln("⚠️  Failed to read config file: " + String(error.c_str()) +
           "\nUsing default config");
       config = defaultConfig();
     } else {
@@ -42,8 +42,8 @@ void ESPWiFi::readConfig() {
 
   config["hostname"] = String(WiFi.getHostname());
 
-  log("⚙️  Config Loaded:");
-  logf("\tFile: %s\n", configFile.c_str());
+  logln("⚙️  Config Loaded:");
+  logInfof("\tFile: %s\n", configFile.c_str());
 
   printConfig();
   file.close();
@@ -64,14 +64,18 @@ void ESPWiFi::saveConfig() {
     logError(" Failed to write config JSON to file");
     return;
   }
-  log("💾 Config Saved: " + configFile);
-  printConfig();
+  if (config["log"]["enabled"].as<bool>()) {
+    logln("💾 Config Saved: " + configFile);
+    if (shouldLog("debug")) {
+      printConfig();
+    }
+  }
 }
 
 void ESPWiFi::printConfig() {
   String prettyConfig;
   serializeJsonPretty(config, prettyConfig);
-  log(prettyConfig);
+  logln(prettyConfig);
 }
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {

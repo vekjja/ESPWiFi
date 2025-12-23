@@ -183,17 +183,13 @@ export default function CameraModule({
     };
   }, []);
 
-  // Re-run when camera config changes
-
-  // Update settings data when modal opens to ensure latest values
+  // Update settings data when config changes
   useEffect(() => {
-    if (settingsModalOpen) {
-      setSettingsData({
-        name: config?.name || "",
-        url: config?.url || "/camera",
-      });
-    }
-  }, [settingsModalOpen, config]);
+    setSettingsData({
+      name: config?.name || "",
+      url: config?.url || "/camera",
+    });
+  }, [config?.name, config?.url]);
 
   // Set up polling for remote cameras
   useEffect(() => {
@@ -369,7 +365,13 @@ export default function CameraModule({
   };
 
   const handleSaveSettings = () => {
-    // Just close the modal - CameraSettingsModal handles all saving
+    // Update the module config with the new name and URL
+    if (onUpdate && moduleKey) {
+      onUpdate(moduleKey, {
+        name: settingsData.name,
+        url: settingsData.url,
+      });
+    }
     handleCloseSettings();
   };
 

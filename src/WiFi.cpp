@@ -14,7 +14,7 @@ void ESPWiFi::startWiFi() {
   // }
 
   if (!config["wifi"]["enabled"].as<bool>()) {
-    log("🛜  WiFi Disabled");
+    logln("🛜  WiFi Disabled");
     return;
   }
 
@@ -26,7 +26,7 @@ void ESPWiFi::startWiFi() {
              strcmp(mode.c_str(), "ap") == 0) {
     startAP();
   } else {
-    log("⚠️  Invalid Mode: " + mode);
+    logln("⚠️  Invalid Mode: " + mode);
     config["wifi"]["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
     startAP();
   }
@@ -42,15 +42,15 @@ void ESPWiFi::startClient() {
   String password = config["wifi"]["client"]["password"];
 
   if (ssid.isEmpty()) {
-    log("⚠️  Warning: SSID or Password: Cannot be empty");
+    logln("⚠️  Warning: SSID or Password: Cannot be empty");
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
-  log("🔗 Connecting to Network:");
-  log("\tSSID: " + ssid);
-  log("\tPassword: " + password);
-  logf("\tMAC: %s\n", WiFi.macAddress().c_str());
+  logln("🔗 Connecting to Network:");
+  logInfof("\tSSID: %s\n", ssid.c_str());
+  logInfof("\tPassword: %s\n", password.c_str());
+  logInfof("\tMAC: %s\n", WiFi.macAddress().c_str());
   Serial.print("\t");
 
   WiFi.disconnect(true);      // Ensure clean start
@@ -75,8 +75,8 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  log("🛜  WiFi Connected:");
-  logf("\tIP Address: %s\n", WiFi.localIP().toString());
+  logln("🛜  WiFi Connected:");
+  logInfof("\tIP Address: %s\n", WiFi.localIP().toString().c_str());
 }
 
 int ESPWiFi::selectBestChannel() {
@@ -109,20 +109,18 @@ void ESPWiFi::startAP() {
 
   String ssid = config["wifi"]["ap"]["ssid"].as<String>() + "-" + hostname;
   String password = config["wifi"]["ap"]["password"];
-  log("📡 Starting Access Point:");
-  log("\tSSID: " + ssid);
-  log("\tPassword: " + password);
+  logln("📡 Starting Access Point:");
+  logInfof("\tSSID: %s\n", ssid.c_str());
+  logInfof("\tPassword: %s\n", password.c_str());
   int bestChannel = selectBestChannel();
-  logf("\tChannel: ");
-  log(bestChannel);
+  logInfof("\tChannel: %d\n", bestChannel);
 
   WiFi.softAP(ssid, password, bestChannel);
   if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
     logError("Failed to start Access Point");
     return;
   }
-  logf("\tIP Address: ");
-  log(WiFi.softAPIP());
+  logInfof("\tIP Address: %s\n", WiFi.softAPIP().toString().c_str());
 #ifdef LED_BUILTIN
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW); // Turn on LED to indicate AP mode
@@ -134,7 +132,7 @@ void ESPWiFi::startMDNS() {
   //   readConfig();
   // }
   if (!config["wifi"]["enabled"].as<bool>()) {
-    log("🏷️  mDNS Disabled");
+    logln("🏷️  mDNS Disabled");
     return;
   }
 
@@ -143,9 +141,9 @@ void ESPWiFi::startMDNS() {
     logError("Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
-    log("🏷️  mDNS Started:");
+    logln("🏷️  mDNS Started:");
     domain.toLowerCase();
-    log("\tDomain Name: " + domain + ".local");
+    logInfof("\tDomain Name: %s.local\n", domain.c_str());
   }
 }
 

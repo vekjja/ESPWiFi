@@ -43,7 +43,7 @@ bool ESPWiFi::initCamera() {
   }
 
   initInProgress = true;
-  log("📷 Initializing Camera");
+  logln("📷 Initializing Camera");
 
   if (ESP.getFreeHeap() < 50000) {
     logError("📷 Insufficient Memory for Camera Initialization");
@@ -171,7 +171,7 @@ bool ESPWiFi::initCamera() {
 
   // If that failed, try with smaller frame sizes
   if (!initSuccess) {
-    log("📷 Trying smaller frame sizes...");
+    logln("📷 Trying smaller frame sizes...");
     for (int sizeIdx = 0; sizeIdx < 4 && !initSuccess; sizeIdx++) {
       camConfig.frame_size = frameSizes[sizeIdx];
       if (psramFound()) {
@@ -226,13 +226,13 @@ bool ESPWiFi::initCamera() {
   if (s != NULL) {
     logf("\tCamera sensor detected - ID: 0x%02X\n", s->id.PID);
     if (s->id.PID == 0x26) {
-      log("\tSensor type: OV2640");
+      logln("\tSensor type: OV2640");
     } else if (s->id.PID == 0x36) {
-      log("\tSensor type: OV3660");
+      logln("\tSensor type: OV3660");
     } else if (s->id.PID == 0x56) {
-      log("\tSensor type: OV5640");
+      logln("\tSensor type: OV5640");
     } else if (s->id.PID == 0x77) {
-      log("\tSensor type: OV7670");
+      logln("\tSensor type: OV7670");
     } else {
       logf("\tSensor type: Unknown (PID: 0x%02X)\n", s->id.PID);
     }
@@ -310,11 +310,11 @@ void ESPWiFi::updateCameraSettings() {
       s->set_hmirror(s, 0);
     }
   }
-  log("📷 Camera Settings Updated");
+  logln("📷 Camera Settings Updated");
 }
 
 void ESPWiFi::deinitCamera() {
-  log("📷 Deinitializing Camera");
+  logln("📷 Deinitializing Camera");
 
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
@@ -417,7 +417,7 @@ void ESPWiFi::startCamera() {
 void ESPWiFi::clearCameraBuffer() {
   static bool firstClear = true;
   if (firstClear) {
-    log("📷 Clearing Camera Buffer");
+    logln("📷 Clearing Camera Buffer");
     firstClear = false;
   }
 
@@ -469,7 +469,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  log("📸 Snapshot Taken");
+  logln("📸 Snapshot Taken");
 
   bool writeSuccess = false;
   if (sdCardInitialized && sd) {
@@ -477,7 +477,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
   }
 
   if (!writeSuccess && lfs) {
-    log("📁 Falling back to LittleFS for Snapshot");
+    logln("📁 Falling back to LittleFS for Snapshot");
     writeSuccess = writeFile(lfs, filePath, fb->buf, fb->len);
   }
 
@@ -585,7 +585,7 @@ void ESPWiFi::cameraConfigHandler() {
     shutdownInProgress = true;
 
     if (camSoc && camSoc->socket) {
-      log("📷 Disconnecting Camera WebSocket clients");
+      logln("📷 Disconnecting Camera WebSocket clients");
       camSoc->socket->closeAll();
       delay(100);
       webServer->removeHandler(camSoc->socket);

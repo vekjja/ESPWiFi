@@ -2,14 +2,16 @@ import React from "react";
 import {
   TextField,
   FormControl,
-  FormControlLabel,
-  Switch,
   Box,
   InputAdornment,
   IconButton,
+  Tooltip,
+  Typography,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import KeyIcon from "@mui/icons-material/Key";
+import KeyOffIcon from "@mui/icons-material/KeyOff";
 
 export default function DeviceSettingsAuthTab({
   authEnabled,
@@ -29,8 +31,8 @@ export default function DeviceSettingsAuthTab({
     setPassword(event.target.value);
   };
 
-  const handleAuthToggle = (event) => {
-    setAuthEnabled(event.target.checked);
+  const handleAuthToggle = () => {
+    setAuthEnabled(!authEnabled);
   };
 
   const handleTogglePasswordVisibility = () => {
@@ -39,17 +41,59 @@ export default function DeviceSettingsAuthTab({
 
   return (
     <>
-      <FormControl variant="outlined" sx={{ marginTop: 1 }}>
-        <FormControlLabel
-          control={<Switch checked={authEnabled} onChange={handleAuthToggle} />}
-          label={
-            authEnabled ? "Authentication Enabled" : "Authentication Disabled"
-          }
-        />
-      </FormControl>
+      <Tooltip
+        title={
+          authEnabled
+            ? "Click to disable Authentication"
+            : "Click to enable Authentication"
+        }
+      >
+        <Box
+          onClick={handleAuthToggle}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+            marginTop: 2,
+            marginBottom: 2,
+            cursor: "pointer",
+            "&:hover": {
+              opacity: 0.8,
+            },
+          }}
+        >
+          <IconButton
+            sx={{
+              color: authEnabled ? "primary.main" : "text.disabled",
+              pointerEvents: "none",
+            }}
+          >
+            {authEnabled ? <KeyIcon /> : <KeyOffIcon />}
+          </IconButton>
+          <Typography
+            variant="body1"
+            sx={{
+              color: authEnabled ? "primary.main" : "text.disabled",
+              pointerEvents: "none",
+            }}
+          >
+            {authEnabled ? "Authentication Enabled" : "Authentication Disabled"}
+          </Typography>
+        </Box>
+      </Tooltip>
 
       {authEnabled && (
-        <Box sx={{ marginTop: 2 }}>
+        <Box
+          sx={{
+            marginTop: 2,
+            border: 2,
+            borderColor: "primary.main",
+            borderRadius: 1,
+            padding: 2,
+            transition: "border-color 0.3s ease",
+          }}
+        >
           <FormControl fullWidth variant="outlined">
             <TextField
               label="Username"

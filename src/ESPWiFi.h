@@ -77,10 +77,20 @@ public:
   String timestamp();
   String timestampForFilename();
   void writeLog(String message);
+  bool shouldLog(String level);
+  String formatLog(const char *format, va_list args);
+  void logDebug(String message);
+  void logDebugf(const char *format, ...);
+  void logInfo(String message);
+  void logInfof(const char *format, ...);
+  void logWarn(String message);
+  void logWarnf(const char *format, ...);
   void logError(String message);
+  void logErrorf(const char *format, ...);
   void logError(IPAddress ip) { logError(ip.toString()); }
   template <typename T> void logError(T value) { logError(String(value)); };
   void log(String message);
+  void logln(String message);
   void log(IPAddress ip) { log(ip.toString()); }
   template <typename T> void log(T value) { log(String(value)); };
   void logConfigHandler();

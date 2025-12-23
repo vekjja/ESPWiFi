@@ -40,8 +40,8 @@ void ESPWiFi::startLogging(String filePath) {
   logf("\n\n%s🌌 FirmaMint %s\n\n", timestamp().c_str(), version.c_str());
 
   if (Serial) {
-    log("📺 Serial Output Enabled");
-    logf("\tBaud: %d\n", baudRate);
+    logln("📺 Serial Output Enabled");
+    logInfof("\tBaud: %d\n", baudRate);
   }
 
   printFilesystemInfo();
@@ -61,7 +61,8 @@ void ESPWiFi::cleanLogFile() {
       }
 
       if (deleted) {
-        log("🗑️  Log file " + logFilePath + " deleted to free up space");
+        logln("🗑️  Log file " + logFilePath + " refreshed on " +
+              (sdCardInitialized ? "SD Card" : "Internal Storage"));
       } else {
         logError("Failed to delete log file");
       }
@@ -82,9 +83,129 @@ void ESPWiFi::writeLog(String message) {
   }
 }
 
+bool ESPWiFi::shouldLog(String level) {
+  // Check if logging is enabled
+  if (!config["log"]["enabled"].as<bool>()) {
+    return false;
+  }
+
+  String configuredLevel = config["log"]["level"].as<String>();
+
+  // Convert to lowercase for case-insensitive comparison
+  configuredLevel.toLowerCase();
+  level.toLowerCase();
+
+  // Hierarchy: debug > info > warning > error
+  // debug: shows debug, info, warn, error
+  // info: shows info, warn, error
+  // warning: shows warn, error
+  // error: shows error only
+
+  if (configuredLevel == "debug") {
+    return true; // Show all levels
+  } else if (configuredLevel == "info") {
+    return (level == "info" || level == "warning" || level == "warn" ||
+            level == "error");
+  } else if (configuredLevel == "warning" || configuredLevel == "warn") {
+    return (level == "warning" || level == "warn" || level == "error");
+  } else if (configuredLevel == "error") {
+    return (level == "error");
+  }
+
+  // Default: if level is not recognized, allow it (backward compatibility)
+  return true;
+}
+
+String ESPWiFi::formatLog(const char *format, va_list args) {
+  char buffer[256];
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  return String(buffer);
+}
+
+void ESPWiFi::log(String message) {
+  if (!serialStarted) {
+    startSerial();
+  }
+  if (!loggingStarted) {
+    startLogging();
+  }
+  String ts = timestamp();
+  Serial.print(ts + message);
+  Serial.flush(); // Ensure immediate output
+  writeLog(ts + message);
+}
+void ESPWiFi::logln(String message) { log(message + "\n"); }
+
+void ESPWiFi::logDebug(String message) {
+  if (!shouldLog("debug")) {
+    return;
+  }
+  log("🐛 Debug: " + message);
+}
+
+void ESPWiFi::logDebugf(const char *format, ...) {
+  if (!shouldLog("debug")) {
+    return;
+  }
+  va_list args;
+  va_start(args, format);
+  String formatted = formatLog(format, args);
+  va_end(args);
+  log("🐛 Debug: " + formatted);
+}
+
+void ESPWiFi::logInfo(String message) {
+  if (!shouldLog("info")) {
+    return;
+  }
+  log(message);
+}
+
+void ESPWiFi::logInfof(const char *format, ...) {
+  if (!shouldLog("info")) {
+    return;
+  }
+  va_list args;
+  va_start(args, format);
+  String formatted = formatLog(format, args);
+  va_end(args);
+  log(formatted.c_str());
+}
+
+void ESPWiFi::logWarn(String message) {
+  if (!shouldLog("warning")) {
+    return;
+  }
+  log("⚠️  Warning: " + message);
+}
+
+void ESPWiFi::logWarnf(const char *format, ...) {
+  if (!shouldLog("warning")) {
+    return;
+  }
+  va_list args;
+  va_start(args, format);
+  String formatted = formatLog(format, args);
+  va_end(args);
+  log("⚠️  Warning: " + formatted);
+}
+
 void ESPWiFi::logError(String message) {
-  String errMsg = "❗️ Error: " + message;
-  log(errMsg);
+  if (!shouldLog("error")) {
+    return;
+  }
+  log("❗️ Error: " + message);
+}
+
+void ESPWiFi::logErrorf(const char *format, ...) {
+  if (!shouldLog("error")) {
+    return;
+  }
+  va_list args;
+  va_start(args, format);
+  String formatted = formatLog(format, args);
+  va_end(args);
+  log("❗️ Error: " + formatted);
 }
 
 String ESPWiFi::timestamp() {
@@ -111,37 +232,17 @@ String ESPWiFi::timestampForFilename() {
          String(milliseconds);
 }
 
-void ESPWiFi::log(String message) {
-  if (!serialStarted) {
-    startSerial();
-  }
-  if (!loggingStarted) {
-    startLogging();
-  }
-  String ts = timestamp();
-  Serial.println(ts + message);
-  Serial.flush(); // Ensure immediate output
-  writeLog(ts + message + "\n");
-}
-
 void ESPWiFi::logf(const char *format, ...) {
-  if (!serialStarted) {
-    startSerial();
+  // Default logf() function uses info level - format and call log() directly
+  if (!shouldLog("info")) {
+    return;
   }
-  if (!loggingStarted) {
-    startLogging();
-  }
-
   char buffer[256];
   va_list args;
   va_start(args, format);
   vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-
-  String ts = timestamp();
-  Serial.print(ts + buffer);
-  Serial.flush(); // Ensure immediate output
-  writeLog(ts + buffer);
+  log(String(buffer));
 }
 
 void ESPWiFi::closeLogFile() {

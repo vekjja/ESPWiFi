@@ -74,20 +74,19 @@ bool ESPWiFi::initCamera() {
   camConfig.xclk_freq_hz = 20000000;
   camConfig.pixel_format = PIXFORMAT_JPEG;
 
-  if (psramFound()) {
+  bool usingPSRAM = psramFound();
+  if (usingPSRAM) {
     camConfig.frame_size = FRAMESIZE_SVGA;
     camConfig.jpeg_quality = 15;
     camConfig.fb_count = 4;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    logDebug("\tUsing PSRAM for camera buffers");
   } else {
     camConfig.frame_size = FRAMESIZE_QVGA;
     camConfig.jpeg_quality = 25;
     camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    logDebug("\tUsing DRAM for camera buffers");
   }
 
   delay(100);
@@ -149,21 +148,16 @@ bool ESPWiFi::initCamera() {
   // First try with original frame size settings
   for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
     camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
-    logDebug("\tTrying XCLK frequency: %d Hz, Frame: %s",
-             camConfig.xclk_freq_hz, psramFound() ? "SVGA" : "QVGA");
 
     delay(100);
     yield();
 
     err = esp_camera_init(&camConfig);
     if (err == ESP_OK) {
-      logDebug("\tCamera initialized successfully with XCLK: %d Hz",
-               camConfig.xclk_freq_hz);
       initSuccess = true;
       break;
     } else {
-      logDebug("\tCamera init failed with XCLK %d Hz, error: %d",
-               camConfig.xclk_freq_hz, err);
+      logError("\tFailed XCLK %d Hz (error: %d)", camConfig.xclk_freq_hz, err);
       esp_camera_deinit();
       delay(50);
     }
@@ -184,21 +178,16 @@ bool ESPWiFi::initCamera() {
 
       for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
         camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
-        logDebug("\tTrying XCLK: %d Hz, Frame: %s", camConfig.xclk_freq_hz,
-                 frameSizeNames[sizeIdx]);
 
         delay(100);
         yield();
 
         err = esp_camera_init(&camConfig);
         if (err == ESP_OK) {
-          logInfo("\tCamera initialized successfully!");
-          logDebug("\tXCLK: %d Hz, Frame: %s", camConfig.xclk_freq_hz,
-                   frameSizeNames[sizeIdx]);
           initSuccess = true;
           break;
         } else {
-          logDebug("\tFailed - XCLK: %d Hz, Frame: %s, Error: %d",
+          logError("\tFailed XCLK %d Hz, Frame %s (error: %d)",
                    camConfig.xclk_freq_hz, frameSizeNames[sizeIdx], err);
           esp_camera_deinit();
           delay(50);
@@ -224,18 +213,31 @@ bool ESPWiFi::initCamera() {
   // Get sensor info after successful initialization
   s = esp_camera_sensor_get();
   if (s != NULL) {
-    logDebug("\tCamera sensor detected - ID: 0x%02X", s->id.PID);
-    if (s->id.PID == 0x26) {
-      logDebug("\tSensor type: OV2640");
-    } else if (s->id.PID == 0x36) {
-      logDebug("\tSensor type: OV3660");
-    } else if (s->id.PID == 0x56) {
-      logDebug("\tSensor type: OV5640");
-    } else if (s->id.PID == 0x77) {
-      logDebug("\tSensor type: OV7670");
-    } else {
-      logDebug("\tSensor type: Unknown (PID: 0x%02X)", s->id.PID);
+    const char *frameSizeName = psramFound() ? "SVGA" : "QVGA";
+    String sensorType = "Unknown";
+    uint8_t pid = s->id.PID;
+
+    if (pid == 0x26) {
+      sensorType = "OV2640";
+    } else if (pid == 0x36) {
+      sensorType = "OV3660";
+    } else if (pid == 0x56) {
+      sensorType = "OV5640";
+    } else if (pid == 0x77) {
+      sensorType = "OV7670";
     }
+
+    // Construct full sensor ID (VER:PID as 16-bit value)
+    uint8_t ver = s->id.VER;
+    uint16_t fullSensorId = ((uint16_t)ver << 8) | pid;
+
+    logInfo("📷 Camera initialized:");
+    logDebug("\tType: %s", sensorType.c_str());
+    logDebug("\tID: 0x%04X", fullSensorId);
+    logDebug("\tPID: 0x%02X", pid);
+    logDebug("\tXCLK: %d Hz", camConfig.xclk_freq_hz);
+    logDebug("\tFrame: %s", frameSizeName);
+    logDebug("\t%s", usingPSRAM ? "PSRAM" : "DRAM");
   }
 
   // Set camera settings from config
@@ -252,45 +254,66 @@ void ESPWiFi::updateCameraSettings() {
     return;
   }
 
+  logInfo("📷 Camera Settings Updated");
   // Apply camera settings from config
   if (!config["camera"]["brightness"].isNull()) {
-    s->set_brightness(s, config["camera"]["brightness"]);
+    int brightness = config["camera"]["brightness"];
+    s->set_brightness(s, brightness);
+    logDebug("\tBrightness: %d", brightness);
   }
 
   if (!config["camera"]["contrast"].isNull()) {
-    s->set_contrast(s, config["camera"]["contrast"]);
+    int contrast = config["camera"]["contrast"];
+    s->set_contrast(s, contrast);
+    logDebug("\tContrast: %d", contrast);
   }
 
   if (!config["camera"]["saturation"].isNull()) {
-    s->set_saturation(s, config["camera"]["saturation"]);
+    int saturation = config["camera"]["saturation"];
+    s->set_saturation(s, saturation);
+    logDebug("\tSaturation: %d", saturation);
   }
 
   if (!config["camera"]["exposure_level"].isNull()) {
-    s->set_ae_level(s, config["camera"]["exposure_level"]);
+    int exposureLevel = config["camera"]["exposure_level"];
+    s->set_ae_level(s, exposureLevel);
+    logDebug("\tExposure Level: %d", exposureLevel);
   }
 
   if (!config["camera"]["exposure_value"].isNull()) {
-    s->set_aec_value(s, config["camera"]["exposure_value"]);
+    int exposureValue = config["camera"]["exposure_value"];
+    s->set_aec_value(s, exposureValue);
+    logDebug("\tExposure Value: %d", exposureValue);
   }
 
   if (!config["camera"]["agc_gain"].isNull()) {
-    s->set_agc_gain(s, config["camera"]["agc_gain"]);
+    int agcGain = config["camera"]["agc_gain"];
+    s->set_agc_gain(s, agcGain);
+    logDebug("\tAGC Gain: %d", agcGain);
   }
 
   if (!config["camera"]["gain_ceiling"].isNull()) {
-    s->set_gainceiling(s, (gainceiling_t)config["camera"]["gain_ceiling"]);
+    int gainCeiling = config["camera"]["gain_ceiling"];
+    s->set_gainceiling(s, (gainceiling_t)gainCeiling);
+    logDebug("\tGain Ceiling: %d", gainCeiling);
   }
 
   if (!config["camera"]["white_balance"].isNull()) {
-    s->set_whitebal(s, config["camera"]["white_balance"]);
+    int whiteBalance = config["camera"]["white_balance"];
+    s->set_whitebal(s, whiteBalance);
+    logDebug("\tWhite Balance: %d", whiteBalance);
   }
 
   if (!config["camera"]["awb_gain"].isNull()) {
-    s->set_awb_gain(s, config["camera"]["awb_gain"]);
+    int awbGain = config["camera"]["awb_gain"];
+    s->set_awb_gain(s, awbGain);
+    logDebug("\tAWB Gain: %d", awbGain);
   }
 
   if (!config["camera"]["wb_mode"].isNull()) {
-    s->set_wb_mode(s, config["camera"]["wb_mode"]);
+    int wbMode = config["camera"]["wb_mode"];
+    s->set_wb_mode(s, wbMode);
+    logDebug("\tWB Mode: %d", wbMode);
   }
 
   if (!config["camera"]["rotation"].isNull()) {
@@ -309,8 +332,8 @@ void ESPWiFi::updateCameraSettings() {
       s->set_vflip(s, 0);
       s->set_hmirror(s, 0);
     }
+    logDebug("\tRotation: %d°", rotation);
   }
-  logInfo("📷 Camera Settings Updated");
 }
 
 void ESPWiFi::deinitCamera() {
@@ -417,7 +440,7 @@ void ESPWiFi::startCamera() {
 void ESPWiFi::clearCameraBuffer() {
   static bool firstClear = true;
   if (firstClear) {
-    log("📷 Clearing Camera Buffer");
+    logInfo("📷 Clearing Camera Buffer");
     firstClear = false;
   }
 

@@ -23,9 +23,9 @@ ArduinoFFT<double> FFT =
 
 void ESPWiFi::startSpectralAnalyzer() {
   pinMode(AUDIO_PIN, INPUT); // Set audio pin as input
-  log("📊 Spectral Analyzer started");
-  logf("\tSampling frequency: %.2f Hz\n", samplingFrequency);
-  logf("\tListening on Pin: %d\n", AUDIO_PIN);
+  logInfo("📊 Spectral Analyzer started");
+  logDebug("\tSampling frequency: %.2f Hz", samplingFrequency);
+  logDebug("\tListening on Pin: %d", AUDIO_PIN);
 }
 
 void peakDetection(int *peakData, int maxWidth, int maxHeight) {

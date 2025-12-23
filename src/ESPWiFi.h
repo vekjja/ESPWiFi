@@ -69,7 +69,6 @@ public:
   void cleanLogFile();
   void closeLogFile();
   void openLogFile();
-  void logf(const char *format, ...);
   bool loggingStarted = false;
   String logFilePath = "/log";
   void startLogging(String filePath = "/log");
@@ -80,19 +79,19 @@ public:
   bool shouldLog(String level);
   String formatLog(const char *format, va_list args);
   void logDebug(String message);
-  void logDebugf(const char *format, ...);
+  void logDebug(const char *format, ...);
   void logInfo(String message);
-  void logInfof(const char *format, ...);
+  void logInfo(const char *format, ...);
   void logWarn(String message);
-  void logWarnf(const char *format, ...);
+  void logWarn(const char *format, ...);
   void logError(String message);
-  void logErrorf(const char *format, ...);
+  void logError(const char *format, ...);
   void logError(IPAddress ip) { logError(ip.toString()); }
   template <typename T> void logError(T value) { logError(String(value)); };
-  void log(String message);
-  void logln(String message);
-  void log(IPAddress ip) { log(ip.toString()); }
-  template <typename T> void log(T value) { log(String(value)); };
+  // void log(String message);
+  void log(const char *format, ...);
+  void log(IPAddress ip) { log("%s", ip.toString().c_str()); }
+  template <typename T> void log(T value) { log("%s", String(value).c_str()); };
   void logConfigHandler();
 
   // Config

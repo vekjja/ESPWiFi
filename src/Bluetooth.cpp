@@ -69,10 +69,10 @@ public:
     // Log connection event
     if (espWiFi) {
       String address = String(connInfo.getAddress().toString().c_str());
-      espWiFi->logln("📱 Bluetooth Device Connected");
-      espWiFi->logInfof("\tAddress: %s\n", address.c_str());
-      espWiFi->logInfof("\tConnection Handle: %d\n", handle);
-      espWiFi->logInfof("\tTotal Connections: %d\n", connectionCount);
+      espWiFi->log("📱 Bluetooth Device Connected");
+      espWiFi->logDebug("\tAddress: %s", address.c_str());
+      espWiFi->logDebug("\tConnection Handle: %d", handle);
+      espWiFi->logDebug("\tTotal Connections: %d", connectionCount);
     }
 
     // Update connection parameters for better reliability
@@ -110,10 +110,10 @@ public:
 
       // Log disconnection event
       String address = String(connInfo.getAddress().toString().c_str());
-      espWiFi->logln("📱 Bluetooth Device Disconnected");
-      espWiFi->logInfof("\tAddress: %s\n", address.c_str());
-      espWiFi->logInfof("\tReason: %d\n", reason);
-      espWiFi->logInfof("\tRemaining Connections: %d\n", connectionCount);
+      espWiFi->logInfo("📱 Bluetooth Device Disconnected");
+      espWiFi->logDebug("\tAddress: %s", address.c_str());
+      espWiFi->logDebug("\tReason: %d", reason);
+      espWiFi->logDebug("\tRemaining Connections: %d", connectionCount);
     }
 
     // Restart advertising when disconnected to allow new connections
@@ -148,7 +148,7 @@ bool ESPWiFi::startBluetooth() {
   }
 
   if (!config["bluetooth"]["enabled"].as<bool>()) {
-    logln("📱 Bluetooth Disabled");
+    logInfo("📱 Bluetooth Disabled");
     return false;
   }
 
@@ -206,10 +206,10 @@ bool ESPWiFi::startBluetooth() {
   config["bluetooth"]["connected"] = false;
   config["bluetooth"]["connectionCount"] = 0;
 
-  logln("📱 Bluetooth Started:");
-  logInfof("\tMode: BLE\n");
-  logInfof("\tDevice Name: %s\n", bleDeviceName.c_str());
-  logInfof("\tMAC: %s\n", macAddress.c_str());
+  logInfo("📱 Bluetooth Started:");
+  logDebug("\tMode: BLE");
+  logDebug("\tDevice Name: %s", bleDeviceName.c_str());
+  logDebug("\tMAC: %s", macAddress.c_str());
 
   bluetoothStarted = true;
   return true;
@@ -233,7 +233,7 @@ void ESPWiFi::stopBluetooth() {
   config["bluetooth"]["connected"] = false;
   config["bluetooth"]["connectionCount"] = 0;
   bluetoothStarted = false;
-  logln("📱 Bluetooth Stopped");
+  logInfo("📱 Bluetooth Stopped");
 }
 
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }
@@ -273,7 +273,7 @@ void ESPWiFi::checkBluetoothConnectionStatus() {
 
     // Log connection/disconnection events
     if (serverIsConnected && !wasConnected) {
-      logln("📱 Bluetooth Device Connected");
+      logInfo("📱 Bluetooth Device Connected");
 
       // Try to get connection info from tracked handles first
       bool loggedInfo = false;
@@ -283,8 +283,8 @@ void ESPWiFi::checkBluetoothConnectionStatus() {
             NimBLEConnInfo connInfo =
                 pServer->getPeerInfo(connectionHandles[i]);
             String address = String(connInfo.getAddress().toString().c_str());
-            logInfof("\tAddress: %s\n", address.c_str());
-            logInfof("\tConnection Handle: %d\n", connectionHandles[i]);
+            logDebug("\tAddress: %s", address.c_str());
+            logDebug("\tConnection Handle: %d", connectionHandles[i]);
             loggedInfo = true;
             break;
           } catch (...) {
@@ -307,8 +307,8 @@ void ESPWiFi::checkBluetoothConnectionStatus() {
             try {
               NimBLEConnInfo connInfo = pServer->getPeerInfo(handle);
               String address = String(connInfo.getAddress().toString().c_str());
-              logInfof("\tAddress: %s\n", address.c_str());
-              logInfof("\tConnection Handle: %d\n", handle);
+              logDebug("\tAddress: %s", address.c_str());
+              logDebug("\tConnection Handle: %d", handle);
               if (connectionCount < MAX_BLE_CONNECTIONS) {
                 connectionHandles[connectionCount - 1] = handle;
               }
@@ -320,10 +320,10 @@ void ESPWiFi::checkBluetoothConnectionStatus() {
         }
       }
 
-      logInfof("\tTotal Connections: %d\n", actualConnCount);
+      logDebug("\tTotal Connections: %d", actualConnCount);
     } else if (!serverIsConnected && wasConnected) {
-      logln("📱 Bluetooth Device Disconnected");
-      logInfof("\tRemaining Connections: %d\n", actualConnCount);
+      logInfo("📱 Bluetooth Device Disconnected");
+      logDebug("\tRemaining Connections: %d", actualConnCount);
 
       // Clear connection handles when disconnected
       for (uint8_t i = 0; i < MAX_BLE_CONNECTIONS; i++) {
@@ -381,11 +381,11 @@ void ESPWiFi::bluetoothConfigHandler() {
       // checkBluetoothConnectionStatus() to avoid duplicate logs. This handler
       // just syncs state.
       if (serverIsConnected && !wasConnected) {
-        logln("📱 Bluetooth Device Connected");
-        logInfof("\tTotal Connections: %d\n", actualConnCount);
+        logInfo("📱 Bluetooth Device Connected");
+        logDebug("\tTotal Connections: %d", actualConnCount);
       } else if (!serverIsConnected && wasConnected) {
-        logln("📱 Bluetooth Device Disconnected");
-        logInfof("\tRemaining Connections: %d\n", actualConnCount);
+        logInfo("📱 Bluetooth Device Disconnected");
+        logDebug("\tRemaining Connections: %d", actualConnCount);
       }
 
       // If count dropped to 0, clear connection handles
@@ -532,7 +532,7 @@ void ESPWiFi::srvBluetooth() {
         String filename = filePath.substring(filePath.lastIndexOf('/') + 1);
 
         // Send file header: FILE:filename:size\n
-        String header = "FILE:" + filename + ":" + String(fileSize) + "\n";
+        String header = "FILE:" + filename + ":" + String(fileSize) + "";
         pTxCharacteristic->setValue((uint8_t *)header.c_str(), header.length());
         pTxCharacteristic->notify();
         delay(20); // Small delay for BLE transmission
@@ -543,14 +543,15 @@ void ESPWiFi::srvBluetooth() {
           if (pServer) {
             uint16_t connCount = pServer->getConnectedCount();
             if (connCount == 0 || pTxCharacteristic == nullptr) {
-              logf(
-                  "⚠️  Bluetooth connection lost during file send at %d bytes\n",
+              logWarn(
+                  "⚠️  Bluetooth connection lost during file send at %d bytes",
                   bytesSent);
               break;
             }
           } else if (!deviceConnected || pTxCharacteristic == nullptr) {
-            logf("⚠️  Bluetooth connection lost during file send at %d bytes\n",
-                 bytesSent);
+            logWarn(
+                "⚠️  Bluetooth connection lost during file send at %d bytes",
+                bytesSent);
             break;
           }
 
@@ -568,14 +569,14 @@ void ESPWiFi::srvBluetooth() {
                 yield();
                 // Re-check connection after yield
                 if (pServer && pServer->getConnectedCount() == 0) {
-                  logf("⚠️  Connection lost during yield at %d bytes\n",
-                       bytesSent);
+                  logWarn("⚠️  Connection lost during yield at %d bytes",
+                          bytesSent);
                   break;
                 }
               }
             } catch (...) {
-              logf("⚠️  Exception during BLE send at %d bytes, stopping\n",
-                   bytesSent);
+              logWarn("⚠️  Exception during BLE send at %d bytes, stopping",
+                      bytesSent);
               break;
             }
           } else {

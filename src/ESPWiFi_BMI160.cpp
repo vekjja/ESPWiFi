@@ -34,7 +34,7 @@ bool ESPWiFi::startBMI160(uint8_t address) {
     int8_t rslt = bmi160.I2cInit(address);
 
     if (rslt == BMI160_OK) {
-      logln("🎛️  BMI160 Started");
+      log("🎛️  BMI160 Started");
       return true;
     } else {
       logError("BMI160 Failed to Start!");

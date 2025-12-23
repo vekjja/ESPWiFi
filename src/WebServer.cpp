@@ -35,18 +35,18 @@ void ESPWiFi::initWebServer() {
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted || !config["wifi"]["enabled"].as<bool>()) {
-    logln("🗄️  HTTP Web Server Disabled");
+    logInfo("🗄️  HTTP Web Server Disabled");
     return;
   }
   initWebServer();
   srvAll();
   webServer->begin();
   webServerStarted = true;
-  logln("🗄️  HTTP Web Server Started:");
+  logInfo("🗄️  HTTP Web Server Started:");
   String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
                                        : WiFi.softAPIP().toString();
-  logInfof("\tURL: http://%s\n", serverIP.c_str());
-  logInfof("\tURL: http://%s.local\n",
+  logDebug("\tURL: http://%s", serverIP.c_str());
+  logDebug("\tURL: http://%s.local",
            config["deviceName"].as<String>().c_str());
 }
 
@@ -170,20 +170,19 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
                          : "-";
 
   if (!authEnabled()) {
-    logDebugf("🌐 [ACCESS] %s %s - %s \"%s\" \"%s\" - Auth disabled\n",
-              clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-              "200 OK");
+    logDebug("🌐 [ACCESS] %s %s - %s \"%s\" \"%s\" - Auth disabled",
+             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+             "200 OK");
     // Log access even when auth is disabled
     return true; // Auth disabled, allow all
   }
 
   // Check for Authorization header
   if (!request->hasHeader("Authorization")) {
-    logDebugf(
-        "🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (no auth "
-        "header)\n",
-        clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-        "401 Unauthorized");
+    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (no auth "
+             "header)",
+             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+             "401 Unauthorized");
     return false;
   }
 
@@ -192,11 +191,10 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
 
   // Check if it's a Bearer token
   if (!authValue.startsWith("Bearer ")) {
-    logDebugf(
-        "🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
-        "auth format)\n",
-        clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-        "401 Unauthorized");
+    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
+             "auth format)",
+             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+             "401 Unauthorized");
     return false;
   }
 
@@ -208,15 +206,14 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
   bool isAuthorized = token == expectedToken && expectedToken.length() > 0;
 
   if (isAuthorized) {
-    logDebugf("✅ [ACCESS] %s %s - %s \"%s\" \"%s\" - 200 Authorized\n",
-              clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-              "200 OK");
+    logDebug("✅ [ACCESS] %s %s - %s \"%s\" \"%s\" - 200 Authorized",
+             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+             "200 OK");
   } else {
-    logDebugf(
-        "🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
-        "token)\n",
-        clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-        "401 Unauthorized");
+    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
+             "token)",
+             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
+             "401 Unauthorized");
   }
 
   return isAuthorized;

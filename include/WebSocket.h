@@ -38,16 +38,16 @@ public:
         return; // Early return if no ESPWiFi instance or invalid client
 
       if (type == WS_EVT_CONNECT) {
-        espWifi->logf("🔌 WebSocket Client Connected: 🔗\n");
-        espWifi->logf("\tID: %d\n", client->id());
-        espWifi->logf("\tPath: %s\n", socket->url());
-        espWifi->logf("\tPort: %d\n", client->remotePort());
-        espWifi->logf("\tIP: %s\n", client->remoteIP().toString().c_str());
+        espWifi->logInfo("🔌 WebSocket Client Connected: 🔗");
+        espWifi->logDebug("\tID: %d", client->id());
+        espWifi->logDebug("\tPath: %s", socket->url());
+        espWifi->logDebug("\tPort: %d", client->remotePort());
+        espWifi->logDebug("\tIP: %s", client->remoteIP().toString().c_str());
       } else if (type == WS_EVT_DISCONNECT) {
-        espWifi->log("🔌 WebSocket Client Disconnected: ⛓️‍💥");
-        espWifi->logf("\tID: %d\n", client->id());
-        espWifi->logf("\tPath: %s\n", socket->url());
-        espWifi->logf("\tDisconnect Time: %lu ms\n", millis());
+        espWifi->logInfo("🔌 WebSocket Client Disconnected: ⛓️‍💥");
+        espWifi->logDebug("\tID: %d", client->id());
+        espWifi->logDebug("\tPath: %s", socket->url());
+        espWifi->logDebug("\tDisconnect Time: %lu ms", millis());
       }
 
       if (onWsEvent)
@@ -57,7 +57,7 @@ public:
     if (espWifi) {
       espWifi->initWebServer();
       espWifi->webServer->addHandler(socket);
-      espWifi->logf("🔌 WebSocket Started: %s\n", path.c_str());
+      espWifi->logInfo("🔌 WebSocket Started: %s", path.c_str());
     }
   }
 

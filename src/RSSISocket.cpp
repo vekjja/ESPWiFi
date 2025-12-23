@@ -12,7 +12,7 @@ char rssiBuffer[16];
 // Initialize RSSI WebSocket - should be called after web server is started
 void ESPWiFi::startRSSIWebSocket() {
   if (!config["wifi"]["enabled"].as<bool>()) {
-    logln("🔗 RSSI WebSocket Disabled");
+    log("🔗 RSSI WebSocket Disabled");
     return;
   }
   // Only create RSSI WebSocket if WiFi is enabled (RSSI requires WiFi)

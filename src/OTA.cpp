@@ -28,7 +28,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
   // Get MD5 hash if provided
   if (request->hasParam("hash")) {
     String hash = request->getParam("hash")->value();
-    logf("📦 OTA MD5 Hash: %s", hash.c_str());
+    logInfo("📦 OTA MD5 Hash: %s", hash.c_str());
     if (!Update.setMD5(hash.c_str())) {
       logError("Invalid MD5 hash provided");
       this->otaInProgress = false;
@@ -39,7 +39,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
 
   // Start update process based on mode
   if (mode == "fs" || mode == "filesystem") {
-    logln("📁 Starting filesystem update");
+    logInfo("📁 Starting filesystem update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
       this->otaErrorString =
           "Update.begin failed: " + String(Update.getError());
@@ -59,7 +59,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
       request->send(400, "text/plain", this->otaErrorString);
       return;
     }
-    logln("📦 Starting firmware update");
+    logInfo("📦 Starting firmware update");
     if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
       this->otaErrorString =
           "Update.begin failed: " + String(Update.getError());
@@ -71,7 +71,7 @@ void ESPWiFi::handleOTAStart(AsyncWebServerRequest *request) {
     }
   }
 
-  logln("✅ OTA update initialized successfully");
+  logInfo("✅ OTA update initialized successfully");
   request->send(200, "text/plain", "OK");
 }
 
@@ -96,8 +96,8 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
           request->getHeader("Content-Length")->value().toInt();
     }
 
-    logf("📦 Starting upload: %s (%d bytes)\n", filename.c_str(),
-         this->otaTotalSize);
+    logInfo("📦 Starting upload: %s (%d bytes)", filename.c_str(),
+            this->otaTotalSize);
   }
 
   // Write chunked data
@@ -118,7 +118,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
     if (request->contentLength() > 0) {
       int progress = (this->otaCurrentSize * 100) / request->contentLength();
       if (progress % 10 == 0) {
-        logf("📦 Upload progress: %d%%\n", progress);
+        logInfo("📦 Upload progress: %d%%", progress);
       }
     }
   }
@@ -126,7 +126,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
   if (final) {
     // Finalize the update
     if (Update.end(true)) {
-      logln("✅ OTA update completed successfully");
+      logInfo("✅ OTA update completed successfully");
       this->otaInProgress = false;
 
       // Send success response
@@ -138,7 +138,7 @@ void ESPWiFi::handleOTAUpdate(AsyncWebServerRequest *request, String filename,
       delay(3000);
 
       // Restart device after a longer delay to allow UI to receive response
-      logln("🔄 Restarting Device...");
+      logInfo("🔄 Restarting Device...");
       ESP.restart();
     } else {
       this->otaErrorString = "Update.end failed: " + String(Update.getError());
@@ -210,7 +210,7 @@ void ESPWiFi::handleOTAFileUpload(AsyncWebServerRequest *request,
     // Validate file path length
     if (currentFilePath.length() > 100) {
       logError("File path too long for OTA filesystem upload");
-      logf("📁 File path: %s\n", currentFilePath.c_str());
+      logInfo("📁 File path: %s", currentFilePath.c_str());
       sendJsonResponse(request, 500, "{\"error\":\"File path too long\"}");
       return;
     }
@@ -234,19 +234,19 @@ void ESPWiFi::handleOTAFileUpload(AsyncWebServerRequest *request,
     currentFile = lfs->open(currentFilePath, "w");
     if (!currentFile) {
       logError("Failed to create file for OTA filesystem upload");
-      logf("📁 File path: %s\n", currentFilePath.c_str());
+      logInfo("📁 File path: %s", currentFilePath.c_str());
       sendJsonResponse(request, 500, "{\"error\":\"Failed to create file\"}");
       return;
     }
 
     currentSize = 0;
-    logf("📁 Starting OTA filesystem upload: %s\n", currentFilePath.c_str());
+    logInfo("📁 Starting OTA filesystem upload: %s", currentFilePath.c_str());
 
     // Special handling for large JS files - skip them for now
     if (currentFilePath.endsWith(".js") &&
         currentFilePath.indexOf("main.") >= 0) {
-      logf("📁 Skipping large JS file to prevent crash: %s\n",
-           currentFilePath.c_str());
+      logInfo("📁 Skipping large JS file to prevent crash: %s",
+              currentFilePath.c_str());
       request->send(200, "text/plain", "OK");
       return;
     }
@@ -290,8 +290,8 @@ void ESPWiFi::handleOTAFileUpload(AsyncWebServerRequest *request,
       currentFile.close();
       String sizeStr =
           (currentSize > 0) ? bytesToHumanReadable(currentSize) : "0 B";
-      logf("📁 OTA filesystem upload completed: %s (%s)\n",
-           currentFilePath.c_str(), sizeStr.c_str());
+      logInfo("📁 OTA filesystem upload completed: %s (%s)",
+              currentFilePath.c_str(), sizeStr.c_str());
     }
 
     // Reset static variables for next upload
@@ -403,7 +403,7 @@ void ESPWiFi::srvOTA() {
         // Get MD5 hash if provided
         if (request->hasParam("hash")) {
           String hash = request->getParam("hash")->value();
-          logf("📦 OTA MD5 Hash: %s", hash.c_str());
+          logInfo("📦 OTA MD5 Hash: %s", hash.c_str());
           if (!Update.setMD5(hash.c_str())) {
             logError("Invalid MD5 hash provided");
             sendJsonResponse(request, 400, "{\"error\":\"Invalid MD5 hash\"}");
@@ -419,7 +419,7 @@ void ESPWiFi::srvOTA() {
 
         // Start update process based on mode
         if (mode == "fs" || mode == "filesystem") {
-          logln("📁 Starting filesystem update");
+          logInfo("📁 Starting filesystem update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
             this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
@@ -431,7 +431,7 @@ void ESPWiFi::srvOTA() {
             return;
           }
         } else {
-          logln("📦 Starting firmware update");
+          logInfo("📦 Starting firmware update");
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
             this->otaErrorString =
                 "Update.begin failed: " + String(Update.getError());
@@ -444,7 +444,7 @@ void ESPWiFi::srvOTA() {
           }
         }
 
-        logln("✅ OTA update initialized successfully");
+        logInfo("✅ OTA update initialized successfully");
         sendJsonResponse(request, 200, "{\"success\":true}");
       });
 

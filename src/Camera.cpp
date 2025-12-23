@@ -25,9 +25,9 @@ void cameraWebSocketEventHandler(AsyncWebSocket *server,
     // String receivedData = String((char *)data, len);
     // receivedData.trim(); // Remove any whitespace
     // espWifi->log("🔌 WebSocket Data Received: 📨");
-    // espWifi->logf("\tClient ID: %d\n", client->id());
-    // espWifi->logf("\tData Length: %d bytes\n", len);
-    // espWifi->logf("\tData: %s\n", receivedData.c_str());
+    // espWifi->log("\tClient ID: %d", client->id());
+    // espWifi->log("\tData Length: %d bytes", len);
+    // espWifi->log("\tData: %s", receivedData.c_str());
   }
 }
 
@@ -43,7 +43,7 @@ bool ESPWiFi::initCamera() {
   }
 
   initInProgress = true;
-  logln("📷 Initializing Camera");
+  logInfo("📷 Initializing Camera");
 
   if (ESP.getFreeHeap() < 50000) {
     logError("📷 Insufficient Memory for Camera Initialization");
@@ -80,14 +80,14 @@ bool ESPWiFi::initCamera() {
     camConfig.fb_count = 4;
     camConfig.fb_location = CAMERA_FB_IN_PSRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    logf("\tUsing PSRAM for camera buffers\n");
+    logDebug("\tUsing PSRAM for camera buffers");
   } else {
     camConfig.frame_size = FRAMESIZE_QVGA;
     camConfig.jpeg_quality = 25;
     camConfig.fb_count = 2;
     camConfig.fb_location = CAMERA_FB_IN_DRAM;
     camConfig.grab_mode = CAMERA_GRAB_LATEST;
-    logf("\tUsing DRAM for camera buffers\n");
+    logDebug("\tUsing DRAM for camera buffers");
   }
 
   delay(100);
@@ -118,17 +118,17 @@ bool ESPWiFi::initCamera() {
   uint8_t cameraAddress = 0;
   String cameraType = "Unknown";
   if (checkI2CDevice(0x30)) {
-    logf("\tCamera detected on I2C at 0x30 (OV2640)\n");
+    logDebug("\tCamera detected on I2C at 0x30 (OV2640)");
     cameraDetected = true;
     cameraAddress = 0x30;
     cameraType = "OV2640";
   } else if (checkI2CDevice(0x3C)) {
-    logf("\tCamera detected on I2C at 0x3C (OV5640/OV3660)\n");
+    logDebug("\tCamera detected on I2C at 0x3C (OV5640/OV3660)");
     cameraDetected = true;
     cameraAddress = 0x3C;
     cameraType = "OV5640/OV3660";
   } else if (checkI2CDevice(0x60)) {
-    logf("\tCamera detected on I2C at 0x60 (OV3660)\n");
+    logDebug("\tCamera detected on I2C at 0x60 (OV3660)");
     cameraDetected = true;
     cameraAddress = 0x60;
     cameraType = "OV3660";
@@ -149,21 +149,21 @@ bool ESPWiFi::initCamera() {
   // First try with original frame size settings
   for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
     camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
-    logf("\tTrying XCLK frequency: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
-         psramFound() ? "SVGA" : "QVGA");
+    logDebug("\tTrying XCLK frequency: %d Hz, Frame: %s",
+             camConfig.xclk_freq_hz, psramFound() ? "SVGA" : "QVGA");
 
     delay(100);
     yield();
 
     err = esp_camera_init(&camConfig);
     if (err == ESP_OK) {
-      logf("\tCamera initialized successfully with XCLK: %d Hz\n",
-           camConfig.xclk_freq_hz);
+      logDebug("\tCamera initialized successfully with XCLK: %d Hz",
+               camConfig.xclk_freq_hz);
       initSuccess = true;
       break;
     } else {
-      logf("\tCamera init failed with XCLK %d Hz, error: %d\n",
-           camConfig.xclk_freq_hz, err);
+      logDebug("\tCamera init failed with XCLK %d Hz, error: %d",
+               camConfig.xclk_freq_hz, err);
       esp_camera_deinit();
       delay(50);
     }
@@ -171,7 +171,7 @@ bool ESPWiFi::initCamera() {
 
   // If that failed, try with smaller frame sizes
   if (!initSuccess) {
-    logln("📷 Trying smaller frame sizes...");
+    logWarn("📷 Trying smaller frame sizes...");
     for (int sizeIdx = 0; sizeIdx < 4 && !initSuccess; sizeIdx++) {
       camConfig.frame_size = frameSizes[sizeIdx];
       if (psramFound()) {
@@ -184,22 +184,22 @@ bool ESPWiFi::initCamera() {
 
       for (int freqIdx = 0; freqIdx < 3 && !initSuccess; freqIdx++) {
         camConfig.xclk_freq_hz = xclkFreqs[freqIdx];
-        logf("\tTrying XCLK: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
-             frameSizeNames[sizeIdx]);
+        logDebug("\tTrying XCLK: %d Hz, Frame: %s", camConfig.xclk_freq_hz,
+                 frameSizeNames[sizeIdx]);
 
         delay(100);
         yield();
 
         err = esp_camera_init(&camConfig);
         if (err == ESP_OK) {
-          logf("\tCamera initialized successfully!\n");
-          logf("\tXCLK: %d Hz, Frame: %s\n", camConfig.xclk_freq_hz,
-               frameSizeNames[sizeIdx]);
+          logInfo("\tCamera initialized successfully!");
+          logDebug("\tXCLK: %d Hz, Frame: %s", camConfig.xclk_freq_hz,
+                   frameSizeNames[sizeIdx]);
           initSuccess = true;
           break;
         } else {
-          logf("\tFailed - XCLK: %d Hz, Frame: %s, Error: %d\n",
-               camConfig.xclk_freq_hz, frameSizeNames[sizeIdx], err);
+          logDebug("\tFailed - XCLK: %d Hz, Frame: %s, Error: %d",
+                   camConfig.xclk_freq_hz, frameSizeNames[sizeIdx], err);
           esp_camera_deinit();
           delay(50);
         }
@@ -224,17 +224,17 @@ bool ESPWiFi::initCamera() {
   // Get sensor info after successful initialization
   s = esp_camera_sensor_get();
   if (s != NULL) {
-    logf("\tCamera sensor detected - ID: 0x%02X\n", s->id.PID);
+    logDebug("\tCamera sensor detected - ID: 0x%02X", s->id.PID);
     if (s->id.PID == 0x26) {
-      logln("\tSensor type: OV2640");
+      logDebug("\tSensor type: OV2640");
     } else if (s->id.PID == 0x36) {
-      logln("\tSensor type: OV3660");
+      logDebug("\tSensor type: OV3660");
     } else if (s->id.PID == 0x56) {
-      logln("\tSensor type: OV5640");
+      logDebug("\tSensor type: OV5640");
     } else if (s->id.PID == 0x77) {
-      logln("\tSensor type: OV7670");
+      logDebug("\tSensor type: OV7670");
     } else {
-      logf("\tSensor type: Unknown (PID: 0x%02X)\n", s->id.PID);
+      logDebug("\tSensor type: Unknown (PID: 0x%02X)", s->id.PID);
     }
   }
 
@@ -310,11 +310,11 @@ void ESPWiFi::updateCameraSettings() {
       s->set_hmirror(s, 0);
     }
   }
-  logln("📷 Camera Settings Updated");
+  logInfo("📷 Camera Settings Updated");
 }
 
 void ESPWiFi::deinitCamera() {
-  logln("📷 Deinitializing Camera");
+  logInfo("📷 Deinitializing Camera");
 
   sensor_t *s = esp_camera_sensor_get();
   if (s == NULL) {
@@ -417,7 +417,7 @@ void ESPWiFi::startCamera() {
 void ESPWiFi::clearCameraBuffer() {
   static bool firstClear = true;
   if (firstClear) {
-    logln("📷 Clearing Camera Buffer");
+    log("📷 Clearing Camera Buffer");
     firstClear = false;
   }
 
@@ -469,7 +469,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
     return;
   }
 
-  logln("📸 Snapshot Taken");
+  logInfo("📸 Snapshot Taken");
 
   bool writeSuccess = false;
   if (sdCardInitialized && sd) {
@@ -477,7 +477,7 @@ void ESPWiFi::takeSnapshot(String filePath) {
   }
 
   if (!writeSuccess && lfs) {
-    logln("📁 Falling back to LittleFS for Snapshot");
+    logWarn("📁 Falling back to LittleFS for Snapshot");
     writeSuccess = writeFile(lfs, filePath, fb->buf, fb->len);
   }
 
@@ -585,7 +585,7 @@ void ESPWiFi::cameraConfigHandler() {
     shutdownInProgress = true;
 
     if (camSoc && camSoc->socket) {
-      logln("📷 Disconnecting Camera WebSocket clients");
+      logInfo("📷 Disconnecting Camera WebSocket clients");
       camSoc->socket->closeAll();
       delay(100);
       webServer->removeHandler(camSoc->socket);

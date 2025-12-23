@@ -6,7 +6,7 @@
 #include "esp_task_wdt.h"
 
 void ESPWiFi::setMaxPower() {
-  logln("⚡️ Power Mode: Performance");
+  logInfo("⚡️ Power Mode: Performance");
 
   // Set CPU frequency to maximum based on chip variant
   // #if defined(CONFIG_IDF_TARGET_ESP32C3)

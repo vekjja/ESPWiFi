@@ -15,8 +15,8 @@ void ESPWiFi::startSerial(int baudRate) {
   Serial.setDebugOutput(true);
   serialStarted = true;
   delay(1500); // wait for serial to start
-  Serial.println(timestamp() + "⛓️  Serial Started:");
-  Serial.printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
+  Serial.println(timestamp() + "📺  Serial Started:");
+  Serial.printf("%s\tBaud: %d", timestamp().c_str(), baudRate);
 }
 
 void ESPWiFi::startLogging(String filePath) {
@@ -37,11 +37,11 @@ void ESPWiFi::startLogging(String filePath) {
   openLogFile();
   cleanLogFile();
 
-  logf("\n\n%s🌌 FirmaMint %s\n\n", timestamp().c_str(), version.c_str());
+  log("\n\n%s🌌 FirmaMint %s", timestamp().c_str(), version.c_str());
 
   if (Serial) {
-    logln("📺 Serial Output Enabled");
-    logInfof("\tBaud: %d\n", baudRate);
+    logInfo("📺 Serial Output Enabled");
+    logDebug("\tBaud: %d", baudRate);
   }
 
   printFilesystemInfo();
@@ -61,8 +61,8 @@ void ESPWiFi::cleanLogFile() {
       }
 
       if (deleted) {
-        logln("🗑️  Log file " + logFilePath + " refreshed on " +
-              (sdCardInitialized ? "SD Card" : "Internal Storage"));
+        log("🗑️  Log file " + logFilePath + " refreshed on " +
+            (sdCardInitialized ? "SD Card" : "Internal Storage"));
       } else {
         logError("Failed to delete log file");
       }
@@ -122,90 +122,101 @@ String ESPWiFi::formatLog(const char *format, va_list args) {
   return String(buffer);
 }
 
-void ESPWiFi::log(String message) {
+void ESPWiFi::log(const char *format, ...) {
   if (!serialStarted) {
     startSerial();
   }
   if (!loggingStarted) {
     startLogging();
   }
+  char buffer[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
   String ts = timestamp();
-  Serial.print(ts + message);
+  String output = String(buffer);
+  Serial.println(ts + output);
   Serial.flush(); // Ensure immediate output
-  writeLog(ts + message);
+  writeLog(ts + output + "\n");
 }
-void ESPWiFi::logln(String message) { log(message + "\n"); }
 
 void ESPWiFi::logDebug(String message) {
   if (!shouldLog("debug")) {
     return;
   }
-  log("🐛 Debug: " + message);
+  log("🔍 [DEBUG]: %s", message.c_str());
 }
 
-void ESPWiFi::logDebugf(const char *format, ...) {
+void ESPWiFi::logDebug(const char *format, ...) {
   if (!shouldLog("debug")) {
     return;
   }
+  char buffer[256];
   va_list args;
   va_start(args, format);
-  String formatted = formatLog(format, args);
+  vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-  log("🐛 Debug: " + formatted);
+  log("🔍 [DEBUG]: %s",
+      buffer); // Use variadic log() - format string controls \n
 }
 
 void ESPWiFi::logInfo(String message) {
   if (!shouldLog("info")) {
     return;
   }
-  log(message);
+  log("ℹ️ [INFO]: " + message);
 }
 
-void ESPWiFi::logInfof(const char *format, ...) {
+void ESPWiFi::logInfo(const char *format, ...) {
   if (!shouldLog("info")) {
     return;
   }
+  char buffer[256];
   va_list args;
   va_start(args, format);
-  String formatted = formatLog(format, args);
+  vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-  log(formatted.c_str());
+  log("ℹ️ [INFO]: %s", buffer); // Use variadic log() - format string controls \n
 }
 
 void ESPWiFi::logWarn(String message) {
   if (!shouldLog("warning")) {
     return;
   }
-  log("⚠️  Warning: " + message);
+  log("⚠️ [WARNING]: " + message);
 }
 
-void ESPWiFi::logWarnf(const char *format, ...) {
+void ESPWiFi::logWarn(const char *format, ...) {
   if (!shouldLog("warning")) {
     return;
   }
+  char buffer[256];
   va_list args;
   va_start(args, format);
-  String formatted = formatLog(format, args);
+  vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-  log("⚠️  Warning: " + formatted);
+  log("⚠️ [WARNING]: %s",
+      buffer); // Use variadic log() - format string controls \n
 }
 
 void ESPWiFi::logError(String message) {
   if (!shouldLog("error")) {
     return;
   }
-  log("❗️ Error: " + message);
+  log("💔 [ERROR]: " + message);
 }
 
-void ESPWiFi::logErrorf(const char *format, ...) {
+void ESPWiFi::logError(const char *format, ...) {
   if (!shouldLog("error")) {
     return;
   }
+  char buffer[256];
   va_list args;
   va_start(args, format);
-  String formatted = formatLog(format, args);
+  vsnprintf(buffer, sizeof(buffer), format, args);
   va_end(args);
-  log("❗️ Error: " + formatted);
+  log("💔 [ERROR]: %s", buffer);
 }
 
 String ESPWiFi::timestamp() {
@@ -230,19 +241,6 @@ String ESPWiFi::timestampForFilename() {
 
   return String(days) + "_" + String(minutes) + "_" + String(seconds) + "_" +
          String(milliseconds);
-}
-
-void ESPWiFi::logf(const char *format, ...) {
-  // Default logf() function uses info level - format and call log() directly
-  if (!shouldLog("info")) {
-    return;
-  }
-  char buffer[256];
-  va_list args;
-  va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
-  va_end(args);
-  log(String(buffer));
 }
 
 void ESPWiFi::closeLogFile() {
@@ -313,14 +311,14 @@ void ESPWiFi::logConfigHandler() {
 
   // Log when enabled state changes
   if (currentEnabled != lastEnabled) {
-    logf("📝 Logging %s\n", currentEnabled ? "enabled" : "disabled");
+    logInfo("📝 Logging %s", currentEnabled ? "enabled" : "disabled");
     lastEnabled = currentEnabled;
   }
 
   // Log when level changes
   if (currentLevel != lastLevel) {
-    logf("📝 Log level changed: %s -> %s\n", lastLevel.c_str(),
-         currentLevel.c_str());
+    logInfo("📝 Log level changed: %s -> %s", lastLevel.c_str(),
+            currentLevel.c_str());
     lastLevel = currentLevel;
   }
 }

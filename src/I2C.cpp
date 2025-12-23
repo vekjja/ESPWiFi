@@ -19,7 +19,7 @@ void ESPWiFi::scanI2CDevices() {
   int nDevices;
 
   Wire.begin();
-  logln("🔎 Scanning for I2C Devices...");
+  log("🔎 Scanning for I2C Devices...");
 
   nDevices = 0;
   for (address = 1; address < 127; address++) {
@@ -28,19 +28,19 @@ void ESPWiFi::scanI2CDevices() {
     error = Wire.endTransmission();
 
     if (error == 0) {
-      logln("🎛️ I2C device found at address 0x" +
+      log("🎛️ I2C device found at address 0x" +
           (address < 16 ? "0" : String(address, HEX)));
 
       nDevices++;
     } else if (error == 4) {
       logError("Unknown error at address 0x");
       if (address < 16)
-        logln("0");
-      logln(String(address) + " HEX");
+        log("0");
+      log(String(address) + " HEX");
     }
   }
   if (nDevices == 0)
-    logln("No I2C Devices Found");
+    log("No I2C Devices Found");
 }
 
 #endif

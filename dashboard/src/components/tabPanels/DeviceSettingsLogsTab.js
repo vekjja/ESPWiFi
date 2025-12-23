@@ -32,7 +32,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [logEnabled, setLogEnabled] = useState(config?.log?.enabled !== false);
   const [logLevel, setLogLevel] = useState(config?.log?.level || "info");
   // Auto refresh interval: null (disabled) or 3 seconds
-  const [refreshInterval, setRefreshInterval] = useState(null);
+  const [refreshInterval, setRefreshInterval] = useState(3);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);

@@ -42,7 +42,7 @@ void ESPWiFi::readConfig() {
 
   config["hostname"] = String(WiFi.getHostname());
 
-  log("⚙️  Config Loaded:");
+  logInfo("⚙️  Config Loaded:");
   logDebug("\tFile: %s", configFile.c_str());
 
   printConfig();
@@ -65,7 +65,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
   if (config["log"]["enabled"].as<bool>()) {
-    log("💾 Config Saved: " + configFile);
+    logInfo("💾 Config Saved: " + configFile);
     if (shouldLog("debug")) {
       printConfig();
     }

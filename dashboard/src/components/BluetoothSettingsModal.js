@@ -820,27 +820,44 @@ export default function BluetoothSettingsModal({
       open={open}
       onClose={onClose}
       title={
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1,
-          }}
+        <Tooltip
+          title={
+            enabled ? "Click to disable Bluetooth" : "Click to enable Bluetooth"
+          }
         >
-          {(() => {
-            if (webBleConnected) {
-              return <BluetoothConnectedIcon sx={{ color: "primary.main" }} />;
-            } else if (connected) {
-              return <BluetoothConnectedIcon sx={{ color: "warning.main" }} />;
-            } else if (enabled) {
-              return <BluetoothIcon sx={{ color: "primary.main" }} />;
-            } else {
-              return <BluetoothDisabledIcon sx={{ color: "text.disabled" }} />;
-            }
-          })()}
-          Bluetooth
-        </Box>
+          <Box
+            onClick={handleToggleEnabled}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1,
+              cursor: "pointer",
+              "&:hover": {
+                opacity: 0.8,
+              },
+            }}
+          >
+            {(() => {
+              if (webBleConnected) {
+                return (
+                  <BluetoothConnectedIcon sx={{ color: "primary.main" }} />
+                );
+              } else if (connected) {
+                return (
+                  <BluetoothConnectedIcon sx={{ color: "warning.main" }} />
+                );
+              } else if (enabled) {
+                return <BluetoothIcon sx={{ color: "primary.main" }} />;
+              } else {
+                return (
+                  <BluetoothDisabledIcon sx={{ color: "text.disabled" }} />
+                );
+              }
+            })()}
+            Bluetooth
+          </Box>
+        </Tooltip>
       }
       maxWidth="md"
     >
@@ -867,30 +884,12 @@ export default function BluetoothSettingsModal({
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
+                      justifyContent: "center",
                       gap: 2.5,
-                      pt: 1.5,
+                      width: "100%",
+                      minHeight: "100px",
                     }}
                   >
-                    <Tooltip
-                      title={
-                        enabled
-                          ? "Click to disable Bluetooth"
-                          : "Click to enable Bluetooth"
-                      }
-                    >
-                      <Chip
-                        icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
-                        label={enabled ? "Enabled" : "Disabled"}
-                        color={enabled ? "success" : "default"}
-                        onClick={handleToggleEnabled}
-                        sx={{
-                          cursor: "pointer",
-                          "&:hover": {
-                            opacity: 0.8,
-                          },
-                        }}
-                      />
-                    </Tooltip>
                     {(() => {
                       let connectionLabel = "No Connections";
                       let connectionColor = "default";
@@ -900,7 +899,7 @@ export default function BluetoothSettingsModal({
                       let isClickable = false;
 
                       if (webBleConnected) {
-                        connectionLabel = "Connected";
+                        connectionLabel = "Connected via Web Bluetooth";
                         connectionColor = "success";
                         connectionIcon = <CheckCircleIcon />;
                         connectionTooltip = "Click to disconnect Web Bluetooth";
@@ -908,7 +907,7 @@ export default function BluetoothSettingsModal({
                       } else if (connected && !webBleConnecting) {
                         // Only show "Remote" if we're not currently connecting via Web Bluetooth
                         // This prevents the jarring transition from "Remote" to "Connected"
-                        connectionLabel = "Remote";
+                        connectionLabel = "Remote Device Connected";
                         connectionColor = "warning";
                         connectionIcon = <InfoIcon />;
                         connectionTooltip =

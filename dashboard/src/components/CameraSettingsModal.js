@@ -214,6 +214,8 @@ export default function CameraSettingsModal({
         }
 
         await saveConfigToDevice(updatedConfig);
+        // Close modal after successful save
+        onClose();
       } catch (err) {
         console.error("Error saving camera settings:", err);
       } finally {
@@ -223,6 +225,8 @@ export default function CameraSettingsModal({
 
     if (onSave) {
       onSave();
+      // Close modal after module-level save
+      onClose();
     }
   };
 
@@ -290,7 +294,13 @@ export default function CameraSettingsModal({
         </Tooltip>
       }
       actions={
-        isDeviceLevel ? null : (
+        isDeviceLevel ? (
+          <SaveButton
+            onClick={handleSave}
+            tooltip={loading ? "Saving..." : "Save camera settings to device"}
+            disabled={loading || !deviceOnline || !enabled}
+          />
+        ) : (
           <>
             {onDelete && (
               <DeleteButton onClick={handleDelete} tooltip="Delete Camera" />
@@ -551,17 +561,6 @@ export default function CameraSettingsModal({
                       />
                     </Box>
                   </Box>
-                </Box>
-
-                {/* Save Button for device-level */}
-                <Box sx={{ mt: 3, display: "flex", justifyContent: "center" }}>
-                  <SaveButton
-                    onClick={handleSave}
-                    tooltip={
-                      loading ? "Saving..." : "Save camera settings to device"
-                    }
-                    disabled={loading || !deviceOnline || !enabled}
-                  />
                 </Box>
               </CardContent>
             </Card>

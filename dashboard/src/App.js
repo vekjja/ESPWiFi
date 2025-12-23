@@ -5,8 +5,8 @@ import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import { Save, Delete, Edit, Settings } from "@mui/icons-material";
 import Modules from "./components/Modules";
-import SettingsButtonBar from "./components/SettingsButtonBar";
 import Login from "./components/Login";
+import SettingsButtonBar from "./components/SettingsButtonBar";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 
@@ -369,41 +369,7 @@ function App() {
 
   // Settings button handlers
   const handleNetworkSettings = () => {}; // Device settings now handled by DeviceSettingsButton
-  const handleCameraSettings = () => {
-    // Toggle camera state immediately
-    const newEnabledState = !localConfig?.camera?.enabled;
-
-    // If disabling camera, disconnect any active WebSocket connections
-    if (!newEnabledState) {
-      // Find and disconnect any active camera WebSocket connections
-      const cameraModules = document.querySelectorAll("[data-camera-module]");
-      cameraModules.forEach((module) => {
-        // Trigger WebSocket disconnection in camera modules
-        const event = new CustomEvent("cameraDisable");
-        module.dispatchEvent(event);
-      });
-
-      // Also disconnect any global WebSocket connections
-      if (window.cameraWebSockets) {
-        window.cameraWebSockets.forEach((ws) => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.close();
-          }
-        });
-        window.cameraWebSockets = [];
-      }
-    }
-
-    const configToSave = {
-      ...localConfig,
-      camera: {
-        ...localConfig.camera,
-        enabled: newEnabledState,
-        frameRate: localConfig.camera?.frameRate || 10,
-      },
-    };
-    saveConfigFromButton(configToSave);
-  };
+  const handleCameraSettings = () => {}; // Camera settings now handled by CameraButton
   const handleRSSISettings = () => {}; // RSSI settings now handled by RSSIButton
   const handleFileBrowser = () => {}; // File browser is now handled by FileBrowserButton
   const handleAddModule = () => {}; // Add module now handled by AddModuleButton

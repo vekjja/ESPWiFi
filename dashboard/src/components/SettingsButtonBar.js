@@ -77,7 +77,7 @@ export default function SettingsButtonBar({
           <CameraButton
             config={config}
             deviceOnline={deviceOnline}
-            onCameraSettings={onCameraSettings}
+            saveConfigToDevice={saveConfigToDevice}
             cameraEnabled={cameraEnabled}
             getCameraColor={getCameraColor}
           />

@@ -31,6 +31,7 @@ export default function SettingsModal({
       fullWidth={fullWidth}
       fullScreen={isMobile}
       disableEscapeKeyDown={disableEscapeKeyDown}
+      disableRestoreFocus={true}
       PaperProps={{
         sx: {
           bgcolor: "background.paper",

@@ -414,7 +414,7 @@ export default function DeviceSettingsModal({
           }}
         >
           <SettingsIcon color="primary" />
-          <span>Device Settings</span>
+          <span>System</span>
         </Box>
       }
       maxWidth={false}

@@ -839,7 +839,7 @@ export default function BluetoothSettingsModal({
               return <BluetoothDisabledIcon sx={{ color: "text.disabled" }} />;
             }
           })()}
-          Bluetooth Settings
+          Bluetooth
         </Box>
       }
       maxWidth="md"
@@ -862,108 +862,93 @@ export default function BluetoothSettingsModal({
               {/* Status Information - Better aligned */}
               <Grid container spacing={3} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                    <Typography
-                      variant="subtitle2"
-                      color="text.secondary"
-                      sx={{ mr: 1.5, minWidth: 140 }}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 2.5,
+                      pt: 1.5,
+                    }}
+                  >
+                    <Tooltip
+                      title={
+                        enabled
+                          ? "Click to disable Bluetooth"
+                          : "Click to enable Bluetooth"
+                      }
                     >
-                      Status:
-                    </Typography>
-                    <Box sx={{ minWidth: 140 }}>
-                      <Tooltip
-                        title={
-                          enabled
-                            ? "Click to disable Bluetooth"
-                            : "Click to enable Bluetooth"
-                        }
-                      >
-                        <Chip
-                          icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
-                          label={enabled ? "Enabled" : "Disabled"}
-                          color={enabled ? "success" : "default"}
-                          size="small"
-                          onClick={handleToggleEnabled}
-                          sx={{
-                            cursor: "pointer",
-                            "&:hover": {
-                              opacity: 0.8,
-                            },
-                          }}
-                        />
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                    <Typography
-                      variant="subtitle2"
-                      color="text.secondary"
-                      sx={{ mr: 1.5, minWidth: 140 }}
-                    >
-                      Connection:
-                    </Typography>
-                    <Box sx={{ minWidth: 140 }}>
-                      {(() => {
-                        let connectionLabel = "Not Connected";
-                        let connectionColor = "default";
-                        let connectionIcon = <CancelIcon />;
-                        let connectionTooltip =
-                          "Click to connect via Web Bluetooth";
-                        let isClickable = false;
+                      <Chip
+                        icon={enabled ? <CheckCircleIcon /> : <CancelIcon />}
+                        label={enabled ? "Enabled" : "Disabled"}
+                        color={enabled ? "success" : "default"}
+                        onClick={handleToggleEnabled}
+                        sx={{
+                          cursor: "pointer",
+                          "&:hover": {
+                            opacity: 0.8,
+                          },
+                        }}
+                      />
+                    </Tooltip>
+                    {(() => {
+                      let connectionLabel = "No Connections";
+                      let connectionColor = "default";
+                      let connectionIcon = <CancelIcon />;
+                      let connectionTooltip =
+                        "Click to connect via Web Bluetooth";
+                      let isClickable = false;
 
+                      if (webBleConnected) {
+                        connectionLabel = "Connected";
+                        connectionColor = "success";
+                        connectionIcon = <CheckCircleIcon />;
+                        connectionTooltip = "Click to disconnect Web Bluetooth";
+                        isClickable = true;
+                      } else if (connected && !webBleConnecting) {
+                        // Only show "Remote" if we're not currently connecting via Web Bluetooth
+                        // This prevents the jarring transition from "Remote" to "Connected"
+                        connectionLabel = "Remote";
+                        connectionColor = "warning";
+                        connectionIcon = <InfoIcon />;
+                        connectionTooltip =
+                          "Remote connection active (another device is connected)";
+                        isClickable = false;
+                      } else {
+                        // Not Connected - make it clickable
+                        isClickable = true;
+                      }
+
+                      const canClick =
+                        isClickable && !webBleConnecting && !loading;
+                      const handleClick = () => {
                         if (webBleConnected) {
-                          connectionLabel = "Connected";
-                          connectionColor = "success";
-                          connectionIcon = <CheckCircleIcon />;
-                          connectionTooltip =
-                            "Click to disconnect Web Bluetooth";
-                          isClickable = true;
-                        } else if (connected && !webBleConnecting) {
-                          // Only show "Remote" if we're not currently connecting via Web Bluetooth
-                          // This prevents the jarring transition from "Remote" to "Connected"
-                          connectionLabel = "Remote";
-                          connectionColor = "warning";
-                          connectionIcon = <InfoIcon />;
-                          connectionTooltip =
-                            "Remote connection active (another device is connected)";
-                          isClickable = false;
-                        } else {
-                          // Not Connected - make it clickable
-                          isClickable = true;
+                          handleWebBleDisconnect();
+                        } else if (isClickable) {
+                          handleWebBleConnect();
                         }
-
-                        const canClick =
-                          isClickable && !webBleConnecting && !loading;
-                        const handleClick = () => {
-                          if (webBleConnected) {
-                            handleWebBleDisconnect();
-                          } else if (isClickable) {
-                            handleWebBleConnect();
-                          }
-                        };
-                        return (
-                          <Tooltip title={connectionTooltip}>
-                            <Chip
-                              icon={connectionIcon}
-                              label={connectionLabel}
-                              color={connectionColor}
-                              size="small"
-                              onClick={canClick ? handleClick : undefined}
-                              sx={
-                                canClick
-                                  ? {
-                                      cursor: "pointer",
-                                      "&:hover": {
-                                        opacity: 0.8,
-                                      },
-                                    }
-                                  : undefined
-                              }
-                            />
-                          </Tooltip>
-                        );
-                      })()}
-                    </Box>
+                      };
+                      return (
+                        <Tooltip title={connectionTooltip}>
+                          <Chip
+                            icon={connectionIcon}
+                            label={connectionLabel}
+                            color={connectionColor}
+                            onClick={canClick ? handleClick : undefined}
+                            sx={
+                              canClick
+                                ? {
+                                    cursor: "pointer",
+                                    "&:hover": {
+                                      opacity: 0.8,
+                                    },
+                                  }
+                                : undefined
+                            }
+                          />
+                        </Tooltip>
+                      );
+                    })()}
                   </Box>
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1003,7 +988,14 @@ export default function BluetoothSettingsModal({
               {/* File Download - Only show when Web Bluetooth is connected */}
               {webBleConnected && (
                 <Box sx={{ mt: 3 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      mb: 2,
+                    }}
+                  >
                     <CloudDownloadIcon
                       sx={{ mr: 1.5, fontSize: 24, color: "primary.main" }}
                     />

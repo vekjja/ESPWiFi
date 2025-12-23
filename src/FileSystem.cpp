@@ -879,8 +879,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
 void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
                                 size_t usedBytes) {
   logDebug("\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
-  logDebug("\tFree: %s",
-           bytesToHumanReadable(totalBytes - usedBytes).c_str());
+  logDebug("\tFree: %s", bytesToHumanReadable(totalBytes - usedBytes).c_str());
   logDebug("\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
 }
 

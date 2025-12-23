@@ -46,8 +46,7 @@ void ESPWiFi::startWebServer() {
   String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
                                        : WiFi.softAPIP().toString();
   logDebug("\tURL: http://%s", serverIP.c_str());
-  logDebug("\tURL: http://%s.local",
-           config["deviceName"].as<String>().c_str());
+  logDebug("\tURL: http://%s.local", config["deviceName"].as<String>().c_str());
 }
 
 void ESPWiFi::srvRoot() {
@@ -170,7 +169,7 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
                          : "-";
 
   if (!authEnabled()) {
-    logDebug("🌐 [ACCESS] %s %s - %s \"%s\" \"%s\" - Auth disabled",
+    logDebug("[ACCESS] 🌐 %s %s - %s \"%s\" \"%s\" - Auth disabled",
              clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
              "200 OK");
     // Log access even when auth is disabled

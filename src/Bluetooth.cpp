@@ -148,7 +148,7 @@ bool ESPWiFi::startBluetooth() {
   }
 
   if (!config["bluetooth"]["enabled"].as<bool>()) {
-    logInfo("📱 Bluetooth Disabled");
+    logInfo("📱  Bluetooth Disabled");
     return false;
   }
 
@@ -206,7 +206,7 @@ bool ESPWiFi::startBluetooth() {
   config["bluetooth"]["connected"] = false;
   config["bluetooth"]["connectionCount"] = 0;
 
-  logInfo("📱 Bluetooth Started:");
+  logInfo("📱  Bluetooth Started:");
   logDebug("\tMode: BLE");
   logDebug("\tDevice Name: %s", bleDeviceName.c_str());
   logDebug("\tMAC: %s", macAddress.c_str());
@@ -233,7 +233,7 @@ void ESPWiFi::stopBluetooth() {
   config["bluetooth"]["connected"] = false;
   config["bluetooth"]["connectionCount"] = 0;
   bluetoothStarted = false;
-  logInfo("📱 Bluetooth Stopped");
+  logInfo("📱  Bluetooth Stopped");
 }
 
 bool ESPWiFi::isBluetoothConnected() { return deviceConnected; }
@@ -549,9 +549,8 @@ void ESPWiFi::srvBluetooth() {
               break;
             }
           } else if (!deviceConnected || pTxCharacteristic == nullptr) {
-            logWarn(
-                "⚠️  Bluetooth connection lost during file send at %d bytes",
-                bytesSent);
+            logWarn("⚠️  Bluetooth connection lost during file send at %d bytes",
+                    bytesSent);
             break;
           }
 

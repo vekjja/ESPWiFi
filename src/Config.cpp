@@ -66,16 +66,14 @@ void ESPWiFi::saveConfig() {
   }
   if (config["log"]["enabled"].as<bool>()) {
     logInfo("💾 Config Saved: " + configFile);
-    if (shouldLog("debug")) {
-      printConfig();
-    }
+    printConfig();
   }
 }
 
 void ESPWiFi::printConfig() {
   String prettyConfig;
   serializeJsonPretty(config, prettyConfig);
-  log(prettyConfig);
+  logDebug(prettyConfig);
 }
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {

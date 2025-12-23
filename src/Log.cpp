@@ -61,10 +61,10 @@ void ESPWiFi::cleanLogFile() {
       }
 
       if (deleted) {
-        log("🗑️  Log file " + logFilePath + " refreshed on " +
-            (sdCardInitialized ? "SD Card" : "Internal Storage"));
+        logInfo("🗑️  Log file " + logFilePath + " refreshed on " +
+                (sdCardInitialized ? "SD Card" : "Internal Storage"));
       } else {
-        logError("Failed to delete log file");
+        logError("💔 Failed to delete log file");
       }
       openLogFile();
     }
@@ -117,7 +117,7 @@ bool ESPWiFi::shouldLog(String level) {
 }
 
 String ESPWiFi::formatLog(const char *format, va_list args) {
-  char buffer[256];
+  char buffer[2048];
   vsnprintf(buffer, sizeof(buffer), format, args);
   return String(buffer);
 }
@@ -129,13 +129,11 @@ void ESPWiFi::log(const char *format, ...) {
   if (!loggingStarted) {
     startLogging();
   }
-  char buffer[256];
   va_list args;
   va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
+  String output = formatLog(format, args);
   va_end(args);
   String ts = timestamp();
-  String output = String(buffer);
   Serial.println(ts + output);
   Serial.flush(); // Ensure immediate output
   writeLog(ts + output + "\n");
@@ -145,90 +143,89 @@ void ESPWiFi::logDebug(String message) {
   if (!shouldLog("debug")) {
     return;
   }
-  log("🔍 [DEBUG]: %s", message.c_str());
+  log("🔍 [DEBUG] %s", message.c_str());
 }
 
 void ESPWiFi::logDebug(const char *format, ...) {
   if (!shouldLog("debug")) {
     return;
   }
-  char buffer[256];
   va_list args;
   va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
+  String message = formatLog(format, args);
   va_end(args);
-  log("🔍 [DEBUG]: %s",
-      buffer); // Use variadic log() - format string controls \n
+  log("🔍 [DEBUG]%s", message.c_str());
 }
 
 void ESPWiFi::logInfo(String message) {
   if (!shouldLog("info")) {
     return;
   }
-  log("ℹ️ [INFO]: " + message);
+  log("ℹ️  [INFO] " + message);
 }
 
 void ESPWiFi::logInfo(const char *format, ...) {
   if (!shouldLog("info")) {
     return;
   }
-  char buffer[256];
   va_list args;
   va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
+  String message = formatLog(format, args);
   va_end(args);
-  log("ℹ️ [INFO]: %s", buffer); // Use variadic log() - format string controls \n
+  log("ℹ️  [INFO] %s", message.c_str());
 }
 
 void ESPWiFi::logWarn(String message) {
   if (!shouldLog("warning")) {
     return;
   }
-  log("⚠️ [WARNING]: " + message);
+  log("⚠️ [WARNING] " + message);
 }
 
 void ESPWiFi::logWarn(const char *format, ...) {
   if (!shouldLog("warning")) {
     return;
   }
-  char buffer[256];
   va_list args;
   va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
+  String message = formatLog(format, args);
   va_end(args);
-  log("⚠️ [WARNING]: %s",
-      buffer); // Use variadic log() - format string controls \n
+  log("⚠️ [WARNING] %s", message.c_str());
 }
 
 void ESPWiFi::logError(String message) {
   if (!shouldLog("error")) {
     return;
   }
-  log("💔 [ERROR]: " + message);
+  log("💔 [ERROR] " + message);
 }
 
 void ESPWiFi::logError(const char *format, ...) {
   if (!shouldLog("error")) {
     return;
   }
-  char buffer[256];
   va_list args;
   va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
+  String message = formatLog(format, args);
   va_end(args);
-  log("💔 [ERROR]: %s", buffer);
+  log("💔 [ERROR] %s", message.c_str());
 }
 
 String ESPWiFi::timestamp() {
   unsigned long milliseconds = millis();
   unsigned long seconds = milliseconds / 1000;
+  unsigned long minutes = (seconds % 3600) / 60;
+  unsigned long hours = (seconds % 86400) / 3600;
   unsigned long days = seconds / 86400;
-  unsigned long minutes = (seconds % 86400) / 60;
   seconds = seconds % 60;
   milliseconds = milliseconds % 1000;
 
-  return "[" + String(days) + ":" + String(minutes) + ":" + String(seconds) +
-         ":" + String(milliseconds) + "] ";
+  // Format all values with consistent padding: 2 digits for days, hours,
+  // minutes, seconds; 3 for milliseconds
+  char buffer[20];
+  snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%02lu:%03lu] ", days,
+           hours, minutes, seconds, milliseconds);
+  return String(buffer);
 }
 
 String ESPWiFi::timestampForFilename() {
@@ -293,11 +290,44 @@ void ESPWiFi::srvLog() {
       return;
     }
 
-    // Use the filesystem response method for efficient streaming
+    // Read log file and wrap in HTML with CSS to prevent word wrapping
+    File file = filesystem->open(logFilePath, "r");
+    if (!file) {
+      sendJsonResponse(request, 500, "{\"error\":\"Failed to open log file\"}");
+      return;
+    }
+
+    String htmlContent =
+        "<!DOCTYPE html><html><head><meta "
+        "charset=\"utf-8\"><style>body{margin:0;padding:10px;background:#"
+        "1e1e1e;color:#d4d4d4;font-family:monospace;font-size:12px;}pre{white-"
+        "space:pre;overflow-x:auto;margin:0;}</style></head><body><pre>";
+
+    // Read file in chunks and append to HTML
+    const size_t chunkSize = 1024;
+    char buffer[chunkSize];
+    while (file.available()) {
+      size_t bytesRead = file.readBytes(buffer, chunkSize);
+      // Escape HTML special characters
+      for (size_t i = 0; i < bytesRead; i++) {
+        if (buffer[i] == '<') {
+          htmlContent += "&lt;";
+        } else if (buffer[i] == '>') {
+          htmlContent += "&gt;";
+        } else if (buffer[i] == '&') {
+          htmlContent += "&amp;";
+        } else {
+          htmlContent += buffer[i];
+        }
+      }
+    }
+    file.close();
+
+    htmlContent += "</pre></body></html>";
+
     AsyncWebServerResponse *response =
-        request->beginResponse(*filesystem, logFilePath, "text/plain");
+        request->beginResponse(200, "text/html", htmlContent);
     addCORS(response);
-    response->addHeader("Content-Type", "text/plain; charset=utf-8");
     request->send(response);
   });
 }
@@ -311,13 +341,13 @@ void ESPWiFi::logConfigHandler() {
 
   // Log when enabled state changes
   if (currentEnabled != lastEnabled) {
-    logInfo("📝 Logging %s", currentEnabled ? "enabled" : "disabled");
+    logInfo("📝  Logging %s", currentEnabled ? "enabled" : "disabled");
     lastEnabled = currentEnabled;
   }
 
   // Log when level changes
   if (currentLevel != lastLevel) {
-    logInfo("📝 Log level changed: %s -> %s", lastLevel.c_str(),
+    logInfo("📝  Log level changed: %s -> %s", lastLevel.c_str(),
             currentLevel.c_str());
     lastLevel = currentLevel;
   }

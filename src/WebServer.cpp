@@ -42,11 +42,12 @@ void ESPWiFi::startWebServer() {
   srvAll();
   webServer->begin();
   webServerStarted = true;
-  log(INFO, "🗄️  HTTP Web Server Started:");
+  log(INFO, "🗄️  HTTP Web Server Started");
   String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
                                        : WiFi.softAPIP().toString();
   log(DEBUG, "\tURL: http://%s", serverIP.c_str());
-  log(DEBUG, "\tURL: http://%s.local", config["deviceName"].as<String>().c_str());
+  log(DEBUG, "\tURL: http://%s.local",
+      config["deviceName"].as<String>().c_str());
 }
 
 void ESPWiFi::srvRoot() {

@@ -232,7 +232,7 @@ bool ESPWiFi::initCamera() {
     uint8_t ver = s->id.VER;
     uint16_t fullSensorId = ((uint16_t)ver << 8) | pid;
 
-    log(INFO, "📷 Camera initialized:");
+    log(INFO, "📷 Camera initialized");
     log(DEBUG, "\tType: %s", sensorType.c_str());
     log(DEBUG, "\tID: 0x%04X", fullSensorId);
     log(DEBUG, "\tPID: 0x%02X", pid);

@@ -30,10 +30,6 @@ void ESPWiFi::startWiFi() {
 }
 
 void ESPWiFi::startClient() {
-  // if (config["wifi"]["client"]["ssid"].isNull() ||
-  //     config["wifi"]["client"]["password"].isNull()) {
-  //   readConfig();
-  // }
 
   String ssid = config["wifi"]["client"]["ssid"];
   String password = config["wifi"]["client"]["password"];
@@ -72,10 +68,9 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  log(INFO, "🛜  WiFi Connected:");
+  log(INFO, "🛜  WiFi Connected");
   log(DEBUG, "\tHostname: %s", WiFi.getHostname());
   log(DEBUG, "\tIP Address: %s", WiFi.localIP().toString().c_str());
-  log(DEBUG, "\tMAC: %s", WiFi.macAddress().c_str());
   log(DEBUG, "\tSubnet: %s", WiFi.subnetMask().toString().c_str());
   log(DEBUG, "\tGateway: %s", WiFi.gatewayIP().toString().c_str());
   log(DEBUG, "\tDNS: %s", WiFi.dnsIP().toString().c_str());
@@ -104,16 +99,11 @@ int ESPWiFi::selectBestChannel() {
 }
 
 void ESPWiFi::startAP() {
-  // if (config["wifi"]["ap"]["ssid"].isNull() ||
-  //     config["wifi"]["ap"]["password"].isNull()) {
-  //   readConfig();
-  // }
-
   String hostname = String(WiFi.getHostname());
 
   String ssid = config["wifi"]["ap"]["ssid"].as<String>() + "-" + hostname;
   String password = config["wifi"]["ap"]["password"];
-  log(INFO, "📡 Starting Access Point:");
+  log(INFO, "📡 Starting Access Point");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
   log(DEBUG, "\tPassword: %s", password.c_str());
   int bestChannel = selectBestChannel();
@@ -132,9 +122,6 @@ void ESPWiFi::startAP() {
 }
 
 void ESPWiFi::startMDNS() {
-  // if (config["deviceName"].isNull()) {
-  //   readConfig();
-  // }
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "🏷️  mDNS Disabled");
     return;
@@ -145,7 +132,7 @@ void ESPWiFi::startMDNS() {
     log(ERROR, "Error setting up MDNS responder!");
   } else {
     MDNS.addService("http", "tcp", 80);
-    log(INFO, "🏷️  mDNS Started:");
+    log(INFO, "🏷️  mDNS Started");
     domain.toLowerCase();
     log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
   }

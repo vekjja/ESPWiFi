@@ -206,7 +206,7 @@ bool ESPWiFi::startBluetooth() {
   config["bluetooth"]["connected"] = false;
   config["bluetooth"]["connectionCount"] = 0;
 
-  log(INFO, "📱  Bluetooth Started:");
+  log(INFO, "📱  Bluetooth Started");
   log(DEBUG, "\tMode: BLE");
   log(DEBUG, "\tDevice Name: %s", bleDeviceName.c_str());
   log(DEBUG, "\tMAC: %s", macAddress.c_str());
@@ -549,7 +549,8 @@ void ESPWiFi::srvBluetooth() {
               break;
             }
           } else if (!deviceConnected || pTxCharacteristic == nullptr) {
-            log(WARNING, "⚠️  Bluetooth connection lost during file send at %d bytes",
+            log(WARNING,
+                "⚠️  Bluetooth connection lost during file send at %d bytes",
                 bytesSent);
             break;
           }

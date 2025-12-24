@@ -265,13 +265,13 @@ void ESPWiFi::openLogFile() {
 void ESPWiFi::srvLog() {
   initWebServer();
 
-  // CORS preflight
-  webServer->on("/log", HTTP_OPTIONS, [this](AsyncWebServerRequest *request) {
-    handleCorsPreflight(request);
-  });
-
   // GET /log - return log file content
-  webServer->on("/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
+  webServer->on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    if (request->method() == HTTP_OPTIONS) {
+      handleCorsPreflight(request);
+      return;
+    }
+
     if (!authorized(request)) {
       sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
       return;

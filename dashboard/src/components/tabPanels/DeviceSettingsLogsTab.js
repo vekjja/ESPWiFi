@@ -287,7 +287,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   // Handle view logs in new window
   const handleViewLogs = () => {
     const apiUrl = config?.apiURL || buildApiUrl("");
-    window.open(`${apiUrl}/log`, "_blank");
+    window.open(`${apiUrl}/logs`, "_blank");
   };
 
   // Initial fetch on mount

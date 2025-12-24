@@ -262,6 +262,27 @@ void ESPWiFi::openLogFile() {
   }
 }
 
+void ESPWiFi::logConfigHandler() {
+  static bool lastEnabled = true;
+  static String lastLevel = "info";
+
+  bool currentEnabled = config["log"]["enabled"].as<bool>();
+  String currentLevel = config["log"]["level"].as<String>();
+
+  // Log when enabled state changes
+  if (currentEnabled != lastEnabled) {
+    logInfo("📝  Logging %s", currentEnabled ? "enabled" : "disabled");
+    lastEnabled = currentEnabled;
+  }
+
+  // Log when level changes
+  if (currentLevel != lastLevel) {
+    logInfo("📝  Log level changed: %s -> %s", lastLevel.c_str(),
+            currentLevel.c_str());
+    lastLevel = currentLevel;
+  }
+}
+
 void ESPWiFi::srvLog() {
   initWebServer();
 
@@ -299,9 +320,16 @@ void ESPWiFi::srvLog() {
 
     String htmlContent =
         "<!DOCTYPE html><html><head><meta "
-        "charset=\"utf-8\"><style>body{margin:0;padding:10px;background:#"
+        "charset=\"utf-8\"><meta http-equiv=\"refresh\" "
+        "content=\"5\"><style>body{margin:0;padding:10px;background:#"
         "1e1e1e;color:#d4d4d4;font-family:monospace;font-size:12px;}pre{white-"
-        "space:pre;overflow-x:auto;margin:0;}</style></head><body><pre>";
+        "space:pre;overflow-x:auto;margin:0;}</"
+        "style><script>function "
+        "scrollToBottom(){window.scrollTo(0,document.body.scrollHeight||"
+        "document.documentElement.scrollHeight);}window.addEventListener('load'"
+        ",scrollToBottom);document.addEventListener('DOMContentLoaded',"
+        "function(){setTimeout(scrollToBottom,100);});setTimeout("
+        "scrollToBottom,200);</script></head><body><pre>";
 
     // Read file in chunks and append to HTML
     const size_t chunkSize = 1024;
@@ -330,25 +358,4 @@ void ESPWiFi::srvLog() {
     addCORS(response);
     request->send(response);
   });
-}
-
-void ESPWiFi::logConfigHandler() {
-  static bool lastEnabled = true;
-  static String lastLevel = "info";
-
-  bool currentEnabled = config["log"]["enabled"].as<bool>();
-  String currentLevel = config["log"]["level"].as<String>();
-
-  // Log when enabled state changes
-  if (currentEnabled != lastEnabled) {
-    logInfo("📝  Logging %s", currentEnabled ? "enabled" : "disabled");
-    lastEnabled = currentEnabled;
-  }
-
-  // Log when level changes
-  if (currentLevel != lastLevel) {
-    logInfo("📝  Log level changed: %s -> %s", lastLevel.c_str(),
-            currentLevel.c_str());
-    lastLevel = currentLevel;
-  }
 }

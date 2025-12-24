@@ -602,7 +602,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                       pointerEvents: "none",
                     }}
                   >
-                    Open in new tab
+                    Open Log File
                   </Typography>
                 </Box>
               </Tooltip>

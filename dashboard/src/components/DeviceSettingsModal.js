@@ -447,7 +447,7 @@ export default function DeviceSettingsModal({
           }}
         >
           <Tab label="Info" />
-          <Tab label="Network" />
+          <Tab label="WiFi" />
           <Tab label="Auth" />
           <Tab label="JSON" />
           <Tab label="Logs" />

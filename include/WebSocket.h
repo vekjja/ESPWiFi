@@ -25,7 +25,7 @@ public:
     socket = new AsyncWebSocket(path.c_str());
     if (!socket) {
       if (espWifi) {
-        espWifi->logError("Failed to create WebSocket");
+        espWifi->log(ERROR, "Failed to create WebSocket");
       }
       return;
     }
@@ -38,15 +38,17 @@ public:
         return; // Early return if no ESPWiFi instance or invalid client
 
       if (type == WS_EVT_CONNECT) {
-        espWifi->logInfo("🔌 WebSocket Client Connected: %s 🔗", socket->url());
-        espWifi->logDebug("\tID: %d", client->id());
-        espWifi->logDebug("\tPort: %d", client->remotePort());
-        espWifi->logDebug("\tIP: %s", client->remoteIP().toString().c_str());
+        espWifi->log(INFO, "🔌 WebSocket Client Connected: %s 🔗",
+                     socket->url());
+        espWifi->log(DEBUG, "\tID: %d", client->id());
+        espWifi->log(DEBUG, "\tPort: %d", client->remotePort());
+        espWifi->log(DEBUG, "\tIP: %s", client->remoteIP().toString().c_str());
       } else if (type == WS_EVT_DISCONNECT) {
-        espWifi->logInfo("🔌 WebSocket Client Disconnected: %s ⛓️‍💥",
-                         socket->url());
-        espWifi->logDebug("\tID: %d", client->id());
-        espWifi->logDebug("\tDisconnect Time: %lu ms", millis());
+        espWifi->log(INFO,
+                     "🔌 WebSocket Client Disconnected: %s ⛓️‍💥",
+                     socket->url());
+        espWifi->log(DEBUG, "\tID: %d", client->id());
+        espWifi->log(DEBUG, "\tDisconnect Time: %lu ms", millis());
       }
 
       if (onWsEvent)
@@ -56,7 +58,7 @@ public:
     if (espWifi) {
       espWifi->initWebServer();
       espWifi->webServer->addHandler(socket);
-      espWifi->logInfo("🔌  WebSocket Started: %s", path.c_str());
+      espWifi->log(INFO, "🔌 WebSocket Started: %s", path.c_str());
     }
   }
 
@@ -78,7 +80,7 @@ public:
         socket->binaryAll((const uint8_t *)data, len);
       } catch (...) {
         if (espWifi) {
-          espWifi->logError("WebSocket binaryAll failed");
+          espWifi->log(ERROR, "WebSocket binaryAll failed");
         }
       }
     }

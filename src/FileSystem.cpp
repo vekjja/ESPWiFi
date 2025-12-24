@@ -11,13 +11,13 @@ void ESPWiFi::initLittleFS() {
     return;
   }
   if (!LittleFS.begin()) {
-    logError("  Failed to mount LittleFS");
+    log(ERROR, "💾 Failed to mount LittleFS");
     return;
   }
 
   lfs = &LittleFS;
   littleFsInitialized = true;
-  logInfo("💾 LittleFS Initialized");
+  log(INFO, "💾 LittleFS Initialized");
 }
 
 void ESPWiFi::initSDCard() {
@@ -29,7 +29,7 @@ void ESPWiFi::initSDCard() {
 
   if (!SD_MMC.begin()) {
     config["sd"]["enabled"] = false;
-    logWarn("⚠️  Failed to mount SD card");
+    log(WARNING, "💾 Failed to mount SD card");
     return;
   }
   sd = &SD_MMC;
@@ -44,7 +44,7 @@ void ESPWiFi::initSDCard() {
 
   if (!SD.begin(sdCardPin)) {
     config["sd"]["enabled"] = false;
-    logWarn("⚠️  Failed to mount SD card");
+    log(WARNING, "💾 Failed to mount SD card");
     return;
   }
   sd = &SD;
@@ -53,7 +53,7 @@ void ESPWiFi::initSDCard() {
 #endif // ESP32-S2, ESP32-S3, ESP32-C3
 
   sdCardInitialized = true;
-  logInfo("💾 SD Card Initialized");
+  log(INFO, "💾 SD Card Initialized");
 }
 
 String ESPWiFi::sanitizeFilename(const String &filename) {
@@ -118,7 +118,7 @@ bool ESPWiFi::isRestrictedSystemFile(const String &fsParam,
 
 bool ESPWiFi::fileExists(FS *fs, const String &filePath) {
   if (!fs) {
-    logError("File system is null");
+    log(ERROR, "File system is null");
     return false;
   }
 
@@ -132,7 +132,7 @@ bool ESPWiFi::fileExists(FS *fs, const String &filePath) {
 
 bool ESPWiFi::dirExists(FS *fs, const String &dirPath) {
   if (!fs) {
-    logError("File system is null");
+    log(ERROR, "File system is null");
     return false;
   }
 
@@ -147,24 +147,24 @@ bool ESPWiFi::dirExists(FS *fs, const String &dirPath) {
 
 bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
   if (!fs) {
-    logError("File system is null");
+    log(ERROR, "File system is null");
     return false;
   }
 
   if (dirExists(fs, dirPath)) {
-    logInfo("📁 Directory already exists: %s", dirPath.c_str());
+    log(INFO, "📁 Directory already exists: %s", dirPath.c_str());
     return true;
   }
 
   if (fs->mkdir(dirPath)) {
-    logInfo("📁 Created directory: %s", dirPath.c_str());
+    log(INFO, "📁 Created directory: %s", dirPath.c_str());
     return true;
   } else {
-    logError("Failed to create directory: " + dirPath);
+    log(ERROR, "Failed to create directory: %s", dirPath.c_str());
 
     // Check if directory was actually created despite the error
     if (dirExists(fs, dirPath)) {
-      logInfo("📁 Directory exists after failed mkdir: %s", dirPath.c_str());
+      log(INFO, "📁 Directory exists after failed mkdir: %s", dirPath.c_str());
       return true;
     }
 
@@ -174,12 +174,12 @@ bool ESPWiFi::mkDir(FS *fs, const String &dirPath) {
 
 bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
   if (!fs) {
-    logError("File system is null");
+    log(ERROR, "File system is null");
     return false;
   }
 
   if (!dirExists(fs, dirPath)) {
-    logInfo("📁 Directory does not exist: %s", dirPath.c_str());
+    log(INFO, "📁 Directory does not exist: %s", dirPath.c_str());
     return true; // Directory doesn't exist, consider it "deleted"
   }
 
@@ -202,7 +202,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
 
     File dir = fs->open(currentDir);
     if (!dir || !dir.isDirectory()) {
-      logError("Failed to open directory: " + currentDir);
+      log(ERROR, "Failed to open directory: %s", currentDir.c_str());
       continue;
     }
 
@@ -218,7 +218,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
           dirsToProcess[dirQueueTail] = filePath;
           dirQueueTail = (dirQueueTail + 1) % 20;
         } else {
-          logError("Directory queue full, skipping: " + filePath);
+          log(ERROR, "Directory queue full, skipping: %s", filePath.c_str());
         }
       } else {
         // Delete file
@@ -226,7 +226,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
           filesInThisDir++;
           totalFilesDeleted++;
         } else {
-          logError("Failed to delete file: " + filePath);
+          log(ERROR, "Failed to delete file: %s", filePath.c_str());
         }
       }
 
@@ -245,7 +245,7 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
 
     // Log progress every 100 files
     if (totalFilesDeleted % 100 == 0 && totalFilesDeleted > 0) {
-      logInfo("🗑️ Deleted %d files so far...", totalFilesDeleted);
+      log(INFO, "🗑️ Deleted %d files so far...", totalFilesDeleted);
     }
 
     // Yield after each directory to prevent blocking
@@ -262,11 +262,11 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const String &dirPath) {
   }
 
   if ((millis() - startTime) >= MAX_DELETE_TIME) {
-    logError("Directory deletion timed out");
+    log(ERROR, "Directory deletion timed out");
     return false;
   }
 
-  logInfo("🗑️ Deleted %d files from %s", totalFilesDeleted, dirPath.c_str());
+  log(INFO, "🗑️ Deleted %d files from %s", totalFilesDeleted, dirPath.c_str());
   return true;
 }
 
@@ -285,13 +285,11 @@ void ESPWiFi::srvFiles() {
     String path = request->url();
     bool isApiEndpoint =
         path.startsWith("/api/") && !path.startsWith("/api/auth/");
-    bool isStaticFile = path.endsWith(".html") || path.endsWith(".js") ||
-                        path.endsWith(".css") || path.endsWith(".json") ||
-                        path.endsWith(".ico") || path.endsWith(".png") ||
-                        path.endsWith(".jpg") || path.endsWith(".svg") ||
-                        path.startsWith("/static/");
 
-    if (isApiEndpoint && !authorized(request)) {
+    bool isRestrictedFile =
+        path.endsWith("log") || path.endsWith("config.json");
+
+    if ((isApiEndpoint || isRestrictedFile) && !authorized(request)) {
       sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
       return;
     }
@@ -593,8 +591,8 @@ void ESPWiFi::srvFiles() {
         String newPath = dirPath + "/" + newName;
 
         if (filesystem->rename(oldPath, newPath)) {
-          logInfo("📁 Renamed file: %s -> %s", oldPath.c_str(),
-                  newName.c_str());
+          log(INFO, "📁 Renamed file: %s -> %s", oldPath.c_str(),
+              newName.c_str());
           sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
           sendJsonResponse(request, 500,
@@ -698,11 +696,11 @@ void ESPWiFi::srvFiles() {
           // Determine filesystem name for logging
           String fsName = (fsParam == "sd") ? "SD Card" : "LittleFS";
           if (isDirectory) {
-            logInfo("🗑️  Deleted directory on %s: %s", fsName.c_str(),
-                    filePath.c_str());
+            log(INFO, "🗑️  Deleted directory on %s: %s", fsName.c_str(),
+                filePath.c_str());
           } else {
-            logInfo("🗑️  Deleted file on %s: %s", fsName.c_str(),
-                    filePath.c_str());
+            log(INFO, "🗑️  Deleted file on %s: %s", fsName.c_str(),
+                filePath.c_str());
           }
           sendJsonResponse(request, 200, "{\"success\":true}");
         } else {
@@ -752,7 +750,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
 
     // Validate parameters
     if (currentFs.length() == 0 || currentPath.length() == 0) {
-      logError("Missing fs or path parameters for file upload");
+      log(ERROR, "Missing fs or path parameters for file upload");
       sendJsonResponse(request, 400, "{\"error\":\"Missing parameters\"}");
       return;
     }
@@ -794,7 +792,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
             uniqueSuffix;
       }
 
-      logInfo("📁 Filename truncated: %s", sanitizedFilename.c_str());
+      log(INFO, "📁 Filename truncated: %s", sanitizedFilename.c_str());
     }
 
     String filePath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
@@ -812,7 +810,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
       currentFs = "sd";
     } else {
       // No fallback - send error if SD card not available
-      logError("SD card not available for file upload");
+      log(ERROR, "SD card not available for file upload");
       sendJsonResponse(request, 500, "{\"error\":\"SD card not available\"}");
       return;
     }
@@ -823,14 +821,14 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
       getStorageInfo(currentFs, totalBytes, usedBytes, freeBytes);
       currentFile = filesystem->open(filePath, "w");
       if (!currentFile) {
-        logError("Failed to create file for upload");
-        logInfo("📁 File path: %s", filePath.c_str());
-        logInfo("📁 Filesystem: %s", currentFs.c_str());
+        log(ERROR, "Failed to create file for upload");
+        log(INFO, "📁 File path: %s", filePath.c_str());
+        log(INFO, "📁 Filesystem: %s", currentFs.c_str());
         sendJsonResponse(request, 500, "{\"error\":\"Failed to create file\"}");
         return;
       }
     } else {
-      logError("File system not available");
+      log(ERROR, "File system not available");
       sendJsonResponse(request, 404,
                        "{\"error\":\"File system not available\"}");
       return;
@@ -843,7 +841,7 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
   if (currentFile && len > 0) {
     size_t bytesWritten = currentFile.write(data, len);
     if (bytesWritten != len) {
-      logError("Failed to write all data to file");
+      log(ERROR, "Failed to write all data to file");
       currentFile.close();
       sendJsonResponse(request, 500, "{\"error\":\"File write failed\"}");
       return;
@@ -862,8 +860,8 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
       currentFile.close();
       String fullPath = currentPath + (currentPath.endsWith("/") ? "" : "/") +
                         sanitizedFilename;
-      logInfo("📁 Uploaded: %s (%s)", fullPath.c_str(),
-              bytesToHumanReadable(currentSize).c_str());
+      log(INFO, "📁 Uploaded: %s (%s)", fullPath.c_str(),
+          bytesToHumanReadable(currentSize).c_str());
     }
 
     // Reset static variables for next upload
@@ -878,21 +876,22 @@ void ESPWiFi::handleFileUpload(AsyncWebServerRequest *request, String filename,
 
 void ESPWiFi::logFilesystemInfo(const String &fsName, size_t totalBytes,
                                 size_t usedBytes) {
-  logDebug("\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
-  logDebug("\tFree: %s", bytesToHumanReadable(totalBytes - usedBytes).c_str());
-  logDebug("\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
+  log(DEBUG, "\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
+  log(DEBUG, "\tFree: %s",
+      bytesToHumanReadable(totalBytes - usedBytes).c_str());
+  log(DEBUG, "\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
 }
 
 void ESPWiFi::printFilesystemInfo() {
   if (lfs) {
-    logInfo("📁 LittleFS Available:");
+    log(INFO, "📁 LittleFS Available:");
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("LittleFS", totalBytes, usedBytes);
   }
 
   if (sdCardInitialized && sd) {
-    logInfo("💾 SD Card Available:");
+    log(INFO, "💾 SD Card Available:");
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("SD Card", totalBytes, usedBytes);
@@ -902,7 +901,7 @@ void ESPWiFi::printFilesystemInfo() {
 bool ESPWiFi::writeFile(FS *filesystem, const String &filePath,
                         const uint8_t *data, size_t len) {
   if (!filesystem) {
-    logError("File system is null");
+    log(ERROR, "File system is null");
     return false;
   }
 
@@ -917,17 +916,17 @@ bool ESPWiFi::writeFile(FS *filesystem, const String &filePath,
   // Check if we have enough free space (add 10% buffer for safety)
   size_t requiredSpace = len + (len / 10);
   if (freeBytes < requiredSpace) {
-    logError("💔 Insufficient storage space");
-    logError("Required: %s, Available: %s",
-             bytesToHumanReadable(requiredSpace).c_str(),
-             bytesToHumanReadable(freeBytes).c_str());
+    log(ERROR, "💔 Insufficient storage space");
+    log(ERROR, "Required: %s, Available: %s",
+        bytesToHumanReadable(requiredSpace).c_str(),
+        bytesToHumanReadable(freeBytes).c_str());
     return false;
   }
 
   // Open file for writing
   File file = filesystem->open(filePath, "w");
   if (!file) {
-    logError("Failed to open file for writing: " + filePath);
+    log(ERROR, "Failed to open file for writing: %s", filePath.c_str());
     return false;
   }
 
@@ -936,14 +935,14 @@ bool ESPWiFi::writeFile(FS *filesystem, const String &filePath,
   file.close();
 
   if (written != len) {
-    logError("Failed to write all data to file");
+    log(ERROR, "Failed to write all data to file");
     return false;
   }
 
   // Determine filesystem name for logging
   String fsName = (filesystem == sd) ? "SD Card" : "LittleFS";
-  logInfo("📁 File Written to %s: %s (%s)", fsName.c_str(), filePath.c_str(),
-          bytesToHumanReadable(written).c_str());
+  log(INFO, "📁 File Written to %s: %s (%s)", fsName.c_str(), filePath.c_str(),
+      bytesToHumanReadable(written).c_str());
   return true;
 }
 

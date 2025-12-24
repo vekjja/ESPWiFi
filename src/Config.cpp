@@ -14,14 +14,14 @@ void ESPWiFi::readConfig() {
   File file = LittleFS.open(configFile, "r");
 
   if (!file) {
-    logWarn("⚠️  Failed to open config file\nUsing default config");
+    log(WARNING, "⚠️  Failed to open config file\nUsing default config");
     config = defaultConfig();
   } else {
     JsonDocument loadedConfig;
     DeserializationError error = deserializeJson(loadedConfig, file);
     if (error) {
-      logWarn("⚠️  Failed to read config file: " + String(error.c_str()) +
-              "\nUsing default config");
+      log(WARNING, "⚠️  Failed to read config file: %s\nUsing default config",
+          error.c_str());
       config = defaultConfig();
     } else {
       mergeConfig(loadedConfig);
@@ -42,8 +42,8 @@ void ESPWiFi::readConfig() {
 
   config["hostname"] = String(WiFi.getHostname());
 
-  logInfo("⚙️  Config Loaded:");
-  logDebug("\tFile: %s", configFile.c_str());
+  log(INFO, "⚙️  Config Loaded:");
+  log(DEBUG, "\tFile: %s", configFile.c_str());
 
   printConfig();
   file.close();
@@ -55,17 +55,17 @@ void ESPWiFi::saveConfig() {
   initLittleFS();
   File file = LittleFS.open(configFile, "w");
   if (!file) {
-    logError(" Failed to open config file for writing");
+    log(ERROR, " Failed to open config file for writing");
     return;
   }
   size_t written = serializeJson(config, file);
   file.close();
   if (written == 0) {
-    logError(" Failed to write config JSON to file");
+    log(ERROR, " Failed to write config JSON to file");
     return;
   }
   if (config["log"]["enabled"].as<bool>()) {
-    logInfo("💾 Config Saved: " + configFile);
+    log(INFO, "💾 Config Saved: %s", configFile.c_str());
     printConfig();
   }
 }
@@ -73,7 +73,7 @@ void ESPWiFi::saveConfig() {
 void ESPWiFi::printConfig() {
   String prettyConfig;
   serializeJsonPretty(config, prettyConfig);
-  logDebug(prettyConfig);
+  log(DEBUG, "\n" + prettyConfig);
 }
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {
@@ -190,7 +190,7 @@ void ESPWiFi::srvConfig() {
               400, "application/json", "{\"error\":\"EmptyInput\"}");
           addCORS(response);
           request->send(response);
-          logError("/config Error parsing JSON: EmptyInput");
+          log(ERROR, "/config Error parsing JSON: EmptyInput");
           return;
         }
 

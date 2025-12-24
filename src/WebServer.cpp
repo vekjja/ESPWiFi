@@ -35,18 +35,18 @@ void ESPWiFi::initWebServer() {
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted || !config["wifi"]["enabled"].as<bool>()) {
-    logInfo("🗄️  HTTP Web Server Disabled");
+    log(INFO, "🗄️  HTTP Web Server Disabled");
     return;
   }
   initWebServer();
   srvAll();
   webServer->begin();
   webServerStarted = true;
-  logInfo("🗄️  HTTP Web Server Started:");
+  log(INFO, "🗄️  HTTP Web Server Started:");
   String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
                                        : WiFi.softAPIP().toString();
-  logDebug("\tURL: http://%s", serverIP.c_str());
-  logDebug("\tURL: http://%s.local", config["deviceName"].as<String>().c_str());
+  log(DEBUG, "\tURL: http://%s", serverIP.c_str());
+  log(DEBUG, "\tURL: http://%s.local", config["deviceName"].as<String>().c_str());
 }
 
 void ESPWiFi::srvRoot() {
@@ -145,148 +145,6 @@ void ESPWiFi::srvInfo() {
     addCORS(response);
     request->send(response);
   });
-}
-
-bool ESPWiFi::authEnabled() { return config["auth"]["enabled"].as<bool>(); }
-
-String ESPWiFi::generateToken() {
-  // Generate a simple token from MAC address + timestamp
-  // In production, you might want a more secure token generation
-  String mac = WiFi.macAddress();
-  mac.replace(":", "");
-  unsigned long now = millis();
-  return mac + String(now, HEX);
-}
-
-bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
-  // Get request information for logging
-  String method = request->methodToString();
-  String url = request->url();
-  String clientIP =
-      request->client() ? request->client()->remoteIP().toString() : "unknown";
-  String userAgent = request->hasHeader("User-Agent")
-                         ? request->getHeader("User-Agent")->value()
-                         : "-";
-
-  if (!authEnabled()) {
-    logDebug("[ACCESS] 🌐 %s %s - %s \"%s\" \"%s\" - Auth disabled",
-             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-             "200 OK");
-    // Log access even when auth is disabled
-    return true; // Auth disabled, allow all
-  }
-
-  // Check for Authorization header
-  if (!request->hasHeader("Authorization")) {
-    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (no auth "
-             "header)",
-             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-             "401 Unauthorized");
-    return false;
-  }
-
-  const AsyncWebHeader *authHeader = request->getHeader("Authorization");
-  String authValue = authHeader->value();
-
-  // Check if it's a Bearer token
-  if (!authValue.startsWith("Bearer ")) {
-    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
-             "auth format)",
-             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-             "401 Unauthorized");
-    return false;
-  }
-
-  // Extract token
-  String token = authValue.substring(7); // Remove "Bearer "
-  String expectedToken = config["auth"]["token"].as<String>();
-
-  // Compare tokens
-  bool isAuthorized = token == expectedToken && expectedToken.length() > 0;
-
-  if (isAuthorized) {
-    logDebug("✅ [ACCESS] %s %s - %s \"%s\" \"%s\" - 200 Authorized",
-             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-             "200 OK");
-  } else {
-    logDebug("🔒 [ACCESS] %s %s - %s \"%s\" \"%s\" - 401 Unauthorized (invalid "
-             "token)",
-             clientIP.c_str(), method.c_str(), url.c_str(), userAgent.c_str(),
-             "401 Unauthorized");
-  }
-
-  return isAuthorized;
-}
-
-void ESPWiFi::srvAuth() {
-  initWebServer();
-
-  // Login endpoint - no auth required
-  webServer->on(
-      "/api/auth/login", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-
-  webServer->addHandler(new AsyncCallbackJsonWebHandler(
-      "/api/auth/login",
-      [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        JsonObject reqJson = json.as<JsonObject>();
-        String username = reqJson["username"] | "";
-        String password = reqJson["password"] | "";
-
-        // Check if auth is enabled
-        if (!authEnabled()) {
-          sendJsonResponse(request, 200,
-                           "{\"token\":\"\",\"message\":\"Auth disabled\"}");
-          return;
-        }
-
-        // Verify username
-        String expectedUsername = config["auth"]["username"].as<String>();
-        if (username != expectedUsername) {
-          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
-          return;
-        }
-
-        // Verify password - check if password matches OR expectedPassword
-        // is empty
-        String expectedPassword = config["auth"]["password"].as<String>();
-        if (password != expectedPassword && expectedPassword.length() > 0) {
-          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
-          return;
-        }
-
-        // Generate or get existing token
-        String token = config["auth"]["token"].as<String>();
-        if (token.length() == 0) {
-          token = generateToken();
-          config["auth"]["token"] = token;
-          saveConfig();
-        }
-
-        String response = "{\"token\":\"" + token + "\"}";
-        sendJsonResponse(request, 200, response);
-      }));
-
-  // Logout endpoint - invalidates token
-  webServer->on(
-      "/api/auth/logout", HTTP_POST, [this](AsyncWebServerRequest *request) {
-        if (request->method() == HTTP_OPTIONS) {
-          handleCorsPreflight(request);
-          return;
-        }
-
-        if (!authorized(request)) {
-          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-          return;
-        }
-
-        // Invalidate token by generating a new one
-        String newToken = generateToken();
-        config["auth"]["token"] = newToken;
-        saveConfig();
-
-        sendJsonResponse(request, 200, "{\"message\":\"Logged out\"}");
-      });
 }
 
 void ESPWiFi::srvAll() {

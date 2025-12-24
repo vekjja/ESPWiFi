@@ -16,7 +16,7 @@ void ESPWiFi::startSerial(int baudRate) {
   serialStarted = true;
   delay(1500); // wait for serial to start
   Serial.println(timestamp() + "📺  Serial Started:");
-  Serial.printf("%s\tBaud: %d", timestamp().c_str(), baudRate);
+  Serial.printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
 void ESPWiFi::startLogging(String filePath) {
@@ -37,11 +37,11 @@ void ESPWiFi::startLogging(String filePath) {
   openLogFile();
   cleanLogFile();
 
-  log("\n\n%s🌌 FirmaMint %s", timestamp().c_str(), version.c_str());
+  log(INFO, "\n\n%s🌌 FirmaMint %s", timestamp().c_str(), version.c_str());
 
   if (Serial) {
-    logInfo("📺 Serial Output Enabled");
-    logDebug("\tBaud: %d", baudRate);
+    log(INFO, "📺 Serial Output Enabled");
+    log(DEBUG, "\tBaud: %d", baudRate);
   }
 
   printFilesystemInfo();
@@ -61,10 +61,10 @@ void ESPWiFi::cleanLogFile() {
       }
 
       if (deleted) {
-        logInfo("🗑️  Log file " + logFilePath + " refreshed on " +
-                (sdCardInitialized ? "SD Card" : "Internal Storage"));
+        log(INFO, "🗑️  Log file %s refreshed on %s", logFilePath.c_str(),
+            (sdCardInitialized ? "SD Card" : "Internal Storage"));
       } else {
-        logError("💔 Failed to delete log file");
+        log(ERROR, "💔 Failed to delete log file");
       }
       openLogFile();
     }
@@ -83,33 +83,39 @@ void ESPWiFi::writeLog(String message) {
   }
 }
 
-bool ESPWiFi::shouldLog(String level) {
-  // Check if logging is enabled
+bool ESPWiFi::shouldLog(LogLevel level) {
+  // Treat logging as enabled by default when config isn't loaded yet.
+  if (config["log"]["enabled"].isNull()) {
+    return true;
+  }
+
   if (!config["log"]["enabled"].as<bool>()) {
     return false;
   }
 
-  String configuredLevel = config["log"]["level"].as<String>();
-
-  // Convert to lowercase for case-insensitive comparison
+  String configuredLevel = config["log"]["level"].isNull()
+                               ? "info"
+                               : config["log"]["level"].as<String>();
   configuredLevel.toLowerCase();
-  level.toLowerCase();
 
-  // Hierarchy: debug > info > warning > error
-  // debug: shows debug, info, warn, error
-  // info: shows info, warn, error
-  // warning: shows warn, error
-  // error: shows error only
+  // Hierarchy: access > debug > info > warn > error
+  // access: shows access, debug, info, warning and error
+  // debug: shows debug, info, warning and error
+  // info: shows info, warning and error
+  // warning: shows warning and error
+  // error: shows only error
 
-  if (configuredLevel == "debug") {
+  if (configuredLevel == "access") {
     return true; // Show all levels
+  } else if (configuredLevel == "debug") {
+    return (level == DEBUG || level == INFO || level == WARNING ||
+            level == ERROR);
   } else if (configuredLevel == "info") {
-    return (level == "info" || level == "warning" || level == "warn" ||
-            level == "error");
+    return (level == INFO || level == WARNING || level == ERROR);
   } else if (configuredLevel == "warning" || configuredLevel == "warn") {
-    return (level == "warning" || level == "warn" || level == "error");
+    return (level == WARNING || level == ERROR);
   } else if (configuredLevel == "error") {
-    return (level == "error");
+    return (level == ERROR);
   }
 
   // Default: if level is not recognized, allow it (backward compatibility)
@@ -122,7 +128,27 @@ String ESPWiFi::formatLog(const char *format, va_list args) {
   return String(buffer);
 }
 
-void ESPWiFi::log(const char *format, ...) {
+String logLevelToString(LogLevel level) {
+  switch (level) {
+  case ACCESS:
+    return "🌐[ACCESS]";
+  case DEBUG:
+    return "🔍[DEBUG]";
+  case INFO:
+    return "ℹ️ [INFO]";
+  case WARNING:
+    return "⚠️[WARNING]⚠️";
+  case ERROR:
+    return "💔[ERROR]💔";
+  default:
+    return "📝 [LOG]";
+  }
+}
+
+void ESPWiFi::log(LogLevel level, const char *format, ...) {
+  if (!shouldLog(level)) {
+    return;
+  }
   if (!serialStarted) {
     startSerial();
   }
@@ -134,81 +160,10 @@ void ESPWiFi::log(const char *format, ...) {
   String output = formatLog(format, args);
   va_end(args);
   String ts = timestamp();
-  Serial.println(ts + output);
+  String levelStr = logLevelToString(level);
+  Serial.println(ts + levelStr + " " + output);
   Serial.flush(); // Ensure immediate output
-  writeLog(ts + output + "\n");
-}
-
-void ESPWiFi::logDebug(String message) {
-  if (!shouldLog("debug")) {
-    return;
-  }
-  log("🔍 [DEBUG] %s", message.c_str());
-}
-
-void ESPWiFi::logDebug(const char *format, ...) {
-  if (!shouldLog("debug")) {
-    return;
-  }
-  va_list args;
-  va_start(args, format);
-  String message = formatLog(format, args);
-  va_end(args);
-  log("🔍 [DEBUG]%s", message.c_str());
-}
-
-void ESPWiFi::logInfo(String message) {
-  if (!shouldLog("info")) {
-    return;
-  }
-  log("ℹ️  [INFO] " + message);
-}
-
-void ESPWiFi::logInfo(const char *format, ...) {
-  if (!shouldLog("info")) {
-    return;
-  }
-  va_list args;
-  va_start(args, format);
-  String message = formatLog(format, args);
-  va_end(args);
-  log("ℹ️  [INFO] %s", message.c_str());
-}
-
-void ESPWiFi::logWarn(String message) {
-  if (!shouldLog("warning")) {
-    return;
-  }
-  log("⚠️ [WARNING] " + message);
-}
-
-void ESPWiFi::logWarn(const char *format, ...) {
-  if (!shouldLog("warning")) {
-    return;
-  }
-  va_list args;
-  va_start(args, format);
-  String message = formatLog(format, args);
-  va_end(args);
-  log("⚠️ [WARNING] %s", message.c_str());
-}
-
-void ESPWiFi::logError(String message) {
-  if (!shouldLog("error")) {
-    return;
-  }
-  log("💔 [ERROR] " + message);
-}
-
-void ESPWiFi::logError(const char *format, ...) {
-  if (!shouldLog("error")) {
-    return;
-  }
-  va_list args;
-  va_start(args, format);
-  String message = formatLog(format, args);
-  va_end(args);
-  log("💔 [ERROR] %s", message.c_str());
+  writeLog(ts + levelStr + " " + output + "\n");
 }
 
 String ESPWiFi::timestamp() {
@@ -253,12 +208,12 @@ void ESPWiFi::openLogFile() {
   } else if (lfs) {
     logFile = lfs->open(logFilePath, "a");
   } else {
-    logError("No file system available for logging");
+    log(ERROR, "No file system available for logging");
     return;
   }
 
   if (!logFile) {
-    logError("Failed to open log file");
+    log(ERROR, "Failed to open log file");
   }
 }
 
@@ -271,14 +226,14 @@ void ESPWiFi::logConfigHandler() {
 
   // Log when enabled state changes
   if (currentEnabled != lastEnabled) {
-    logInfo("📝  Logging %s", currentEnabled ? "enabled" : "disabled");
+    log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
     lastEnabled = currentEnabled;
   }
 
   // Log when level changes
   if (currentLevel != lastLevel) {
-    logInfo("📝  Log level changed: %s -> %s", lastLevel.c_str(),
-            currentLevel.c_str());
+    log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
+        currentLevel.c_str());
     lastLevel = currentLevel;
   }
 }

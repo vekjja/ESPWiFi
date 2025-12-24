@@ -21,6 +21,9 @@
 // Forward declaration
 class WebSocket;
 
+// Log levels
+enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
+
 class ESPWiFi {
 private:
   String version = "v0.1.0";
@@ -35,6 +38,7 @@ public:
   // Device
   void start();
   void runSystem();
+  void startDevice();
 
   // File System
   FS *lfs = nullptr; // LittleFS handle
@@ -76,22 +80,16 @@ public:
   String timestamp();
   String timestampForFilename();
   void writeLog(String message);
-  bool shouldLog(String level);
+  bool shouldLog(LogLevel level);
   String formatLog(const char *format, va_list args);
-  void logDebug(String message);
-  void logDebug(const char *format, ...);
-  void logInfo(String message);
-  void logInfo(const char *format, ...);
-  void logWarn(String message);
-  void logWarn(const char *format, ...);
-  void logError(String message);
-  void logError(const char *format, ...);
-  void logError(IPAddress ip) { logError(ip.toString()); }
-  template <typename T> void logError(T value) { logError(String(value)); };
-  // void log(String message);
-  void log(const char *format, ...);
-  void log(IPAddress ip) { log("%s", ip.toString().c_str()); }
-  template <typename T> void log(T value) { log("%s", String(value).c_str()); };
+  void log(LogLevel level, const char *format, ...);
+  void log(LogLevel level, String message) {
+    log(level, "%s", message.c_str());
+  }
+  void log(IPAddress ip) { log(INFO, "%s", ip.toString().c_str()); }
+  template <typename T> void log(T value) {
+    log(INFO, "%s", String(value).c_str());
+  };
   void logConfigHandler();
 
   // Config

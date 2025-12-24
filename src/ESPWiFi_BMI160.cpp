@@ -34,15 +34,15 @@ bool ESPWiFi::startBMI160(uint8_t address) {
     int8_t rslt = bmi160.I2cInit(address);
 
     if (rslt == BMI160_OK) {
-      log("🎛️  BMI160 Started");
+      log(INFO, "🎛️  BMI160 Started");
       return true;
     } else {
-      logError("BMI160 Failed to Start!");
+      log(ERROR, "BMI160 Failed to Start!");
       return false;
     }
   } else {
-    logError("BMI160 sensor not detected at the specified I2C address: 0x" +
-             String(address, HEX));
+    log(ERROR, "BMI160 sensor not detected at the specified I2C address: 0x%s",
+        String(address, HEX).c_str());
     return false;
   }
 }

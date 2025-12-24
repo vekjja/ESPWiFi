@@ -73,7 +73,7 @@ void ESPWiFi::srvGPIO() {
         if (mode == "pwm") {
           logMsg += " " + String(duty);
         }
-        logInfo(logMsg);
+        log(INFO, "%s", logMsg.c_str());
       }));
 }
 

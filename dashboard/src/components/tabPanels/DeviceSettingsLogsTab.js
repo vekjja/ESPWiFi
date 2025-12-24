@@ -236,10 +236,10 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const updateLogSettings = async (enabled, level) => {
     try {
       // Validate log level
-      const validLevels = ["debug", "info", "warning", "error"];
+      const validLevels = ["access", "debug", "info", "warning", "error"];
       if (level && !validLevels.includes(level)) {
         throw new Error(
-          "Invalid log level. Must be: debug, info, warning, or error"
+          "Invalid log level. Must be: access, debug, info, warning, or error"
         );
       }
 
@@ -547,6 +547,12 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                 open={Boolean(logLevelMenuAnchor)}
                 onClose={handleLogLevelMenuClose}
               >
+                <MenuItem
+                  onClick={() => handleLogLevelChange("access")}
+                  selected={logLevel === "access"}
+                >
+                  Access
+                </MenuItem>
                 <MenuItem
                   onClick={() => handleLogLevelChange("debug")}
                   selected={logLevel === "debug"}

@@ -28,13 +28,13 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
       clientIP + " " + method + " - " + url + " \"" + userAgent + "\" ";
 
   if (!authEnabled()) {
-    log(ACCESS, "[ACCESS] 🌐 %s - Auth disabled", clientInfo.c_str());
+    log(ACCESS, "🔓 Auth disabled - %s", clientInfo.c_str());
     return true; // Auth disabled, allow all
   }
 
   // Check for Authorization header
   if (!request->hasHeader("Authorization")) {
-    log(ACCESS, "[ACCESS] 🔒 %s - 401 Unauthorized (no auth header)",
+    log(ACCESS, "🔒 401 Unauthorized (no auth header) - %s",
         clientInfo.c_str());
     return false;
   }
@@ -44,7 +44,7 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
 
   // Check if it's a Bearer token
   if (!authValue.startsWith("Bearer ")) {
-    log(ACCESS, "[ACCESS] 🔒 %s - 401 Unauthorized (invalid auth format)",
+    log(ACCESS, "🔒 401 Unauthorized (invalid auth format) - %s",
         clientInfo.c_str());
     return false;
   }
@@ -57,10 +57,9 @@ bool ESPWiFi::authorized(AsyncWebServerRequest *request) {
   bool isAuthorized = token == expectedToken && expectedToken.length() > 0;
 
   if (isAuthorized) {
-    log(ACCESS, "[ACCESS] 🌐 %s - 200 Authorized", clientInfo.c_str());
+    log(ACCESS, "🔐 200 Authorized - %s", clientInfo.c_str());
   } else {
-    log(ACCESS, "[ACCESS] 🔒 %s - 401 Unauthorized (invalid token)",
-        clientInfo.c_str());
+    log(ACCESS, "🔒 401 Unauthorized (invalid token) - %s", clientInfo.c_str());
   }
 
   return isAuthorized;

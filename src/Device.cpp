@@ -4,10 +4,11 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
+  config = defaultConfig();
   startSerial();
   startLogging();
-  setMaxPower();
   readConfig();
+  setMaxPower();
   startWiFi();
   startMDNS();
   startWebServer();

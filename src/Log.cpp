@@ -37,7 +37,7 @@ void ESPWiFi::startLogging(String filePath) {
   openLogFile();
   cleanLogFile();
 
-  log(INFO, "\n\n%s🌌 FirmaMint %s", timestamp().c_str(), version.c_str());
+  writeLog("\n\n\t\t\t🌌 FirmaMint " + version + "\n\n");
 
   if (Serial) {
     log(INFO, "📺 Serial Output Enabled");
@@ -60,11 +60,8 @@ void ESPWiFi::cleanLogFile() {
         deleted = lfs->remove(logFilePath);
       }
 
-      if (deleted) {
-        log(INFO, "🗑️  Log file %s refreshed on %s", logFilePath.c_str(),
-            (sdCardInitialized ? "SD Card" : "Internal Storage"));
-      } else {
-        log(ERROR, "💔 Failed to delete log file");
+      if (!deleted) {
+        log(ERROR, "Failed to delete log file");
       }
       openLogFile();
     }
@@ -131,17 +128,18 @@ String ESPWiFi::formatLog(const char *format, va_list args) {
 String logLevelToString(LogLevel level) {
   switch (level) {
   case ACCESS:
-    return "🌐[ACCESS]";
+    return "[ACCESS]";
   case DEBUG:
-    return "🔍[DEBUG]";
+    return "[DEBUG]";
   case INFO:
-    return "ℹ️ [INFO]";
+    return " [INFO]";
   case WARNING:
-    return "⚠️[WARNING]⚠️";
+    return " [WARN] ⚠️";
   case ERROR:
-    return "💔[ERROR]💔";
+    return "[ERROR] 💔";
   default:
-    return "📝 [LOG]";
+    // return "📝 [LOG]";
+    return "[LOG]";
   }
 }
 

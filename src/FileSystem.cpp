@@ -895,6 +895,8 @@ void ESPWiFi::printFilesystemInfo() {
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("SD Card", totalBytes, usedBytes);
+  } else {
+    log(WARNING, "💾 SD Card Not Available");
   }
 }
 

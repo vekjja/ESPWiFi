@@ -199,10 +199,41 @@ export default function BluetoothSettingsModal({
     }
   };
 
+  // Check if Web Bluetooth is available and allowed
+  const isWebBluetoothAvailable = () => {
+    // Check if the API exists
+    if (!navigator.bluetooth) {
+      return {
+        available: false,
+        reason: "Web Bluetooth API is not supported in this browser",
+      };
+    }
+
+    // Check if we're on HTTPS or localhost (required for Web Bluetooth)
+    // Web Bluetooth only works in secure contexts: HTTPS or localhost (even over HTTP)
+    const isSecureContext =
+      window.isSecureContext ||
+      window.location.protocol === "https:" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "[::1]";
+
+    if (!isSecureContext) {
+      return {
+        available: false,
+        reason:
+          "Web Bluetooth requires HTTPS or localhost. The page is currently served over HTTP from the device. To use Web Bluetooth, access the dashboard via localhost (npm run start) or configure HTTPS on the device.",
+      };
+    }
+
+    return { available: true };
+  };
+
   // Web Bluetooth API - Connect to ESP32 via BLE
   const handleWebBleConnect = async () => {
-    if (!navigator.bluetooth) {
-      setFileError("Web Bluetooth API is not supported in this browser");
+    const bluetoothCheck = isWebBluetoothAvailable();
+    if (!bluetoothCheck.available) {
+      setFileError(bluetoothCheck.reason);
       return;
     }
 
@@ -876,6 +907,17 @@ export default function BluetoothSettingsModal({
                   {fileError}
                 </Alert>
               )}
+              {(() => {
+                const bluetoothCheck = isWebBluetoothAvailable();
+                if (!bluetoothCheck.available && !fileError) {
+                  return (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      {bluetoothCheck.reason}
+                    </Alert>
+                  );
+                }
+                return null;
+              })()}
               {/* Status Information - Better aligned */}
               <Grid container spacing={3} sx={{ mb: 3 }}>
                 <Grid item xs={12} sm={6}>

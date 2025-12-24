@@ -39,14 +39,14 @@ void ESPWiFi::startClient() {
   String password = config["wifi"]["client"]["password"];
 
   if (ssid.isEmpty()) {
-    log(WARNING, "⚠️  Warning: SSID or Password: Cannot be empty");
+    log(WARNING, "Warning: SSID: Cannot be empty, starting Access Point");
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
   log(INFO, "🔗 Connecting to WiFi Network:");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
-  log(DEBUG, "\tPassword: %s", password.c_str());
+  log(DEBUG, "\tPassword: **********");
   log(DEBUG, "\tMAC: %s", WiFi.macAddress().c_str());
   Serial.print("\t");
 
@@ -64,16 +64,23 @@ void ESPWiFi::startClient() {
     Serial.print(".");
     delay(30); // Wait for connection
   }
-  Serial.print("");
+  Serial.println("");
 
   if (WiFi.status() != WL_CONNECTED) {
-    log(ERROR, "Failed to connect to WiFi");
+    log(ERROR, "🛜 Failed to connect to WiFi");
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
   log(INFO, "🛜  WiFi Connected:");
+  log(DEBUG, "\tHostname: %s", WiFi.getHostname());
   log(DEBUG, "\tIP Address: %s", WiFi.localIP().toString().c_str());
+  log(DEBUG, "\tMAC: %s", WiFi.macAddress().c_str());
+  log(DEBUG, "\tSubnet: %s", WiFi.subnetMask().toString().c_str());
+  log(DEBUG, "\tGateway: %s", WiFi.gatewayIP().toString().c_str());
+  log(DEBUG, "\tDNS: %s", WiFi.dnsIP().toString().c_str());
+  log(DEBUG, "\tRSSI: %d dBm", WiFi.RSSI());
+  log(DEBUG, "\tChannel: %d", WiFi.channel());
 }
 
 int ESPWiFi::selectBestChannel() {

@@ -29,7 +29,7 @@ private:
   String version = "v0.1.0";
 
 public:
-  JsonDocument config;
+  JsonDocument config = defaultConfig();
   int connectTimeout = 15000;
   String configFile = "/config.json";
   AsyncWebServer *webServer = nullptr;

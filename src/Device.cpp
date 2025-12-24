@@ -4,7 +4,6 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
-  config = defaultConfig();
   startSerial();
   startLogging();
   readConfig();

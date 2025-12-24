@@ -9,13 +9,32 @@
         },
         "ap": {
             "ssid": "ESPWiFi",
-            "password": "espwifi123"
+            "password": "espwifi!"
         }
     },
     "auth": {
         "enabled": true,
         "username": "admin",
         "password": "admin"
+    },
+    "bluetooth": {
+        "enabled": false,
+        "installed": true
+    },
+    "camera": {
+        "enabled": true,
+        "frameRate": 10,
+        "rotation": 0,
+        "brightness": 1,
+        "contrast": 1,
+        "saturation": 1,
+        "exposure_level": 1,
+        "exposure_value": 400,
+        "agc_gain": 2,
+        "gain_ceiling": 2,
+        "white_balance": 1,
+        "awb_gain": 1,
+        "wb_mode": 0
     },
     "log": {
         "enabled": true,

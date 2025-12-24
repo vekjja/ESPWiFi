@@ -37,7 +37,8 @@ void ESPWiFi::startLogging(String filePath) {
   openLogFile();
   cleanLogFile();
 
-  writeLog("\n\n\t\t\t🌌 FirmaMint " + version + "\n\n");
+  // writeLog("\n\n\t\t\t🌌 FirmaMint " + version + "\n\n");
+  log(INFO, "🌌 ESPWiFi Version: " + version);
 
   if (Serial) {
     log(INFO, "📺 Serial Output Enabled");

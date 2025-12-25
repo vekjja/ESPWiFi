@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Burn flash encryption eFuse on ESP32 device (IRREVERSIBLE).
+
+This script verifies signatures, checks device state, and burns the flash
+encryption eFuse. Once burned, the device will only accept encrypted firmware.
+If secure boot is enabled, firmware must be both signed and encrypted.
 """
 from __future__ import annotations
 
@@ -15,7 +19,9 @@ from burn_utils import (
     resolve_port,
     show_device_info,
     signing_key_path,
+    validate_key_file,
     validate_pre_burn_checks,
+    verify_device_accessible,
 )
 
 
@@ -24,23 +30,29 @@ def burn_flash_encryption(
 ) -> None:
     """Verify signatures then burn flash encryption eFuse. This is IRREVERSIBLE!"""
     key = key_path or signing_key_path()
-    if not key.exists():
-        raise SystemExit(f"❌ Signing key not found: {key}")
+    
+    # Validate key file early
+    if not validate_key_file(key):
+        raise SystemExit(1)
 
+    # Resolve and validate port
     port = resolve_port(port)
+    if not verify_device_accessible(port):
+        raise SystemExit(f"❌ Device not accessible on {port}. Check connection.")
 
+    # Run all pre-burn validation checks
     if not validate_pre_burn_checks(key):
         raise SystemExit("❌ Pre-burn validation checks failed. Aborting.")
 
+    # Check device state
     _, flash_encryption, _ = show_device_info(port)
     if flash_encryption is True:
         print("🔐 Flash encryption already enabled; no burn needed.")
         sys.exit(0)
     if flash_encryption is None:
-        print(
-            "⚠️  Unable to determine flash encryption state; proceeding with caution."
-        )
+        print("⚠️  Unable to determine flash encryption state; proceeding with caution.")
 
+    # Final warnings and confirmation
     print_irreversible_warning(
         [
             "⚠️  WARNING: This will PERMANENTLY enable flash encryption on the device!",
@@ -50,6 +62,7 @@ def burn_flash_encryption(
     )
     prompt_burn_confirmation()
 
+    # Burn the eFuse
     cmd = [
         sys.executable,
         "-m",
@@ -62,11 +75,16 @@ def burn_flash_encryption(
 
     print(f"\n🔥 Burning flash encryption eFuse on {port}...\n")
     try:
-        subprocess.check_call(cmd)
+        subprocess.check_call(cmd, timeout=30)
         print("\n✅ Flash encryption eFuse burned successfully!")
         print("⚠️  The device will now only accept encrypted firmware.")
+    except subprocess.TimeoutExpired:
+        raise SystemExit("❌ Timeout while burning eFuse. Device may be in an uncertain state.")
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"❌ Failed to burn eFuse: {e}")
+    except KeyboardInterrupt:
+        print("\n\n❌ Interrupted during burn. Device state is uncertain.")
+        raise SystemExit(1)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

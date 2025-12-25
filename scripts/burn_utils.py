@@ -42,19 +42,66 @@ def _default_env_name(project_dir: Path) -> str:
     return "esp32-c3"
 
 
-def verify_signed_binaries(key_path: Path) -> bool:
-    """Verify bootloader/firmware signatures using espsecure."""
-    env_name = os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
+def validate_key_file(key_path: Path) -> bool:
+    """Validate that the key file exists, is readable, and appears to be a valid PEM file."""
+    if not key_path.exists():
+        print(f"❌ Signing key not found: {key_path}")
+        return False
+
+    if not os.access(key_path, os.R_OK):
+        print(f"❌ Signing key file is not readable: {key_path}")
+        return False
+
+    # Check if it looks like a PEM file
+    try:
+        content = key_path.read_text()
+        if "-----BEGIN" not in content or "-----END" not in content:
+            print(
+                f"❌ Key file does not appear to be a valid PEM file: {key_path}"
+            )
+            return False
+    except Exception as e:
+        print(f"❌ Failed to read key file: {key_path} ({e})")
+        return False
+
+    return True
+
+
+def get_build_env() -> str:
+    """Get the PlatformIO build environment name."""
+    return os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
+
+
+def get_binary_paths() -> tuple[Path, Path]:
+    """Get paths to bootloader and firmware binaries."""
+    env_name = get_build_env()
     build_dir = PROJECT_DIR / ".pio" / "build" / env_name
     firmware_name = os.environ.get("PROGNAME", "firmware")
     bootloader = build_dir / "bootloader.bin"
     firmware = build_dir / f"{firmware_name}.bin"
+    return bootloader, firmware
 
-    missing = [p.name for p in (bootloader, firmware) if not p.exists()]
-    if missing:
-        print(
-            f"❌ Signed binaries not found in {build_dir} (missing: {', '.join(missing)})."
-        )
+
+def verify_binaries_exist() -> tuple[bool, list[str]]:
+    """Check that required binaries exist. Returns (success, list of missing files)."""
+    bootloader, firmware = get_binary_paths()
+    missing = []
+    if not bootloader.exists():
+        missing.append(bootloader.name)
+    if not firmware.exists():
+        missing.append(firmware.name)
+    return len(missing) == 0, missing
+
+
+def verify_signed_binaries(key_path: Path) -> bool:
+    """Verify bootloader/firmware signatures using espsecure."""
+    bootloader, firmware = get_binary_paths()
+
+    # Check binaries exist first
+    exist, missing = verify_binaries_exist()
+    if not exist:
+        print(f"❌ Signed binaries not found (missing: {', '.join(missing)}).")
+        print(f"   Expected location: {bootloader.parent}")
         print(
             "   Run your build/sign flow first (e.g., espwifiSecure sign_binaries)."
         )
@@ -74,14 +121,14 @@ def verify_signed_binaries(key_path: Path) -> bool:
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print(f"🔏 Signature Verified: {path}")
+            print(f"🔏 Signature Verified: {path.name}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"❌ Verification failed for {path.name}")
             if e.stdout:
-                print(e.stdout.strip())
+                print(f"   {e.stdout.strip()}")
             if e.stderr:
-                print(e.stderr.strip())
+                print(f"   {e.stderr.strip()}")
             return False
         except FileNotFoundError:
             print(
@@ -92,16 +139,52 @@ def verify_signed_binaries(key_path: Path) -> bool:
     print(f"🗝️  Verifying signed binaries with key: {key_path.name}")
     boot_ok = _verify(bootloader)
     fw_ok = _verify(firmware)
-    if boot_ok and fw_ok:
-        # print("\n🎉 Signatures verified! 🎉\n")
+    return boot_ok and fw_ok
+
+
+def verify_binary_timestamps() -> bool:
+    """Verify bootloader and firmware are from the same build (similar timestamps)."""
+    bootloader, firmware = get_binary_paths()
+
+    exist, missing = verify_binaries_exist()
+    if not exist:
+        print(f"   ❌ Binaries not found: {', '.join(missing)}")
+        return False
+
+    try:
+        boot_mtime = bootloader.stat().st_mtime
+        fw_mtime = firmware.stat().st_mtime
+        time_diff = abs(boot_mtime - fw_mtime)
+
+        # Allow up to 30 seconds difference (builds can take time)
+        if time_diff > 30:
+            print(
+                f"   ⚠️  Bootloader and firmware have significantly different timestamps "
+                f"({time_diff:.0f}s difference)."
+            )
+            print(
+                "   They may be from different builds. Proceeding with caution."
+            )
+            return True  # Warn but don't fail
+
+        print(
+            f"🕰️  Binaries built within {time_diff:.0f}s of each other (30s tolerance)."
+        )
         return True
-    return False
+    except OSError as e:
+        print(f"   ❌ Failed to check binary timestamps: {e}")
+        return False
 
 
 def resolve_port(port: str | None) -> str:
     """Return a usable serial port, with best-effort auto-detection."""
     if port:
+        # Validate that the provided port exists/accessible
+        port_path = Path(port)
+        if not port_path.exists():
+            raise SystemExit(f"❌ Specified port does not exist: {port}")
         return port
+
     if glob is None:
         raise SystemExit(
             "❌ No port specified and glob module not available. Use --port /dev/ttyUSB0"
@@ -116,12 +199,34 @@ def resolve_port(port: str | None) -> str:
     )
     if common_ports:
         chosen = common_ports[0]
-        # print(f"\n🚪 Using Port: {chosen}")
         return chosen
 
     raise SystemExit(
         "❌ No port specified and could not auto-detect. Use --port /dev/ttyUSB0"
     )
+
+
+def verify_device_accessible(port: str) -> bool:
+    """Verify that a device is accessible on the given port."""
+    try:
+        cmd = [sys.executable, "-m", "espefuse", "--port", port, "summary"]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=10
+        )
+        return (
+            "Detecting chip type" in result.stdout or "Chip" in result.stdout
+        )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout connecting to device on {port}")
+        return False
+    except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        print("❌ espefuse not found. Install esptool in your environment.")
+        return False
+    except Exception as e:
+        print(f"❌ Error accessing device on {port}: {e}")
+        return False
 
 
 def print_irreversible_warning(lines: list[str]) -> None:
@@ -143,49 +248,6 @@ def prompt_burn_confirmation() -> None:
         sys.exit(0)
 
 
-def get_build_env() -> str:
-    """Get the PlatformIO build environment name."""
-    return os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
-
-
-def get_binary_paths() -> tuple[Path, Path]:
-    """Get paths to bootloader and firmware binaries."""
-    env_name = get_build_env()
-    build_dir = PROJECT_DIR / ".pio" / "build" / env_name
-    firmware_name = os.environ.get("PROGNAME", "firmware")
-    bootloader = build_dir / "bootloader.bin"
-    firmware = build_dir / f"{firmware_name}.bin"
-    return bootloader, firmware
-
-
-def verify_binary_timestamps() -> bool:
-    """Verify bootloader and firmware are from the same build (similar timestamps)."""
-    bootloader, firmware = get_binary_paths()
-    if not bootloader.exists() or not firmware.exists():
-        print(
-            f"   ❌ Binaries not found: {bootloader.name} or {firmware.name}"
-        )
-        return False
-
-    boot_mtime = bootloader.stat().st_mtime
-    fw_mtime = firmware.stat().st_mtime
-    time_diff = abs(boot_mtime - fw_mtime)
-
-    # Allow up to 30 seconds difference (builds can take time)
-    if time_diff > 30:
-        print(
-            f"   ⚠️  Bootloader and firmware have significantly different timestamps "
-            f"({time_diff:.0f}s difference)."
-        )
-        print("   They may be from different builds. Proceeding with caution.")
-        return True  # Warn but don't fail
-
-    print(
-        f"\n🕰️  Binaries were built within {time_diff:.0f}s seconds of each other. (30s difference is tolerated.)"
-    )
-    return True
-
-
 def show_device_info(port: str) -> tuple[bool | None, bool | None, str]:
     """Display human-readable device information and return security state and chip type."""
     base_cmd = [sys.executable, "-m", "espefuse", "--port", port]
@@ -200,7 +262,7 @@ def show_device_info(port: str) -> tuple[bool | None, bool | None, str]:
     try:
         chip_cmd = base_cmd + ["summary"]
         result = subprocess.run(
-            chip_cmd, capture_output=True, text=True, check=True
+            chip_cmd, capture_output=True, text=True, check=True, timeout=10
         )
         output = result.stdout
 
@@ -261,9 +323,14 @@ def show_device_info(port: str) -> tuple[bool | None, bool | None, str]:
         print(f"{'=' * 60}\n")
         return secure_boot_enabled, flash_encryption, chip_type
 
+    except subprocess.TimeoutExpired:
+        print("❌ Timeout connecting to device.")
+        raise SystemExit(1)
     except subprocess.CalledProcessError as e:
         print("❌ Device Could Not Be Queried:")
         print(f"   Error: {e}")
+        if e.stderr:
+            print(f"   stderr: {e.stderr.strip()}")
         raise SystemExit(1)
 
 
@@ -273,19 +340,25 @@ def validate_pre_burn_checks(key_path: Path) -> bool:
 
     checks_passed = True
 
-    # Check 1: Signature verification
+    # Check 1: Key file validation
+    if not validate_key_file(key_path):
+        checks_passed = False
+
+    # Check 2: Signature verification
     if not verify_signed_binaries(key_path):
         checks_passed = False
+    print()
 
-    # Check 2: Binary timestamps (same build)
+    # Check 3: Binary timestamps (same build)
     if not verify_binary_timestamps():
         checks_passed = False
+    print()
 
     if checks_passed:
-        print("\n🎉 All pre-burn checks passed! 🎉\n")
+        print("🎉 All pre-burn checks passed! 🎉\n")
     else:
         print(
-            "\n❌ Some pre-burn checks failed. Please fix the issues before proceeding.\n"
+            "❌ Some pre-burn checks failed. Please fix the issues before proceeding.\n"
         )
 
     return checks_passed

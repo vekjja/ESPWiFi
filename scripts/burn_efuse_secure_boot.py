@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
 Burn secure boot eFuse on ESP32 device (IRREVERSIBLE).
+
+This script verifies signatures, checks device state, and burns the secure boot
+eFuse. Once burned, the device will only accept firmware signed with the
+matching key.
 """
 from __future__ import annotations
 
@@ -15,7 +19,9 @@ from burn_utils import (
     resolve_port,
     show_device_info,
     signing_key_path,
+    validate_key_file,
     validate_pre_burn_checks,
+    verify_device_accessible,
 )
 
 
@@ -24,14 +30,23 @@ def burn_secure_boot(
 ) -> None:
     """Verify signatures then burn the secure boot eFuse. This is IRREVERSIBLE!"""
     key = key_path or signing_key_path()
-    if not key.exists():
-        raise SystemExit(f"❌ Signing key not found: {key}")
 
+    # Validate key file early
+    if not validate_key_file(key):
+        raise SystemExit(1)
+
+    # Resolve and validate port
     port = resolve_port(port)
+    if not verify_device_accessible(port):
+        raise SystemExit(
+            f"❌ Device not accessible on {port}. Check connection."
+        )
 
+    # Run all pre-burn validation checks
     if not validate_pre_burn_checks(key):
         raise SystemExit("❌ Pre-burn validation checks failed. Aborting.")
 
+    # Check device state
     secure_boot_enabled, _, _ = show_device_info(port)
     if secure_boot_enabled is True:
         print("🔐 Secure boot already enabled; no burn needed.")
@@ -41,6 +56,7 @@ def burn_secure_boot(
             "⚠️  Unable to determine secure boot state; proceeding with caution."
         )
 
+    # Final warnings and confirmation
     print_irreversible_warning(
         [
             "⚠️  WARNING: This will PERMANENTLY enable secure boot on the device!",
@@ -50,6 +66,7 @@ def burn_secure_boot(
     )
     prompt_burn_confirmation()
 
+    # Burn the eFuse
     cmd = [
         sys.executable,
         "-m",
@@ -62,11 +79,18 @@ def burn_secure_boot(
 
     print(f"\n🔥 Burning secure boot eFuse on {port}...\n")
     try:
-        subprocess.check_call(cmd)
+        subprocess.check_call(cmd, timeout=30)
         print("\n✅ Secure boot eFuse burned successfully!")
         print("⚠️  The device will now only accept signed firmware.")
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            "❌ Timeout while burning eFuse. Device may be in an uncertain state."
+        )
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"❌ Failed to burn eFuse: {e}")
+    except KeyboardInterrupt:
+        print("\n\n❌ Interrupted during burn. Device state is uncertain.")
+        raise SystemExit(1)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

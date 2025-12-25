@@ -3,6 +3,7 @@
 .venv/
 .pio/
 
+*.pem
 data/
 node_modules/
 dashboard/public/config.json

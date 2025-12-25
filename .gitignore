@@ -1,9 +1,17 @@
+# macOS
 .DS_Store
 .vscode/
 .venv/
 .pio/
 
-*.pem
+# Dashboard
 data/
 node_modules/
 dashboard/public/config.json
+
+# Secure Boot
+*.pem
+
+# ESP-IDF
+sdkconfig.*
+!sdkconfig.defaults

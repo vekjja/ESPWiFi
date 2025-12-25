@@ -27,14 +27,16 @@
     "release": "npm run release:dashboard && npm run release:firmware",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "clean": "cd .. && pio run --target clean",
+    "clean": "cd .. && pio run --target clean && rm sdkconfig.esp32*",
     "monitor": "cd .. && pio device monitor",
     "upload": "cd .. && pio run --target upload",
     "uploadfs": "cd .. && pio run --target uploadfs",
     "build:monitor": "npm run build && npm run uploadfs && npm run monitor",
     "upload:monitor": "npm run upload && npm run monitor",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
-    "deploy:monitor": "npm run  deploy && npm run monitor"
+    "deploy:monitor": "npm run  deploy && npm run monitor",
+    "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload && npm run monitor",
+    "clean:upload": "npm run clean && npm run upload && npm run monitor"
   },
   "eslintConfig": {
     "rules": {

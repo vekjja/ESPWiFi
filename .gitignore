@@ -1,9 +1,8 @@
 .DS_Store
 .vscode/
-.pio
+.venv/
+.pio/
 
 data/
-config.json
 node_modules/
-
-!examples/*
+dashboard/public/config.json

@@ -218,7 +218,7 @@ void ESPWiFi::openLogFile() {
 
 void ESPWiFi::logConfigHandler() {
   static bool lastEnabled = true;
-  static String lastLevel = "info";
+  static String lastLevel = "debug";
 
   bool currentEnabled = config["log"]["enabled"].as<bool>();
   String currentLevel = config["log"]["level"].as<String>();

@@ -27,7 +27,7 @@
     "release": "npm run release:dashboard && npm run release:firmware",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "clean": "cd .. && pio run --target clean && rm sdkconfig.esp32*",
+    "clean": "cd .. && pio run --target clean && rm sdkconfig.esp32* || true",
     "monitor": "cd .. && pio device monitor",
     "upload": "cd .. && pio run --target upload",
     "uploadfs": "cd .. && pio run --target uploadfs",

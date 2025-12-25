@@ -110,8 +110,8 @@ def sign_binary(binary_path: Path, key_path: Path) -> bool:
     try:
         result = subprocess.run(
             cmd,
-            stdout=subprocess.DEVNULL,  # suppress normal output
-            stderr=subprocess.PIPE,  # capture only errors
+            stdout=subprocess.DEVNULL,  # suppress stdout
+            stderr=subprocess.PIPE,  # capture only stderr
             text=True,
             check=True,
         )

@@ -17,8 +17,86 @@ except ImportError:
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 
+def _get_sdkconfig_path(env_name: str) -> Path | None:
+    """Get the SDK config file path for the given environment from platformio.ini."""
+    ini = PROJECT_DIR / "platformio.ini"
+    if not ini.exists():
+        return None
+
+    try:
+        content = ini.read_text()
+        lines = content.splitlines()
+        in_target_env = False
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            # Check if we're in the target environment section
+            if stripped == f"[env:{env_name}]":
+                in_target_env = True
+                i += 1
+                continue
+            # Stop if we hit another section
+            if stripped.startswith("[") and in_target_env:
+                break
+            # Look for board_build.sdkconfig in the target environment
+            if in_target_env and "board_build.sdkconfig" in stripped.lower():
+                # Handle both inline values and multi-line values
+                if "=" in stripped:
+                    parts = stripped.split("=", 1)
+                    value = parts[1].strip() if len(parts) > 1 else ""
+                    # If value is empty, check next line (multi-line value)
+                    if not value and i + 1 < len(lines):
+                        value = lines[i + 1].strip()
+                        i += 1
+                    # Remove quotes if present
+                    value = value.strip("\"'")
+                    if value:
+                        sdkconfig_path = PROJECT_DIR / value
+                        if sdkconfig_path.exists():
+                            return sdkconfig_path
+            i += 1
+    except Exception:
+        pass
+    return None
+
+
+def _parse_sdkconfig_key_path(sdkconfig_path: Path) -> Path | None:
+    """Parse CONFIG_SECURE_BOOT_SIGNING_KEY from SDK config file."""
+    try:
+        content = sdkconfig_path.read_text()
+        for line in content.splitlines():
+            stripped = line.strip()
+            # Skip comments and empty lines
+            if not stripped or stripped.startswith("#"):
+                continue
+            # Look for the signing key config
+            if stripped.startswith("CONFIG_SECURE_BOOT_SIGNING_KEY="):
+                # Extract the value (handle quotes)
+                value = stripped.split("=", 1)[1].strip().strip("\"'")
+                if value:
+                    # If absolute path, use it directly; otherwise relative to PROJECT_DIR
+                    key_path = Path(value)
+                    if not key_path.is_absolute():
+                        key_path = PROJECT_DIR / key_path
+                    return key_path
+    except Exception:
+        pass
+    return None
+
+
 def signing_key_path() -> Path:
-    """Return default secure boot key path."""
+    """Return signing key path from SDK config, or default if not found."""
+    env_name = os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
+    sdkconfig_path = _get_sdkconfig_path(env_name)
+
+    if sdkconfig_path:
+        key_path = _parse_sdkconfig_key_path(sdkconfig_path)
+        if key_path:
+            return key_path
+
+    # Fall back to default
     return PROJECT_DIR / "esp32_secure_boot.pem"
 
 

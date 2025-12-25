@@ -106,7 +106,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--key",
         default=None,
-        help="Path to secure boot signing key (PEM). Defaults to esp32_secure_boot.pem at repo root.",
+        help="Path to secure boot signing key (PEM). Defaults to value from SDK config (CONFIG_SECURE_BOOT_SIGNING_KEY) or esp32_secure_boot.pem.",
     )
     return parser.parse_args(argv or sys.argv[1:])
 

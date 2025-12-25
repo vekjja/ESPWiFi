@@ -30,7 +30,7 @@ def burn_flash_encryption(
 ) -> None:
     """Verify signatures then burn flash encryption eFuse. This is IRREVERSIBLE!"""
     key = key_path or signing_key_path()
-    
+
     # Validate key file early
     if not validate_key_file(key):
         raise SystemExit(1)
@@ -38,7 +38,9 @@ def burn_flash_encryption(
     # Resolve and validate port
     port = resolve_port(port)
     if not verify_device_accessible(port):
-        raise SystemExit(f"❌ Device not accessible on {port}. Check connection.")
+        raise SystemExit(
+            f"❌ Device not accessible on {port}. Check connection."
+        )
 
     # Run all pre-burn validation checks
     if not validate_pre_burn_checks(key):
@@ -50,7 +52,9 @@ def burn_flash_encryption(
         print("🔐 Flash encryption already enabled; no burn needed.")
         sys.exit(0)
     if flash_encryption is None:
-        print("⚠️  Unable to determine flash encryption state; proceeding with caution.")
+        print(
+            "⚠️  Unable to determine flash encryption state; proceeding with caution."
+        )
 
     # Final warnings and confirmation
     print_irreversible_warning(
@@ -79,7 +83,9 @@ def burn_flash_encryption(
         print("\n✅ Flash encryption eFuse burned successfully!")
         print("⚠️  The device will now only accept encrypted firmware.")
     except subprocess.TimeoutExpired:
-        raise SystemExit("❌ Timeout while burning eFuse. Device may be in an uncertain state.")
+        raise SystemExit(
+            "❌ Timeout while burning eFuse. Device may be in an uncertain state."
+        )
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"❌ Failed to burn eFuse: {e}")
     except KeyboardInterrupt:
@@ -100,7 +106,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--key",
         default=None,
-        help="Path to secure boot signing key (PEM). Defaults to esp32_secure_boot.pem at repo root.",
+        help="Path to secure boot signing key (PEM). Defaults to value from SDK config (CONFIG_SECURE_BOOT_SIGNING_KEY) or esp32_secure_boot.pem.",
     )
     return parser.parse_args(argv or sys.argv[1:])
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-ESPWiFi Secure Boot Management Tool
+Burn secure boot eFuse on ESP32 device (IRREVERSIBLE!).
 
-Commands:
-  gen_key [--out /filepath] - Generate a secure boot signing key
-  burn_efuse [--port /dev/ttyUSB0] - Burn secure boot eFuse (IRREVERSIBLE!)
+Usage:
+  python burn_efuse.py [--port /dev/ttyUSB0]
 
 Dependencies:
   pip install -r scripts/requirements.txt
@@ -12,43 +11,14 @@ Dependencies:
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
-from pathlib import Path
+from itertools import chain
 
-
-def generate_key(out_path: Path, version: int = 2) -> None:
-    if out_path.exists():
-        raise SystemExit(
-            f"❌ Key already exists at '{out_path}'. Delete it or choose a new --out path."
-        )
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    base_cmd = [sys.executable, "-m", "espsecure"]
-    cmd_new = base_cmd + [
-        "generate-signing-key",
-        "--version",
-        str(version),
-        str(out_path),
-    ]
-    cmd_old = base_cmd + [
-        "generate_signing_key",
-        "--version",
-        str(version),
-        str(out_path),
-    ]
-
-    print(f"🚀 Generating secure boot v{version} signing key: '{out_path}'\n")
-    try:
-        subprocess.check_call(cmd_new, stdout=subprocess.DEVNULL)
-    except subprocess.CalledProcessError:
-        subprocess.check_call(cmd_old, stdout=subprocess.DEVNULL)
-    os.chmod(out_path, 0o600)
-    print(
-        "🎉 Done. Keep this key safe and backed up; secure boot fuses are irreversible❗️\n"
-    )
+try:
+    import glob
+except ImportError:
+    glob = None
 
 
 def show_device_info(port: str) -> None:
@@ -142,8 +112,10 @@ def burn_efuse(port: str | None = None) -> None:
     """Burn the secure boot eFuse. This is IRREVERSIBLE!"""
     if port is None:
         # Try to detect port from PlatformIO or common locations
-        import glob
-        from itertools import chain
+        if glob is None:
+            raise SystemExit(
+                "❌ No port specified and glob module not available. Use --port /dev/ttyUSB0"
+            )
 
         common_ports = list(
             chain(
@@ -195,20 +167,7 @@ def burn_efuse(port: str | None = None) -> None:
         raise SystemExit(f"❌ Failed to burn eFuse: {e}")
 
 
-def parse_gen_key_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate ESP32 secure boot v2 signing key",
-        prog="espwifiSecure.sh gen_key",
-    )
-    parser.add_argument(
-        "--out",
-        default="esp32_secure_boot.pem",
-        help="Output key path (default: esp32_secure_boot.pem)",
-    )
-    return parser.parse_args(argv)
-
-
-def parse_burn_efuse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Burn secure boot eFuse (IRREVERSIBLE!)",
         prog="espwifiSecure.sh burn_efuse",
@@ -218,29 +177,12 @@ def parse_burn_efuse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="Serial port (e.g., /dev/ttyUSB0 or /dev/cu.usbserial-0001). Auto-detected if not specified.",
     )
-    return parser.parse_args(argv)
+    return parser.parse_args(argv or sys.argv[1:])
 
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: espwifiSecure.sh <command> [options]")
-        print("Commands: gen_key, burn_efuse")
-        sys.exit(1)
-
-    command = sys.argv[1]
-    args_rest = sys.argv[2:]
-
-    if command == "gen_key":
-        args = parse_gen_key_args(args_rest)
-        out_path = Path(args.out).expanduser().resolve()
-        generate_key(out_path)
-    elif command == "burn_efuse":
-        args = parse_burn_efuse_args(args_rest)
-        burn_efuse(args.port)
-    else:
-        print(f"❌ Unknown command: {command}")
-        print("Commands: gen_key, burn_efuse")
-        sys.exit(1)
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    burn_efuse(args.port)
 
 
 if __name__ == "__main__":

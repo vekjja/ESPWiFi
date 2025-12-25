@@ -15,7 +15,7 @@ from burn_utils import (
     resolve_port,
     show_device_info,
     signing_key_path,
-    verify_signed_binaries,
+    validate_pre_burn_checks,
 )
 
 
@@ -27,14 +27,12 @@ def burn_flash_encryption(
     if not key.exists():
         raise SystemExit(f"❌ Signing key not found: {key}")
 
-    if not verify_signed_binaries(key):
-        raise SystemExit(
-            "❌ Aborting burn because signature verification failed."
-        )
-
     port = resolve_port(port)
 
-    _, flash_encryption = show_device_info(port)
+    if not validate_pre_burn_checks(key):
+        raise SystemExit("❌ Pre-burn validation checks failed. Aborting.")
+
+    _, flash_encryption, _ = show_device_info(port)
     if flash_encryption is True:
         print("🔐 Flash encryption already enabled; no burn needed.")
         sys.exit(0)

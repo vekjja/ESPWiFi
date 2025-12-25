@@ -135,12 +135,20 @@ main() {
     [ -n "$key" ] && common_args+=(--key "$key")
 
     if [ $do_sb -eq 1 ]; then
-      "$py_bin" "$SCRIPTS_DIR/burn_efuse_secure_boot.py" "${common_args[@]}"
+      if [ ${#common_args[@]} -gt 0 ]; then
+        "$py_bin" "$SCRIPTS_DIR/burn_efuse_secure_boot.py" "${common_args[@]}"
+      else
+        "$py_bin" "$SCRIPTS_DIR/burn_efuse_secure_boot.py"
+      fi
       printf "\n"
     fi
 
     if [ $do_fe -eq 1 ]; then
-      "$py_bin" "$SCRIPTS_DIR/burn_efuse_flash_encryption.py" "${common_args[@]}"
+      if [ ${#common_args[@]} -gt 0 ]; then
+        "$py_bin" "$SCRIPTS_DIR/burn_efuse_flash_encryption.py" "${common_args[@]}"
+      else
+        "$py_bin" "$SCRIPTS_DIR/burn_efuse_flash_encryption.py"
+      fi
       printf "\n"
     fi
   }

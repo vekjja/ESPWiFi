@@ -74,7 +74,7 @@ def verify_signed_binaries(key_path: Path) -> bool:
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print(f"🔏 {path.name} signature verified.")
+            print(f"🔏 Signature Verified: {path}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"❌ Verification failed for {path.name}")
@@ -89,11 +89,11 @@ def verify_signed_binaries(key_path: Path) -> bool:
             )
             return False
 
-    print(f"\n🔍 Verifying signed binaries with key: {key_path.name}\n")
+    print(f"🗝️  Verifying signed binaries with key: {key_path.name}")
     boot_ok = _verify(bootloader)
     fw_ok = _verify(firmware)
     if boot_ok and fw_ok:
-        print("\n🎉 Signatures verified for bootloader and firmware!\n")
+        # print("\n🎉 Signatures verified! 🎉\n")
         return True
     return False
 
@@ -116,7 +116,7 @@ def resolve_port(port: str | None) -> str:
     )
     if common_ports:
         chosen = common_ports[0]
-        print(f"🔌 Using Port: {chosen}")
+        # print(f"\n🚪 Using Port: {chosen}")
         return chosen
 
     raise SystemExit(
@@ -143,8 +143,51 @@ def prompt_burn_confirmation() -> None:
         sys.exit(0)
 
 
-def show_device_info(port: str) -> tuple[bool | None, bool | None]:
-    """Display human-readable device information and return security state."""
+def get_build_env() -> str:
+    """Get the PlatformIO build environment name."""
+    return os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
+
+
+def get_binary_paths() -> tuple[Path, Path]:
+    """Get paths to bootloader and firmware binaries."""
+    env_name = get_build_env()
+    build_dir = PROJECT_DIR / ".pio" / "build" / env_name
+    firmware_name = os.environ.get("PROGNAME", "firmware")
+    bootloader = build_dir / "bootloader.bin"
+    firmware = build_dir / f"{firmware_name}.bin"
+    return bootloader, firmware
+
+
+def verify_binary_timestamps() -> bool:
+    """Verify bootloader and firmware are from the same build (similar timestamps)."""
+    bootloader, firmware = get_binary_paths()
+    if not bootloader.exists() or not firmware.exists():
+        print(
+            f"   ❌ Binaries not found: {bootloader.name} or {firmware.name}"
+        )
+        return False
+
+    boot_mtime = bootloader.stat().st_mtime
+    fw_mtime = firmware.stat().st_mtime
+    time_diff = abs(boot_mtime - fw_mtime)
+
+    # Allow up to 30 seconds difference (builds can take time)
+    if time_diff > 30:
+        print(
+            f"   ⚠️  Bootloader and firmware have significantly different timestamps "
+            f"({time_diff:.0f}s difference)."
+        )
+        print("   They may be from different builds. Proceeding with caution.")
+        return True  # Warn but don't fail
+
+    print(
+        f"\n🕰️  Binaries were built within {time_diff:.0f}s seconds of each other. (30s difference is tolerated.)"
+    )
+    return True
+
+
+def show_device_info(port: str) -> tuple[bool | None, bool | None, str]:
+    """Display human-readable device information and return security state and chip type."""
     base_cmd = [sys.executable, "-m", "espefuse", "--port", port]
     secure_boot_enabled: bool | None = None
     flash_encryption: bool | None = None
@@ -216,9 +259,33 @@ def show_device_info(port: str) -> tuple[bool | None, bool | None]:
             f"  Flash Encryption: {'🔐 ENABLED' if flash_encryption else '🔓 Disabled'}"
         )
         print(f"{'=' * 60}\n")
-        return secure_boot_enabled, flash_encryption
+        return secure_boot_enabled, flash_encryption, chip_type
 
     except subprocess.CalledProcessError as e:
         print("❌ Device Could Not Be Queried:")
         print(f"   Error: {e}")
         raise SystemExit(1)
+
+
+def validate_pre_burn_checks(key_path: Path) -> bool:
+    """Run all pre-burn validation checks. Returns True if all checks pass."""
+    print("\n🔍 Running pre-burn validation checks...\n")
+
+    checks_passed = True
+
+    # Check 1: Signature verification
+    if not verify_signed_binaries(key_path):
+        checks_passed = False
+
+    # Check 2: Binary timestamps (same build)
+    if not verify_binary_timestamps():
+        checks_passed = False
+
+    if checks_passed:
+        print("\n🎉 All pre-burn checks passed! 🎉\n")
+    else:
+        print(
+            "\n❌ Some pre-burn checks failed. Please fix the issues before proceeding.\n"
+        )
+
+    return checks_passed

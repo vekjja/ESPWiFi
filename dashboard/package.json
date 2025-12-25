@@ -30,7 +30,12 @@
     "deploy": "npm run build && npm run uploadfs && npm run upload",
     "deploy:monitor": "npm run  deploy && npm run monitor",
     "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",
-    "clean:upload": "npm run clean && npm run upload"
+    "clean:upload": "npm run clean && npm run upload",
+    "gen_key": "../scripts/espwifiSecure gen_key",
+    "burn_efuse": "cd .. && ./scripts/espwifiSecure burn_efuse",
+    "sign_binaries": "cd .. && ./scripts/espwifiSecure sign_binaries",
+    "burn_efuse_secure_boot": "cd .. && ./scripts/espwifiSecure burn_efuse --sb",
+    "burn_efuse_flash_encryption": "cd .. && ./scripts/espwifiSecure burn_efuse --fe"
   },
   "eslintConfig": {
     "rules": {

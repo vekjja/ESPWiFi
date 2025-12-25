@@ -15,24 +15,24 @@ from burn_utils import (
     resolve_port,
     show_device_info,
     signing_key_path,
-    verify_signed_binaries,
+    validate_pre_burn_checks,
 )
 
 
-def burn_secure_boot(port: str | None = None, key_path: Path | None = None) -> None:
+def burn_secure_boot(
+    port: str | None = None, key_path: Path | None = None
+) -> None:
     """Verify signatures then burn the secure boot eFuse. This is IRREVERSIBLE!"""
     key = key_path or signing_key_path()
     if not key.exists():
         raise SystemExit(f"❌ Signing key not found: {key}")
 
-    if not verify_signed_binaries(key):
-        raise SystemExit(
-            "❌ Aborting burn because signature verification failed."
-        )
-
     port = resolve_port(port)
 
-    secure_boot_enabled, _ = show_device_info(port)
+    if not validate_pre_burn_checks(key):
+        raise SystemExit("❌ Pre-burn validation checks failed. Aborting.")
+
+    secure_boot_enabled, _, _ = show_device_info(port)
     if secure_boot_enabled is True:
         print("🔐 Secure boot already enabled; no burn needed.")
         sys.exit(0)
@@ -95,4 +95,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -21,9 +21,11 @@ except ImportError:
     glob = None
 
 
-def show_device_info(port: str) -> None:
-    """Display human-readable device information."""
+def show_device_info(port: str) -> tuple[bool | None, bool | None]:
+    """Display human-readable device information and return security state."""
     base_cmd = [sys.executable, "-m", "espefuse", "--port", port]
+    secure_boot_enabled: bool | None = None
+    flash_encryption: bool | None = None
 
     print(f"\n{'=' * 60}")
     print("📱 Device Information")
@@ -94,18 +96,18 @@ def show_device_info(port: str) -> None:
         print()
         print("eFuse Status:")
         print(
-            f"  Secure Boot:   {'✅ ENABLED' if secure_boot_enabled else '❌ Disabled'}"
+            f"  Secure Boot:   {'🔐 ENABLED' if secure_boot_enabled else '🔓 Disabled'}"
         )
         print(
-            f"  Flash Encryption: {'✅ ENABLED' if flash_encryption else '❌ Disabled'}"
+            f"  Flash Encryption: {'🔐 ENABLED' if flash_encryption else '🔓 Disabled'}"
         )
         print(f"{'=' * 60}\n")
+        return secure_boot_enabled, flash_encryption
 
     except subprocess.CalledProcessError as e:
-        print("⚠️  Warning: Could not read device info")
+        print("❌ Device Could Not Be Queried:")
         print(f"   Error: {e}")
-        print("   Make sure the device is connected and in download mode")
-        print("   Continuing anyway...\n")
+        raise SystemExit(1)
 
 
 def burn_efuse(port: str | None = None) -> None:
@@ -133,7 +135,13 @@ def burn_efuse(port: str | None = None) -> None:
             )
 
     # Show device info before burning
-    show_device_info(port)
+    secure_boot_enabled, flash_encryption = show_device_info(port)
+    if secure_boot_enabled is False:
+        print(
+            "❌ Secure boot is disabled on this device; aborting eFuse burn."
+        )
+        print("Enable secure boot in firmware.")
+        sys.exit(1)
 
     print(
         "\n⚠️  WARNING: This will PERMANENTLY enable secure boot on the device!"

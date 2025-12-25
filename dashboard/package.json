@@ -21,22 +21,16 @@
   },
   "scripts": {
     "start": "BROWSER=none react-scripts start",
+    "clean": "cd .. && pio run --target clean",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
-    "release:dashboard": "npm run build && mkdir -p release && cd .. && zip -r dashboard.zip data/ && mv dashboard.zip ./release/dashboard.zip",
-    "release:firmware": "cd .. && pio run && mkdir -p release && grep '^\\[env:' platformio.ini | sed 's/.*\\[env:\\(.*\\)\\].*/\\1/' | while read env; do [ -f .pio/build/$env/firmware.bin ] && cp .pio/build/$env/firmware.bin ./release/firmamint-$env.bin; done",
-    "release": "npm run release:dashboard && npm run release:firmware",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "clean": "cd .. && pio run --target clean && rm sdkconfig.esp32* || true",
     "monitor": "cd .. && pio device monitor",
     "upload": "cd .. && pio run --target upload",
-    "uploadfs": "cd .. && pio run --target uploadfs",
-    "build:monitor": "npm run build && npm run uploadfs && npm run monitor",
     "upload:monitor": "npm run upload && npm run monitor",
+    "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
     "deploy:monitor": "npm run  deploy && npm run monitor",
-    "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload && npm run monitor",
-    "clean:upload": "npm run clean && npm run upload && npm run monitor"
+    "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",
+    "clean:upload": "npm run clean && npm run upload"
   },
   "eslintConfig": {
     "rules": {

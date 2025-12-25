@@ -12,7 +12,14 @@ dashboard/public/config.json
 # Secure Boot
 *.pem
 
-# ESP-IDF
-sdkconfig.*
-!sdkconfig.defaults
-!sdkconfig.secureboot
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyzw
+*.pyzwz
+*.pyzwzw

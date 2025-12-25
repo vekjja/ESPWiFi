@@ -3,7 +3,7 @@
 Generate an ESP32 secure boot v2 signing key.
 
 Usage:
-  python scripts/generate_sb_keys.py [--out secure_boot_signing_key.pem] [--force]
+  python scripts/gen_sb_keys.py [--out secure_boot_signing_key.pem]
 
 Dependencies:
   pip install -r scripts/requirements.txt
@@ -15,12 +15,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from traceback import print_last
 
 
-def generate_key(out_path: Path, force: bool, version: int = 2) -> None:
-    if out_path.exists() and not force:
+def generate_key(out_path: Path, version: int = 2) -> None:
+    if out_path.exists():
         raise SystemExit(
-            f"Key already exists at '{out_path}'. Use --force to overwrite."
+            f"❌ Key already exists at '{out_path}'. Delete it or choose a new --out path."
         )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,16 +40,14 @@ def generate_key(out_path: Path, force: bool, version: int = 2) -> None:
         str(out_path),
     ]
 
-    print(
-        f"Generating secure boot v{version} signing key at '{out_path}' using {sys.executable} ..."
-    )
+    print(f"🚀 Generating secure boot v{version} signing key: '{out_path}'\n")
     try:
-        subprocess.check_call(cmd_new)
+        subprocess.check_call(cmd_new, stdout=subprocess.DEVNULL)
     except subprocess.CalledProcessError:
-        subprocess.check_call(cmd_old)
+        subprocess.check_call(cmd_old, stdout=subprocess.DEVNULL)
     os.chmod(out_path, 0o600)
     print(
-        "Done. Keep this key safe and backed up; secure boot fuses are irreversible."
+        "🎉 Done. Keep this key safe and backed up; secure boot fuses are irreversible❗️\n"
     )
 
 
@@ -58,13 +57,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--out",
-        default="secure_boot_signing_key.pem",
-        help="Output key path (default: secure_boot_signing_key.pem)",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing key file",
+        default="esp32_secure_boot.pem",
+        help="Output key path (default: esp32_sb_signing_key.pem)",
     )
     return parser.parse_args(argv)
 
@@ -72,7 +66,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv or sys.argv[1:])
     out_path = Path(args.out).expanduser().resolve()
-    generate_key(out_path, force=args.force)
+    generate_key(out_path)
 
 
 if __name__ == "__main__":

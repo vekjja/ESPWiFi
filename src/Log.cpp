@@ -240,7 +240,7 @@ void ESPWiFi::logConfigHandler() {
 void ESPWiFi::srvLog() {
   initWebServer();
 
-  // GET /log - return log file content
+  // GET /logs - return html page with log file content
   webServer->on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (request->method() == HTTP_OPTIONS) {
       handleCorsPreflight(request);

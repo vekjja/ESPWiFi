@@ -280,8 +280,6 @@ void ESPWiFi::srvFiles() {
       return;
     }
 
-    // Allow static files (HTML, JS, CSS, images) without auth - needed for
-    // login page Only protect API endpoints
     String path = request->url();
     bool isApiEndpoint =
         path.startsWith("/api/") && !path.startsWith("/api/auth/");
@@ -289,15 +287,13 @@ void ESPWiFi::srvFiles() {
     bool isRestrictedFile =
         path.endsWith("log") || path.endsWith("config.json");
 
+    // Allow static files and non-API routes to pass through
     if ((isApiEndpoint || isRestrictedFile) && !authorized(request)) {
       sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
       return;
     }
 
-    // Allow static files and non-API routes to pass through
-
-    // Check for filesystem prefix (e.g., /sd/path/to/file or
-    // /lfs/path/to/file)
+    // Check for filesystem prefix (e.g., /sd/file or /lfs/file)
     String fsPrefix = "";
     String actualPath = path;
 
@@ -321,25 +317,36 @@ void ESPWiFi::srvFiles() {
           request->beginResponse(*sd, actualPath, contentType);
       addCORS(response);
       request->send(response);
+      return;
     } else if (fsPrefix == "/lfs" && lfs && lfs->exists(actualPath)) {
       String contentType = getContentType(actualPath);
       AsyncWebServerResponse *response =
           request->beginResponse(*lfs, actualPath, contentType);
       addCORS(response);
       request->send(response);
-    } else if (fsPrefix == "" && lfs && lfs->exists(path)) {
-      // Default to LittleFS for paths without prefix
-      String contentType = getContentType(path);
-      AsyncWebServerResponse *response =
-          request->beginResponse(*lfs, path, contentType);
-      addCORS(response);
-      request->send(response);
-    } else {
-      AsyncWebServerResponse *response =
-          request->beginResponse(404, "text/plain", "404: Not Found");
-      addCORS(response);
-      request->send(response);
+      return;
+    } else if (fsPrefix == "") {
+      // No prefix: try SD first if enabled, then fallback to LFS
+      if (sdCardInitialized && sd && sd->exists(path)) {
+        String contentType = getContentType(path);
+        AsyncWebServerResponse *response =
+            request->beginResponse(*sd, path, contentType);
+        addCORS(response);
+        request->send(response);
+        return;
+      } else if (lfs && lfs->exists(path)) {
+        String contentType = getContentType(path);
+        AsyncWebServerResponse *response =
+            request->beginResponse(*lfs, path, contentType);
+        addCORS(response);
+        request->send(response);
+        return;
+      }
     }
+    AsyncWebServerResponse *response =
+        request->beginResponse(404, "text/plain", "404: Not Found");
+    addCORS(response);
+    request->send(response);
   });
 
   // API endpoint for file browser JSON data

@@ -1,6 +1,9 @@
 #ifndef ESPWiFi_H
 #define ESPWiFi_H
 
+// Arduino Framework (when using espidf + arduino)
+#include <Arduino.h>
+
 // ESP-IDF Headers
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -36,35 +39,8 @@
 // Log levels
 enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
 
-// Helper type aliases to replace Arduino types
-using String = std::string;
-
-// IPAddress equivalent
-struct IPAddress {
-  union {
-    uint8_t bytes[4];
-    uint32_t dword;
-  } _address;
-
-  IPAddress() { _address.dword = 0; }
-  IPAddress(uint8_t first, uint8_t second, uint8_t third, uint8_t fourth) {
-    _address.bytes[0] = first;
-    _address.bytes[1] = second;
-    _address.bytes[2] = third;
-    _address.bytes[3] = fourth;
-  }
-  IPAddress(uint32_t address) { _address.dword = address; }
-
-  std::string toString() const {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d.%d.%d.%d", _address.bytes[0],
-             _address.bytes[1], _address.bytes[2], _address.bytes[3]);
-    return std::string(buf);
-  }
-
-  uint8_t operator[](int index) const { return _address.bytes[index]; }
-  uint8_t &operator[](int index) { return _address.bytes[index]; }
-};
+// Note: Arduino framework now provides String and IPAddress classes
+// Arduino's IPAddress class is now available for use
 
 // File handle wrapper
 struct File {

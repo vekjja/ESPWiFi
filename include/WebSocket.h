@@ -58,7 +58,7 @@ public:
     if (espWifi) {
       espWifi->initWebServer();
       espWifi->webServer->addHandler(socket);
-      espWifi->log(INFO, "🔌 WebSocket Started: %s", path.c_str());
+      espWifi->log(INFO, "🔌 WebSocket Started %s", path.c_str());
     }
   }
 

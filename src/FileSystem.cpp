@@ -12,7 +12,7 @@ void ESPWiFi::initLittleFS() {
   }
 
   esp_vfs_littlefs_conf_t conf = {
-      .base_path = "/littlefs",
+      .base_path = "/lfs",
       .partition_label = "littlefs",
       .format_if_mount_failed = true,
       .dont_mount = false,
@@ -31,7 +31,7 @@ void ESPWiFi::initLittleFS() {
     return;
   }
 
-  lfs = new FS("/littlefs");
+  lfs = new FS("/lfs");
   littleFsInitialized = true;
   log(INFO, "💾 LittleFS Initialized");
 }

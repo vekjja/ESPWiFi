@@ -11,8 +11,8 @@ void ESPWiFi::startSerial(int baudRate) {
   // ESP-IDF: Serial is already initialized by default via UART
   // Just mark it as started
   serialStarted = true;
-  vTaskDelay(pdMS_TO_TICKS(100)); // Small delay for serial to stabilize
-  printf("%s📺  Serial Started:\n", timestamp().c_str());
+  vTaskDelay(pdMS_TO_TICKS(500)); // Small delay for serial to stabilize
+  printf("%s📺  Serial Started\n", timestamp().c_str());
   printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
@@ -27,12 +27,12 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   loggingStarted = true;
 
-  // initLittleFS();
-  // // initSDCard();  // Commented out for now
-  // this->logFilePath = filePath;
+  initLittleFS();
+  // initSDCard();  // Commented out for now
+  this->logFilePath = filePath;
 
-  // openLogFile();
-  // cleanLogFile();
+  openLogFile();
+  cleanLogFile();
 
   log(INFO, "🌌 ESPWiFi Version: %s", version.c_str());
 
@@ -160,7 +160,7 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
   printf("%s%s %s\n", ts.c_str(), levelStr.c_str(), output.c_str());
   fflush(stdout); // Ensure immediate output
 
-  // writeLog(ts + levelStr + " " + output + "\n");
+  writeLog(ts + levelStr + " " + output + "\n");
 }
 
 std::string ESPWiFi::timestamp() {

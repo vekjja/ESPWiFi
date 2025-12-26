@@ -4,16 +4,12 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
-  printf("\n\n=== ESPWiFi Starting ===\n");
 
   startSerial();
-  printf("Serial started\n");
 
   startLogging();
-  printf("Logging started\n");
 
   readConfig();
-  printf("Config read\n");
 
   printf("=== ESPWiFi Started ===\n\n");
 
@@ -27,9 +23,12 @@ void ESPWiFi::start() {
 }
 
 void ESPWiFi::runSystem() {
+  taskYIELD();
+
   // Just delay for now - reduce logging spam
   vTaskDelay(pdMS_TO_TICKS(1000));
   log(INFO, "🫀  ESPWiFi System Running");
+
   // streamRSSI();
   // checkBluetoothConnectionStatus();
   // #ifdef ESPWiFi_CAMERA

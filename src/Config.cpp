@@ -33,13 +33,25 @@ void ESPWiFi::readConfig() {
 
   // For now, just use default config to avoid stack overflow
   // TODO: Properly implement config loading from file
-  config = defaultConfig();
+  // config = defaultConfig();
   file.close();
 
   log(INFO, "⚙️ Config system initialized (using defaults)");
-  // printConfig();
+  printConfig();
 
   readingConfig = false;
+}
+
+void ESPWiFi::printConfig() {
+  // Arduino framework uses heap-allocated String, safe to copy JsonDocument
+  JsonDocument logConfig = config;
+  logConfig["wifi"]["accessPoint"]["password"] = "********";
+  logConfig["wifi"]["client"]["password"] = "********";
+  logConfig["auth"]["password"] = "********";
+  String prettyConfig;
+  serializeJsonPretty(logConfig, prettyConfig);
+  log(INFO, "⚙️  Config: " + configFile);
+  log(DEBUG, "\n" + std::string(prettyConfig.c_str()));
 }
 
 void ESPWiFi::saveConfig() {
@@ -80,22 +92,6 @@ void ESPWiFi::saveConfig() {
   } else {
     file.close();
     log(ERROR, " Failed to allocate memory for config");
-  }
-}
-
-void ESPWiFi::printConfig() {
-  // Simplified to avoid stack overflow - don't copy the entire JsonDocument
-  log(INFO, "⚙️ Config loaded: %s", configFile.c_str());
-
-  if (config["deviceName"].is<const char *>()) {
-    log(DEBUG, "Device: %s", config["deviceName"].as<const char *>());
-  }
-  if (config["wifi"]["mode"].is<const char *>()) {
-    log(DEBUG, "WiFi Mode: %s", config["wifi"]["mode"].as<const char *>());
-  }
-  if (config["wifi"]["enabled"].is<bool>()) {
-    log(DEBUG, "WiFi Enabled: %s",
-        config["wifi"]["enabled"].as<bool>() ? "true" : "false");
   }
 }
 

@@ -24,7 +24,7 @@
     "clean": "cd .. && pio run --target clean && rm ../sdkconfig.esp32* || true",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "monitor": "cd .. && pio device monitor",
-    "upload": "cd .. && pio run -e esp32-c3 --target upload",
+    "upload": "cd .. && pio run -e esp32-c3 && python3 scripts/upload_secure.py",
     "upload:monitor": "npm run upload && npm run monitor",
     "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",

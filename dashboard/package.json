@@ -24,18 +24,19 @@
     "clean": "cd .. && pio run --target clean && rm ../sdkconfig.esp32* || true",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "monitor": "cd .. && pio device monitor",
-    "upload": "cd .. && pio run --target upload",
+    "upload": "cd .. && pio run -e esp32-c3 --target upload",
     "upload:monitor": "npm run upload && npm run monitor",
     "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
-    "deploy:monitor": "npm run  deploy && npm run monitor",
+    "deploy:monitor": "npm run deploy && npm run monitor",
     "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",
     "clean:upload": "npm run clean && npm run upload",
-    "gen_key": "../scripts/espwifiSecure gen_key",
-    "burn_efuse": "cd .. && ./scripts/espwifiSecure burn_efuse",
-    "sign_binaries": "cd .. && ./scripts/espwifiSecure sign_binaries",
-    "burn_efuse_secure_boot": "cd .. && ./scripts/espwifiSecure burn_efuse --sb",
-    "burn_efuse_flash_encryption": "cd .. && ./scripts/espwifiSecure burn_efuse --fe"
+    "flash": "cd .. && pio run -e esp32-c3",
+    "flash:upload": "npm run flash && npm run upload",
+    "flash:monitor": "npm run flash && npm run upload && npm run monitor",
+    "secure:status": "cd .. && espefuse --port /dev/cu.usbmodem101 summary || echo 'Secure boot enabled (cannot read eFuse)'",
+    "secure:gen-key": "cd .. && espsecure generate-signing-key --version 2 --scheme ecdsa256 secure_boot/ecdsa_signing_key.pem",
+    "secure:verify": "cd .. && esptool --chip esp32c3 --port /dev/cu.usbmodem101 chip_id"
   },
   "eslintConfig": {
     "rules": {

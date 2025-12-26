@@ -1,0 +1,5 @@
+# Never commit the private signing key!
+ecdsa_signing_key.pem
+*.pem
+*.key
+

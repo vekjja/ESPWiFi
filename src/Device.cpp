@@ -29,8 +29,7 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   // Just delay for now - reduce logging spam
   vTaskDelay(pdMS_TO_TICKS(1000));
-  log(INFO, "ESPWiFi Running System");
-  // yield();
+  log(INFO, "🫀  ESPWiFi System Running");
   // streamRSSI();
   // checkBluetoothConnectionStatus();
   // #ifdef ESPWiFi_CAMERA

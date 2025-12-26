@@ -80,40 +80,6 @@ struct File {
   bool available() { return handle && !feof(handle); }
 };
 
-// Filesystem wrapper
-struct FS {
-  std::string mount_point;
-
-  FS(const std::string &mp) : mount_point(mp) {}
-
-  File open(const std::string &path, const char *mode = "r") {
-    std::string full_path = mount_point + path;
-    FILE *f = fopen(full_path.c_str(), mode);
-    return File(f, full_path);
-  }
-
-  bool exists(const std::string &path) {
-    std::string full_path = mount_point + path;
-    struct stat st;
-    return stat(full_path.c_str(), &st) == 0;
-  }
-
-  bool mkdir(const std::string &path) {
-    std::string full_path = mount_point + path;
-    return ::mkdir(full_path.c_str(), 0755) == 0;
-  }
-
-  bool remove(const std::string &path) {
-    std::string full_path = mount_point + path;
-    return ::remove(full_path.c_str()) == 0;
-  }
-
-  bool rmdir(const std::string &path) {
-    std::string full_path = mount_point + path;
-    return ::rmdir(full_path.c_str()) == 0;
-  }
-};
-
 class ESPWiFi {
 private:
   std::string version = "v0.1.0";
@@ -132,16 +98,12 @@ public:
   void startDevice();
 
   // File System
-  FS *lfs = nullptr; // LittleFS handle
-  FS *sd = nullptr;  // SD card handle
   void initSDCard();
   void initLittleFS();
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
-  bool fileExists(FS *fs, const std::string &filePath);
-  bool dirExists(FS *fs, const std::string &dirPath);
-  bool mkDir(FS *fs, const std::string &dirPath);
-  bool deleteDirectoryRecursive(FS *fs, const std::string &dirPath);
+  std::string lfsMountPoint = "/lfs"; // LittleFS mount point
+  bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,
                         uint8_t *data, size_t len, bool final);
 
@@ -152,13 +114,11 @@ public:
   std::string sanitizeFilename(const std::string &filename);
   void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
-  bool writeFile(FS *filesystem, const std::string &filePath,
-                 const uint8_t *data, size_t len);
+  bool writeFile(const std::string &filePath, const uint8_t *data, size_t len);
   bool isRestrictedSystemFile(const std::string &fsParam,
                               const std::string &filePath);
 
   // Logging
-  File logFile;
   bool serialStarted = false;
   int baudRate = 115200;
   int maxLogFileSize = 0;

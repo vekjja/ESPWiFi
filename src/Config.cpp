@@ -13,7 +13,7 @@ void ESPWiFi::readConfig() {
 
   initLittleFS();
 
-  if (!lfs || !littleFsInitialized) {
+  if (!littleFsInitialized) {
     config = defaultConfig();
     log(WARNING, "⚙️ No filesystem: Using default config");
     printConfig();
@@ -21,7 +21,9 @@ void ESPWiFi::readConfig() {
     return;
   }
 
-  File file = lfs->open(configFile, "r");
+  std::string full_path = lfsMountPoint + configFile;
+  FILE *f = fopen(full_path.c_str(), "r");
+  File file(f, full_path);
 
   if (!file) {
     config = defaultConfig();
@@ -57,12 +59,14 @@ void ESPWiFi::printConfig() {
 void ESPWiFi::saveConfig() {
   initLittleFS();
 
-  if (!lfs) {
+  if (!littleFsInitialized) {
     log(ERROR, "No filesystem available for saving config");
     return;
   }
 
-  File file = lfs->open(configFile, "w");
+  std::string full_path = lfsMountPoint + configFile;
+  FILE *f = fopen(full_path.c_str(), "w");
+  File file(f, full_path);
   if (!file) {
     log(ERROR, " Failed to open config file for writing");
     return;

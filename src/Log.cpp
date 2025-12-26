@@ -47,7 +47,6 @@ void ESPWiFi::startLogging(std::string filePath) {
   // initSDCard();  // Commented out for now
   this->logFilePath = filePath;
 
-  openLogFile();
   cleanLogFile();
 
   log(INFO, "🌌 ESPWiFi Version: %s", version.c_str());
@@ -61,14 +60,20 @@ void ESPWiFi::startLogging(std::string filePath) {
 }
 
 void ESPWiFi::writeLog(std::string message) {
-  // Check if log file is valid, if not try to recreate it
-  if (!logFile) {
-    openLogFile();
+  if (!littleFsInitialized) {
+    return;
   }
 
-  if (logFile && logFile.handle) {
-    fprintf(logFile.handle, "%s", message.c_str());
-    fflush(logFile.handle); // Ensure data is written immediately
+  std::string full_path = lfsMountPoint + logFilePath;
+  FILE *f = fopen(full_path.c_str(), "a");
+  if (f) {
+    size_t len = message.length();
+    size_t written = fwrite(message.c_str(), 1, len, f);
+    if (written != len) {
+      printf("Warning: Failed to write complete message to log file\n");
+    }
+    fflush(f);
+    fclose(f);
   }
 }
 
@@ -97,22 +102,16 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::cleanLogFile() {
-  if (logFile && maxLogFileSize > 0) {
-    size_t logFileSize = logFile.size();
-    if (logFileSize > (size_t)maxLogFileSize) {
-      closeLogFile();
-      bool deleted = false;
-      // if (sdCardInitialized && sd) {
-      //   deleted = sd->remove(logFilePath);
-      // } else
-      if (lfs) {
-        deleted = lfs->remove(logFilePath);
+  if (maxLogFileSize > 0 && littleFsInitialized) {
+    std::string full_path = lfsMountPoint + logFilePath;
+    struct stat st;
+    if (stat(full_path.c_str(), &st) == 0) {
+      if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+        bool deleted = ::remove(full_path.c_str()) == 0;
+        if (!deleted) {
+          log(ERROR, "Failed to delete log file");
+        }
       }
-
-      if (!deleted) {
-        log(ERROR, "Failed to delete log file");
-      }
-      openLogFile();
     }
   }
 }
@@ -203,14 +202,25 @@ void ESPWiFi::closeLogFile() {
 }
 
 void ESPWiFi::openLogFile() {
+
+  if (logFile.handle) {
+    return;
+  }
+
   // Try SD card first, fallback to LittleFS for logging
   // if (sdCardInitialized && sd) {
-  //   logFile = sd->open(logFilePath, "a");
+  //   std::string full_path = lfsMountPoint + logFilePath;
+  //   FILE *f = fopen(full_path.c_str(), "a");
+  //   logFile = File(f, full_path);
   // } else
-  if (lfs && littleFsInitialized) {
-    logFile = lfs->open(logFilePath, "a");
-    if (!logFile) {
-      printf("Warning: Failed to open log file\n");
+  if (littleFsInitialized) {
+    std::string full_path = lfsMountPoint + logFilePath;
+    FILE *f = fopen(full_path.c_str(), "a");
+    if (f) {
+      logFile = File(f, full_path);
+    } else {
+      printf("Warning: Failed to open log file: %s\n", full_path.c_str());
+      logFile = File(nullptr, full_path);
     }
   }
   // If no filesystem available, just use serial output

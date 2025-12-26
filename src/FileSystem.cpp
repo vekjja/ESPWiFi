@@ -3,6 +3,7 @@
 
 #include "ESPWiFi.h"
 #include "esp_littlefs.h"
+#include <cstring>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -34,7 +35,6 @@ void ESPWiFi::initLittleFS() {
     return;
   }
 
-  lfs = new FS("/lfs");
   littleFsInitialized = true;
   log(INFO, "💾 LittleFS Initialized");
 }
@@ -108,34 +108,11 @@ void ESPWiFi::printFilesystemInfo() {
   }
 }
 
-bool ESPWiFi::fileExists(FS *fs, const std::string &filePath) {
-  if (!fs)
-    return false;
-  return fs->exists(filePath);
-}
-
-bool ESPWiFi::dirExists(FS *fs, const std::string &dirPath) {
-  if (!fs)
-    return false;
-  std::string full_path = fs->mount_point + dirPath;
-  struct stat st;
-  if (stat(full_path.c_str(), &st) == 0) {
-    return S_ISDIR(st.st_mode);
-  }
-  return false;
-}
-
-bool ESPWiFi::mkDir(FS *fs, const std::string &dirPath) {
-  if (!fs)
-    return false;
-  return fs->mkdir(dirPath);
-}
-
-bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const std::string &dirPath) {
-  if (!fs)
+bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
+  if (!littleFsInitialized)
     return false;
 
-  std::string full_path = fs->mount_point + dirPath;
+  std::string full_path = lfsMountPoint + dirPath;
   DIR *dir = opendir(full_path.c_str());
   if (!dir)
     return false;
@@ -147,33 +124,35 @@ bool ESPWiFi::deleteDirectoryRecursive(FS *fs, const std::string &dirPath) {
     }
 
     std::string entry_path = dirPath + "/" + entry->d_name;
-    std::string full_entry_path = fs->mount_point + entry_path;
+    std::string full_entry_path = lfsMountPoint + entry_path;
 
     struct stat st;
     if (stat(full_entry_path.c_str(), &st) == 0) {
       if (S_ISDIR(st.st_mode)) {
-        deleteDirectoryRecursive(fs, entry_path);
+        deleteDirectoryRecursive(entry_path);
       } else {
-        fs->remove(entry_path);
+        ::remove(full_entry_path.c_str());
       }
     }
   }
   closedir(dir);
 
-  return fs->rmdir(dirPath);
+  std::string full_dir_path = lfsMountPoint + dirPath;
+  return ::rmdir(full_dir_path.c_str()) == 0;
 }
 
-bool ESPWiFi::writeFile(FS *filesystem, const std::string &filePath,
-                        const uint8_t *data, size_t len) {
-  if (!filesystem)
+bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
+                        size_t len) {
+  if (!littleFsInitialized)
     return false;
 
-  File file = filesystem->open(filePath, "w");
+  std::string full_path = lfsMountPoint + filePath;
+  FILE *file = fopen(full_path.c_str(), "wb");
   if (!file)
     return false;
 
-  size_t written = file.write(data, len);
-  file.close();
+  size_t written = fwrite(data, 1, len, file);
+  fclose(file);
 
   return written == len;
 }

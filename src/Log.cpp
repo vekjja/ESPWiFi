@@ -3,6 +3,23 @@
 #include <stdarg.h>
 #include <sys/time.h>
 
+std::string logLevelToString(LogLevel level) {
+  switch (level) {
+  case ACCESS:
+    return "[ACCESS]";
+  case DEBUG:
+    return "[DEBUG]";
+  case INFO:
+    return " [INFO]";
+  case WARNING:
+    return " [WARN] ⚠️";
+  case ERROR:
+    return "[ERROR] 💔";
+  default:
+    return "[LOG]";
+  }
+}
+
 void ESPWiFi::startSerial(int baudRate) {
   if (serialStarted) {
     return;
@@ -12,20 +29,19 @@ void ESPWiFi::startSerial(int baudRate) {
   // Just mark it as started
   serialStarted = true;
   vTaskDelay(pdMS_TO_TICKS(500)); // Small delay for serial to stabilize
-  printf("%s📺  Serial Started\n", timestamp().c_str());
-  printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
+  printf("%s [INFO] 📺  Serial Started\n", timestamp().c_str());
+  printf("%s [INFO]\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
 void ESPWiFi::startLogging(std::string filePath) {
   if (loggingStarted) {
     return;
   }
+  loggingStarted = true;
 
   if (!serialStarted) {
     startSerial();
   }
-
-  loggingStarted = true;
 
   initLittleFS();
   // initSDCard();  // Commented out for now
@@ -42,6 +58,41 @@ void ESPWiFi::startLogging(std::string filePath) {
   }
 
   printFilesystemInfo();
+}
+
+void ESPWiFi::writeLog(std::string message) {
+  // Check if log file is valid, if not try to recreate it
+  if (!logFile) {
+    openLogFile();
+  }
+
+  if (logFile && logFile.handle) {
+    fprintf(logFile.handle, "%s", message.c_str());
+    fflush(logFile.handle); // Ensure data is written immediately
+  }
+}
+
+void ESPWiFi::log(LogLevel level, const char *format, ...) {
+  if (!shouldLog(level)) {
+    return;
+  }
+  if (!serialStarted) {
+    startSerial();
+  }
+  if (!loggingStarted) {
+    startLogging();
+  }
+  va_list args;
+  va_start(args, format);
+  std::string output = formatLog(format, args);
+  va_end(args);
+  std::string ts = timestamp();
+  std::string levelStr = logLevelToString(level);
+
+  printf("%s%s %s\n", ts.c_str(), levelStr.c_str(), output.c_str());
+  fflush(stdout); // Ensure immediate output
+
+  writeLog(ts + levelStr + " " + output + "\n");
 }
 
 // Function to check filesystem space and delete log if needed
@@ -63,18 +114,6 @@ void ESPWiFi::cleanLogFile() {
       }
       openLogFile();
     }
-  }
-}
-
-void ESPWiFi::writeLog(std::string message) {
-  // Check if log file is valid, if not try to recreate it
-  if (!logFile) {
-    openLogFile();
-  }
-
-  if (logFile && logFile.handle) {
-    fprintf(logFile.handle, "%s", message.c_str());
-    fflush(logFile.handle); // Ensure data is written immediately
   }
 }
 
@@ -121,46 +160,6 @@ std::string ESPWiFi::formatLog(const char *format, va_list args) {
   char buffer[2048];
   vsnprintf(buffer, sizeof(buffer), format, args);
   return std::string(buffer);
-}
-
-std::string logLevelToString(LogLevel level) {
-  switch (level) {
-  case ACCESS:
-    return "[ACCESS]";
-  case DEBUG:
-    return "[DEBUG]";
-  case INFO:
-    return " [INFO]";
-  case WARNING:
-    return " [WARN] ⚠️";
-  case ERROR:
-    return "[ERROR] 💔";
-  default:
-    return "[LOG]";
-  }
-}
-
-void ESPWiFi::log(LogLevel level, const char *format, ...) {
-  if (!shouldLog(level)) {
-    return;
-  }
-  if (!serialStarted) {
-    startSerial();
-  }
-  if (!loggingStarted) {
-    startLogging();
-  }
-  va_list args;
-  va_start(args, format);
-  std::string output = formatLog(format, args);
-  va_end(args);
-  std::string ts = timestamp();
-  std::string levelStr = logLevelToString(level);
-
-  printf("%s%s %s\n", ts.c_str(), levelStr.c_str(), output.c_str());
-  fflush(stdout); // Ensure immediate output
-
-  writeLog(ts + levelStr + " " + output + "\n");
 }
 
 std::string ESPWiFi::timestamp() {

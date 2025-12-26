@@ -1,0 +1,32 @@
+# sdkconfig.defaults
+
+# FreeRTOS (required for Arduino as ESP-IDF component)
+CONFIG_FREERTOS_HZ=1000
+
+# C++ Exceptions (for exception handling in code)
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+
+# Arduino autostart (bridges app_main to setup/loop)
+CONFIG_AUTOSTART_ARDUINO=y
+
+# Bluetooth
+CONFIG_BT_ENABLED=y
+
+# Log Level
+CONFIG_LOG_DEFAULT_LEVEL=2
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+
+# Secure Boot V2 (ESP32-C3 uses ECDSA)
+CONFIG_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_V2_ENABLED=y
+CONFIG_SECURE_BOOT_ECDSA_SCHEME=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+CONFIG_SECURE_BOOT_SIGN_BOOTLOADER=y
+CONFIG_APP_SIGNED=y
+# Signing key path - relative to project root
+CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
+
+# Flash encryption (optional; leave off unless you also want it)
+# CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# CONFIG_SECURE_FLASH_ENC_ENABLED=y
+# CONFIG_SECURE_FLASH_REQUIRE_ALREADY_ENABLED=y

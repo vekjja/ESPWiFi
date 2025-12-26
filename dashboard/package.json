@@ -27,7 +27,7 @@
     "menuconfig": "cd .. && pio run -t menuconfig",
     "upload": "cd .. && pio run -t upload",
     "upload:monitor": "npm run upload && npm run monitor",
-    "uploadfs": "cd .. && pio run --target uploadlittlefs",
+    "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
     "deploy:monitor": "npm run deploy && npm run monitor",
     "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",

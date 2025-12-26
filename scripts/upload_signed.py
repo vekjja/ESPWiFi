@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Custom upload script for ESP32-C3 with Secure Boot enabled.
+Custom upload script for ESP32 with Secure Boot enabled.
 Uses --no-stub flag to work with Secure Download Mode.
 """
 import subprocess
@@ -18,7 +18,7 @@ ports = glob.glob(upload_port_pattern)
 
 if not ports:
     print(f"Error: No port matching {upload_port_pattern} found")
-    print("Please connect your ESP32-C3 device")
+    print("Please connect your ESP32 device")
     sys.exit(1)
 
 upload_port = ports[0]
@@ -26,14 +26,14 @@ upload_speed = "460800"
 
 print(f"Auto-detected port: {upload_port}")
 
-# Check if binaries exist
-bootloader = os.path.join(build_dir, "bootloader.bin")
-partitions = os.path.join(build_dir, "partitions.bin")
-firmware = os.path.join(build_dir, "firmware.bin")
+# Check if signed binaries exist
+bootloader = os.path.join(build_dir, "bootloader-signed.bin")
+partitions = os.path.join(build_dir, "partitions-signed.bin")
+firmware = os.path.join(build_dir, "firmware-signed.bin")
 
 for binary in [bootloader, partitions, firmware]:
     if not os.path.exists(binary):
-        print(f"Error: Binary not found: {binary}")
+        print(f"Error: Signed binary not found: {binary}")
         print("Please run 'pio run -e esp32-c3' first to build the project")
         sys.exit(1)
 
@@ -47,6 +47,8 @@ cmd = [
     "--baud",
     upload_speed,
     "--no-stub",
+    "--after",
+    "hard-reset",
     "write-flash",
     "0x0",
     bootloader,

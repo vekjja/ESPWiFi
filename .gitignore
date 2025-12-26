@@ -27,5 +27,4 @@ __pycache__/
 
 # ESP-IDF
 sdkconfig.*
-!configs/sdkconfig*
-!sdkconfig.defaults 
+!sdkconfig.*defaults*

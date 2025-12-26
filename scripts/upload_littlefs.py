@@ -190,6 +190,8 @@ def main():
         "--baud",
         "460800",
         "--no-stub",
+        "--after",
+        "hard_reset",
         "write-flash",  # Using hyphen (not underscore) to match upload_secure.py
         LITTLEFS_OFFSET,
         str(LITTLEFS_BIN),

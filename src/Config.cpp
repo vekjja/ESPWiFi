@@ -46,14 +46,16 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  JsonDocument logConfig = config;
-  logConfig["wifi"]["accessPoint"]["password"] = "********";
-  logConfig["wifi"]["client"]["password"] = "********";
-  logConfig["auth"]["password"] = "********";
-  std::string prettyConfig;
-  serializeJsonPretty(logConfig, prettyConfig);
   log(INFO, "⚙️  Config: " + configFile);
-  log(DEBUG, "\n" + prettyConfig);
+  log(DEBUG, "\n" + config.as<std::string>());
+  // JsonDocument logConfig = config;
+  // logConfig["wifi"]["accessPoint"]["password"] = "********";
+  // logConfig["wifi"]["client"]["password"] = "********";
+  // logConfig["auth"]["password"] = "********";
+  // std::string prettyConfig;
+  // serializeJsonPretty(logConfig, prettyConfig);
+  // log(INFO, "⚙️  Config: " + configFile);
+  // log(DEBUG, "\n" + prettyConfig);
 }
 
 void ESPWiFi::saveConfig() {

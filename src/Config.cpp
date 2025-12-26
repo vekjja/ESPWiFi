@@ -40,22 +40,28 @@ void ESPWiFi::readConfig() {
     }
   }
 
-  // printConfig();
+  printConfig();
 
   readingConfig = false;
 }
 
 void ESPWiFi::printConfig() {
   log(INFO, "⚙️  Config: " + configFile);
-  log(DEBUG, "\n" + config.as<std::string>());
-  // JsonDocument logConfig = config;
-  // logConfig["wifi"]["accessPoint"]["password"] = "********";
-  // logConfig["wifi"]["client"]["password"] = "********";
-  // logConfig["auth"]["password"] = "********";
-  // std::string prettyConfig;
-  // serializeJsonPretty(logConfig, prettyConfig);
-  // log(INFO, "⚙️  Config: " + configFile);
-  // log(DEBUG, "\n" + prettyConfig);
+
+  // Serialize config directly to avoid stack overflow (no copy needed)
+  // Note: Passwords will be shown in logs - acceptable for debugging
+  size_t size = measureJsonPretty(config);
+  char *buffer = (char *)malloc(size + 1);
+  if (buffer) {
+    size_t written = serializeJsonPretty(config, buffer, size + 1);
+    if (written > 0) {
+      buffer[written] = '\0';
+      log(DEBUG, "\n%s", buffer);
+    }
+    free(buffer);
+  } else {
+    log(WARNING, "Failed to allocate memory for config print");
+  }
 }
 
 void ESPWiFi::saveConfig() {

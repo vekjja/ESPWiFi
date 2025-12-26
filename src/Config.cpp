@@ -29,6 +29,8 @@ void ESPWiFi::readConfig() {
   } else {
     JsonDocument loadedConfig;
     DeserializationError error = deserializeJson(loadedConfig, file);
+    file.close();
+
     if (error) {
       config = defaultConfig();
       log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
@@ -36,7 +38,6 @@ void ESPWiFi::readConfig() {
     } else {
       mergeConfig(loadedConfig);
     }
-    file.close();
   }
 
   printConfig();
@@ -97,9 +98,29 @@ void ESPWiFi::saveConfig() {
 }
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {
-  for (JsonPair kv : json.as<JsonObject>()) {
-    config[kv.key()] = kv.value();
-  }
+  // Deep merge: recursively merge objects instead of replacing them
+  std::function<void(JsonVariant, JsonVariantConst)> deepMerge =
+      [&](JsonVariant dst, JsonVariantConst src) {
+        if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
+          // Both are objects - merge recursively
+          for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
+            JsonVariant dstValue = dst[kvp.key()];
+            if (dstValue.isNull()) {
+              // Key doesn't exist in destination, just copy it
+              dst[kvp.key()] = kvp.value();
+            } else {
+              // Key exists, recurse to merge deeper
+              deepMerge(dstValue, kvp.value());
+            }
+          }
+        } else {
+          // Not both objects (or one is null), just replace the value
+          dst.set(src);
+        }
+      };
+
+  // Start the deep merge from root
+  deepMerge(config.as<JsonVariant>(), json.as<JsonVariantConst>());
 }
 
 void ESPWiFi::handleConfig() {
@@ -116,16 +137,17 @@ void ESPWiFi::handleConfig() {
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
 
+  String hostname = "espwifi32-123456";
+  defaultConfig["hostname"] = hostname; // Will get MAC-based hostname later
   defaultConfig["deviceName"] = "ESPWiFi";
-  defaultConfig["hostname"] = "espwifi"; // Will get MAC-based hostname later
 
   defaultConfig["wifi"]["enabled"] = true;
   defaultConfig["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  std::string ssid = "ESPWiFi-Device";
-  defaultConfig["wifi"]["ap"]["ssid"] = ssid;
-  defaultConfig["wifi"]["ap"]["password"] = "espwifi!";
+  String ssid = "ESPWiFi-" + hostname;
+  defaultConfig["wifi"]["accessPoint"]["ssid"] = ssid;
+  defaultConfig["wifi"]["accessPoint"]["password"] = "espwifi!";
 
   // WiFi Client
   defaultConfig["wifi"]["client"]["ssid"] = "";

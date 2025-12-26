@@ -60,6 +60,14 @@ struct File {
   size_t write(const uint8_t *data, size_t len) {
     return handle ? fwrite(data, 1, len, handle) : 0;
   }
+  // Read single byte (for ArduinoJson compatibility)
+  int read() {
+    if (!handle)
+      return -1;
+    int c = fgetc(handle);
+    return c;
+  }
+  // Read multiple bytes
   size_t read(uint8_t *buffer, size_t len) {
     return handle ? fread(buffer, 1, len, handle) : 0;
   }

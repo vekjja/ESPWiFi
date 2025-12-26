@@ -25,25 +25,26 @@ void ESPWiFi::readConfig() {
 
   if (!file) {
     config = defaultConfig();
-    log(WARNING, "⚙️ Config file not found: Using default config");
-    printConfig();
-    readingConfig = false;
-    return;
+    log(WARNING, "⚙️ Failed to open config file: Using default config");
+  } else {
+    JsonDocument loadedConfig;
+    DeserializationError error = deserializeJson(loadedConfig, file);
+    if (error) {
+      config = defaultConfig();
+      log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
+          error.c_str());
+    } else {
+      mergeConfig(loadedConfig);
+    }
+    file.close();
   }
 
-  // For now, just use default config to avoid stack overflow
-  // TODO: Properly implement config loading from file
-  // config = defaultConfig();
-  file.close();
-
-  log(INFO, "⚙️ Config system initialized (using defaults)");
   printConfig();
 
   readingConfig = false;
 }
 
 void ESPWiFi::printConfig() {
-  // Arduino framework uses heap-allocated String, safe to copy JsonDocument
   JsonDocument logConfig = config;
   logConfig["wifi"]["accessPoint"]["password"] = "********";
   logConfig["wifi"]["client"]["password"] = "********";
@@ -102,13 +103,13 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
 }
 
 void ESPWiFi::handleConfig() {
-  // bluetoothConfigHandler();
-  // #ifdef ESPWiFi_CAMERA
-  //   cameraConfigHandler();
-  // #else
+  bluetoothConfigHandler();
+#ifdef ESPWiFi_CAMERA
+  cameraConfigHandler();
+#else
   config["camera"]["enabled"] = false;
   config["camera"]["installed"] = false;
-  // #endif
+#endif
   logConfigHandler();
 }
 
@@ -150,7 +151,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["exposure_level"] = 1;
   defaultConfig["camera"]["exposure_value"] = 400;
   defaultConfig["camera"]["agc_gain"] = 2;
-  defaultConfig["gain_ceiling"] = 2;
+  defaultConfig["camera"]["gain_ceiling"] = 2;
   defaultConfig["camera"]["white_balance"] = 1;
   defaultConfig["camera"]["awb_gain"] = 1;
   defaultConfig["camera"]["wb_mode"] = 0;

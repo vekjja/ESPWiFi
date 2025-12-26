@@ -284,6 +284,49 @@ def resolve_port(port: str | None) -> str:
     )
 
 
+def detect_chip_type(port: str) -> str | None:
+    """Detect chip type from device and return in espefuse format (e.g., 'esp32c3')."""
+    try:
+        cmd = [sys.executable, "-m", "espefuse", "--port", port, "summary"]
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=10
+        )
+        output = result.stdout.lower()
+
+        # Map chip names to espefuse format
+        chip_map = {
+            "esp32-c3": "esp32c3",
+            "esp32c3": "esp32c3",
+            "esp32-s3": "esp32s3",
+            "esp32s3": "esp32s3",
+            "esp32": "esp32",
+            "esp32-c6": "esp32c6",
+            "esp32c6": "esp32c6",
+        }
+
+        # Look for chip type in output
+        for line in result.stdout.split("\n"):
+            line_lower = line.lower()
+            if (
+                "detecting chip type" in line_lower
+                or "chip type" in line_lower
+            ):
+                # Extract chip type from line
+                for chip_name, espefuse_name in chip_map.items():
+                    if chip_name in line_lower:
+                        return espefuse_name
+                # Try to extract from "Chip type: ..." format
+                if ":" in line:
+                    chip_part = line.split(":")[-1].strip().lower()
+                    for chip_name, espefuse_name in chip_map.items():
+                        if chip_name in chip_part:
+                            return espefuse_name
+
+        return None
+    except Exception:
+        return None
+
+
 def verify_device_accessible(port: str) -> bool:
     """Verify that a device is accessible on the given port."""
     try:
@@ -316,14 +359,14 @@ def print_irreversible_warning(lines: list[str]) -> None:
 def prompt_burn_confirmation() -> None:
     """Prompt the user for final confirmation before burning the eFuse."""
     try:
-        response = input("Type 'BURN' to confirm (or Ctrl+C to cancel): ")
+        response = input("🔥 Type 'BURN' to confirm (or Ctrl+C to cancel): ")
     except KeyboardInterrupt:
-        print("\n\n❌ Cancelled by user.")
+        print("\n\n💧 Cancelled by user.")
         sys.exit(0)
 
     if response != "BURN":
-        print("❌ Aborted.")
-        sys.exit(0)
+        print(f"💧 Skipping Burn. {response} != BURN 💧")
+        sys.exit(1)
 
 
 def show_device_info(port: str) -> tuple[bool | None, bool | None, str]:

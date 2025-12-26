@@ -123,8 +123,6 @@ public:
   int baudRate = 115200;
   int maxLogFileSize = 0;
   void cleanLogFile();
-  void closeLogFile();
-  void openLogFile();
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   void startLogging(std::string filePath = "/log");

@@ -195,37 +195,6 @@ std::string ESPWiFi::timestampForFilename() {
   return std::string(buffer);
 }
 
-void ESPWiFi::closeLogFile() {
-  if (logFile) {
-    logFile.close();
-  }
-}
-
-void ESPWiFi::openLogFile() {
-
-  if (logFile.handle) {
-    return;
-  }
-
-  // Try SD card first, fallback to LittleFS for logging
-  // if (sdCardInitialized && sd) {
-  //   std::string full_path = lfsMountPoint + logFilePath;
-  //   FILE *f = fopen(full_path.c_str(), "a");
-  //   logFile = File(f, full_path);
-  // } else
-  if (littleFsInitialized) {
-    std::string full_path = lfsMountPoint + logFilePath;
-    FILE *f = fopen(full_path.c_str(), "a");
-    if (f) {
-      logFile = File(f, full_path);
-    } else {
-      printf("Warning: Failed to open log file: %s\n", full_path.c_str());
-      logFile = File(nullptr, full_path);
-    }
-  }
-  // If no filesystem available, just use serial output
-}
-
 void ESPWiFi::logConfigHandler() {
   static bool lastEnabled = true;
   static std::string lastLevel = "debug";

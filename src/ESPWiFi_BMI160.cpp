@@ -41,8 +41,10 @@ bool ESPWiFi::startBMI160(uint8_t address) {
       return false;
     }
   } else {
+    char addrHex[5];
+    snprintf(addrHex, sizeof(addrHex), "%02X", address);
     log(ERROR, "BMI160 sensor not detected at the specified I2C address: 0x%s",
-        String(address, HEX).c_str());
+        addrHex);
     return false;
   }
 }

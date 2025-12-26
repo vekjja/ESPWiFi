@@ -27,10 +27,9 @@ void ESPWiFi::readConfig() {
     config = defaultConfig();
     log(WARNING, "⚙️ Failed to open config file: Using default config");
   } else {
+    // Use DynamicJsonDocument to avoid stack overflow - allocates on heap
     JsonDocument loadedConfig;
     DeserializationError error = deserializeJson(loadedConfig, file);
-    file.close();
-
     if (error) {
       config = defaultConfig();
       log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
@@ -38,6 +37,7 @@ void ESPWiFi::readConfig() {
     } else {
       mergeConfig(loadedConfig);
     }
+    file.close();
   }
 
   printConfig();
@@ -46,22 +46,12 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  log(INFO, "⚙️  Config: " + configFile);
-
-  // Serialize config directly to avoid stack overflow (no copy needed)
-  // Note: Passwords will be shown in logs - acceptable for debugging
-  size_t size = measureJsonPretty(config);
-  char *buffer = (char *)malloc(size + 1);
-  if (buffer) {
-    size_t written = serializeJsonPretty(config, buffer, size + 1);
-    if (written > 0) {
-      buffer[written] = '\0';
-      log(DEBUG, "\n%s", buffer);
-    }
-    free(buffer);
-  } else {
-    log(WARNING, "Failed to allocate memory for config print");
-  }
+  log(INFO, "⚙️ Config: " + configFile);
+  // Serialize directly from config member to avoid stack overflow
+  // No need to copy - config is already a member variable (JsonDocument)
+  std::string prettyConfig;
+  serializeJsonPretty(config, prettyConfig);
+  log(DEBUG, "\n" + prettyConfig);
 }
 
 void ESPWiFi::saveConfig() {
@@ -143,65 +133,65 @@ void ESPWiFi::handleConfig() {
 }
 
 JsonDocument ESPWiFi::defaultConfig() {
-  JsonDocument defaultConfig;
+  JsonDocument doc;
 
   std::string hostname = "espwifi32-123456";
-  defaultConfig["hostname"] = hostname; // Will get MAC-based hostname later
-  defaultConfig["deviceName"] = "ESPWiFi";
+  doc["hostname"] = hostname; // Will get MAC-based hostname later
+  doc["deviceName"] = "ESPWiFi";
 
-  defaultConfig["wifi"]["enabled"] = true;
-  defaultConfig["wifi"]["mode"] = "accessPoint";
+  doc["wifi"]["enabled"] = true;
+  doc["wifi"]["mode"] = "accessPoint";
 
   // Access Point
   std::string ssid = "ESPWiFi-" + hostname;
-  defaultConfig["wifi"]["accessPoint"]["ssid"] = ssid;
-  defaultConfig["wifi"]["accessPoint"]["password"] = "espwifi!";
+  doc["wifi"]["accessPoint"]["ssid"] = ssid;
+  doc["wifi"]["accessPoint"]["password"] = "espwifi!";
 
   // WiFi Client
-  defaultConfig["wifi"]["client"]["ssid"] = "";
-  defaultConfig["wifi"]["client"]["password"] = "";
+  doc["wifi"]["client"]["ssid"] = "";
+  doc["wifi"]["client"]["password"] = "";
 
 // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
 #if defined(CONFIG_BT_ENABLED)
-  defaultConfig["bluetooth"]["installed"] = true;
+  doc["bluetooth"]["installed"] = true;
 #else
-  defaultConfig["bluetooth"]["installed"] = false;
+  doc["bluetooth"]["installed"] = false;
 #endif
-  defaultConfig["bluetooth"]["enabled"] = false;
+  doc["bluetooth"]["enabled"] = false;
 
   // Camera
 #ifdef ESPWiFi_CAMERA
-  defaultConfig["camera"]["installed"] = true;
-  defaultConfig["camera"]["enabled"] = false;
-  defaultConfig["camera"]["frameRate"] = 10;
-  defaultConfig["camera"]["rotation"] = 0;
-  defaultConfig["camera"]["brightness"] = 1;
-  defaultConfig["camera"]["contrast"] = 1;
-  defaultConfig["camera"]["saturation"] = 1;
-  defaultConfig["camera"]["exposure_level"] = 1;
-  defaultConfig["camera"]["exposure_value"] = 400;
-  defaultConfig["camera"]["agc_gain"] = 2;
-  defaultConfig["camera"]["gain_ceiling"] = 2;
-  defaultConfig["camera"]["white_balance"] = 1;
-  defaultConfig["camera"]["awb_gain"] = 1;
-  defaultConfig["camera"]["wb_mode"] = 0;
+  doc["camera"]["installed"] = true;
+  doc["camera"]["enabled"] = false;
+  doc["camera"]["frameRate"] = 10;
+  doc["camera"]["rotation"] = 0;
+  doc["camera"]["brightness"] = 1;
+  doc["camera"]["contrast"] = 1;
+  doc["camera"]["saturation"] = 1;
+  doc["camera"]["exposure_level"] = 1;
+  doc["camera"]["exposure_value"] = 400;
+  doc["camera"]["agc_gain"] = 2;
+  doc["camera"]["gain_ceiling"] = 2;
+  doc["camera"]["white_balance"] = 1;
+  doc["camera"]["awb_gain"] = 1;
+  doc["camera"]["wb_mode"] = 0;
 #else
-  defaultConfig["camera"]["installed"] = false;
+  doc["camera"]["installed"] = false;
 #endif
 
   // OTA - based on partition table
-  defaultConfig["ota"]["enabled"] = isOTAEnabled();
+  doc["ota"]["enabled"] = isOTAEnabled();
 
   // Auth
-  defaultConfig["auth"]["enabled"] = false;
-  defaultConfig["auth"]["password"] = "admin";
-  defaultConfig["auth"]["username"] = "admin";
+  doc["auth"]["enabled"] = false;
+  doc["auth"]["password"] = "admin";
+  doc["auth"]["username"] = "admin";
 
   // Logging: access, debug, info, warning, error
-  defaultConfig["log"]["enabled"] = true;
-  defaultConfig["log"]["level"] = "debug";
+  doc["log"]["enabled"] = true;
+  doc["log"]["level"] = "debug";
 
-  return defaultConfig;
+  return doc;
 }
 
 // Commenting out web server config endpoint for now

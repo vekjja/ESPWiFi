@@ -4,6 +4,7 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
+  // config = defaultConfig();
 
   startSerial();
 
@@ -11,7 +12,7 @@ void ESPWiFi::start() {
 
   readConfig();
 
-  printf("=== ESPWiFi Started ===\n\n");
+  printf("\n\t========= ESPWiFi Started =========\n\n");
 
   // setMaxPower();
   // startWiFi();

@@ -31,7 +31,7 @@ bootloader = os.path.join(build_dir, "bootloader-signed.bin")
 partitions = os.path.join(build_dir, "partitions-signed.bin")
 firmware = os.path.join(build_dir, "firmware-signed.bin")
 
-for binary in [bootloader, partitions, firmware]:
+for binary in [bootloader, firmware]:
     if not os.path.exists(binary):
         print(f"Error: Signed binary not found: {binary}")
         print("Please run 'pio run -e esp32-c3' first to build the project")
@@ -52,8 +52,6 @@ cmd = [
     "write-flash",
     "0x0",
     bootloader,
-    "0x8000",
-    partitions,
     "0x10000",
     firmware,
 ]

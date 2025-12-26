@@ -40,7 +40,7 @@ void ESPWiFi::readConfig() {
     }
   }
 
-  printConfig();
+  // printConfig();
 
   readingConfig = false;
 }
@@ -50,10 +50,10 @@ void ESPWiFi::printConfig() {
   logConfig["wifi"]["accessPoint"]["password"] = "********";
   logConfig["wifi"]["client"]["password"] = "********";
   logConfig["auth"]["password"] = "********";
-  String prettyConfig;
+  std::string prettyConfig;
   serializeJsonPretty(logConfig, prettyConfig);
   log(INFO, "⚙️  Config: " + configFile);
-  log(DEBUG, "\n" + std::string(prettyConfig.c_str()));
+  log(DEBUG, "\n" + prettyConfig);
 }
 
 void ESPWiFi::saveConfig() {
@@ -137,7 +137,7 @@ void ESPWiFi::handleConfig() {
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
 
-  String hostname = "espwifi32-123456";
+  std::string hostname = "espwifi32-123456";
   defaultConfig["hostname"] = hostname; // Will get MAC-based hostname later
   defaultConfig["deviceName"] = "ESPWiFi";
 
@@ -145,7 +145,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  String ssid = "ESPWiFi-" + hostname;
+  std::string ssid = "ESPWiFi-" + hostname;
   defaultConfig["wifi"]["accessPoint"]["ssid"] = ssid;
   defaultConfig["wifi"]["accessPoint"]["password"] = "espwifi!";
 

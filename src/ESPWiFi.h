@@ -1,9 +1,6 @@
 #ifndef ESPWiFi_H
 #define ESPWiFi_H
 
-// Arduino Framework (when using espidf + arduino)
-#include <Arduino.h>
-
 // ESP-IDF Headers
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -181,7 +178,7 @@ public:
   void log(LogLevel level, std::string message) {
     log(level, "%s", message.c_str());
   }
-  void log(IPAddress ip) { log(INFO, "%s", ip.toString().c_str()); }
+  // void log(IPAddress ip) { log(INFO, "%s", ip.toString().c_str()); }
   template <typename T> void log(T value) {
     log(INFO, "%s", std::to_string(value).c_str());
   };
@@ -200,8 +197,8 @@ public:
   void startWiFi();
   void startClient();
   int selectBestChannel();
-  IPAddress localIP();
-  IPAddress softAPIP();
+  // IPAddress localIP();
+  // IPAddress softAPIP();
   std::string macAddress();
 
   // mDNS

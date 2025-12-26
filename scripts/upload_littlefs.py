@@ -172,12 +172,12 @@ def main():
     print(
         "\n⚠️  IMPORTANT: Close any serial monitors (pio device monitor) before continuing!"
     )
-    print("Press Enter to continue or Ctrl+C to cancel...")
-    try:
-        input()
-    except KeyboardInterrupt:
-        print("\nUpload cancelled.")
-        sys.exit(0)
+    # print("Press Enter to continue or Ctrl+C to cancel...")
+    # try:
+    #     input()
+    # except KeyboardInterrupt:
+    #     print("\nUpload cancelled.")
+    #     sys.exit(0)
 
     # Upload filesystem using esptool
     # Using --no-stub for compatibility with secure boot (matches upload_secure.py)

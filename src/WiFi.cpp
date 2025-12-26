@@ -15,9 +15,9 @@ void ESPWiFi::startAP() {
 
 int ESPWiFi::selectBestChannel() { return 1; }
 
-IPAddress ESPWiFi::localIP() { return IPAddress(0, 0, 0, 0); }
+// IPAddress ESPWiFi::localIP() { return IPAddress(0, 0, 0, 0); }
 
-IPAddress ESPWiFi::softAPIP() { return IPAddress(192, 168, 4, 1); }
+// IPAddress ESPWiFi::softAPIP() { return IPAddress(192, 168, 4, 1); }
 
 std::string ESPWiFi::macAddress() {
   uint8_t mac[6];

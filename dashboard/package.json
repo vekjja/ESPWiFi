@@ -26,7 +26,7 @@
     "monitor": "cd .. && pio device monitor",
     "upload": "cd .. && pio run -t upload",
     "upload:monitor": "npm run upload && npm run monitor",
-    "uploadfs": "cd .. && python3 scripts/upload_littlefs.py",
+    "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
     "deploy:monitor": "npm run deploy && npm run monitor",
     "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",

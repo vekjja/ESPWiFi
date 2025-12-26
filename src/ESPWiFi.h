@@ -1,38 +1,148 @@
 #ifndef ESPWiFi_H
 #define ESPWiFi_H
 
-#include <Arduino.h>
+// ESP-IDF Headers
+#include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
+#include <cstdarg>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <stdio.h>
+#include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+// ArduinoJson (compatible with ESP-IDF)
 #include <ArduinoJson.h>
-#include <AsyncJson.h>
-#include <AsyncWebSocket.h>
-#include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
+
+// IntervalTimer
 #include <IntervalTimer.h>
-#include <LittleFS.h>
-#include <SD.h>
-#include <Update.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
 
-#ifdef ESPWiFi_CAMERA
-#include <esp_camera.h>
-#endif
+// #ifdef ESPWiFi_CAMERA
+// #include <esp_camera.h>
+// #endif
 
-// Forward declaration
-class WebSocket;
+// Forward declaration - WebSocket not yet ported to ESP-IDF
+// class WebSocket;
 
 // Log levels
 enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
 
+// Helper type aliases to replace Arduino types
+using String = std::string;
+
+// IPAddress equivalent
+struct IPAddress {
+  union {
+    uint8_t bytes[4];
+    uint32_t dword;
+  } _address;
+
+  IPAddress() { _address.dword = 0; }
+  IPAddress(uint8_t first, uint8_t second, uint8_t third, uint8_t fourth) {
+    _address.bytes[0] = first;
+    _address.bytes[1] = second;
+    _address.bytes[2] = third;
+    _address.bytes[3] = fourth;
+  }
+  IPAddress(uint32_t address) { _address.dword = address; }
+
+  std::string toString() const {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d.%d.%d.%d", _address.bytes[0],
+             _address.bytes[1], _address.bytes[2], _address.bytes[3]);
+    return std::string(buf);
+  }
+
+  uint8_t operator[](int index) const { return _address.bytes[index]; }
+  uint8_t &operator[](int index) { return _address.bytes[index]; }
+};
+
+// File handle wrapper
+struct File {
+  FILE *handle;
+  std::string path;
+
+  File() : handle(nullptr) {}
+  File(FILE *h, const std::string &p) : handle(h), path(p) {}
+
+  operator bool() const { return handle != nullptr; }
+  void close() {
+    if (handle) {
+      fclose(handle);
+      handle = nullptr;
+    }
+  }
+  size_t write(const uint8_t *data, size_t len) {
+    return handle ? fwrite(data, 1, len, handle) : 0;
+  }
+  size_t read(uint8_t *buffer, size_t len) {
+    return handle ? fread(buffer, 1, len, handle) : 0;
+  }
+  size_t size() {
+    if (!handle)
+      return 0;
+    long pos = ftell(handle);
+    fseek(handle, 0, SEEK_END);
+    long sz = ftell(handle);
+    fseek(handle, pos, SEEK_SET);
+    return sz;
+  }
+  bool available() { return handle && !feof(handle); }
+};
+
+// Filesystem wrapper
+struct FS {
+  std::string mount_point;
+
+  FS(const std::string &mp) : mount_point(mp) {}
+
+  File open(const std::string &path, const char *mode = "r") {
+    std::string full_path = mount_point + path;
+    FILE *f = fopen(full_path.c_str(), mode);
+    return File(f, full_path);
+  }
+
+  bool exists(const std::string &path) {
+    std::string full_path = mount_point + path;
+    struct stat st;
+    return stat(full_path.c_str(), &st) == 0;
+  }
+
+  bool mkdir(const std::string &path) {
+    std::string full_path = mount_point + path;
+    return ::mkdir(full_path.c_str(), 0755) == 0;
+  }
+
+  bool remove(const std::string &path) {
+    std::string full_path = mount_point + path;
+    return ::remove(full_path.c_str()) == 0;
+  }
+
+  bool rmdir(const std::string &path) {
+    std::string full_path = mount_point + path;
+    return ::rmdir(full_path.c_str()) == 0;
+  }
+};
+
 class ESPWiFi {
 private:
-  String version = "v0.1.0";
+  std::string version = "v0.1.0";
 
 public:
   JsonDocument config = defaultConfig();
   int connectTimeout = 15000;
-  String configFile = "/config.json";
-  AsyncWebServer *webServer = nullptr;
+  std::string configFile = "/config.json";
+  void *webServer =
+      nullptr; // Will be httpd_handle_t when web server is implemented
   void (*connectSubroutine)() = nullptr;
 
   // Device
@@ -47,23 +157,24 @@ public:
   void initLittleFS();
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
-  bool fileExists(FS *fs, const String &filePath);
-  bool dirExists(FS *fs, const String &dirPath);
-  bool mkDir(FS *fs, const String &dirPath);
-  bool deleteDirectoryRecursive(FS *fs, const String &dirPath);
-  void handleFileUpload(AsyncWebServerRequest *request, String filename,
-                        size_t index, uint8_t *data, size_t len, bool final);
+  bool fileExists(FS *fs, const std::string &filePath);
+  bool dirExists(FS *fs, const std::string &dirPath);
+  bool mkDir(FS *fs, const std::string &dirPath);
+  bool deleteDirectoryRecursive(FS *fs, const std::string &dirPath);
+  void handleFileUpload(void *req, const std::string &filename, size_t index,
+                        uint8_t *data, size_t len, bool final);
 
   // Helper functions for filesystem operations
-  void logFilesystemInfo(const String &fsName, size_t totalBytes,
+  void logFilesystemInfo(const std::string &fsName, size_t totalBytes,
                          size_t usedBytes);
   void printFilesystemInfo();
-  String sanitizeFilename(const String &filename);
-  void getStorageInfo(const String &fsParam, size_t &totalBytes,
+  std::string sanitizeFilename(const std::string &filename);
+  void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
-  bool writeFile(FS *filesystem, const String &filePath, const uint8_t *data,
-                 size_t len);
-  bool isRestrictedSystemFile(const String &fsParam, const String &filePath);
+  bool writeFile(FS *filesystem, const std::string &filePath,
+                 const uint8_t *data, size_t len);
+  bool isRestrictedSystemFile(const std::string &fsParam,
+                              const std::string &filePath);
 
   // Logging
   File logFile;
@@ -74,21 +185,21 @@ public:
   void closeLogFile();
   void openLogFile();
   bool loggingStarted = false;
-  String logFilePath = "/log";
-  void startLogging(String filePath = "/log");
+  std::string logFilePath = "/log";
+  void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
-  String timestamp();
-  String timestampForFilename();
-  void writeLog(String message);
+  std::string timestamp();
+  std::string timestampForFilename();
+  void writeLog(std::string message);
   bool shouldLog(LogLevel level);
-  String formatLog(const char *format, va_list args);
+  std::string formatLog(const char *format, va_list args);
   void log(LogLevel level, const char *format, ...);
-  void log(LogLevel level, String message) {
+  void log(LogLevel level, std::string message) {
     log(level, "%s", message.c_str());
   }
   void log(IPAddress ip) { log(INFO, "%s", ip.toString().c_str()); }
   template <typename T> void log(T value) {
-    log(INFO, "%s", String(value).c_str());
+    log(INFO, "%s", std::to_string(value).c_str());
   };
   void logConfigHandler();
 
@@ -105,6 +216,9 @@ public:
   void startWiFi();
   void startClient();
   int selectBestChannel();
+  IPAddress localIP();
+  IPAddress softAPIP();
+  std::string macAddress();
 
   // mDNS
   void startMDNS();
@@ -124,39 +238,38 @@ public:
   void initWebServer();
   void startWebServer();
   bool webServerStarted = false;
-  void addCORS(AsyncWebServerResponse *response);
-  void handleCorsPreflight(AsyncWebServerRequest *request);
-  void sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
-                        const String &jsonBody);
-  bool authorized(AsyncWebServerRequest *request);
-  String generateToken();
+  void addCORS(void *req);
+  void handleCorsPreflight(void *req);
+  void sendJsonResponse(void *req, int statusCode, const std::string &jsonBody);
+  bool authorized(void *req);
+  std::string generateToken();
   bool authEnabled();
 
-  // Camera
-#ifdef ESPWiFi_CAMERA
-  camera_config_t camConfig;
-  WebSocket *camSoc = nullptr;
-  bool cameraOperationInProgress = false;
-  bool initCamera();
-  void startCamera();
-  void deinitCamera();
-  void streamCamera();
-  void clearCameraBuffer();
-  void cameraConfigHandler();
-  void updateCameraSettings();
-  void takeSnapshot(String filePath = "/snapshots/snapshot.jpg");
-#endif
+  // Camera - not yet ported to ESP-IDF
+  // #ifdef ESPWiFi_CAMERA
+  //   camera_config_t camConfig;
+  //   WebSocket *camSoc = nullptr;
+  //   bool cameraOperationInProgress = false;
+  //   bool initCamera();
+  //   void startCamera();
+  //   void deinitCamera();
+  //   void streamCamera();
+  //   void clearCameraBuffer();
+  //   void cameraConfigHandler();
+  //   void updateCameraSettings();
+  //   void takeSnapshot(std::string filePath = "/snapshots/snapshot.jpg");
+  // #endif
 
-  // RSSI
-  WebSocket *rssiWebSocket = nullptr;
+  // RSSI - not yet ported to ESP-IDF
+  // WebSocket *rssiWebSocket = nullptr;
   void startRSSIWebSocket();
   void streamRSSI();
 
   // Utils
   void setMaxPower();
-  String getContentType(String filename);
-  String bytesToHumanReadable(size_t bytes);
-  String getFileExtension(const String &filename);
+  std::string getContentType(std::string filename);
+  std::string bytesToHumanReadable(size_t bytes);
+  std::string getFileExtension(const std::string &filename);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
@@ -172,7 +285,7 @@ public:
 
   // BMI160
 #ifdef ESPWiFi_BMI160_ENABLED
-  float getTemperature(String unit = "C");
+  float getTemperature(std::string unit = "C");
   int8_t readGyroscope(int16_t *gyroData);
   bool startBMI160(uint8_t address = 0x69);
   int8_t readAccelerometer(int16_t *accelData);
@@ -183,17 +296,17 @@ public:
   // OTA
   void startOTA();
   bool isOTAEnabled();
-  void handleOTAStart(AsyncWebServerRequest *request);
-  void handleOTAUpdate(AsyncWebServerRequest *request, String filename,
-                       size_t index, uint8_t *data, size_t len, bool final);
-  void handleOTAFileUpload(AsyncWebServerRequest *request, String filename,
-                           size_t index, uint8_t *data, size_t len, bool final);
+  void handleOTAStart(void *req);
+  void handleOTAUpdate(void *req, const std::string &filename, size_t index,
+                       uint8_t *data, size_t len, bool final);
+  void handleOTAFileUpload(void *req, const std::string &filename, size_t index,
+                           uint8_t *data, size_t len, bool final);
   void resetOTAState();
   bool otaInProgress;
   size_t otaCurrentSize;
   size_t otaTotalSize;
-  String otaErrorString;
-  String otaMD5Hash;
+  std::string otaErrorString;
+  std::string otaMD5Hash;
 
   // Bluetooth
   bool startBluetooth();
@@ -204,5 +317,13 @@ public:
   void bluetoothConfigHandler();
   void checkBluetoothConnectionStatus();
 };
+
+// Helper functions for String conversion
+inline const char *c_str(const std::string &s) { return s.c_str(); }
+inline bool isEmpty(const std::string &s) { return s.empty(); }
+inline void toLowerCase(std::string &s) {
+  for (char &c : s)
+    c = tolower(c);
+}
 
 #endif // ESPWiFi

@@ -2,6 +2,7 @@
 #define ESPWiFi_CONFIG
 
 #include "ESPWiFi.h"
+#include <sys/stat.h>
 
 void ESPWiFi::readConfig() {
   static bool readingConfig = false;
@@ -11,58 +12,91 @@ void ESPWiFi::readConfig() {
   readingConfig = true;
 
   initLittleFS();
-  File file = LittleFS.open(configFile, "r");
+
+  if (!lfs || !littleFsInitialized) {
+    config = defaultConfig();
+    log(WARNING, "⚙️ No filesystem: Using default config");
+    printConfig();
+    readingConfig = false;
+    return;
+  }
+
+  File file = lfs->open(configFile, "r");
 
   if (!file) {
     config = defaultConfig();
-    log(WARNING, "⚙️ Failed to open config file: Using default config");
-  } else {
-    JsonDocument loadedConfig;
-    DeserializationError error = deserializeJson(loadedConfig, file);
-    if (error) {
-      config = defaultConfig();
-      log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
-          error.c_str());
-    } else {
-      mergeConfig(loadedConfig);
-    }
-    file.close();
+    log(WARNING, "⚙️ Config file not found: Using default config");
+    printConfig();
+    readingConfig = false;
+    return;
   }
 
-  printConfig();
+  // For now, just use default config to avoid stack overflow
+  // TODO: Properly implement config loading from file
+  config = defaultConfig();
   file.close();
+
+  log(INFO, "⚙️ Config system initialized (using defaults)");
+  printConfig();
 
   readingConfig = false;
 }
 
 void ESPWiFi::saveConfig() {
   initLittleFS();
-  File file = LittleFS.open(configFile, "w");
+
+  if (!lfs) {
+    log(ERROR, "No filesystem available for saving config");
+    return;
+  }
+
+  File file = lfs->open(configFile, "w");
   if (!file) {
     log(ERROR, " Failed to open config file for writing");
     return;
   }
-  size_t written = serializeJson(config, file);
-  file.close();
-  if (written == 0) {
-    log(ERROR, " Failed to write config JSON to file");
-    return;
-  }
-  if (config["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾 Config Saved: %s", configFile.c_str());
-    printConfig();
+
+  std::string jsonStr;
+  size_t size = measureJson(config);
+  jsonStr.reserve(size + 1);
+
+  // Serialize to string
+  char *buffer = (char *)malloc(size + 1);
+  if (buffer) {
+    size_t written = serializeJson(config, buffer, size + 1);
+    file.write((const uint8_t *)buffer, written);
+    free(buffer);
+    file.close();
+
+    if (written == 0) {
+      log(ERROR, " Failed to write config JSON to file");
+      return;
+    }
+
+    if (config["log"]["enabled"].as<bool>()) {
+      log(INFO, "💾 Config Saved: %s", configFile.c_str());
+      printConfig();
+    }
+  } else {
+    file.close();
+    log(ERROR, " Failed to allocate memory for config");
   }
 }
 
 void ESPWiFi::printConfig() {
-  JsonDocument logConfig = config;
-  logConfig["wifi"]["accessPoint"]["password"] = "********";
-  logConfig["wifi"]["client"]["password"] = "********";
-  logConfig["auth"]["password"] = "********";
-  String prettyConfig;
-  serializeJsonPretty(logConfig, prettyConfig);
-  log(INFO, "⚙️ Config: " + configFile);
-  log(DEBUG, "\n" + prettyConfig);
+  // Simplified to avoid stack overflow - don't copy the entire JsonDocument
+  log(INFO, "⚙️ Config loaded: %s", configFile.c_str());
+
+  if (config["deviceName"].is<const char *>()) {
+    log(DEBUG, "Device: %s", config["deviceName"].as<const char *>());
+  }
+  if (config["wifi"]["mode"].is<const char *>()) {
+    log(DEBUG, "WiFi Mode: %s", config["wifi"]["mode"].as<const char *>());
+  }
+  if (config["wifi"]["enabled"].is<bool>()) {
+    log(DEBUG, "WiFi Enabled: %s",
+        config["wifi"]["enabled"].as<bool>() ? "true" : "false");
+  }
 }
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {
@@ -72,13 +106,13 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
 }
 
 void ESPWiFi::handleConfig() {
-  bluetoothConfigHandler();
-#ifdef ESPWiFi_CAMERA
-  cameraConfigHandler();
-#else
+  // bluetoothConfigHandler();
+  // #ifdef ESPWiFi_CAMERA
+  //   cameraConfigHandler();
+  // #else
   config["camera"]["enabled"] = false;
   config["camera"]["installed"] = false;
-#endif
+  // #endif
   logConfigHandler();
 }
 
@@ -86,13 +120,13 @@ JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument defaultConfig;
 
   defaultConfig["deviceName"] = "ESPWiFi";
-  defaultConfig["hostname"] = String(WiFi.getHostname());
+  defaultConfig["hostname"] = "espwifi"; // Will get MAC-based hostname later
 
   defaultConfig["wifi"]["enabled"] = true;
   defaultConfig["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  String ssid = "ESPWiFi-" + String(WiFi.getHostname());
+  std::string ssid = "ESPWiFi-Device";
   defaultConfig["wifi"]["ap"]["ssid"] = ssid;
   defaultConfig["wifi"]["ap"]["password"] = "espwifi!";
 
@@ -120,7 +154,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   defaultConfig["camera"]["exposure_level"] = 1;
   defaultConfig["camera"]["exposure_value"] = 400;
   defaultConfig["camera"]["agc_gain"] = 2;
-  defaultConfig["camera"]["gain_ceiling"] = 2;
+  defaultConfig["gain_ceiling"] = 2;
   defaultConfig["camera"]["white_balance"] = 1;
   defaultConfig["camera"]["awb_gain"] = 1;
   defaultConfig["camera"]["wb_mode"] = 0;
@@ -143,57 +177,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   return defaultConfig;
 }
 
-void ESPWiFi::srvConfig() {
-  initWebServer();
+// Commenting out web server config endpoint for now
+// void ESPWiFi::srvConfig() {
+//   // Will implement with ESP-IDF HTTP server later
+// }
 
-  // Add OPTIONS handler for /config endpoint
-  webServer->on(
-      "/config", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-
-  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    String responseStr;
-    serializeJson(config, responseStr);
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", responseStr);
-    addCORS(response);
-    request->send(response);
-  });
-
-  webServer->addHandler(new AsyncCallbackJsonWebHandler(
-      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (!authorized(request)) {
-          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-          return;
-        }
-        if (json.isNull()) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"EmptyInput\"}");
-          addCORS(response);
-          request->send(response);
-          log(ERROR, "/config Error parsing JSON: EmptyInput");
-          return;
-        }
-
-        JsonDocument jsonDoc = json;
-        mergeConfig(jsonDoc);
-
-        if (request->method() == HTTP_PUT) {
-          saveConfig();
-        }
-
-        handleConfig();
-
-        String responseStr;
-        serializeJson(config, responseStr);
-        AsyncWebServerResponse *response =
-            request->beginResponse(200, "application/json", responseStr);
-        addCORS(response);
-        request->send(response);
-      }));
-}
 #endif // ESPWiFi_CONFIG

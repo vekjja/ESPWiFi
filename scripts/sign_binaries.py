@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import shutil
+import tempfile
 from pathlib import Path
 
 # Try to import PlatformIO's SCons env when running as an extra_script.
@@ -47,7 +48,84 @@ PIOENV = (
     else os.environ.get("PIOENV", _default_env_name(PROJECT_DIR))
 )
 
-SIGNING_KEY = PROJECT_DIR / "esp32_secure_boot.pem"
+
+def get_signing_key_path(project_dir: Path, pioenv: str) -> Path:
+    """Get the signing key path from sdkconfig file."""
+    # Try to find sdkconfig in various locations
+    sdkconfig_paths = [
+        project_dir / "sdkconfig",
+        project_dir / ".pio" / "build" / pioenv / "sdkconfig",
+    ]
+
+    # Also check board_build.sdkconfig from platformio.ini
+    try:
+        if HAS_SCONS:
+            board_sdkconfig = env.BoardConfig().get("build.sdkconfig", "")
+            if board_sdkconfig:
+                sdkconfig_paths.insert(0, project_dir / board_sdkconfig)
+    except Exception:
+        pass
+
+    # Try to read from sdkconfig files
+    for sdkconfig_path in sdkconfig_paths:
+        if not sdkconfig_path.exists():
+            continue
+
+        try:
+            with open(sdkconfig_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("CONFIG_SECURE_BOOT_SIGNING_KEY="):
+                        # Extract the value (remove quotes if present)
+                        key_path = (
+                            line.split("=", 1)[1].strip().strip('"').strip("'")
+                        )
+                        # Resolve relative paths from project directory
+                        if os.path.isabs(key_path):
+                            return Path(key_path)
+                        else:
+                            return project_dir / key_path
+        except Exception:
+            continue
+
+    # Fallback to default if not found in sdkconfig
+    default_key = project_dir / "esp32_secure_boot.pem"
+    print(
+        f"⚠️  Could not find CONFIG_SECURE_BOOT_SIGNING_KEY in sdkconfig, using default: {default_key}"
+    )
+    return default_key
+
+
+def get_signing_key() -> Path:
+    """Get and validate the signing key path."""
+    key_path = get_signing_key_path(PROJECT_DIR, PIOENV)
+
+    # Validate the key exists and is a valid PEM file
+    if not key_path.exists():
+        print(f"❌ Signing key not found: {key_path}")
+        print(
+            "   Please generate a key or update CONFIG_SECURE_BOOT_SIGNING_KEY in sdkconfig"
+        )
+        return key_path  # Return anyway so error message is clear
+
+    # Validate it's a PEM file
+    try:
+        with open(key_path, "r") as f:
+            content = f.read()
+            if (
+                "BEGIN RSA PRIVATE KEY" not in content
+                and "BEGIN PRIVATE KEY" not in content
+            ):
+                print(
+                    f"⚠️  Warning: {key_path} does not appear to be a valid private key PEM file"
+                )
+    except Exception as e:
+        print(f"⚠️  Warning: Could not read key file: {e}")
+
+    return key_path
+
+
+SIGNING_KEY = get_signing_key()
 
 
 def find_espsecure_script() -> Path | None:
@@ -80,14 +158,105 @@ ESPSECURE = find_espsecure_script()
 PYTHON_EXE = sys.executable
 
 
-def sign_binary(binary_path: Path, key_path: Path) -> bool:
-    """Sign a binary file using espsecure.py"""
+def verify_signature(binary_path: Path, key_path: Path) -> bool:
+    """Verify that a binary was signed with the given key."""
     if not binary_path.exists():
         print(f"⚠️  Binary not found: {binary_path}")
         return False
 
     if not key_path.exists():
         print(f"❌ Signing key not found: {key_path}")
+        return False
+
+    if ESPSECURE is None:
+        print("❌ espsecure.py not found, cannot verify signature")
+        return False
+
+    key_file = str(key_path.resolve())
+    binary_file = str(binary_path.resolve())
+
+    # Extract public key from private key for verification
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pem", delete=False
+    ) as tmp_pubkey:
+        tmp_pubkey_path = tmp_pubkey.name
+
+    try:
+        # Extract public key (output file is a positional argument)
+        extract_cmd = [
+            str(PYTHON_EXE),
+            str(ESPSECURE),
+            "extract_public_key",
+            "--version",
+            "2",
+            "--keyfile",
+            key_file,
+            tmp_pubkey_path,  # Output file as positional argument
+        ]
+
+        try:
+            subprocess.run(
+                extract_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"⚠️  Could not extract public key for verification: {e}")
+            if e.stderr:
+                print(f"   stderr: {e.stderr}")
+            return False
+
+        # Verify signature with public key
+        verify_cmd = [
+            str(PYTHON_EXE),
+            str(ESPSECURE),
+            "verify_signature",
+            "--version",
+            "2",
+            "--keyfile",
+            tmp_pubkey_path,
+            binary_file,
+        ]
+
+        try:
+            result = subprocess.run(
+                verify_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+            print(f"✓ Verified signature: {binary_path.name}")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Signature verification failed for {binary_path.name}")
+            if e.stdout:
+                print(f"   stdout: {e.stdout}")
+            if e.stderr:
+                print(f"   stderr: {e.stderr}")
+            return False
+    finally:
+        # Clean up temporary public key file
+        try:
+            os.unlink(tmp_pubkey_path)
+        except Exception:
+            pass
+
+
+def sign_binary(binary_path: Path, key_path: Path) -> bool:
+    """Sign a binary file using espsecure.py and verify the signature."""
+    if not binary_path.exists():
+        print(f"⚠️  Binary not found: {binary_path}")
+        return False
+
+    if not key_path.exists():
+        print(f"❌ Signing key not found: {key_path}")
+        return False
+
+    if ESPSECURE is None:
+        print("❌ espsecure.py not found")
         return False
 
     key_file = str(key_path.resolve())
@@ -117,7 +286,15 @@ def sign_binary(binary_path: Path, key_path: Path) -> bool:
         )
         if result.stderr:
             print(result.stderr)
-        print(f"🔐 Signed: {binary_path}\n")
+        print(f"🔐 Signed: {binary_path}")
+
+        # Verify the signature was applied correctly
+        if verify_signature(binary_path, key_path):
+            print()  # Add blank line after verification
+        else:
+            print("⚠️  Warning: Signature verification failed\n")
+            return False
+
         return True
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to sign {binary_path.name}: {e}")
@@ -125,7 +302,7 @@ def sign_binary(binary_path: Path, key_path: Path) -> bool:
             print("   stderr:\n", e.stderr)
         return False
     except FileNotFoundError:
-        print(f"❌ espsecure.py not found at {ESPSECURE}")
+        print("❌ espsecure.py not found")
         return False
 
 

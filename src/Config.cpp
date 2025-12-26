@@ -37,7 +37,7 @@ void ESPWiFi::readConfig() {
   file.close();
 
   log(INFO, "⚙️ Config system initialized (using defaults)");
-  printConfig();
+  // printConfig();
 
   readingConfig = false;
 }

@@ -27,12 +27,12 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   loggingStarted = true;
 
-  initLittleFS();
-  // initSDCard();  // Commented out for now
-  this->logFilePath = filePath;
+  // initLittleFS();
+  // // initSDCard();  // Commented out for now
+  // this->logFilePath = filePath;
 
-  openLogFile();
-  cleanLogFile();
+  // openLogFile();
+  // cleanLogFile();
 
   log(INFO, "🌌 ESPWiFi Version: %s", version.c_str());
 
@@ -160,7 +160,7 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
   printf("%s%s %s\n", ts.c_str(), levelStr.c_str(), output.c_str());
   fflush(stdout); // Ensure immediate output
 
-  writeLog(ts + levelStr + " " + output + "\n");
+  // writeLog(ts + levelStr + " " + output + "\n");
 }
 
 std::string ESPWiFi::timestamp() {

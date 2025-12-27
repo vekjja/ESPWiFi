@@ -36,10 +36,10 @@ void ESPWiFi::startWiFi() {
   toLowerCase(mode);
   if (mode == "client") {
     startClient();
-  } else if (mode == "accessPoint" || mode == "ap") {
+  } else if (mode == "accesspoint" || mode == "ap") {
     startAP();
   } else {
-    log(WARNING, "⚠️  Invalid Mode: %s", mode.c_str());
+    log(WARNING, "Invalid Mode: %s", mode.c_str());
     config["wifi"]["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
     startAP();
   }

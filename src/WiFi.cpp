@@ -16,6 +16,7 @@
 
 // Shared event loop initialization state
 static bool event_loop_initialized = false;
+static bool netif_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
 // mDNS support - requires managed component
@@ -65,6 +66,12 @@ void ESPWiFi::startClient() {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
+  }
+
+  // Initialize TCP/IP stack if not already done
+  if (!netif_initialized) {
+    ESP_ERROR_CHECK(esp_netif_init());
+    netif_initialized = true;
   }
 
   // Clean up any existing WiFi/netif before starting client mode
@@ -249,6 +256,12 @@ void ESPWiFi::startAP() {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
+  }
+
+  // Initialize TCP/IP stack if not already done
+  if (!netif_initialized) {
+    ESP_ERROR_CHECK(esp_netif_init());
+    netif_initialized = true;
   }
 
   // Clean up any existing WiFi/netif before starting AP mode

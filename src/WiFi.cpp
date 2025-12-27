@@ -67,8 +67,6 @@ void ESPWiFi::startClient() {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
-    // Small delay to ensure event loop is fully ready
-    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   // Initialize TCP/IP stack if not already done
@@ -89,12 +87,8 @@ void ESPWiFi::startClient() {
     esp_err_t deinit_ret = esp_wifi_deinit();
     if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
       // Only log error if it's something other than "not initialized"
-      // log(WARNING, "Warning: WiFi deinit returned: %s",
-      //     esp_err_to_name(deinit_ret));
     }
     wifi_initialized = false;
-    // Small delay to allow WiFi driver to fully clean up
-    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
   // Initialize network interface
@@ -121,8 +115,8 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  // Actually initiate the connection
-  ESP_ERROR_CHECK(esp_wifi_connect());
+  // Small delay to allow WiFi driver to fully initialize before connecting
+  vTaskDelay(pdMS_TO_TICKS(600));
 
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
@@ -134,6 +128,9 @@ void ESPWiFi::startClient() {
     log(DEBUG, "\tMAC: %s", macStr);
   }
   printf("\t");
+
+  // Actually initiate the connection
+  ESP_ERROR_CHECK(esp_wifi_connect());
 
   // Wait for connection - check if we got an IP address
   int64_t start = esp_timer_get_time() / 1000; // Convert to milliseconds
@@ -161,7 +158,7 @@ void ESPWiFi::startClient() {
   printf("\n");
 
   if (!connected) {
-    log(ERROR, "🛜 Failed to connect to WiFi");
+    log(ERROR, "🛜  Failed to connect to WiFi");
     config["wifi"]["mode"] = "accessPoint";
 
     // Properly clean up WiFi before switching to AP mode
@@ -176,9 +173,6 @@ void ESPWiFi::startClient() {
       esp_netif_destroy(current_netif);
       current_netif = nullptr;
     }
-
-    // Small delay to allow WiFi driver to fully clean up
-    vTaskDelay(pdMS_TO_TICKS(100));
 
     startAP();
     return;
@@ -210,8 +204,11 @@ void ESPWiFi::startClient() {
     log(DEBUG, "\tDNS: %s", ip_str);
   }
 
-  log(DEBUG, "\tRSSI: %d dBm", ap_info.rssi);
-  log(DEBUG, "\tChannel: %d", ap_info.primary);
+  // Get AP info for RSSI and channel (ap_info already declared above)
+  if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+    log(DEBUG, "\tRSSI: %d dBm", ap_info.rssi);
+    log(DEBUG, "\tChannel: %d", ap_info.primary);
+  }
 }
 
 int ESPWiFi::selectBestChannel() {
@@ -443,7 +440,7 @@ void ESPWiFi::setHostname(std::string hostname) {
   esp_err_t hostname_ret =
       esp_netif_set_hostname(current_netif, hostname.c_str());
   if (hostname_ret == ESP_OK) {
-    log(INFO, "🏷️  Hostname updated to: %s", hostname.c_str());
+    log(INFO, "🏷️  Hostname: %s", hostname.c_str());
     // Update config with the hostname that was actually set
     config["hostname"] = hostname;
   } else {

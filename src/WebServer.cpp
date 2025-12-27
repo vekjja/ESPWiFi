@@ -6,7 +6,30 @@
 #include <cstring>
 #include <string>
 
-// Forward declarations removed - handlers are now defined inline
+// Static member initialization
+ESPWiFi *ESPWiFi::errorHandlerInstance = nullptr;
+
+// Static error handler function
+esp_err_t ESPWiFi::staticErrorHandler(httpd_req_t *req, httpd_err_code_t err) {
+  if (errorHandlerInstance == nullptr ||
+      errorHandlerInstance->notFoundHandler == nullptr) {
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
+    return ESP_FAIL;
+  }
+  return errorHandlerInstance->notFoundHandler(req, err);
+}
+
+void ESPWiFi::HTTPNotFound(esp_err_t (*handler)(httpd_req_t *,
+                                                httpd_err_code_t)) {
+  if (!webServer) {
+    log(ERROR, "❌ Cannot register 404 handler: web server not initialized");
+    return;
+  }
+  notFoundHandler = handler;
+  errorHandlerInstance = this;
+  httpd_register_err_handler(webServer, HTTPD_404_NOT_FOUND,
+                             staticErrorHandler);
+}
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
@@ -28,7 +51,7 @@ void ESPWiFi::startWebServer() {
     return;
   }
 
-  // Root route - serve index.html or redirect (no auth required)
+  // Root route - serve index.html from LFS (no auth required)
   HTTPRoute("/", HTTP_GET, [](httpd_req_t *req) {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
     if (espwifi == nullptr) {
@@ -36,15 +59,7 @@ void ESPWiFi::startWebServer() {
       return ESP_FAIL;
     }
 
-    espwifi->addCORS(req);
-    // Serve index.html or redirect to dashboard
-    const char *html =
-        "<!DOCTYPE html><html><head><meta "
-        "http-equiv=\"refresh\" content=\"0; url=/index.html\"></"
-        "head><body>Redirecting...</body></html>";
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    return espwifi->sendFileResponse(req, "/index.html");
   });
 
   // Info endpoint
@@ -232,7 +247,47 @@ void ESPWiFi::startWebServer() {
     return ESP_OK;
   });
 
-  // Note: Wildcard handlers should be registered last to avoid catching all
+  // Register 404 error handler to serve static files
+  HTTPNotFound([](httpd_req_t *req, httpd_err_code_t err) -> esp_err_t {
+    ESPWiFi *espwifi = ESPWiFi::errorHandlerInstance;
+    if (espwifi == nullptr) {
+      return ESP_FAIL;
+    }
+
+    std::string uri(req->uri);
+
+    // Skip API routes - they should stay real 404
+    if (uri.rfind("/api/", 0) == 0) {
+      return ESP_FAIL;
+    }
+
+    // Try to serve as static file
+    esp_err_t ret = espwifi->sendFileResponse(req, uri);
+
+    // If that fails, fall back to SPA entry point (for routes without file
+    // extensions)
+    if (ret != ESP_OK) {
+      size_t lastSlash = uri.find_last_of('/');
+      std::string lastPart =
+          (lastSlash == std::string::npos) ? uri : uri.substr(lastSlash + 1);
+      bool looksLikeRoute = (lastPart.find('.') == std::string::npos);
+
+      if (looksLikeRoute) {
+        // Looks like a route, serve index.html for SPA
+        ret = espwifi->sendFileResponse(req, "/index.html");
+      }
+    }
+
+    // If still failed, send 404
+    if (ret != ESP_OK) {
+      httpd_resp_set_status(req, "404 Not Found");
+      httpd_resp_set_type(req, "text/plain");
+      httpd_resp_send(req, "Not found", HTTPD_RESP_USE_STRLEN);
+    }
+
+    return ESP_OK;
+  });
+
   webServerStarted = true;
   log(INFO, "🗄️  HTTP Web Server started");
 }
@@ -277,6 +332,88 @@ void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
   httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
 }
 
+esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
+                                    const std::string &filePath) {
+  addCORS(req);
+
+  // Check if LFS is initialized
+  if (!littleFsInitialized) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, "Filesystem not available", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
+  // Construct full path
+  std::string fullPath = lfsMountPoint + filePath;
+
+  // Check if file exists first (like Arduino's filesystem->exists())
+  struct stat fileStat;
+  if (stat(fullPath.c_str(), &fileStat) != 0) {
+    // File doesn't exist
+    return ESP_FAIL;
+  }
+
+  // Check if it's actually a file (not a directory)
+  if (S_ISDIR(fileStat.st_mode)) {
+    return ESP_FAIL;
+  }
+
+  // Open file from LFS
+  FILE *file = fopen(fullPath.c_str(), "rb");
+  if (!file) {
+    return ESP_FAIL;
+  }
+
+  // Get file size
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    return ESP_FAIL;
+  }
+
+  long fileSize = ftell(file);
+  if (fileSize < 0) {
+    fclose(file);
+    return ESP_FAIL;
+  }
+
+  if (fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file);
+    return ESP_FAIL;
+  }
+
+  if (fileSize == 0) {
+    fclose(file);
+    return ESP_FAIL;
+  }
+
+  // Allocate buffer for file content
+  char *buffer = (char *)malloc(fileSize);
+  if (!buffer) {
+    fclose(file);
+    return ESP_FAIL;
+  }
+
+  // Read file content
+  size_t bytesRead = fread(buffer, 1, fileSize, file);
+  fclose(file);
+
+  if (bytesRead != (size_t)fileSize) {
+    free(buffer);
+    return ESP_FAIL;
+  }
+
+  // Determine content type based on file extension
+  std::string contentType = getContentType(filePath);
+  httpd_resp_set_type(req, contentType.c_str());
+
+  // Send response
+  esp_err_t ret = httpd_resp_send(req, buffer, fileSize);
+  free(buffer);
+
+  return ret;
+}
+
 void ESPWiFi::HTTPRoute(httpd_uri_t route) {
   if (!webServer) {
     log(ERROR, "❌ Cannot register route: web server not initialized");
@@ -316,45 +453,4 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
   }
 
   return false;
-}
-
-// Handler implementations moved inline to HTTPRoute() calls above
-
-// Implementation of handler methods that interface with the HTTP handlers
-void ESPWiFi::srvAll() {
-  // This is called from the handler - you may want to restructure this
-  // For now, return 404 for unmatched routes
-  log(DEBUG, "srvAll called");
-}
-
-void ESPWiFi::srvRoot() {
-  log(DEBUG, "srvRoot called");
-  // Handled by root_get_handler
-}
-
-void ESPWiFi::srvInfo() {
-  log(DEBUG, "srvInfo called");
-  // TODO: Get espwifi info and send JSON response
-  // This needs access to the httpd_req_t - needs restructuring
-}
-
-void ESPWiFi::srvFiles() {
-  log(DEBUG, "srvFiles called");
-  // TODO: List files and send JSON response
-}
-
-void ESPWiFi::srvConfig() {
-  log(DEBUG, "srvConfig called");
-  // TODO: Send config JSON
-  // This needs access to the httpd_req_t - needs restructuring
-}
-
-void ESPWiFi::srvRestart() {
-  log(INFO, "🔄 Restart requested");
-  // Handled by restart_post_handler
-}
-
-void ESPWiFi::srvLog() {
-  log(DEBUG, "srvLog called");
-  // TODO: Return log content
 }

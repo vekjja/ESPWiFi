@@ -21,7 +21,7 @@ std::string ESPWiFi::getContentType(std::string filename) {
     return "image/svg+xml";
   else if (filename.find(".ico") != std::string::npos)
     return "image/x-icon";
-  return "text/plain";
+  return "text/plain; charset=utf-8";
 }
 
 std::string ESPWiFi::bytesToHumanReadable(size_t bytes) {

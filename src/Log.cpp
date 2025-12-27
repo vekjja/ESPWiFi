@@ -49,7 +49,7 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   cleanLogFile();
 
-  log(INFO, "\n\n\t========= 🌌 ESPWiFi %s =========\n", version().c_str());
+  writeLog("\n\t========= 🌌 ESPWiFi " + version() + " =========\n\n");
 
   if (serialStarted) {
     log(INFO, "📺 Serial Output Enabled");

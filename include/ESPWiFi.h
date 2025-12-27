@@ -86,6 +86,7 @@ struct File {
 class ESPWiFi {
 private:
   std::string _version = "v0.1.0";
+  static esp_err_t staticErrorHandler(httpd_req_t *req, httpd_err_code_t err);
 
   // WiFi event handler state
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
@@ -209,6 +210,9 @@ public:
   void handleCorsPreflight(httpd_req_t *req);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
+  esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
+  esp_err_t (*notFoundHandler)(httpd_req_t *, httpd_err_code_t) = nullptr;
+  static ESPWiFi *errorHandlerInstance;
   void HTTPRoute(httpd_uri_t route);
   // Overload for inline handler definition - accepts function pointer or
   // captureless lambda
@@ -226,11 +230,7 @@ public:
         .user_ctx = this};
     httpd_register_uri_handler(webServer, &route);
   }
-  template <size_t N> void registerHTTPRoutes(httpd_uri_t (&routes)[N]) {
-    for (size_t i = 0; i < N; i++) {
-      httpd_register_uri_handler(webServer, &routes[i]);
-    }
-  }
+  void HTTPNotFound(esp_err_t (*handler)(httpd_req_t *, httpd_err_code_t));
 
   // Camera - not yet ported to ESP-IDF
   // #ifdef ESPWiFi_CAMERA

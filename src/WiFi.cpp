@@ -56,7 +56,7 @@ void ESPWiFi::startClient() {
     startAP();
     return;
   }
-  log(INFO, "🔗 Connecting to WiFi Network:");
+  log(INFO, "🔗 Connecting to WiFi Network");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
   log(DEBUG, "\tPassword: **********");
 

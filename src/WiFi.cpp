@@ -114,7 +114,7 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_start());
 
   // Small delay to allow WiFi driver to fully initialize before connecting
-  vTaskDelay(pdMS_TO_TICKS(999));
+  vTaskDelay(pdMS_TO_TICKS(600));
 
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];

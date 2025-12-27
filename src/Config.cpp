@@ -209,6 +209,12 @@ void ESPWiFi::srvConfig() {
       httpd_resp_send_500(req);
       return ESP_FAIL;
     }
+
+    if (!espwifi->authorized(req)) {
+      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
+      return ESP_OK;
+    }
+
     std::string json;
     serializeJson(espwifi->config, json);
     espwifi->sendJsonResponse(req, 200, json);
@@ -216,7 +222,7 @@ void ESPWiFi::srvConfig() {
   });
 
   // Config POST endpoint
-  HTTPRoute("/api/config", HTTP_POST, [](httpd_req_t *req) {
+  HTTPRoute("/config", HTTP_POST, [](httpd_req_t *req) {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
     if (espwifi == nullptr) {
       httpd_resp_send_500(req);

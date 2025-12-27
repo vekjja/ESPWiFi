@@ -136,7 +136,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   // Construct full path
   std::string fullPath = lfsMountPoint + filePath;
 
-  printf("fullPath: %s\n", fullPath.c_str());
+  printf("Sending file: %s\n", fullPath.c_str());
 
   // Check if file exists first
   struct stat fileStat;
@@ -146,7 +146,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     return ESP_FAIL;
   }
 
-  printf("stat succeeded, file size: %ld, is_dir: %d\n", fileStat.st_size,
+  printf("File size: %ld bytes, is_dir: %d\n", fileStat.st_size,
          S_ISDIR(fileStat.st_mode));
 
   // Check if it's actually a file (not a directory)
@@ -161,7 +161,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     printf("fopen failed for %s, errno: %d\n", fullPath.c_str(), errno);
     return ESP_FAIL;
   }
-  printf("fopen succeeded\n");
 
   // Get file size
   if (fseek(file, 0, SEEK_END) != 0) {
@@ -176,7 +175,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     fclose(file);
     return ESP_FAIL;
   }
-  printf("fileSize: %ld\n", fileSize);
 
   if (fseek(file, 0, SEEK_SET) != 0) {
     printf("fseek SEEK_SET failed, errno: %d\n", errno);
@@ -185,7 +183,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   }
 
   if (fileSize == 0) {
-    printf("fileSize is 0\n");
+    printf("File size is 0\n");
     fclose(file);
     return ESP_FAIL;
   }
@@ -194,18 +192,49 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
 
-  // For large files, stream in chunks to avoid memory issues
-  // Use 32KB chunks - efficient for ESP32 while staying within heap limits
-  const size_t CHUNK_SIZE = 32768;
+  // For small files (< 32KB), load entirely and send directly (faster, no
+  // chunked encoding overhead) For large files, stream in chunks to avoid
+  // memory issues
+  const size_t SMALL_FILE_THRESHOLD = 32768;
+  const size_t CHUNK_SIZE = 32768; // 32KB chunks
+
+  esp_err_t ret = ESP_OK;
+
+  if (fileSize <= SMALL_FILE_THRESHOLD) {
+    // Small file - load entirely and send directly
+    char *buffer = (char *)malloc(fileSize);
+    if (!buffer) {
+      printf("💔 malloc failed for small file buffer of %ld bytes\n", fileSize);
+      fclose(file);
+      return ESP_FAIL;
+    }
+
+    size_t bytesRead = fread(buffer, 1, fileSize, file);
+    fclose(file);
+
+    if (bytesRead != (size_t)fileSize) {
+      printf("fread incomplete: %zu of %ld bytes\n", bytesRead, fileSize);
+      free(buffer);
+      return ESP_FAIL;
+    }
+
+    ret = httpd_resp_send(req, buffer, fileSize);
+    free(buffer);
+    return ret;
+  }
+
+  // Large file - stream in chunks using chunked transfer encoding
+  // Enable buffered I/O for better performance
+  setvbuf(file, nullptr, _IOFBF, CHUNK_SIZE);
+
   char *buffer = (char *)malloc(CHUNK_SIZE);
   if (!buffer) {
-    printf("malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
+    printf("💔 malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
     fclose(file);
     return ESP_FAIL;
   }
 
   size_t totalSent = 0;
-  esp_err_t ret = ESP_OK;
 
   // Stream file in chunks
   while (totalSent < (size_t)fileSize && ret == ESP_OK) {
@@ -219,17 +248,11 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
       break;
     }
 
-    // Send chunk (use httpd_resp_send_chunk for streaming)
-    if (totalSent == 0) {
-      // First chunk - use httpd_resp_send_chunk to start chunked transfer
-      ret = httpd_resp_send_chunk(req, buffer, bytesRead);
-    } else {
-      // Subsequent chunks
-      ret = httpd_resp_send_chunk(req, buffer, bytesRead);
-    }
-
+    // Send chunk
+    ret = httpd_resp_send_chunk(req, buffer, bytesRead);
     if (ret != ESP_OK) {
-      printf("httpd_resp_send_chunk failed at %zu bytes\n", totalSent);
+      printf("httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
+             totalSent, esp_err_to_name(ret));
       break;
     }
 
@@ -239,6 +262,9 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   // Finalize chunked transfer
   if (ret == ESP_OK) {
     ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
+    if (ret != ESP_OK) {
+      printf("Failed to finalize chunked transfer: %s\n", esp_err_to_name(ret));
+    }
   }
 
   free(buffer);

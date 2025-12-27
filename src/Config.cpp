@@ -181,7 +181,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["installed"] = false;
 #endif
 
-  // OTA - based on partition table
+  // OTA - based on LittleFS partition
   doc["ota"]["enabled"] = isOTAEnabled();
 
   // Auth

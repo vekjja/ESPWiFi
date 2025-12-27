@@ -209,6 +209,23 @@ public:
   void handleCorsPreflight(httpd_req_t *req);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
+  void HTTPRoute(httpd_uri_t route);
+  // Overload for inline handler definition - accepts function pointer or
+  // captureless lambda
+  template <typename Handler>
+  void HTTPRoute(const char *uri, httpd_method_t method, Handler handler) {
+    if (!webServer) {
+      log(ERROR, "❌ Cannot register route: web server not initialized");
+      return;
+    }
+    httpd_uri_t route = {
+        .uri = uri,
+        .method = method,
+        .handler =
+            handler, // Works for function pointers and captureless lambdas
+        .user_ctx = this};
+    httpd_register_uri_handler(webServer, &route);
+  }
   template <size_t N> void registerHTTPRoutes(httpd_uri_t (&routes)[N]) {
     for (size_t i = 0; i < N; i++) {
       httpd_register_uri_handler(webServer, &routes[i]);

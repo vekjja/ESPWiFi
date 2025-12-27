@@ -49,7 +49,7 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   cleanLogFile();
 
-  log(INFO, "🌌 ESPWiFi Version: %s", version().c_str());
+  log(INFO, "\n\n\t========= 🌌 ESPWiFi %s =========\n", version().c_str());
 
   if (serialStarted) {
     log(INFO, "📺 Serial Output Enabled");
@@ -102,7 +102,7 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::cleanLogFile() {
-  if (maxLogFileSize > 0 && littleFsInitialized) {
+  if (maxLogFileSize > -1 && littleFsInitialized) {
     std::string full_path = lfsMountPoint + logFilePath;
     struct stat st;
     if (stat(full_path.c_str(), &st) == 0) {
@@ -111,6 +111,7 @@ void ESPWiFi::cleanLogFile() {
         if (!deleted) {
           log(ERROR, "Failed to delete log file");
         }
+        log(INFO, "🗑️ Log file deleted");
       }
     }
   }

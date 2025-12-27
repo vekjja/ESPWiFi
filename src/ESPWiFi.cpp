@@ -12,8 +12,6 @@ void ESPWiFi::start() {
 
   readConfig();
 
-  printf("\n\t========= ESPWiFi Started =========\n\n");
-
   // setMaxPower();
 
   startWiFi();
@@ -29,7 +27,7 @@ void ESPWiFi::runSystem() {
   taskYIELD();
 
   // Just delay for now - reduce logging spam
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(3000));
   log(INFO, "🫀  ESPWiFi System Running");
 
   // streamRSSI();

@@ -109,6 +109,9 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
+  // Actually initiate the connection
+  ESP_ERROR_CHECK(esp_wifi_connect());
+
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
   esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
@@ -148,6 +151,24 @@ void ESPWiFi::startClient() {
   if (!connected) {
     log(ERROR, "🛜 Failed to connect to WiFi");
     config["wifi"]["mode"] = "accessPoint";
+
+    // Properly clean up WiFi before switching to AP mode
+    esp_wifi_stop();
+    esp_err_t deinit_ret = esp_wifi_deinit();
+    if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
+      log(WARNING, "Warning: WiFi deinit returned: %s",
+          esp_err_to_name(deinit_ret));
+    }
+
+    // Destroy the STA netif
+    if (current_netif != nullptr) {
+      esp_netif_destroy(current_netif);
+      current_netif = nullptr;
+    }
+
+    // Small delay to allow WiFi driver to fully clean up
+    vTaskDelay(pdMS_TO_TICKS(100));
+
     startAP();
     return;
   }
@@ -269,6 +290,7 @@ void ESPWiFi::startAP() {
     esp_netif_destroy(current_netif);
     current_netif = nullptr;
   }
+
   // Stop and deinit WiFi if it's running (ignore errors if not initialized)
   esp_wifi_stop();
   esp_err_t deinit_ret = esp_wifi_deinit();
@@ -277,6 +299,9 @@ void ESPWiFi::startAP() {
     log(WARNING, "Warning: WiFi deinit returned: %s",
         esp_err_to_name(deinit_ret));
   }
+
+  // Small delay to allow WiFi driver to fully clean up before reinitializing
+  vTaskDelay(pdMS_TO_TICKS(100));
 
   // Initialize network interface
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();

@@ -28,7 +28,7 @@ void ESPWiFi::startSerial(int baudRate) {
   // ESP-IDF: Serial is already initialized by default via UART
   // Just mark it as started
   serialStarted = true;
-  vTaskDelay(pdMS_TO_TICKS(500)); // Small delay for serial to stabilize
+  vTaskDelay(pdMS_TO_TICKS(300)); // Small delay for serial to stabilize
   printf("%s [INFO] 📺 Serial Started\n", timestamp().c_str());
   printf("%s [INFO]\tBaud: %d\n", timestamp().c_str(), baudRate);
 }

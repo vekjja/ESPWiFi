@@ -49,9 +49,3 @@ void ESPWiFi::runAtInterval(unsigned int interval,
     lastIntervalRun = currentTime;
   }
 }
-
-void ESPWiFi::startLEDMatrix() { log(INFO, "LED Matrix not implemented"); }
-
-void ESPWiFi::startSpectralAnalyzer() {
-  log(INFO, "Spectral Analyzer not implemented");
-}

@@ -8,7 +8,11 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -115,7 +119,7 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_start());
 
   // Small delay to allow WiFi driver to fully initialize before connecting
-  vTaskDelay(pdMS_TO_TICKS(900));
+  vTaskDelay(pdMS_TO_TICKS(999));
 
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
@@ -128,33 +132,23 @@ void ESPWiFi::startClient() {
   }
   printf("\t");
 
+  // Register WiFi event handlers
+  esp_err_t ret = registerWiFiHandlers();
+  if (ret != ESP_OK) {
+    log(ERROR, "Failed to register WiFi handlers: %s", esp_err_to_name(ret));
+    return;
+  }
+
   // Actually initiate the connection
   ESP_ERROR_CHECK(esp_wifi_connect());
 
-  // Wait for connection - check if we got an IP address
-  int64_t start = esp_timer_get_time() / 1000; // Convert to milliseconds
+  // Wait for connection event with timeout
   wifi_ap_record_t ap_info;
-  bool connected = false;
-
-  while ((esp_timer_get_time() / 1000) - start < connectTimeout) {
-    if (connectSubroutine != nullptr) {
-      connectSubroutine();
-    }
-    printf(".");
-    fflush(stdout);
-
-    // Check if we have an IP address (more reliable than ap_info)
-    esp_netif_ip_info_t ip_info;
-    if (esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK &&
-        ip_info.ip.addr != 0) {
-      connected = true;
-      // Also get AP info for RSSI and channel
-      esp_wifi_sta_get_ap_info(&ap_info);
-      break;
-    }
-    vTaskDelay(pdMS_TO_TICKS(100)); // Check every 100ms
-  }
+  bool connected = waitForWiFiConnection(connectTimeout, 100);
   printf("\n");
+
+  // Unregister event handlers after connection attempt
+  unregisterWiFiHandlers();
 
   if (!connected) {
     log(ERROR, "🛜  Failed to connect to WiFi");

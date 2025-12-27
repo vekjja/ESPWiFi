@@ -2,6 +2,7 @@
 #define ESPWiFi_H
 
 // ESP-IDF Headers
+#include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -9,6 +10,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include <cstdarg>
@@ -84,6 +86,29 @@ struct File {
 class ESPWiFi {
 private:
   std::string _version = "v0.1.0";
+
+  // WiFi event handler state
+  SemaphoreHandle_t wifi_connect_semaphore = nullptr;
+  bool wifi_connection_success = false;
+  esp_event_handler_instance_t wifi_event_instance = nullptr;
+  esp_event_handler_instance_t ip_event_instance = nullptr;
+
+  // WiFi event handler methods
+  esp_err_t registerWiFiHandlers();
+  void unregisterWiFiHandlers();
+
+  // WiFi event handler methods (called from static callbacks)
+  bool waitForWiFiConnection(int timeout_ms, int check_interval_ms = 100);
+  void wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
+                          void *event_data);
+  void ip_event_handler(esp_event_base_t event_base, int32_t event_id,
+                        void *event_data);
+
+  // Static callbacks for ESP-IDF event system
+  static void wifi_event_handler_static(void *arg, esp_event_base_t event_base,
+                                        int32_t event_id, void *event_data);
+  static void ip_event_handler_static(void *arg, esp_event_base_t event_base,
+                                      int32_t event_id, void *event_data);
 
 public:
   int connectTimeout = 27000;
@@ -218,25 +243,9 @@ public:
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
 
-  // LED Matrix
-  void startLEDMatrix();
-
-  // Spectral Analyzer
-  void startSpectralAnalyzer();
-
   // I2C
   void scanI2CDevices();
   bool checkI2CDevice(uint8_t address);
-
-  // BMI160
-#ifdef ESPWiFi_BMI160_ENABLED
-  float getTemperature(std::string unit = "C");
-  int8_t readGyroscope(int16_t *gyroData);
-  bool startBMI160(uint8_t address = 0x69);
-  int8_t readAccelerometer(int16_t *accelData);
-  void readGyroscope(float &x, float &y, float &z);
-  void readAccelerometer(float &x, float &y, float &z);
-#endif // ESPWiFi_BMI160_ENABLED
 
   // OTA
   void startOTA();
@@ -265,7 +274,6 @@ public:
 
 // Helper functions for String conversion
 inline const char *c_str(const std::string &s) { return s.c_str(); }
-inline bool isEmpty(const std::string &s) { return s.empty(); }
 inline void toLowerCase(std::string &s) {
   for (char &c : s)
     c = tolower(c);

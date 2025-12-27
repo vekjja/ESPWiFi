@@ -82,7 +82,7 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
 
   if (fsParam == "lfs" && littleFsInitialized) {
     size_t total = 0, used = 0;
-    esp_err_t ret = esp_littlefs_info("littlefs", &total, &used);
+    esp_err_t ret = esp_littlefs_info("littlefsp", &total, &used);
     if (ret == ESP_OK) {
       totalBytes = total;
       usedBytes = used;

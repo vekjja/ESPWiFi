@@ -29,7 +29,7 @@ void ESPWiFi::startSerial(int baudRate) {
   // Just mark it as started
   serialStarted = true;
   vTaskDelay(pdMS_TO_TICKS(500)); // Small delay for serial to stabilize
-  printf("%s [INFO] 📺  Serial Started\n", timestamp().c_str());
+  printf("%s [INFO] 📺 Serial Started\n", timestamp().c_str());
   printf("%s [INFO]\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
@@ -107,7 +107,7 @@ void ESPWiFi::cleanLogFile() {
     struct stat st;
     if (stat(full_path.c_str(), &st) == 0) {
       if ((size_t)st.st_size > (size_t)maxLogFileSize) {
-        log(INFO, "🗑️ Log file deleted");
+        log(INFO, "🗑️  Log file deleted");
         bool deleted = ::remove(full_path.c_str()) == 0;
         if (!deleted) {
           log(ERROR, "Failed to delete log file");

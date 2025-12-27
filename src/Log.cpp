@@ -49,7 +49,7 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   cleanLogFile();
 
-  log(INFO, "🌌 ESPWiFi Version: %s", version.c_str());
+  log(INFO, "🌌 ESPWiFi Version: %s", version().c_str());
 
   if (serialStarted) {
     log(INFO, "📺 Serial Output Enabled");

@@ -1,5 +1,8 @@
 # ESP32-C3 Target Configuration
 
+# Main Task Stack Size - increased to prevent stack overflow with large JsonDocument objects
+CONFIG_MAIN_TASK_STACK_SIZE=16384
+
 # Secure Boot V2 (ESP32-C3 uses ECDSA - auto-selected when RSA is disabled)
 CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
 CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
@@ -50,9 +53,3 @@ CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y
 # Optimization
 CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
 CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
-
-# Arduino as ESP-IDF Component
-CONFIG_ARDUINO_ENABLED=y
-
-# Main Task Stack Size - increased to prevent stack overflow with large JsonDocument objects
-CONFIG_MAIN_TASK_STACK_SIZE=16384

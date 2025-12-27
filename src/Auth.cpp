@@ -1,11 +1,6 @@
 // Auth.cpp - Stubbed for now
 #include "ESPWiFi.h"
 
-bool ESPWiFi::authorized(void *req) {
-  // TODO: Implement authorization check
-  return !authEnabled();
-}
-
 std::string ESPWiFi::generateToken() {
   // TODO: Implement token generation
   return "stub_token";

@@ -139,16 +139,14 @@ void ESPWiFi::handleConfig() {
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument doc;
 
-  std::string hostname = "espwifi32-123456";
-  doc["hostname"] = hostname; // Will get MAC-based hostname later
   doc["deviceName"] = "ESPWiFi";
+  doc["hostname"] = getHostname();
 
   doc["wifi"]["enabled"] = true;
   doc["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  std::string ssid = "ESPWiFi-" + hostname;
-  doc["wifi"]["accessPoint"]["ssid"] = ssid;
+  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"].as<std::string>();
   doc["wifi"]["accessPoint"]["password"] = "espwifi!";
 
   // WiFi Client

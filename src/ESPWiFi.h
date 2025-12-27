@@ -2,6 +2,7 @@
 #define ESPWiFi_H
 
 // ESP-IDF Headers
+#include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -82,15 +83,14 @@ struct File {
 
 class ESPWiFi {
 private:
-  std::string version = "v0.1.0";
+  std::string _version = "v0.1.0";
 
 public:
-  JsonDocument config = defaultConfig();
   int connectTimeout = 15000;
-  std::string configFile = "/config.json";
-  void *webServer =
-      nullptr; // Will be httpd_handle_t when web server is implemented
+  JsonDocument config = defaultConfig();
   void (*connectSubroutine)() = nullptr;
+  std::string configFile = "/config.json";
+  std::string version() { return _version; }
 
   // Device
   void start();
@@ -155,9 +155,8 @@ public:
   void startWiFi();
   void startClient();
   int selectBestChannel();
-  // IPAddress localIP();
-  // IPAddress softAPIP();
   std::string macAddress();
+  std::string getHostname();
 
   // mDNS
   void startMDNS();
@@ -174,15 +173,21 @@ public:
   void srvAuth();
   void srvBluetooth();
   void srvLog();
-  void initWebServer();
-  void startWebServer();
-  bool webServerStarted = false;
-  void addCORS(void *req);
-  void handleCorsPreflight(void *req);
-  void sendJsonResponse(void *req, int statusCode, const std::string &jsonBody);
-  bool authorized(void *req);
-  std::string generateToken();
   bool authEnabled();
+  void startWebServer();
+  std::string generateToken();
+  bool webServerStarted = false;
+  void addCORS(httpd_req_t *req);
+  bool authorized(httpd_req_t *req);
+  httpd_handle_t webServer = nullptr;
+  void handleCorsPreflight(httpd_req_t *req);
+  void sendJsonResponse(httpd_req_t *req, int statusCode,
+                        const std::string &jsonBody);
+  template <size_t N> void registerHTTPRoutes(httpd_uri_t (&routes)[N]) {
+    for (size_t i = 0; i < N; i++) {
+      httpd_register_uri_handler(webServer, &routes[i]);
+    }
+  }
 
   // Camera - not yet ported to ESP-IDF
   // #ifdef ESPWiFi_CAMERA

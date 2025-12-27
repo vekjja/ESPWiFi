@@ -15,7 +15,9 @@ void ESPWiFi::start() {
   printf("\n\t========= ESPWiFi Started =========\n\n");
 
   // setMaxPower();
-  // startWiFi();
+
+  startWiFi();
+
   // startMDNS();
   // startWebServer();
   // startBluetooth();

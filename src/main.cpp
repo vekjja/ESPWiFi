@@ -8,7 +8,7 @@
 
 static const char *TAG = "main";
 
-ESPWiFi device;
+ESPWiFi espwifi;
 
 extern "C" void app_main(void) {
   // Initialize NVS
@@ -23,11 +23,11 @@ extern "C" void app_main(void) {
   ESP_LOGI(TAG, "ESPWiFi Starting...");
 
   // Start device
-  device.start();
+  espwifi.start();
 
   // Main loop task
   while (1) {
-    device.runSystem();
+    espwifi.runSystem();
     vTaskDelay(pdMS_TO_TICKS(10)); // Small delay to prevent watchdog issues
   }
 }

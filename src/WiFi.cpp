@@ -155,10 +155,10 @@ void ESPWiFi::startClient() {
     // Properly clean up WiFi before switching to AP mode
     esp_wifi_stop();
     esp_err_t deinit_ret = esp_wifi_deinit();
-    if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
-      log(WARNING, "Warning: WiFi deinit returned: %s",
-          esp_err_to_name(deinit_ret));
-    }
+    // if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
+    // log(WARNING, "Warning: WiFi deinit returned: %s",
+    //     esp_err_to_name(deinit_ret));
+    // }
 
     // Destroy the STA netif
     if (current_netif != nullptr) {
@@ -294,11 +294,11 @@ void ESPWiFi::startAP() {
   // Stop and deinit WiFi if it's running (ignore errors if not initialized)
   esp_wifi_stop();
   esp_err_t deinit_ret = esp_wifi_deinit();
-  if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
-    // Only log error if it's something other than "not initialized"
-    log(WARNING, "Warning: WiFi deinit returned: %s",
-        esp_err_to_name(deinit_ret));
-  }
+  // if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
+  //   // Only log error if it's something other than "not initialized"
+  //   log(WARNING, "Warning: WiFi deinit returned: %s",
+  //       esp_err_to_name(deinit_ret));
+  // }
 
   // Small delay to allow WiFi driver to fully clean up before reinitializing
   vTaskDelay(pdMS_TO_TICKS(100));

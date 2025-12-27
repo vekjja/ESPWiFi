@@ -50,15 +50,19 @@ void ESPWiFi::readConfig() {
 void ESPWiFi::printConfig() {
   log(INFO, "⚙️ Config: " + configFile);
 
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield before JSON operations
   // Create a copy of config with masked passwords for logging
   JsonDocument logConfig;
   std::string configJson;
   serializeJson(config, configJson);
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after serialization
   DeserializationError error = deserializeJson(logConfig, configJson);
   if (error) {
     // If copy fails, just log the original (passwords will be visible)
+    vTaskDelay(pdMS_TO_TICKS(1)); // Yield before pretty serialization
     std::string prettyConfig;
     serializeJsonPretty(config, prettyConfig);
+    vTaskDelay(pdMS_TO_TICKS(1)); // Yield after pretty serialization
     log(DEBUG, "\n" + prettyConfig);
     return;
   }
@@ -71,8 +75,13 @@ void ESPWiFi::printConfig() {
   const size_t numSensitiveKeys =
       sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
 
-  std::function<void(JsonVariant)> maskSensitiveFields =
-      [&](JsonVariant variant) {
+  const int MAX_DEPTH = 10; // Limit recursion depth to prevent stack overflow
+  std::function<void(JsonVariant, int)> maskSensitiveFields =
+      [&](JsonVariant variant, int depth) {
+        if (depth > MAX_DEPTH) {
+          return; // Too deep, skip masking
+        }
+
         if (variant.is<JsonObject>()) {
           JsonObject obj = variant.as<JsonObject>();
           for (JsonPair kvp : obj) {
@@ -97,23 +106,30 @@ void ESPWiFi::printConfig() {
               value.set("********");
             } else if (value.is<JsonObject>() || value.is<JsonArray>()) {
               // Recursively process nested objects and arrays
-              maskSensitiveFields(value);
+              maskSensitiveFields(value, depth + 1);
+            }
+
+            // Yield periodically to prevent stack overflow
+            if (depth % 3 == 0) {
+              vTaskDelay(pdMS_TO_TICKS(1));
             }
           }
         } else if (variant.is<JsonArray>()) {
           JsonArray arr = variant.as<JsonArray>();
           for (JsonVariant item : arr) {
             if (item.is<JsonObject>() || item.is<JsonArray>()) {
-              maskSensitiveFields(item);
+              maskSensitiveFields(item, depth + 1);
             }
           }
         }
       };
 
-  maskSensitiveFields(logConfig.as<JsonVariant>());
+  maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after masking
 
   std::string prettyConfig;
   serializeJsonPretty(logConfig, prettyConfig);
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after pretty serialization
   log(DEBUG, "\n" + prettyConfig);
 }
 
@@ -142,6 +158,7 @@ void ESPWiFi::saveConfig() {
   if (buffer) {
     size_t written = serializeJson(config, buffer, size + 1);
     file.write((const uint8_t *)buffer, written);
+    vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file write
     free(buffer);
     file.close();
 
@@ -162,8 +179,16 @@ void ESPWiFi::saveConfig() {
 
 void ESPWiFi::mergeConfig(JsonDocument &json) {
   // Deep merge: recursively merge objects instead of replacing them
-  std::function<void(JsonVariant, JsonVariantConst)> deepMerge =
-      [&](JsonVariant dst, JsonVariantConst src) {
+  // Limit recursion depth to prevent stack overflow
+  const int MAX_DEPTH = 10;
+  std::function<void(JsonVariant, JsonVariantConst, int)> deepMerge =
+      [&](JsonVariant dst, JsonVariantConst src, int depth) {
+        if (depth > MAX_DEPTH) {
+          // Too deep, just replace instead of merging
+          dst.set(src);
+          return;
+        }
+
         if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
           // Both are objects - merge recursively
           for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
@@ -173,8 +198,12 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
               dst[kvp.key()] = kvp.value();
             } else {
               // Key exists, recurse to merge deeper
-              deepMerge(dstValue, kvp.value());
+              deepMerge(dstValue, kvp.value(), depth + 1);
             }
+          }
+          // Yield periodically during merge to prevent stack overflow
+          if (depth % 3 == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
           }
         } else {
           // Not both objects (or one is null), just replace the value
@@ -183,7 +212,7 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
       };
 
   // Start the deep merge from root
-  deepMerge(config.as<JsonVariant>(), json.as<JsonVariantConst>());
+  deepMerge(config.as<JsonVariant>(), json.as<JsonVariantConst>(), 0);
 }
 
 void ESPWiFi::handleConfig() {
@@ -316,6 +345,7 @@ void ESPWiFi::srvConfig() {
       }
 
       content[content_len] = '\0';
+      vTaskDelay(pdMS_TO_TICKS(1)); // Yield after reading request body
       std::string json_body(content);
       free(content);
 
@@ -342,6 +372,7 @@ void ESPWiFi::srvConfig() {
       // If you want to support PUT, add a separate route handler
       // For now, we'll save config for POST requests
       espwifi->saveConfig();
+      vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file I/O
 
       // Handle config updates (bluetooth, camera, log handlers)
       espwifi->handleConfig();

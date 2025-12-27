@@ -9,7 +9,7 @@ void ESPWiFi::start() {
   readConfig();
   // setMaxPower();
   startWiFi();
-  startMDNS();
+  // startMDNS();
   startWebServer();
   // startBluetooth();
   // startRSSIWebSocket();
@@ -19,9 +19,8 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   taskYIELD();
 
-  // Just delay for now - reduce logging spam
-  vTaskDelay(pdMS_TO_TICKS(9000));
-  log(DEBUG, "🫀");
+  static unsigned long lastHeartbeat = 0;
+  runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 
   // streamRSSI();
   // checkBluetoothConnectionStatus();

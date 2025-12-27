@@ -22,7 +22,3 @@ void ESPWiFi::bluetoothConfigHandler() {
 void ESPWiFi::checkBluetoothConnectionStatus() {
   // Stub
 }
-
-void ESPWiFi::srvBluetooth() {
-  // Will implement later
-}

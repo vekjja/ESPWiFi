@@ -181,4 +181,19 @@ void ESPWiFi::handleFileUpload(void *req, const std::string &filename,
   // Will implement later with HTTP server
 }
 
+void ESPWiFi::srvFS() {
+  if (!webServer) {
+    log(ERROR, "Cannot start FS API /api/fs: web server not initialized");
+    return;
+  }
+  HTTPRoute("/api/fs", HTTP_GET, [](httpd_req_t *req) {
+    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+    if (espwifi == nullptr) {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+    espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}");
+    return ESP_OK;
+  });
+}
 #endif // ESPWiFi_FileSystem

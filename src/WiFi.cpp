@@ -13,7 +13,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "mdns.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -342,41 +341,49 @@ void ESPWiFi::startAP() {
 #endif
 }
 
-void ESPWiFi::startMDNS() {
-  if (!config["wifi"]["enabled"].as<bool>()) {
-    log(INFO, "📛  mDNS Disabled");
-    return;
-  }
+// void ESPWiFi::startMDNS() {
+//   if (!config["wifi"]["enabled"].as<bool>()) {
+//     log(INFO, "📛  mDNS Disabled");
+//     return;
+//   }
 
-  std::string domain = config["deviceName"].as<std::string>();
-  toLowerCase(domain);
+//   std::string domain = config["deviceName"].as<std::string>();
+//   toLowerCase(domain);
 
-  esp_err_t err = mdns_init();
-  if (err != ESP_OK) {
-    log(ERROR, "Error setting up MDNS responder!");
-    return;
-  }
+//   esp_err_t err = mdns_init();
+//   if (err != ESP_OK) {
+//     log(ERROR, "Error setting up MDNS responder!");
+//     return;
+//   }
 
-  err = mdns_hostname_set(domain.c_str());
-  if (err != ESP_OK) {
-    log(ERROR, "Error setting MDNS hostname!");
-    return;
-  }
+//   err = mdns_hostname_set(domain.c_str());
+//   if (err != ESP_OK) {
+//     log(ERROR, "Error setting MDNS hostname!");
+//     return;
+//   }
 
-  err = mdns_instance_name_set(domain.c_str());
-  if (err != ESP_OK) {
-    log(ERROR, "Error setting MDNS instance name!");
-    return;
-  }
+//   err = mdns_instance_name_set(domain.c_str());
+//   if (err != ESP_OK) {
+//     log(ERROR, "Error setting MDNS instance name!");
+//     return;
+//   }
 
-  err = mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
-  if (err != ESP_OK) {
-    log(ERROR, "Error adding MDNS service!");
-    return;
-  }
+//   err = mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
+//   if (err != ESP_OK) {
+//     log(ERROR, "Error adding MDNS service!");
+//     return;
+//   }
 
-  log(INFO, "🏷️  mDNS Started");
-  log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
+//   log(INFO, "🏷️  mDNS Started");
+//   log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
+// }
+
+std::string ESPWiFi::ipAddress() {
+  esp_netif_ip_info_t ip_info;
+  ESP_ERROR_CHECK(esp_netif_get_ip_info(current_netif, &ip_info));
+  char ip_str[16];
+  snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+  return std::string(ip_str);
 }
 
 std::string ESPWiFi::getHostname() {

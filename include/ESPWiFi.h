@@ -39,9 +39,6 @@
 // Log levels
 enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
 
-// Note: Arduino framework now provides String and IPAddress classes
-// Arduino's IPAddress class is now available for use
-
 // File handle wrapper
 struct File {
   FILE *handle;
@@ -146,26 +143,26 @@ public:
   // Logging
   void cleanLogFile();
   int baudRate = 115200;
-  int maxLogFileSize = 0;
+  int maxLogFileSize = -1;
   bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
   std::string timestamp();
+  void logConfigHandler();
+  bool shouldLog(LogLevel level);
   std::string timestampForFilename();
   void writeLog(std::string message);
-  bool shouldLog(LogLevel level);
   std::string formatLog(const char *format, va_list args);
+  // Log functions
   void log(LogLevel level, const char *format, ...);
   void log(LogLevel level, std::string message) {
     log(level, "%s", message.c_str());
   }
-  // void log(IPAddress ip) { log(INFO, "%s", ip.toString().c_str()); }
   template <typename T> void log(T value) {
     log(INFO, "%s", std::to_string(value).c_str());
   };
-  void logConfigHandler();
 
   // Config
   void saveConfig();
@@ -182,23 +179,21 @@ public:
   int selectBestChannel();
   std::string macAddress();
   std::string getHostname();
+  std::string ipAddress();
   void setHostname(std::string hostname);
 
   // mDNS
-  void startMDNS();
+  // void startMDNS();
 
   // WebServer
+  void srvFS();
   void srvAll();
-  void srvOTA();
-  void srvRoot();
+  void srvLog();
   void srvInfo();
   void srvGPIO();
-  void srvFiles();
-  void srvConfig();
-  void srvRestart();
   void srvAuth();
-  void srvBluetooth();
-  void srvLog();
+  void srvConfig();
+  void srvWildcard();
   bool authEnabled();
   void startWebServer();
   std::string generateToken();
@@ -216,7 +211,7 @@ public:
   template <typename Handler>
   void HTTPRoute(const char *uri, httpd_method_t method, Handler handler) {
     if (!webServer) {
-      log(ERROR, "❌ Cannot register route: web server not initialized");
+      log(ERROR, "Cannot register route: web server not initialized");
       return;
     }
     httpd_uri_t route = {
@@ -227,7 +222,9 @@ public:
         .user_ctx = this};
     esp_err_t ret = httpd_register_uri_handler(webServer, &route);
     if (ret != ESP_OK) {
-      log(ERROR, "❌ Failed to register route: %s", esp_err_to_name(ret));
+      log(ERROR, "Failed to register uri: %s, error: %s", uri,
+          esp_err_to_name(ret));
+      return;
     }
   }
 

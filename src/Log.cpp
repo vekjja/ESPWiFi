@@ -227,6 +227,6 @@ void ESPWiFi::logConfigHandler() {
 }
 
 // Commenting out web server log endpoint for now
-// void ESPWiFi::srvLog() {
-//   // Will implement with ESP-IDF HTTP server later
-// }
+void ESPWiFi::srvLog() {
+  // Will implement with ESP-IDF HTTP server later
+}

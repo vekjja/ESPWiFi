@@ -8,7 +8,6 @@
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
-    log(WARNING, "⚠️ Web server already started");
     return;
   }
 
@@ -27,6 +26,7 @@ void ESPWiFi::startWebServer() {
     webServerStarted = false;
     return;
   }
+  webServerStarted = true;
 
   // Root route - serve index.html from LFS (no auth required)
   HTTPRoute("/", HTTP_GET, [](httpd_req_t *req) {
@@ -37,109 +37,6 @@ void ESPWiFi::startWebServer() {
     }
 
     return espwifi->sendFileResponse(req, "/index.html");
-  });
-
-  // Info endpoint
-  HTTPRoute("/api/info", HTTP_GET, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // TODO: Generate espwifi info JSON
-    std::string json =
-        "{\"version\":\"" + espwifi->version() + "\",\"status\":\"ok\"}";
-    espwifi->sendJsonResponse(req, 200, json);
-    return ESP_OK;
-  });
-
-  // Config GET endpoint
-  HTTPRoute("/api/config", HTTP_GET, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // Serialize config to JSON
-    std::string json;
-    serializeJson(espwifi->config, json);
-    espwifi->sendJsonResponse(req, 200, json);
-    return ESP_OK;
-  });
-
-  // Config POST endpoint
-  HTTPRoute("/api/config", HTTP_POST, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // Read request body
-    size_t content_len = req->content_len;
-    if (content_len > 4096) { // Limit to 4KB
-      httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                          "Request body too large");
-      return ESP_FAIL;
-    }
-
-    char *content = (char *)malloc(content_len + 1);
-    if (content == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    int ret = httpd_req_recv(req, content, content_len);
-    if (ret <= 0) {
-      free(content);
-      if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-        httpd_resp_send_408(req);
-      }
-      return ESP_FAIL;
-    }
-
-    content[content_len] = '\0';
-    std::string json_body(content);
-    free(content);
-
-    // TODO: Parse and update config
-    espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}");
-    return ESP_OK;
-  });
-
-  // Files endpoint
-  HTTPRoute("/api/files", HTTP_GET, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // TODO: List files and return JSON array
-    espwifi->sendJsonResponse(req, 200, "{\"files\":[]}");
-    return ESP_OK;
   });
 
   // Restart endpoint
@@ -164,85 +61,22 @@ void ESPWiFi::startWebServer() {
     return ESP_OK;
   });
 
-  // Auth endpoint (no auth required for login)
-  HTTPRoute("/api/auth", HTTP_POST, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    // Read request body
-    size_t content_len = req->content_len;
-    if (content_len > 512) {
-      httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                          "Request body too large");
-      return ESP_FAIL;
-    }
-
-    char *content = (char *)malloc(content_len + 1);
-    if (content == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    int ret = httpd_req_recv(req, content, content_len);
-    if (ret <= 0) {
-      free(content);
-      if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-        httpd_resp_send_408(req);
-      }
-      return ESP_FAIL;
-    }
-
-    content[content_len] = '\0';
-
-    // TODO: Parse credentials and validate, generate token
-    std::string token = espwifi->generateToken();
-    std::string json = "{\"token\":\"" + token + "\"}";
-
-    free(content);
-    espwifi->sendJsonResponse(req, 200, json);
-    return ESP_OK;
-  });
-
-  // Log endpoint
-  HTTPRoute("/api/log", HTTP_GET, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // TODO: Read log file and return content
-    espwifi->sendJsonResponse(req, 200, "{\"log\":\"\"}");
-    return ESP_OK;
-  });
-
-  HTTPRoute("/*", HTTP_GET, [](httpd_req_t *req) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-    esp_err_t ret = espwifi->sendFileResponse(req, req->uri);
-    if (ret != ESP_OK) {
-      // File not found or error - send 404 response
-      // Note: sendFileResponse may have already sent a response (e.g., 503),
-      // but if it just returned ESP_FAIL, we need to send 404 here
-      espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
-      return ESP_OK; // Return OK since we sent a response
-    }
-    return ESP_OK;
-  });
+  srvAll();
 
   webServerStarted = true;
   log(INFO, "🗄️  HTTP Web Server started");
+  log(DEBUG, "\thttp://%s:%d", getHostname().c_str(), 80);
+  log(DEBUG, "\thttp://%s:%d", ipAddress().c_str(), 80);
+}
+
+void ESPWiFi::srvAll() {
+  srvFS();
+  srvLog();
+  srvInfo();
+  srvConfig();
+  srvAuth();
+  srvGPIO();
+  srvWildcard();
 }
 
 void ESPWiFi::addCORS(httpd_req_t *req) {
@@ -368,43 +202,40 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   return ret;
 }
 
-// void ESPWiFi::HTTPRoute(httpd_uri_t route) {
-//   if (!webServer) {
-//     log(ERROR, "❌ Cannot register route: web server not initialized");
-//     return;
-//   }
-//   route.user_ctx = this; // Ensure user_ctx is set to this instance
-//   httpd_register_uri_handler(webServer, &route);
-// }
-
-bool ESPWiFi::authorized(httpd_req_t *req) {
-  if (!authEnabled()) {
-    return true;
+void ESPWiFi::srvInfo() {
+  if (!webServerStarted) {
+    log(ERROR, "Cannot start info API /api/info: web server not initialized");
+    return;
   }
 
-  // Get Authorization header
-  size_t auth_hdr_len = httpd_req_get_hdr_value_len(req, "Authorization");
-  if (auth_hdr_len == 0) {
-    return false;
+  HTTPRoute("/api/info", HTTP_GET, [](httpd_req_t *req) {
+    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+    if (espwifi == nullptr) {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+    espwifi->sendJsonResponse(req, 200, "{\"info\":\"ok\"}");
+    return ESP_OK;
+  });
+}
+
+void ESPWiFi::srvWildcard() {
+  if (!webServerStarted) {
+    log(ERROR, "Cannot start wildcard route /* : web server not initialized");
+    return;
   }
 
-  char *auth_hdr = (char *)malloc(auth_hdr_len + 1);
-  if (auth_hdr == nullptr) {
-    return false;
-  }
-
-  httpd_req_get_hdr_value_str(req, "Authorization", auth_hdr, auth_hdr_len + 1);
-
-  // Check for Bearer token
-  std::string auth_str(auth_hdr);
-  free(auth_hdr);
-
-  if (auth_str.find("Bearer ") == 0) {
-    std::string token = auth_str.substr(7);
-    // TODO: Validate token against stored tokens
-    // For now, simple check - you should implement proper token validation
-    return !token.empty();
-  }
-
-  return false;
+  HTTPRoute("/*", HTTP_GET, [](httpd_req_t *req) {
+    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+    if (espwifi == nullptr) {
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+    esp_err_t ret = espwifi->sendFileResponse(req, req->uri);
+    if (ret != ESP_OK) {
+      espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
+      return ESP_OK; // Return OK since we sent a response
+    }
+    return ESP_OK;
+  });
 }

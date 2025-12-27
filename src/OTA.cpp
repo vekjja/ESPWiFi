@@ -32,7 +32,3 @@ void ESPWiFi::resetOTAState() {
   otaErrorString = "";
   otaMD5Hash = "";
 }
-
-void ESPWiFi::srvOTA() {
-  // Will implement later
-}

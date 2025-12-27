@@ -233,15 +233,16 @@ void ESPWiFi::srvLog() {
   }
 
   // GET /logs - return log file content as HTML
-  HTTPRoute("/logs", HTTP_GET, [](httpd_req_t *req) -> esp_err_t {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi->verify(req, true) != ESP_OK) {
-      return ESP_OK; // Response already sent (OPTIONS or error)
-    }
-
-    // Handler:
-    {
-      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+  httpd_uri_t logs_route = {
+      .uri = "/logs",
+      .method = HTTP_GET,
+      .handler = [](httpd_req_t *req) -> esp_err_t {
+        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+        if (espwifi->verify(req, true) != ESP_OK) {
+          return ESP_OK; // Response already sent (OPTIONS or error)
+        }
+        {
+          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
       // Check if LFS is initialized
       if (!espwifi->littleFsInitialized) {
@@ -452,6 +453,8 @@ void ESPWiFi::srvLog() {
       }
 
       return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
-    }
-  });
+        }
+      },
+      .user_ctx = this};
+  httpd_register_uri_handler(webServer, &logs_route);
 }

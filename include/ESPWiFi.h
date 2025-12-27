@@ -39,47 +39,6 @@
 // Log levels
 enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
 
-// File handle wrapper
-struct File {
-  FILE *handle;
-  std::string path;
-
-  File() : handle(nullptr) {}
-  File(FILE *h, const std::string &p) : handle(h), path(p) {}
-
-  operator bool() const { return handle != nullptr; }
-  void close() {
-    if (handle) {
-      fclose(handle);
-      handle = nullptr;
-    }
-  }
-  size_t write(const uint8_t *data, size_t len) {
-    return handle ? fwrite(data, 1, len, handle) : 0;
-  }
-  // Read single byte (for ArduinoJson compatibility)
-  int read() {
-    if (!handle)
-      return -1;
-    int c = fgetc(handle);
-    return c;
-  }
-  // Read multiple bytes
-  size_t read(uint8_t *buffer, size_t len) {
-    return handle ? fread(buffer, 1, len, handle) : 0;
-  }
-  size_t size() {
-    if (!handle)
-      return 0;
-    long pos = ftell(handle);
-    fseek(handle, 0, SEEK_END);
-    long sz = ftell(handle);
-    fseek(handle, pos, SEEK_SET);
-    return sz;
-  }
-  bool available() { return handle && !feof(handle); }
-};
-
 class ESPWiFi {
 private:
   std::string _version = "v0.1.0";
@@ -137,6 +96,9 @@ public:
   void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
   bool writeFile(const std::string &filePath, const uint8_t *data, size_t len);
+  bool writeFileAtomic(const std::string &filePath, const uint8_t *data,
+                       size_t len);
+  char *readFile(const std::string &filePath, size_t *outSize = nullptr);
   bool isRestrictedSystemFile(const std::string &fsParam,
                               const std::string &filePath);
 
@@ -211,28 +173,6 @@ public:
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
   esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
-  void HTTPRoute(httpd_uri_t route);
-  // Overload for inline handler definition - accepts function pointer or
-  // captureless lambda
-  template <typename Handler>
-  void HTTPRoute(const char *uri, httpd_method_t method, Handler handler) {
-    if (!webServer) {
-      log(ERROR, "Cannot register route: web server not initialized");
-      return;
-    }
-    httpd_uri_t route = {
-        .uri = uri,
-        .method = method,
-        .handler =
-            handler, // Works for function pointers and captureless lambdas
-        .user_ctx = this};
-    esp_err_t ret = httpd_register_uri_handler(webServer, &route);
-    if (ret != ESP_OK) {
-      log(ERROR, "Failed to register uri: %s, error: %s", uri,
-          esp_err_to_name(ret));
-      return;
-    }
-  }
 
   // Camera - not yet ported to ESP-IDF
   // #ifdef ESPWiFi_CAMERA

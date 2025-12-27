@@ -75,6 +75,9 @@ void ESPWiFi::startClient() {
   }
 
   // Clean up any existing WiFi/netif before starting client mode
+  // Unregister event handlers first if they exist
+  unregisterWiFiHandlers();
+
   if (current_netif != nullptr) {
     esp_netif_destroy(current_netif);
     current_netif = nullptr;
@@ -88,6 +91,8 @@ void ESPWiFi::startClient() {
       // Only log error if it's something other than "not initialized"
     }
     wifi_initialized = false;
+    // Small delay to allow WiFi driver to fully clean up before reinitializing
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
   // Initialize network interface
@@ -113,8 +118,15 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
+  // Register WiFi event handlers BEFORE connecting to catch all events
+  esp_err_t ret = registerWiFiHandlers();
+  if (ret != ESP_OK) {
+    log(ERROR, "Failed to register WiFi handlers: %s", esp_err_to_name(ret));
+    return;
+  }
+
   // Small delay to allow WiFi driver to fully initialize before connecting
-  vTaskDelay(pdMS_TO_TICKS(2700));
+  vTaskDelay(pdMS_TO_TICKS(200));
 
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
@@ -126,13 +138,6 @@ void ESPWiFi::startClient() {
     log(DEBUG, "\tMAC: %s", macStr);
   }
   printf("\t");
-
-  // Register WiFi event handlers
-  esp_err_t ret = registerWiFiHandlers();
-  if (ret != ESP_OK) {
-    log(ERROR, "Failed to register WiFi handlers: %s", esp_err_to_name(ret));
-    return;
-  }
 
   // Actually initiate the connection
   ESP_ERROR_CHECK(esp_wifi_connect());

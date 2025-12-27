@@ -21,25 +21,27 @@ void ESPWiFi::readConfig() {
     return;
   }
 
-  std::string full_path = lfsMountPoint + configFile;
-  FILE *f = fopen(full_path.c_str(), "r");
-  File file(f, full_path);
+  size_t fileSize = 0;
+  char *buffer = readFile(configFile, &fileSize);
 
-  if (!file) {
+  if (!buffer || fileSize == 0 || fileSize >= 10240) { // Limit to 10KB
+    if (buffer)
+      free(buffer);
     config = defaultConfig();
-    log(WARNING, "⚙️ Failed to open config file: Using default config");
+    log(WARNING, "⚙️ Failed to read config file: Using default config");
   } else {
-    // Use DynamicJsonDocument to avoid stack overflow - allocates on heap
+    // Parse JSON
     JsonDocument loadedConfig;
-    DeserializationError error = deserializeJson(loadedConfig, file);
+    DeserializationError error = deserializeJson(loadedConfig, buffer);
+    free(buffer);
+
     if (error) {
       config = defaultConfig();
-      log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
+      log(WARNING, "⚙️ Failed to parse config file: %s: Using default config",
           error.c_str());
     } else {
       mergeConfig(loadedConfig);
     }
-    file.close();
   }
 
   printConfig();
@@ -141,39 +143,28 @@ void ESPWiFi::saveConfig() {
     return;
   }
 
-  std::string full_path = lfsMountPoint + configFile;
-  FILE *f = fopen(full_path.c_str(), "w");
-  File file(f, full_path);
-  if (!file) {
-    log(ERROR, " Failed to open config file for writing");
+  // Serialize to buffer
+  size_t size = measureJson(config);
+  char *buffer = (char *)malloc(size + 1);
+  if (!buffer) {
+    log(ERROR, " Failed to allocate memory for config");
     return;
   }
 
-  std::string jsonStr;
-  size_t size = measureJson(config);
-  jsonStr.reserve(size + 1);
+  size_t written = serializeJson(config, buffer, size + 1);
 
-  // Serialize to string
-  char *buffer = (char *)malloc(size + 1);
-  if (buffer) {
-    size_t written = serializeJson(config, buffer, size + 1);
-    file.write((const uint8_t *)buffer, written);
-    vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file write
-    free(buffer);
-    file.close();
+  // Use atomic write to prevent corruption
+  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  free(buffer);
 
-    if (written == 0) {
-      log(ERROR, " Failed to write config JSON to file");
-      return;
-    }
+  if (!success) {
+    log(ERROR, " Failed to write config file");
+    return;
+  }
 
-    if (config["log"]["enabled"].as<bool>()) {
-      log(INFO, "💾 Config Saved: %s", configFile.c_str());
-      printConfig();
-    }
-  } else {
-    file.close();
-    log(ERROR, " Failed to allocate memory for config");
+  if (config["log"]["enabled"].as<bool>()) {
+    log(INFO, "💾 Config Saved: %s", configFile.c_str());
+    printConfig();
   }
 }
 
@@ -294,96 +285,94 @@ void ESPWiFi::srvConfig() {
   }
 
   // Config GET endpoint
-  HTTPRoute("/config", HTTP_GET, [](httpd_req_t *req) -> esp_err_t {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi->verify(req, true) != ESP_OK) {
-      return ESP_OK; // Response already sent (OPTIONS or error)
-    }
+  httpd_uri_t config_get_route = {.uri = "/config",
+                                  .method = HTTP_GET,
+                                  .handler = [](httpd_req_t *req) -> esp_err_t {
+                                    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-    // Handler:
-    {
-      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-      std::string json;
-      serializeJson(espwifi->config, json);
-      espwifi->sendJsonResponse(req, 200, json);
-      return ESP_OK;
-    }
-  });
+                                    std::string json;
+                                    serializeJson(espwifi->config, json);
+                                    espwifi->sendJsonResponse(req, 200, json);
+                                    return ESP_OK;
+                                  },
+                                  .user_ctx = this};
+  httpd_register_uri_handler(webServer, &config_get_route);
 
   // Config PUT endpoint
-  HTTPRoute("/config", HTTP_PUT, [](httpd_req_t *req) -> esp_err_t {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi->verify(req, true) != ESP_OK) {
-      return ESP_OK; // Response already sent (OPTIONS or error)
-    }
+  httpd_uri_t config_put_route = {
+      .uri = "/config",
+      .method = HTTP_PUT,
+      .handler = [](httpd_req_t *req) -> esp_err_t {
+        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-    // Handler:
-    {
-      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+        // if (espwifi->verify(req, true) != ESP_OK) {
+        //   return ESP_OK; // Response already sent (OPTIONS or error)
+        // }
 
-      // Read request body
-      size_t content_len = req->content_len;
-      if (content_len > 4096) { // Limit to 4KB
-        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                            "Request body too large");
-        return ESP_FAIL;
-      }
-
-      char *content = (char *)malloc(content_len + 1);
-      if (content == nullptr) {
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-      }
-
-      int ret = httpd_req_recv(req, content, content_len);
-      if (ret <= 0) {
-        free(content);
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-          httpd_resp_send_408(req);
+        // Read request body
+        size_t content_len = req->content_len;
+        if (content_len > 4096) { // Limit to 4KB
+          httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
+                              "Request body too large");
+          return ESP_FAIL;
         }
-        return ESP_FAIL;
-      }
 
-      content[content_len] = '\0';
-      vTaskDelay(pdMS_TO_TICKS(1)); // Yield after reading request body
-      std::string json_body(content);
-      free(content);
+        char *content = (char *)malloc(content_len + 1);
+        if (content == nullptr) {
+          httpd_resp_send_500(req);
+          return ESP_FAIL;
+        }
 
-      // Parse JSON request body
-      if (json_body.empty()) {
-        espwifi->sendJsonResponse(req, 400, "{\"error\":\"EmptyInput\"}");
-        espwifi->log(ERROR, "/config Error parsing JSON: EmptyInput");
+        int ret = httpd_req_recv(req, content, content_len);
+        if (ret <= 0) {
+          free(content);
+          if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+          }
+          return ESP_FAIL;
+        }
+
+        content[content_len] = '\0';
+        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after reading request body
+        std::string json_body(content);
+        free(content);
+
+        // Parse JSON request body
+        if (json_body.empty()) {
+          espwifi->sendJsonResponse(req, 400, "{\"error\":\"EmptyInput\"}");
+          espwifi->log(ERROR, "/config Error parsing JSON: EmptyInput");
+          return ESP_OK;
+        }
+
+        JsonDocument jsonDoc;
+        DeserializationError error = deserializeJson(jsonDoc, json_body);
+        if (error) {
+          espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
+          espwifi->log(ERROR, "/config Error parsing JSON: %s", error.c_str());
+          return ESP_OK;
+        }
+
+        // Merge the new config
+        espwifi->mergeConfig(jsonDoc);
+
+        // Check if this is a PUT request (save to file)
+        // Note: ESP-IDF httpd uses HTTP_PUT, but we're registering POST
+        // If you want to support PUT, add a separate route handler
+        // For now, we'll save config for POST requests
+        espwifi->saveConfig();
+        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file I/O
+
+        // Handle config updates (bluetooth, camera, log handlers)
+        espwifi->handleConfig();
+
+        // Return the updated config
+        std::string responseJson;
+        serializeJson(espwifi->config, responseJson);
+        espwifi->sendJsonResponse(req, 200, responseJson);
         return ESP_OK;
-      }
-
-      JsonDocument jsonDoc;
-      DeserializationError error = deserializeJson(jsonDoc, json_body);
-      if (error) {
-        espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
-        espwifi->log(ERROR, "/config Error parsing JSON: %s", error.c_str());
-        return ESP_OK;
-      }
-
-      // Merge the new config
-      espwifi->mergeConfig(jsonDoc);
-
-      // Check if this is a PUT request (save to file)
-      // Note: ESP-IDF httpd uses HTTP_PUT, but we're registering POST
-      // If you want to support PUT, add a separate route handler
-      // For now, we'll save config for POST requests
-      espwifi->saveConfig();
-      vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file I/O
-
-      // Handle config updates (bluetooth, camera, log handlers)
-      espwifi->handleConfig();
-
-      // Return the updated config
-      std::string responseJson;
-      serializeJson(espwifi->config, responseJson);
-      espwifi->sendJsonResponse(req, 200, responseJson);
-      return ESP_OK;
-    }
-  });
+      },
+      .user_ctx = this};
+  httpd_register_uri_handler(webServer, &config_put_route);
 }
 
 #endif // ESPWiFi_CONFIG

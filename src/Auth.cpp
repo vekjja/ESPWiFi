@@ -44,114 +44,116 @@ void ESPWiFi::srvAuth() {
   }
 
   // Login endpoint - no auth required
-  HTTPRoute("/api/auth/login", HTTP_POST, [](httpd_req_t *req) -> esp_err_t {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi->verify(req, false) != ESP_OK) {
-      return ESP_OK; // Response already sent (OPTIONS or error)
-    }
-
-    // Handler:
-    {
-      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
-      // Read request body
-      size_t content_len = req->content_len;
-      if (content_len > 512) {
-        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                            "Request body too large");
-        return ESP_FAIL;
-      }
-
-      char *content = (char *)malloc(content_len + 1);
-      if (content == nullptr) {
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-      }
-
-      int ret = httpd_req_recv(req, content, content_len);
-      if (ret <= 0) {
-        free(content);
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-          httpd_resp_send_408(req);
+  httpd_uri_t login_route = {
+      .uri = "/api/auth/login",
+      .method = HTTP_POST,
+      .handler = [](httpd_req_t *req) -> esp_err_t {
+        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+        if (espwifi->verify(req, false) != ESP_OK) {
+          return ESP_OK; // Response already sent (OPTIONS or error)
         }
-        return ESP_FAIL;
-      }
+        {
+          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-      content[content_len] = '\0';
-      std::string json_body(content);
-      free(content);
+          // Read request body
+          size_t content_len = req->content_len;
+          if (content_len > 512) {
+            httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
+                                "Request body too large");
+            return ESP_FAIL;
+          }
 
-      // Parse JSON request body
-      JsonDocument reqJson;
-      DeserializationError error = deserializeJson(reqJson, json_body);
-      if (error) {
-        espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
-        return ESP_OK;
-      }
+          char *content = (char *)malloc(content_len + 1);
+          if (content == nullptr) {
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+          }
 
-      std::string username = reqJson["username"].as<std::string>();
-      std::string password = reqJson["password"].as<std::string>();
+          int ret = httpd_req_recv(req, content, content_len);
+          if (ret <= 0) {
+            free(content);
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+              httpd_resp_send_408(req);
+            }
+            return ESP_FAIL;
+          }
 
-      // Check if auth is enabled
-      if (!espwifi->authEnabled()) {
-        espwifi->sendJsonResponse(
-            req, 200, "{\"token\":\"\",\"message\":\"Auth disabled\"}");
-        return ESP_OK;
-      }
+          content[content_len] = '\0';
+          std::string json_body(content);
+          free(content);
 
-      // Verify username
-      std::string expectedUsername =
-          espwifi->config["auth"]["username"].as<std::string>();
-      if (username != expectedUsername) {
-        espwifi->sendJsonResponse(req, 401,
-                                  "{\"error\":\"Invalid Credentials\"}");
-        return ESP_OK;
-      }
+          // Parse JSON request body
+          JsonDocument reqJson;
+          DeserializationError error = deserializeJson(reqJson, json_body);
+          if (error) {
+            espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
+            return ESP_OK;
+          }
 
-      // Verify password - check if password matches OR expectedPassword is
-      // empty
-      std::string expectedPassword =
-          espwifi->config["auth"]["password"].as<std::string>();
-      if (password != expectedPassword && expectedPassword.length() > 0) {
-        espwifi->sendJsonResponse(req, 401,
-                                  "{\"error\":\"Invalid Credentials\"}");
-        return ESP_OK;
-      }
+          std::string username = reqJson["username"].as<std::string>();
+          std::string password = reqJson["password"].as<std::string>();
 
-      // Generate or get existing token
-      std::string token = espwifi->config["auth"]["token"].as<std::string>();
-      if (token.length() == 0) {
-        token = espwifi->generateToken();
-        espwifi->config["auth"]["token"] = token;
-        espwifi->saveConfig();
-      }
+          // Check if auth is enabled
+          if (!espwifi->authEnabled()) {
+            espwifi->sendJsonResponse(
+                req, 200, "{\"token\":\"\",\"message\":\"Auth disabled\"}");
+            return ESP_OK;
+          }
 
-      std::string response = "{\"token\":\"" + token + "\"}";
-      espwifi->sendJsonResponse(req, 200, response);
-      return ESP_OK;
-    }
-  });
+          // Verify username
+          std::string expectedUsername =
+              espwifi->config["auth"]["username"].as<std::string>();
+          if (username != expectedUsername) {
+            espwifi->sendJsonResponse(req, 401,
+                                      "{\"error\":\"Invalid Credentials\"}");
+            return ESP_OK;
+          }
+
+          // Verify password - check if password matches OR expectedPassword is
+          // empty
+          std::string expectedPassword =
+              espwifi->config["auth"]["password"].as<std::string>();
+          if (password != expectedPassword && expectedPassword.length() > 0) {
+            espwifi->sendJsonResponse(req, 401,
+                                      "{\"error\":\"Invalid Credentials\"}");
+            return ESP_OK;
+          }
+
+          // Generate or get existing token
+          std::string token =
+              espwifi->config["auth"]["token"].as<std::string>();
+          if (token.length() == 0) {
+            token = espwifi->generateToken();
+            espwifi->config["auth"]["token"] = token;
+            espwifi->saveConfig();
+          }
+
+          std::string response = "{\"token\":\"" + token + "\"}";
+          espwifi->sendJsonResponse(req, 200, response);
+          return ESP_OK;
+        }
+      },
+      .user_ctx = this};
+  httpd_register_uri_handler(webServer, &login_route);
 
   // Logout endpoint - invalidates token
-  HTTPRoute("/api/auth/logout", HTTP_POST, [](httpd_req_t *req) -> esp_err_t {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi->verify(req, true) != ESP_OK) {
-      return ESP_OK; // Response already sent (OPTIONS or error)
-    }
-
-    // Handler:
-    {
-      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
-      // Invalidate token by generating a new one
-      std::string newToken = espwifi->generateToken();
-      espwifi->config["auth"]["token"] = newToken;
-      espwifi->saveConfig();
-
-      espwifi->sendJsonResponse(req, 200, "{\"message\":\"Logged out\"}");
-      return ESP_OK;
-    }
-  });
+  httpd_uri_t logout_route = {
+      .uri = "/api/auth/logout",
+      .method = HTTP_POST,
+      .handler = [](httpd_req_t *req) -> esp_err_t {
+        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+        if (espwifi->verify(req, true) != ESP_OK) {
+          return ESP_OK; // Response already sent (OPTIONS or error)
+        }
+        // Invalidate token by generating a new one
+        std::string newToken = espwifi->generateToken();
+        espwifi->config["auth"]["token"] = newToken;
+        espwifi->saveConfig();
+        espwifi->sendJsonResponse(req, 200, "{\"message\":\"Logged out\"}");
+        return ESP_OK;
+      },
+      .user_ctx = this};
+  httpd_register_uri_handler(webServer, &logout_route);
 }
 
 bool ESPWiFi::authorized(httpd_req_t *req) {
@@ -162,19 +164,18 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
   std::string userAgent = "-";
   std::string uri = req->uri;
 
-  // // List of allowed path patterns (supports * wildcard)
-  // // Add more patterns here as needed
-  // static const std::vector<std::string> allowedPatterns = {
-  //     "/api/auth/*", "/index.html", "/favicon.ico",
-  //     "/static/*",   "/*.css",      "/*.js",
-  // };
+  // List of allowed path patterns (supports * wildcard)
+  static const std::vector<std::string> allowedPatterns = {
+      "/api/auth/*", "/index.html", "/favicon.ico",
+      "/static/*",   "/*.css",      "/*.js",
+  };
 
-  // // Check if URI matches any allowed pattern
-  // for (const auto &pattern : allowedPatterns) {
-  //   if (matchPattern(uri, pattern)) {
-  //     return true;
-  //   }
-  // }
+  // Check if URI matches any allowed pattern
+  for (const auto &pattern : allowedPatterns) {
+    if (matchPattern(uri, pattern)) {
+      return true;
+    }
+  }
 
   // Get User-Agent header if available
   size_t user_agent_len = httpd_req_get_hdr_value_len(req, "User-Agent");

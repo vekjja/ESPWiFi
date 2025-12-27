@@ -197,73 +197,67 @@ JsonDocument ESPWiFi::defaultConfig() {
 }
 
 void ESPWiFi::srvConfig() {
-  if (!webServerStarted) {
+  if (!webServer) {
     log(ERROR,
         "Cannot start config API /api/config: web server not initialized");
     return;
   }
 
-  HTTPRoute("/config", HTTP_GET, [](httpd_req_t *req) {
+  // Config GET endpoint - middleware applied automatically
+  HTTPRoute("/config", HTTP_GET, [](httpd_req_t *req) -> esp_err_t {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    std::string json;
-    serializeJson(espwifi->config, json);
-    espwifi->sendJsonResponse(req, 200, json);
-    return ESP_OK;
+    return espwifi->withMiddleware(
+        req,
+        [](httpd_req_t *req) -> esp_err_t {
+          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+          std::string json;
+          serializeJson(espwifi->config, json);
+          espwifi->sendJsonResponse(req, 200, json);
+          return ESP_OK;
+        },
+        true); // requireAuth = true
   });
 
-  // Config POST endpoint
-  HTTPRoute("/config", HTTP_POST, [](httpd_req_t *req) {
+  // Config POST endpoint - middleware applied automatically
+  HTTPRoute("/config", HTTP_POST, [](httpd_req_t *req) -> esp_err_t {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
+    return espwifi->withMiddleware(
+        req,
+        [](httpd_req_t *req) -> esp_err_t {
+          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-    if (!espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
+          // Read request body
+          size_t content_len = req->content_len;
+          if (content_len > 4096) { // Limit to 4KB
+            httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
+                                "Request body too large");
+            return ESP_FAIL;
+          }
 
-    // Read request body
-    size_t content_len = req->content_len;
-    if (content_len > 4096) { // Limit to 4KB
-      httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                          "Request body too large");
-      return ESP_FAIL;
-    }
+          char *content = (char *)malloc(content_len + 1);
+          if (content == nullptr) {
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+          }
 
-    char *content = (char *)malloc(content_len + 1);
-    if (content == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
+          int ret = httpd_req_recv(req, content, content_len);
+          if (ret <= 0) {
+            free(content);
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+              httpd_resp_send_408(req);
+            }
+            return ESP_FAIL;
+          }
 
-    int ret = httpd_req_recv(req, content, content_len);
-    if (ret <= 0) {
-      free(content);
-      if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-        httpd_resp_send_408(req);
-      }
-      return ESP_FAIL;
-    }
+          content[content_len] = '\0';
+          std::string json_body(content);
+          free(content);
 
-    content[content_len] = '\0';
-    std::string json_body(content);
-    free(content);
-
-    // TODO: Parse and update config
-    espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}");
-    return ESP_OK;
+          // TODO: Parse and update config
+          espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}");
+          return ESP_OK;
+        },
+        true); // requireAuth = true
   });
 }
 

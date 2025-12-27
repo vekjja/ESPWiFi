@@ -48,11 +48,72 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  log(INFO, "⚙️  Config File: " + configFile);
-  // Serialize directly from config member to avoid stack overflow
-  // No need to copy - config is already a member variable (JsonDocument)
+  log(INFO, "⚙️ Config: " + configFile);
+
+  // Create a copy of config with masked passwords for logging
+  JsonDocument logConfig;
+  std::string configJson;
+  serializeJson(config, configJson);
+  DeserializationError error = deserializeJson(logConfig, configJson);
+  if (error) {
+    // If copy fails, just log the original (passwords will be visible)
+    std::string prettyConfig;
+    serializeJsonPretty(config, prettyConfig);
+    log(DEBUG, "\n" + prettyConfig);
+    return;
+  }
+
+  // Recursively mask any fields with keys matching sensitive field names
+  // ArduinoJson doesn't have a built-in recursive search, so we implement our
+  // own
+  const char *sensitiveKeys[] = {"password", "passwd",  "key",   "token",
+                                 "apiKey",   "api_key", "secret"};
+  const size_t numSensitiveKeys =
+      sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
+
+  std::function<void(JsonVariant)> maskSensitiveFields =
+      [&](JsonVariant variant) {
+        if (variant.is<JsonObject>()) {
+          JsonObject obj = variant.as<JsonObject>();
+          for (JsonPair kvp : obj) {
+            std::string key = kvp.key().c_str();
+            JsonVariant value = obj[key]; // Get mutable reference
+
+            // Case-insensitive check for sensitive fields
+            std::string lowerKey = key;
+            for (char &c : lowerKey) {
+              c = tolower(c);
+            }
+
+            bool shouldMask = false;
+            for (size_t i = 0; i < numSensitiveKeys; i++) {
+              if (lowerKey == sensitiveKeys[i]) {
+                shouldMask = true;
+                break;
+              }
+            }
+
+            if (shouldMask) {
+              value.set("********");
+            } else if (value.is<JsonObject>() || value.is<JsonArray>()) {
+              // Recursively process nested objects and arrays
+              maskSensitiveFields(value);
+            }
+          }
+        } else if (variant.is<JsonArray>()) {
+          JsonArray arr = variant.as<JsonArray>();
+          for (JsonVariant item : arr) {
+            if (item.is<JsonObject>() || item.is<JsonArray>()) {
+              maskSensitiveFields(item);
+            }
+          }
+        }
+      };
+
+  maskSensitiveFields(logConfig.as<JsonVariant>());
+
   std::string prettyConfig;
-  serializeJsonPretty(config, prettyConfig);
+  serializeJsonPretty(logConfig, prettyConfig);
   log(DEBUG, "\n" + prettyConfig);
 }
 
@@ -203,61 +264,94 @@ void ESPWiFi::srvConfig() {
     return;
   }
 
-  // Config GET endpoint - middleware applied automatically
+  // Config GET endpoint
   HTTPRoute("/config", HTTP_GET, [](httpd_req_t *req) -> esp_err_t {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    return espwifi->withMiddleware(
-        req,
-        [](httpd_req_t *req) -> esp_err_t {
-          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-          std::string json;
-          serializeJson(espwifi->config, json);
-          espwifi->sendJsonResponse(req, 200, json);
-          return ESP_OK;
-        },
-        true); // requireAuth = true
+    if (espwifi->verify(req, true) != ESP_OK) {
+      return ESP_OK; // Response already sent (OPTIONS or error)
+    }
+
+    // Handler:
+    {
+      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+      std::string json;
+      serializeJson(espwifi->config, json);
+      espwifi->sendJsonResponse(req, 200, json);
+      return ESP_OK;
+    }
   });
 
-  // Config POST endpoint - middleware applied automatically
-  HTTPRoute("/config", HTTP_POST, [](httpd_req_t *req) -> esp_err_t {
+  // Config PUT endpoint
+  HTTPRoute("/config", HTTP_PUT, [](httpd_req_t *req) -> esp_err_t {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    return espwifi->withMiddleware(
-        req,
-        [](httpd_req_t *req) -> esp_err_t {
-          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+    if (espwifi->verify(req, true) != ESP_OK) {
+      return ESP_OK; // Response already sent (OPTIONS or error)
+    }
 
-          // Read request body
-          size_t content_len = req->content_len;
-          if (content_len > 4096) { // Limit to 4KB
-            httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                                "Request body too large");
-            return ESP_FAIL;
-          }
+    // Handler:
+    {
+      ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-          char *content = (char *)malloc(content_len + 1);
-          if (content == nullptr) {
-            httpd_resp_send_500(req);
-            return ESP_FAIL;
-          }
+      // Read request body
+      size_t content_len = req->content_len;
+      if (content_len > 4096) { // Limit to 4KB
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
+                            "Request body too large");
+        return ESP_FAIL;
+      }
 
-          int ret = httpd_req_recv(req, content, content_len);
-          if (ret <= 0) {
-            free(content);
-            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-              httpd_resp_send_408(req);
-            }
-            return ESP_FAIL;
-          }
+      char *content = (char *)malloc(content_len + 1);
+      if (content == nullptr) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+      }
 
-          content[content_len] = '\0';
-          std::string json_body(content);
-          free(content);
+      int ret = httpd_req_recv(req, content, content_len);
+      if (ret <= 0) {
+        free(content);
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+          httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+      }
 
-          // TODO: Parse and update config
-          espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}");
-          return ESP_OK;
-        },
-        true); // requireAuth = true
+      content[content_len] = '\0';
+      std::string json_body(content);
+      free(content);
+
+      // Parse JSON request body
+      if (json_body.empty()) {
+        espwifi->sendJsonResponse(req, 400, "{\"error\":\"EmptyInput\"}");
+        espwifi->log(ERROR, "/config Error parsing JSON: EmptyInput");
+        return ESP_OK;
+      }
+
+      JsonDocument jsonDoc;
+      DeserializationError error = deserializeJson(jsonDoc, json_body);
+      if (error) {
+        espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
+        espwifi->log(ERROR, "/config Error parsing JSON: %s", error.c_str());
+        return ESP_OK;
+      }
+
+      // Merge the new config
+      espwifi->mergeConfig(jsonDoc);
+
+      // Check if this is a PUT request (save to file)
+      // Note: ESP-IDF httpd uses HTTP_PUT, but we're registering POST
+      // If you want to support PUT, add a separate route handler
+      // For now, we'll save config for POST requests
+      espwifi->saveConfig();
+
+      // Handle config updates (bluetooth, camera, log handlers)
+      espwifi->handleConfig();
+
+      // Return the updated config
+      std::string responseJson;
+      serializeJson(espwifi->config, responseJson);
+      espwifi->sendJsonResponse(req, 200, responseJson);
+      return ESP_OK;
+    }
   });
 }
 

@@ -13,14 +13,14 @@ void ESPWiFi::start() {
   startWebServer();
   // startBluetooth();
   // startRSSIWebSocket();
-  // handleConfig();
+  handleConfig();
 }
 
 void ESPWiFi::runSystem() {
   taskYIELD();
 
-  static unsigned long lastHeartbeat = 0;
-  runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
+  // static unsigned long lastHeartbeat = 0;
+  // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 
   // streamRSSI();
   // checkBluetoothConnectionStatus();

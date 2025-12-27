@@ -143,7 +143,7 @@ public:
   // Logging
   void cleanLogFile();
   int baudRate = 115200;
-  int maxLogFileSize = -1;
+  int maxLogFileSize = 0;
   bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
@@ -202,6 +202,10 @@ public:
   bool authorized(httpd_req_t *req);
   httpd_handle_t webServer = nullptr;
   void handleCorsPreflight(httpd_req_t *req);
+  // Verify request: check null pointer, handle OPTIONS, add CORS, optionally
+  // check auth Returns ESP_OK if verification passes (continue with handler),
+  // ESP_FAIL if error response sent
+  esp_err_t verify(httpd_req_t *req, bool requireAuth = true);
   // Helper to get HTTP method as string for logging
   const char *getMethodString(httpd_method_t method);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
@@ -228,41 +232,6 @@ public:
           esp_err_to_name(ret));
       return;
     }
-  }
-
-  // Middleware wrapper - applies CORS, auth, and logging
-  // Call this from within your route handlers
-  template <typename Handler>
-  esp_err_t withMiddleware(httpd_req_t *req, Handler handler,
-                           bool requireAuth = true) {
-    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-    if (espwifi == nullptr) {
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
-    }
-
-    // Log request (disabled to prevent crashes - can be re-enabled if needed)
-    // const char *methodStr =
-    //     espwifi->getMethodString((httpd_method_t)req->method);
-    // espwifi->log(DEBUG, "%s %s", methodStr, req->uri);
-
-    // Handle OPTIONS requests automatically (CORS preflight)
-    if (req->method == HTTP_OPTIONS) {
-      espwifi->handleCorsPreflight(req);
-      return ESP_OK;
-    }
-
-    // Add CORS headers to all responses
-    espwifi->addCORS(req);
-
-    // Check authentication if required
-    if (requireAuth && !espwifi->authorized(req)) {
-      espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-      return ESP_OK;
-    }
-
-    // Call the actual handler
-    return handler(req);
   }
 
   // Camera - not yet ported to ESP-IDF
@@ -292,6 +261,10 @@ public:
   std::string getFileExtension(const std::string &filename);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
+  // Function to match URI against a pattern with wildcard support
+  // Supports '*' to match any sequence of characters (including empty)
+  // Supports '?' to match any single character
+  bool matchPattern(const std::string &uri, const std::string &pattern);
 
   // I2C
   void scanI2CDevices();

@@ -114,7 +114,7 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_start());
 
   // Small delay to allow WiFi driver to fully initialize before connecting
-  vTaskDelay(pdMS_TO_TICKS(600));
+  vTaskDelay(pdMS_TO_TICKS(2700));
 
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
@@ -216,7 +216,7 @@ int ESPWiFi::selectBestChannel() {
   esp_err_t scan_ret = esp_wifi_scan_start(&scan_config, true);
   if (scan_ret != ESP_OK) {
     // If scan fails (e.g., WiFi not initialized), return default channel
-    log(DEBUG, "WiFi scan not available, using default channel 1");
+    log(WARNING, "WiFi scan not available, using default channel 1");
     return 1;
   }
 

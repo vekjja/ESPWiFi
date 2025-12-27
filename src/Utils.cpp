@@ -49,3 +49,34 @@ void ESPWiFi::runAtInterval(unsigned int interval,
     lastIntervalRun = currentTime;
   }
 }
+
+// Helper function to match URI against a pattern with wildcard support
+// Supports '*' to match any sequence of characters (including empty)
+// Supports '?' to match any single character
+bool ESPWiFi::matchPattern(const std::string &uri, const std::string &pattern) {
+  size_t uriPos = 0;
+  size_t patternPos = 0;
+  size_t uriBackup = std::string::npos;
+  size_t patternBackup = std::string::npos;
+
+  while (uriPos < uri.length() || patternPos < pattern.length()) {
+    if (patternPos < pattern.length() && pattern[patternPos] == '*') {
+      // Wildcard: try matching zero or more characters
+      patternBackup = ++patternPos;
+      uriBackup = uriPos;
+    } else if (patternPos < pattern.length() && uriPos < uri.length() &&
+               (pattern[patternPos] == uri[uriPos] ||
+                pattern[patternPos] == '?')) {
+      // Exact match or single character wildcard
+      patternPos++;
+      uriPos++;
+    } else if (patternBackup != std::string::npos) {
+      // Backtrack: use wildcard to match more characters
+      patternPos = patternBackup;
+      uriPos = ++uriBackup;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}

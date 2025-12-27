@@ -6,31 +6,6 @@
 #include <cstring>
 #include <string>
 
-// Static member initialization
-ESPWiFi *ESPWiFi::errorHandlerInstance = nullptr;
-
-// Static error handler function
-esp_err_t ESPWiFi::staticErrorHandler(httpd_req_t *req, httpd_err_code_t err) {
-  if (errorHandlerInstance == nullptr ||
-      errorHandlerInstance->notFoundHandler == nullptr) {
-    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
-    return ESP_FAIL;
-  }
-  return errorHandlerInstance->notFoundHandler(req, err);
-}
-
-void ESPWiFi::HTTPNotFound(esp_err_t (*handler)(httpd_req_t *,
-                                                httpd_err_code_t)) {
-  if (!webServer) {
-    log(ERROR, "❌ Cannot register 404 handler: web server not initialized");
-    return;
-  }
-  notFoundHandler = handler;
-  errorHandlerInstance = this;
-  httpd_register_err_handler(webServer, HTTPD_404_NOT_FOUND,
-                             staticErrorHandler);
-}
-
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
     log(WARNING, "⚠️ Web server already started");
@@ -41,7 +16,9 @@ void ESPWiFi::startWebServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.max_uri_len = 512;
   config.max_open_sockets = 7;
+  config.max_uri_handlers = 16; // Increase to accommodate all routes + wildcard
   config.lru_purge_enable = true;
+  config.uri_match_fn = httpd_uri_match_wildcard; // Enable wildcard matching
 
   // Start the HTTP server
   esp_err_t ret = httpd_start(&webServer, &config);
@@ -247,44 +224,20 @@ void ESPWiFi::startWebServer() {
     return ESP_OK;
   });
 
-  // Register 404 error handler to serve static files
-  HTTPNotFound([](httpd_req_t *req, httpd_err_code_t err) -> esp_err_t {
-    ESPWiFi *espwifi = ESPWiFi::errorHandlerInstance;
+  HTTPRoute("/*", HTTP_GET, [](httpd_req_t *req) {
+    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
     if (espwifi == nullptr) {
+      httpd_resp_send_500(req);
       return ESP_FAIL;
     }
-
-    std::string uri(req->uri);
-
-    // Skip API routes - they should stay real 404
-    if (uri.rfind("/api/", 0) == 0) {
-      return ESP_FAIL;
-    }
-
-    // Try to serve as static file
-    esp_err_t ret = espwifi->sendFileResponse(req, uri);
-
-    // If that fails, fall back to SPA entry point (for routes without file
-    // extensions)
+    esp_err_t ret = espwifi->sendFileResponse(req, req->uri);
     if (ret != ESP_OK) {
-      size_t lastSlash = uri.find_last_of('/');
-      std::string lastPart =
-          (lastSlash == std::string::npos) ? uri : uri.substr(lastSlash + 1);
-      bool looksLikeRoute = (lastPart.find('.') == std::string::npos);
-
-      if (looksLikeRoute) {
-        // Looks like a route, serve index.html for SPA
-        ret = espwifi->sendFileResponse(req, "/index.html");
-      }
+      // File not found or error - send 404 response
+      // Note: sendFileResponse may have already sent a response (e.g., 503),
+      // but if it just returned ESP_FAIL, we need to send 404 here
+      espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
+      return ESP_OK; // Return OK since we sent a response
     }
-
-    // If still failed, send 404
-    if (ret != ESP_OK) {
-      httpd_resp_set_status(req, "404 Not Found");
-      httpd_resp_set_type(req, "text/plain");
-      httpd_resp_send(req, "Not found", HTTPD_RESP_USE_STRLEN);
-    }
-
     return ESP_OK;
   });
 
@@ -350,12 +303,13 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   // Check if file exists first (like Arduino's filesystem->exists())
   struct stat fileStat;
   if (stat(fullPath.c_str(), &fileStat) != 0) {
-    // File doesn't exist
+    // File doesn't exist - don't send response here, let caller handle it
     return ESP_FAIL;
   }
 
   // Check if it's actually a file (not a directory)
   if (S_ISDIR(fileStat.st_mode)) {
+    // Path is a directory, not a file
     return ESP_FAIL;
   }
 
@@ -414,14 +368,14 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   return ret;
 }
 
-void ESPWiFi::HTTPRoute(httpd_uri_t route) {
-  if (!webServer) {
-    log(ERROR, "❌ Cannot register route: web server not initialized");
-    return;
-  }
-  route.user_ctx = this; // Ensure user_ctx is set to this instance
-  httpd_register_uri_handler(webServer, &route);
-}
+// void ESPWiFi::HTTPRoute(httpd_uri_t route) {
+//   if (!webServer) {
+//     log(ERROR, "❌ Cannot register route: web server not initialized");
+//     return;
+//   }
+//   route.user_ctx = this; // Ensure user_ctx is set to this instance
+//   httpd_register_uri_handler(webServer, &route);
+// }
 
 bool ESPWiFi::authorized(httpd_req_t *req) {
   if (!authEnabled()) {

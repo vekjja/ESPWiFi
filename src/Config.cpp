@@ -48,7 +48,7 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  log(INFO, "⚙️ Config: " + configFile);
+  log(INFO, "⚙️  Config File: " + configFile);
   // Serialize directly from config member to avoid stack overflow
   // No need to copy - config is already a member variable (JsonDocument)
   std::string prettyConfig;

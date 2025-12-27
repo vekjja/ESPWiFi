@@ -86,7 +86,7 @@ private:
   std::string _version = "v0.1.0";
 
 public:
-  int connectTimeout = 15000;
+  int connectTimeout = 27000;
   JsonDocument config = defaultConfig();
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";
@@ -119,10 +119,10 @@ public:
                               const std::string &filePath);
 
   // Logging
-  bool serialStarted = false;
+  void cleanLogFile();
   int baudRate = 115200;
   int maxLogFileSize = 0;
-  void cleanLogFile();
+  bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   void startLogging(std::string filePath = "/log");
@@ -157,6 +157,7 @@ public:
   int selectBestChannel();
   std::string macAddress();
   std::string getHostname();
+  void setHostname(std::string hostname);
 
   // mDNS
   void startMDNS();

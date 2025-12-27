@@ -107,11 +107,11 @@ void ESPWiFi::cleanLogFile() {
     struct stat st;
     if (stat(full_path.c_str(), &st) == 0) {
       if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+        log(INFO, "🗑️ Log file deleted");
         bool deleted = ::remove(full_path.c_str()) == 0;
         if (!deleted) {
           log(ERROR, "Failed to delete log file");
         }
-        log(INFO, "🗑️ Log file deleted");
       }
     }
   }

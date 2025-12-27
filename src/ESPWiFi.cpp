@@ -27,8 +27,8 @@ void ESPWiFi::runSystem() {
   taskYIELD();
 
   // Just delay for now - reduce logging spam
-  vTaskDelay(pdMS_TO_TICKS(3000));
-  log(INFO, "🫀  ESPWiFi System Running");
+  vTaskDelay(pdMS_TO_TICKS(9000));
+  log(DEBUG, "🫀");
 
   // streamRSSI();
   // checkBluetoothConnectionStatus();

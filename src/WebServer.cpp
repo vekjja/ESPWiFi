@@ -15,7 +15,6 @@ static esp_err_t files_get_handler(httpd_req_t *req);
 static esp_err_t restart_post_handler(httpd_req_t *req);
 static esp_err_t auth_post_handler(httpd_req_t *req);
 static esp_err_t log_get_handler(httpd_req_t *req);
-static esp_err_t all_handler(httpd_req_t *req);
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
@@ -364,22 +363,6 @@ static esp_err_t log_get_handler(httpd_req_t *req) {
 
   // TODO: Read log file and return content
   espwifi->sendJsonResponse(req, 200, "{\"log\":\"\"}");
-  return ESP_OK;
-}
-
-static esp_err_t all_handler(httpd_req_t *req) {
-  ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-  if (espwifi == nullptr) {
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
-  }
-
-  // This is a catch-all handler for serving static files
-  // For now, return 404 for unmatched routes
-  // TODO: Implement file serving from LittleFS
-  httpd_resp_set_status(req, "404 Not Found");
-  espwifi->addCORS(req);
-  httpd_resp_send(req, "Not Found", HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
 

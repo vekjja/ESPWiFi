@@ -17,6 +17,7 @@
 // Shared event loop initialization state
 static bool event_loop_initialized = false;
 static bool netif_initialized = false;
+static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
 // mDNS support - requires managed component
@@ -66,6 +67,8 @@ void ESPWiFi::startClient() {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
+    // Small delay to ensure event loop is fully ready
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   // Initialize TCP/IP stack if not already done
@@ -79,13 +82,19 @@ void ESPWiFi::startClient() {
     esp_netif_destroy(current_netif);
     current_netif = nullptr;
   }
-  // Stop and deinit WiFi if it's running (ignore errors if not initialized)
-  esp_wifi_stop();
-  esp_err_t deinit_ret = esp_wifi_deinit();
-  if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
-    // Only log error if it's something other than "not initialized"
-    // log(WARNING, "Warning: WiFi deinit returned: %s",
-    //     esp_err_to_name(deinit_ret));
+
+  // Only stop and deinit WiFi if it's actually initialized
+  if (wifi_initialized) {
+    esp_wifi_stop();
+    esp_err_t deinit_ret = esp_wifi_deinit();
+    if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
+      // Only log error if it's something other than "not initialized"
+      // log(WARNING, "Warning: WiFi deinit returned: %s",
+      //     esp_err_to_name(deinit_ret));
+    }
+    wifi_initialized = false;
+    // Small delay to allow WiFi driver to fully clean up
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
   // Initialize network interface
@@ -93,9 +102,12 @@ void ESPWiFi::startClient() {
   assert(sta_netif);
   current_netif = sta_netif;
 
+  setHostname(config["deviceName"].as<std::string>());
+
   // Initialize WiFi
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
+  wifi_initialized = true;
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
@@ -153,12 +165,11 @@ void ESPWiFi::startClient() {
     config["wifi"]["mode"] = "accessPoint";
 
     // Properly clean up WiFi before switching to AP mode
-    esp_wifi_stop();
-    esp_err_t deinit_ret = esp_wifi_deinit();
-    // if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
-    // log(WARNING, "Warning: WiFi deinit returned: %s",
-    //     esp_err_to_name(deinit_ret));
-    // }
+    if (wifi_initialized) {
+      esp_wifi_stop();
+      (void)esp_wifi_deinit();
+      wifi_initialized = false;
+    }
 
     // Destroy the STA netif
     if (current_netif != nullptr) {
@@ -175,14 +186,8 @@ void ESPWiFi::startClient() {
 
   log(INFO, "🛜  WiFi Connected");
 
-  // Get hostname
-  const char *hostname = nullptr;
-  esp_err_t err = esp_netif_get_hostname(sta_netif, &hostname);
-  if (err != ESP_OK || hostname == nullptr || strlen(hostname) == 0) {
-    std::string deviceName = config["deviceName"].as<std::string>();
-    hostname = deviceName.c_str();
-  }
-  log(DEBUG, "\tHostname: %s", hostname ? hostname : "N/A");
+  std::string hostname = getHostname();
+  log(DEBUG, "\tHostname: %s", hostname.c_str());
 
   // Get IP info
   esp_netif_ip_info_t ip_info;
@@ -277,6 +282,8 @@ void ESPWiFi::startAP() {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
+    // Small delay to ensure event loop is fully ready
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 
   // Initialize TCP/IP stack if not already done
@@ -291,26 +298,26 @@ void ESPWiFi::startAP() {
     current_netif = nullptr;
   }
 
-  // Stop and deinit WiFi if it's running (ignore errors if not initialized)
-  esp_wifi_stop();
-  esp_err_t deinit_ret = esp_wifi_deinit();
-  // if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
-  //   // Only log error if it's something other than "not initialized"
-  //   log(WARNING, "Warning: WiFi deinit returned: %s",
-  //       esp_err_to_name(deinit_ret));
-  // }
-
-  // Small delay to allow WiFi driver to fully clean up before reinitializing
-  vTaskDelay(pdMS_TO_TICKS(100));
+  // Only stop and deinit WiFi if it's actually initialized
+  if (wifi_initialized) {
+    esp_wifi_stop();
+    (void)esp_wifi_deinit();
+    wifi_initialized = false;
+    // Small delay to allow WiFi driver to fully clean up before reinitializing
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
 
   // Initialize network interface
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
   assert(ap_netif);
   current_netif = ap_netif;
 
+  setHostname(config["deviceName"].as<std::string>());
+
   // Initialize WiFi
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
+  wifi_initialized = true;
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
@@ -386,26 +393,63 @@ void ESPWiFi::startMDNS() {
   log(INFO, "🏷️  mDNS Started");
   log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
 #else
-  log(INFO, "🏷️  mDNS Disabled (component not available)");
+  log(INFO, "📛  mDNS Disabled (component not available)");
   log(DEBUG, "\tNote: mDNS requires managed component. Add to "
              "idf_component.yml and rebuild.");
 #endif
 }
 
 std::string ESPWiFi::getHostname() {
-  std::string hostname = "espwifi-000000";
-  // generate from MAC address
+
+  // Attempt to get hostname from network interface
+  if (current_netif != nullptr) {
+    const char *hostname_ptr = nullptr;
+    esp_err_t err = esp_netif_get_hostname(current_netif, &hostname_ptr);
+    if (err == ESP_OK && hostname_ptr != nullptr && strlen(hostname_ptr) > 0) {
+      config["hostname"] = std::string(hostname_ptr);
+      return std::string(hostname_ptr);
+    }
+  }
+
+  // Fallback: "espwifi-XXXXXX" where XXXXXX is last 6 hex digits of MAC
   uint8_t mac[6];
   esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
   if (ret == ESP_OK) {
-    // Format hostname as "espwifi-XXXXXX" where XXXXXX is last 6 hex digits
-    // of MAC
     char macSuffix[7];
     snprintf(macSuffix, sizeof(macSuffix), "%02x%02x%02x", mac[3], mac[4],
              mac[5]);
-    hostname = "espwifi-" + std::string(macSuffix);
+    config["hostname"] = "espwifi-" + std::string(macSuffix);
+    return "espwifi-" + std::string(macSuffix);
   }
-  return hostname;
+
+  return "espwifi-000000";
+}
+
+void ESPWiFi::setHostname(std::string hostname) {
+  if (current_netif == nullptr) {
+    log(WARNING, "⚠️  Cannot set hostname: network interface not initialized");
+    return;
+  }
+
+  if (hostname.empty()) {
+    log(WARNING, "⚠️  Cannot set new hostname: hostname provided is empty");
+    return;
+  }
+
+  // Ensure hostname is valid (lowercase, no spaces)
+  toLowerCase(hostname);
+
+  // Set hostname on network interface
+  esp_err_t hostname_ret =
+      esp_netif_set_hostname(current_netif, hostname.c_str());
+  if (hostname_ret == ESP_OK) {
+    log(INFO, "🏷️  Hostname updated to: %s", hostname.c_str());
+    // Update config with the hostname that was actually set
+    config["hostname"] = hostname;
+  } else {
+    log(WARNING, "⚠️  Failed to set hostname: %s",
+        esp_err_to_name(hostname_ret));
+  }
 }
 
 #endif // ESPWiFi_WIFI

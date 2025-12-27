@@ -28,3 +28,4 @@ __pycache__/
 # ESP-IDF
 sdkconfig*
 !sdkconfig*defaults*
+managed_components/

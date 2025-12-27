@@ -12,9 +12,9 @@ std::string logLevelToString(LogLevel level) {
   case INFO:
     return " [INFO]";
   case WARNING:
-    return " [WARN] ⚠️";
+    return " [WARN] ⚠️ ";
   case ERROR:
-    return "[ERROR] 💔";
+    return "[ERROR] 💔 ";
   default:
     return "[LOG]";
   }

@@ -84,8 +84,8 @@ void ESPWiFi::startClient() {
   esp_err_t deinit_ret = esp_wifi_deinit();
   if (deinit_ret != ESP_OK && deinit_ret != ESP_ERR_INVALID_STATE) {
     // Only log error if it's something other than "not initialized"
-    log(WARNING, "Warning: WiFi deinit returned: %s",
-        esp_err_to_name(deinit_ret));
+    // log(WARNING, "Warning: WiFi deinit returned: %s",
+    //     esp_err_to_name(deinit_ret));
   }
 
   // Initialize network interface

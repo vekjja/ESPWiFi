@@ -96,8 +96,6 @@ void ESPWiFi::startClient() {
   assert(sta_netif);
   current_netif = sta_netif;
 
-  setHostname(config["deviceName"].as<std::string>());
-
   // Initialize WiFi
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
@@ -106,6 +104,7 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
   // Configure WiFi
+  setHostname(config["deviceName"].as<std::string>());
   wifi_config_t wifi_config = {};
   strncpy((char *)wifi_config.sta.ssid, ssid.c_str(),
           sizeof(wifi_config.sta.ssid) - 1);
@@ -440,7 +439,6 @@ void ESPWiFi::setHostname(std::string hostname) {
   esp_err_t hostname_ret =
       esp_netif_set_hostname(current_netif, hostname.c_str());
   if (hostname_ret == ESP_OK) {
-    log(INFO, "🏷️  Hostname: %s", hostname.c_str());
     // Update config with the hostname that was actually set
     config["hostname"] = hostname;
   } else {

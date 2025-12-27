@@ -4,7 +4,9 @@
 #include "esp_log.h"
 #include <ArduinoJson.h>
 #include <cstring>
+#include <errno.h>
 #include <string>
+#include <sys/stat.h>
 
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
@@ -134,60 +136,57 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   // Construct full path
   std::string fullPath = lfsMountPoint + filePath;
 
-  // Check if file exists first (like Arduino's filesystem->exists())
+  printf("fullPath: %s\n", fullPath.c_str());
+
+  // Check if file exists first
   struct stat fileStat;
-  if (stat(fullPath.c_str(), &fileStat) != 0) {
-    // File doesn't exist - don't send response here, let caller handle it
+  int statResult = stat(fullPath.c_str(), &fileStat);
+  if (statResult != 0) {
+    printf("stat failed for %s, errno: %d\n", fullPath.c_str(), errno);
     return ESP_FAIL;
   }
 
+  printf("stat succeeded, file size: %ld, is_dir: %d\n", fileStat.st_size,
+         S_ISDIR(fileStat.st_mode));
+
   // Check if it's actually a file (not a directory)
-  if (S_ISDIR(fileStat.st_mode)) {
-    // Path is a directory, not a file
-    return ESP_FAIL;
-  }
+  // if (S_ISDIR(fileStat.st_mode)) {
+  //   // Path is a directory, not a file
+  //   return ESP_FAIL;
+  // }
 
   // Open file from LFS
   FILE *file = fopen(fullPath.c_str(), "rb");
   if (!file) {
+    printf("fopen failed for %s, errno: %d\n", fullPath.c_str(), errno);
     return ESP_FAIL;
   }
+  printf("fopen succeeded\n");
 
   // Get file size
   if (fseek(file, 0, SEEK_END) != 0) {
+    printf("fseek SEEK_END failed, errno: %d\n", errno);
     fclose(file);
     return ESP_FAIL;
   }
 
   long fileSize = ftell(file);
   if (fileSize < 0) {
+    printf("ftell failed, errno: %d\n", errno);
     fclose(file);
     return ESP_FAIL;
   }
+  printf("fileSize: %ld\n", fileSize);
 
   if (fseek(file, 0, SEEK_SET) != 0) {
+    printf("fseek SEEK_SET failed, errno: %d\n", errno);
     fclose(file);
     return ESP_FAIL;
   }
 
   if (fileSize == 0) {
+    printf("fileSize is 0\n");
     fclose(file);
-    return ESP_FAIL;
-  }
-
-  // Allocate buffer for file content
-  char *buffer = (char *)malloc(fileSize);
-  if (!buffer) {
-    fclose(file);
-    return ESP_FAIL;
-  }
-
-  // Read file content
-  size_t bytesRead = fread(buffer, 1, fileSize, file);
-  fclose(file);
-
-  if (bytesRead != (size_t)fileSize) {
-    free(buffer);
     return ESP_FAIL;
   }
 
@@ -195,11 +194,63 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
 
-  // Send response
-  esp_err_t ret = httpd_resp_send(req, buffer, fileSize);
-  free(buffer);
+  // For large files, stream in chunks to avoid memory issues
+  // Use 32KB chunks - efficient for ESP32 while staying within heap limits
+  const size_t CHUNK_SIZE = 32768;
+  char *buffer = (char *)malloc(CHUNK_SIZE);
+  if (!buffer) {
+    printf("malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
+    fclose(file);
+    return ESP_FAIL;
+  }
 
-  return ret;
+  size_t totalSent = 0;
+  esp_err_t ret = ESP_OK;
+
+  // Stream file in chunks
+  while (totalSent < (size_t)fileSize && ret == ESP_OK) {
+    size_t toRead = (fileSize - totalSent < CHUNK_SIZE) ? (fileSize - totalSent)
+                                                        : CHUNK_SIZE;
+
+    size_t bytesRead = fread(buffer, 1, toRead, file);
+    if (bytesRead == 0) {
+      printf("fread returned 0, expected %zu bytes\n", toRead);
+      ret = ESP_FAIL;
+      break;
+    }
+
+    // Send chunk (use httpd_resp_send_chunk for streaming)
+    if (totalSent == 0) {
+      // First chunk - use httpd_resp_send_chunk to start chunked transfer
+      ret = httpd_resp_send_chunk(req, buffer, bytesRead);
+    } else {
+      // Subsequent chunks
+      ret = httpd_resp_send_chunk(req, buffer, bytesRead);
+    }
+
+    if (ret != ESP_OK) {
+      printf("httpd_resp_send_chunk failed at %zu bytes\n", totalSent);
+      break;
+    }
+
+    totalSent += bytesRead;
+  }
+
+  // Finalize chunked transfer
+  if (ret == ESP_OK) {
+    ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
+  }
+
+  free(buffer);
+  fclose(file);
+
+  if (ret != ESP_OK || totalSent != (size_t)fileSize) {
+    printf("File send incomplete: sent %zu of %ld bytes\n", totalSent,
+           fileSize);
+    return ESP_FAIL;
+  }
+
+  return ESP_OK;
 }
 
 void ESPWiFi::srvInfo() {

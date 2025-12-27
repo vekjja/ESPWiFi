@@ -203,7 +203,7 @@ void ESPWiFi::srvConfig() {
     return;
   }
 
-  HTTPRoute("/api/config", HTTP_GET, [](httpd_req_t *req) {
+  HTTPRoute("/config", HTTP_GET, [](httpd_req_t *req) {
     ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
     if (espwifi == nullptr) {
       httpd_resp_send_500(req);

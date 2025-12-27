@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "mdns.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -23,11 +24,6 @@ static bool event_loop_initialized = false;
 static bool netif_initialized = false;
 static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
-
-// mDNS support - requires managed component
-// TODO: Enable once component manager downloads mdns component
-// #include <mdns.h>
-#define MDNS_ENABLED 0
 
 void ESPWiFi::startWiFi() {
 
@@ -348,11 +344,10 @@ void ESPWiFi::startAP() {
 
 void ESPWiFi::startMDNS() {
   if (!config["wifi"]["enabled"].as<bool>()) {
-    log(INFO, "🏷️  mDNS Disabled");
+    log(INFO, "📛  mDNS Disabled");
     return;
   }
 
-#if MDNS_ENABLED
   std::string domain = config["deviceName"].as<std::string>();
   toLowerCase(domain);
 
@@ -382,11 +377,6 @@ void ESPWiFi::startMDNS() {
 
   log(INFO, "🏷️  mDNS Started");
   log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
-#else
-  log(INFO, "📛  mDNS Disabled (component not available)");
-  log(DEBUG, "\tNote: mDNS requires managed component. Add to "
-             "idf_component.yml and rebuild.");
-#endif
 }
 
 std::string ESPWiFi::getHostname() {

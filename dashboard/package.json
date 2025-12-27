@@ -21,7 +21,7 @@
   },
   "scripts": {
     "start": "BROWSER=none react-scripts start",
-    "clean": "cd .. && rm -fr .pio && rm sdkconfig.esp32* || true && pio run --target clean",
+    "clean": "cd .. && pio run --target clean",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "monitor": "cd .. && pio device monitor",
     "menuconfig": "cd .. && pio run -t menuconfig",

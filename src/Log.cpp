@@ -173,11 +173,20 @@ std::string ESPWiFi::timestamp() {
   seconds = seconds % 60;
   milliseconds = milliseconds % 1000;
 
-  // Format all values with consistent padding: 2 digits for days, hours,
-  // minutes, seconds; 3 for milliseconds
+  // Format all values with consistent padding: [00:00:00:00:000]
+  // 2 digits for days, hours, minutes, seconds; 3 for milliseconds
+  // but if the value is 00 then don't show it
   char buffer[30];
-  snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%02lu:%03lu] ", days,
-           hours, minutes, seconds, milliseconds);
+  if (days > 0) {
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%02lu:%03lu] ", days,
+             hours, minutes, seconds, milliseconds);
+  } else if (hours > 0) {
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%03lu] ", hours,
+             minutes, seconds, milliseconds);
+  } else {
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%03lu] ", minutes, seconds,
+             milliseconds);
+  }
   return std::string(buffer);
 }
 

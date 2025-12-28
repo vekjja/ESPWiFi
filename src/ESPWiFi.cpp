@@ -13,10 +13,13 @@ void ESPWiFi::start() {
   startWebServer();
   srvRoot();
   srvConfig();
+  srvInfo();
+  // srvAuth();
+  // srvGPIO();
   srvWildcard();
   // startBluetooth();
   // startRSSIWebSocket();
-  // handleConfig();
+  handleConfig();
 }
 
 void ESPWiFi::runSystem() {
@@ -24,7 +27,7 @@ void ESPWiFi::runSystem() {
 
   // Check if config needs saving (deferred from HTTP handlers)
   if (configNeedsSave) {
-    saveConfig(); // Save from main task context (safe for filesystem)
+    saveConfig();
     configNeedsSave = false;
   }
 

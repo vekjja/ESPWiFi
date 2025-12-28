@@ -158,8 +158,7 @@ void ESPWiFi::srvAuth() {
 
 bool ESPWiFi::authorized(httpd_req_t *req) {
   // Get request information for logging
-  const char *method =
-      getMethodString(static_cast<httpd_method_t>(req->method));
+  const char *method = getMethodString(req->method);
   std::string url(req->uri);
   std::string userAgent = "-";
   std::string uri = req->uri;

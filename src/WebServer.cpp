@@ -6,6 +6,8 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_wifi.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <errno.h>
@@ -24,6 +26,10 @@ void ESPWiFi::startWebServer() {
   config.max_uri_handlers = 32;
   config.lru_purge_enable = true;
   config.uri_match_fn = httpd_uri_match_wildcard; // Enable wildcard matching
+  // HTTP server runs in its own task; stack is a common “heap killer” if set
+  // too big. 4096 is default in IDF; bump only if you see stack overflows
+  // during handlers.
+  config.stack_size = 8192;
 
   // Start the HTTP server
   esp_err_t ret = httpd_start(&webServer, &config);
@@ -81,6 +87,7 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
   addCORS(req);
   httpd_resp_set_status(req, "204 No Content");
   httpd_resp_send(req, nullptr, 0);
+  accessLog(req, 204, 0);
 }
 
 esp_err_t ESPWiFi::verify(httpd_req_t *req, bool requireAuth) {
@@ -109,8 +116,8 @@ esp_err_t ESPWiFi::verify(httpd_req_t *req, bool requireAuth) {
 }
 
 // Helper to get HTTP method as string for logging
-const char *ESPWiFi::getMethodString(httpd_method_t method) {
-  switch (method) {
+const char *ESPWiFi::getMethodString(int method) {
+  switch (static_cast<httpd_method_t>(method)) {
   case HTTP_GET:
     return "GET";
   case HTTP_POST:
@@ -128,6 +135,65 @@ const char *ESPWiFi::getMethodString(httpd_method_t method) {
   default:
     return "UNKNOWN";
   }
+}
+
+void ESPWiFi::accessLog(httpd_req_t *req, int statusCode, size_t bytesSent) {
+  // Best-effort client IP extraction
+  char remote_ip[64];
+  strncpy(remote_ip, "-", sizeof(remote_ip) - 1);
+  remote_ip[sizeof(remote_ip) - 1] = '\0';
+
+  int sockfd = httpd_req_to_sockfd(req);
+  if (sockfd >= 0) {
+    struct sockaddr_storage addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) == 0) {
+      if (addr.ss_family == AF_INET) {
+        struct sockaddr_in *a = (struct sockaddr_in *)&addr;
+        (void)inet_ntop(AF_INET, &a->sin_addr, remote_ip, sizeof(remote_ip));
+      } else if (addr.ss_family == AF_INET6) {
+        struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)&addr;
+        (void)inet_ntop(AF_INET6, &a6->sin6_addr, remote_ip, sizeof(remote_ip));
+      }
+    }
+  }
+
+  auto headerOrDash = [&](const char *name, char *out, size_t out_len) {
+    if (out_len == 0)
+      return;
+    out[0] = '\0';
+    size_t vlen = httpd_req_get_hdr_value_len(req, name);
+    if (vlen == 0 || vlen >= out_len) {
+      strncpy(out, "-", out_len - 1);
+      out[out_len - 1] = '\0';
+      return;
+    }
+    if (httpd_req_get_hdr_value_str(req, name, out, out_len) != ESP_OK) {
+      strncpy(out, "-", out_len - 1);
+      out[out_len - 1] = '\0';
+    }
+  };
+
+  char user_agent[192];
+  char referer[192];
+  headerOrDash("User-Agent", user_agent, sizeof(user_agent));
+  headerOrDash("Referer", referer, sizeof(referer));
+
+  // Time (we don't assume RTC; use uptime-style timestamp)
+  std::string ts = timestamp();
+  while (!ts.empty() && (ts.back() == ' ' || ts.back() == '\t')) {
+    ts.pop_back();
+  }
+
+  const char *method = getMethodString((int)req->method);
+  // req->uri is a fixed-size array (never NULL). Only guard req itself.
+  const char *uri = req ? req->uri : "-";
+
+  // Nginx-like:
+  // $remote_addr - $remote_user [$time_local] "$request" $status $bytes "$ref"
+  // "$ua"
+  log(ACCESS, "%s - -\"%s %s HTTP/1.1\" %d %u \"%s\" \"%s\"", remote_ip, method,
+      uri, statusCode, (unsigned)bytesSent, referer, user_agent);
 }
 
 void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
@@ -153,7 +219,37 @@ void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
   snprintf(status_str, sizeof(status_str), "%d %s", statusCode, status_text);
   httpd_resp_set_status(req, status_str);
 
-  httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
+  // For larger JSON payloads, stream in chunks with tiny yields to avoid
+  // starving the httpd task / triggering the task watchdog on slow links.
+  constexpr size_t CHUNK_SIZE = 1024;
+  esp_err_t ret = ESP_OK;
+  size_t sent = 0;
+
+  if (jsonBody.size() <= CHUNK_SIZE) {
+    ret = httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
+    sent = (ret == ESP_OK) ? jsonBody.size() : 0;
+  } else {
+    const char *data = jsonBody.data();
+    size_t remaining = jsonBody.size();
+    while (remaining > 0) {
+      size_t toSend = remaining > CHUNK_SIZE ? CHUNK_SIZE : remaining;
+      ret = httpd_resp_send_chunk(req, data + sent, toSend);
+      if (ret != ESP_OK) {
+        break;
+      }
+      sent += toSend;
+      remaining -= toSend;
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    // Finalize chunked transfer (even on error; best-effort)
+    (void)httpd_resp_send_chunk(req, nullptr, 0);
+  }
+
+  if (ret == ESP_OK) {
+    accessLog(req, statusCode, sent);
+  } else {
+    accessLog(req, 500, 0);
+  }
 }
 
 esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
@@ -164,7 +260,9 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   if (!littleFsInitialized) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "text/plain");
-    httpd_resp_send(req, "Filesystem not available", HTTPD_RESP_USE_STRLEN);
+    const char *body = "Filesystem not available";
+    httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+    accessLog(req, 503, strlen(body));
     return ESP_FAIL;
   }
 
@@ -175,12 +273,9 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   struct stat fileStat;
   int statResult = stat(fullPath.c_str(), &fileStat);
   if (statResult != 0) {
-    printf("stat failed for %s, errno: %d\n", fullPath.c_str(), errno);
+    accessLog(req, 404, 0);
     return ESP_FAIL;
   }
-
-  printf("File Name: %s, File size: %ld bytes, is_dir: %d\n", fullPath.c_str(),
-         fileStat.st_size, S_ISDIR(fileStat.st_mode));
 
   // Check if it's actually a file (not a directory)
   if (S_ISDIR(fileStat.st_mode)) {
@@ -290,6 +385,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     return ESP_FAIL;
   }
 
+  // Default response is 200 OK for file responses
+  accessLog(req, 200, totalSent);
   return ESP_OK;
 }
 
@@ -351,6 +448,9 @@ void ESPWiFi::srvInfo() {
               espwifi->config["deviceName"].as<std::string>();
           jsonDoc["mdns"] = deviceName + ".local";
 
+          // Yield to prevent watchdog timeout
+          vTaskDelay(pdMS_TO_TICKS(10));
+
           // Chip model and SDK version
           esp_chip_info_t chip_info;
           esp_chip_info(&chip_info);
@@ -377,6 +477,9 @@ void ESPWiFi::srvInfo() {
           jsonDoc["total_heap"] = total_heap;
           jsonDoc["used_heap"] = total_heap - free_heap;
 
+          // Yield to prevent watchdog timeout
+          vTaskDelay(pdMS_TO_TICKS(10));
+
           // WiFi connection status and info
           wifi_ap_record_t ap_info;
           if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -387,6 +490,9 @@ void ESPWiFi::srvInfo() {
             jsonDoc["client_ssid"] = std::string(ssid_str);
             jsonDoc["rssi"] = ap_info.rssi;
           }
+
+          // Yield to prevent watchdog timeout
+          vTaskDelay(pdMS_TO_TICKS(10));
 
           // LittleFS storage information
           if (espwifi->littleFsInitialized) {
@@ -400,6 +506,9 @@ void ESPWiFi::srvInfo() {
             jsonDoc["littlefs_used"] = 0;
             jsonDoc["littlefs_total"] = 0;
           }
+
+          // Yield to prevent watchdog timeout
+          vTaskDelay(pdMS_TO_TICKS(10));
 
           // SD card storage information if available
           if (espwifi->sdCardInitialized) {

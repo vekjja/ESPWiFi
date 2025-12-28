@@ -1,11 +1,14 @@
 # Common Configuration (shared across all boards)
 # Board-specific configurations should be in sdkconfig.{env-name}.defaults files
 
-# Main Task Stack Size - increased to prevent stack overflow
-CONFIG_MAIN_TASK_STACK_SIZE=20480
-# HTTP Server Task Stack Size - increased for large file transfers
-# Default is 4096, increased to 16384 for large config.json and file transfers
-CONFIG_HTTPD_TASK_STACK_SIZE=16384
+# Main task stack size (ESP-IDF 5.x uses CONFIG_ESP_MAIN_TASK_STACK_SIZE).
+# Bigger stack reduces available heap, so keep this as small as you can while stable.
+# If you hit stack overflows, increase gradually and use uxTaskGetStackHighWaterMark()
+# to measure.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Note: esp_http_server task stack is NOT a Kconfig option; it’s set via
+# httpd_config_t.stack_size in code (see src/WebServer.cpp).
 
 # Secure Boot V2 (ESP32-C3 uses ECDSA - auto-selected when RSA is disabled)
 # CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"

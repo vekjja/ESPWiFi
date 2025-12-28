@@ -2,6 +2,7 @@
 #define ESPWiFi_H
 
 // ESP-IDF Headers
+#include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -46,6 +47,7 @@ private:
   // WiFi event handler state
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
   bool wifi_connection_success = false;
+  bool wifi_auto_reconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
@@ -53,7 +55,7 @@ private:
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();
 
-  // WiFi event handler methods (called from static callbacks)
+  // waitForWiFiConnection() waits for IP_EVENT_STA_GOT_IP / STA_DISCONNECTED
   bool waitForWiFiConnection(int timeout_ms, int check_interval_ms = 100);
   void wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
                           void *event_data);
@@ -72,6 +74,12 @@ public:
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";
   std::string version() { return _version; }
+
+  // ---- WiFi helper API for reconnect logic ----
+  // Enable/disable automatic reconnect on STA disconnect events
+  void setWiFiAutoReconnect(bool enable) { wifi_auto_reconnect = enable; }
+  // Current connection status as tracked by the event handlers
+  bool isWiFiConnected() const { return wifi_connection_success; }
 
   // Device
   void start();
@@ -170,15 +178,14 @@ public:
   bool authorized(httpd_req_t *req);
   httpd_handle_t webServer = nullptr;
   void handleCorsPreflight(httpd_req_t *req);
-  // Verify request: check null pointer, handle OPTIONS, add CORS, optionally
-  // check auth Returns ESP_OK if verification passes (continue with handler),
-  // ESP_FAIL if error response sent
   esp_err_t verify(httpd_req_t *req, bool requireAuth = true);
   // Helper to get HTTP method as string for logging
-  const char *getMethodString(httpd_method_t method);
+  const char *getMethodString(int method);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
   esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
+  // Nginx-like access log line for a completed response
+  void accessLog(httpd_req_t *req, int statusCode, size_t bytesSent = 0);
   JsonDocument readRequestBody(httpd_req_t *req);
 
   // Camera - not yet ported to ESP-IDF
@@ -249,4 +256,4 @@ inline void toLowerCase(std::string &s) {
     c = tolower(c);
 }
 
-#endif // ESPWiFi
+#endif // ESPWiFi_H

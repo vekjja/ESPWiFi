@@ -1,7 +1,5 @@
-#ifndef ESPWiFi_WIFI
-#define ESPWiFi_WIFI
-
 #include "ESPWiFi.h"
+
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -11,21 +9,22 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 #include "freertos/task.h"
+
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
-// Shared event loop initialization state
+// Shared event loop / WiFi driver state (single definition)
 static bool event_loop_initialized = false;
 static bool netif_initialized = false;
 static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
-void ESPWiFi::startWiFi() {
+// ===================== Public WiFi entrypoint =====================
 
+void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "🛜  WiFi Disabled");
     return;
@@ -44,22 +43,25 @@ void ESPWiFi::startWiFi() {
   }
 }
 
+// ===================== Station (client) mode =====================
 void ESPWiFi::startClient() {
 
   std::string ssid = config["wifi"]["client"]["ssid"].as<std::string>();
   std::string password = config["wifi"]["client"]["password"].as<std::string>();
 
   if (ssid.empty()) {
-    log(WARNING, "Warning: SSID: Cannot be empty, starting Access Point");
+    log(WARNING, "Warning: SSID cannot be empty, starting Access Point");
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
+
   log(INFO, "🔗 Connecting to WiFi Network:");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
   log(DEBUG, "\tPassword: **********");
 
-  // Initialize event loop if not already done
+  // --- 1. One-time event-loop / netif init per boot ---
+
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
@@ -68,75 +70,77 @@ void ESPWiFi::startClient() {
     event_loop_initialized = true;
   }
 
-  // Initialize TCP/IP stack if not already done
   if (!netif_initialized) {
     ESP_ERROR_CHECK(esp_netif_init());
     netif_initialized = true;
   }
 
-  // Ensure clean start - disconnect if already connected
+  // Register WiFi/IP handlers and enable auto-reconnect for STA
+  ESP_ERROR_CHECK(registerWiFiHandlers());
+  setWiFiAutoReconnect(true);
+
+  // --- 2. Clean up any previous netif / WiFi driver ---
+
+  if (current_netif != nullptr) {
+    esp_netif_destroy(current_netif);
+    current_netif = nullptr;
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+
   if (wifi_initialized) {
-    esp_wifi_disconnect();
-    vTaskDelay(pdMS_TO_TICKS(100)); // Allow time for disconnect
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    wifi_initialized = false;
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 
-  // Initialize network interface if not already done
-  if (current_netif == nullptr) {
-    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-    assert(sta_netif);
-    current_netif = sta_netif;
-  }
+  // --- 3. Fresh STA netif + WiFi init ---
 
-  // Initialize WiFi if not already done
-  if (!wifi_initialized) {
-    wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
-    wifi_initialized = true;
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-  }
+  esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+  assert(sta_netif);
+  current_netif = sta_netif;
 
-  // Set mode to station only
+  wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
+  ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
+  wifi_initialized = true;
+
+  ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
-  // Configure WiFi
   setHostname(config["deviceName"].as<std::string>());
+
   wifi_config_t wifi_config = {};
   strncpy((char *)wifi_config.sta.ssid, ssid.c_str(),
           sizeof(wifi_config.sta.ssid) - 1);
   strncpy((char *)wifi_config.sta.password, password.c_str(),
           sizeof(wifi_config.sta.password) - 1);
+
   wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+  wifi_config.sta.pmf_cfg.capable = true;
+  wifi_config.sta.pmf_cfg.required = false;
+
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+
+  // --- 4. Start WiFi and connect ---
+
   ESP_ERROR_CHECK(esp_wifi_start());
+  vTaskDelay(pdMS_TO_TICKS(100)); // let driver settle a bit
 
-  vTaskDelay(pdMS_TO_TICKS(999));
-
-  // Get MAC address (after WiFi is initialized)
-  uint8_t mac[6];
-  esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
-  if (mac_ret == ESP_OK) {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0],
-             mac[1], mac[2], mac[3], mac[4], mac[5]);
-    log(DEBUG, "\tMAC: %s", macStr);
-  }
-  printf("\t");
-
-  // Start connection
+  ESP_ERROR_CHECK(esp_wifi_disconnect()); // clear any stale connection state
+  vTaskDelay(pdMS_TO_TICKS(50));
   ESP_ERROR_CHECK(esp_wifi_connect());
 
-  // Wait for connection with simple polling (like Arduino WiFi.status() check)
-  int64_t start_time = esp_timer_get_time() / 1000; // Convert to milliseconds
+  // --- 5. Wait for connection ---
   bool connected = false;
-
-  while (esp_timer_get_time() / 1000 - start_time < connectTimeout) {
+  int64_t start_time_ms = esp_timer_get_time() / 1000;
+  while ((esp_timer_get_time() / 1000) - start_time_ms < connectTimeout) {
     if (connectSubroutine != nullptr) {
       connectSubroutine();
     }
+
     printf(".");
     fflush(stdout);
 
-    // Check if connected by checking if IP address is assigned
     if (current_netif != nullptr) {
       esp_netif_ip_info_t ip_info;
       if (esp_netif_get_ip_info(current_netif, &ip_info) == ESP_OK) {
@@ -147,12 +151,16 @@ void ESPWiFi::startClient() {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(30)); // Wait for connection (30ms like reference)
+    vTaskDelay(pdMS_TO_TICKS(30));
   }
   printf("\n");
 
+  // (Alternative: you could use waitForWiFiConnection(connectTimeout) instead)
+  // bool connected = waitForWiFiConnection(connectTimeout);
+
   if (!connected) {
-    log(ERROR, "🛜 Failed to connect to WiFi");
+    log(ERROR, "🛜 Failed to connect to WiFi, falling back to AP");
+    setWiFiAutoReconnect(false); // no reconnect when we switch to AP
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
@@ -163,9 +171,11 @@ void ESPWiFi::startClient() {
   std::string hostname = getHostname();
   log(DEBUG, "\tHostname: %s", hostname.c_str());
 
-  // Get IP info
+  // --- 6. Log IP/network info ---
+
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(current_netif, &ip_info));
+
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
   log(DEBUG, "\tIP Address: %s", ip_str);
@@ -176,7 +186,6 @@ void ESPWiFi::startClient() {
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.gw));
   log(DEBUG, "\tGateway: %s", ip_str);
 
-  // Get DNS (primary)
   esp_netif_dns_info_t dns_info;
   if (esp_netif_get_dns_info(current_netif, ESP_NETIF_DNS_MAIN, &dns_info) ==
       ESP_OK) {
@@ -184,7 +193,6 @@ void ESPWiFi::startClient() {
     log(DEBUG, "\tDNS: %s", ip_str);
   }
 
-  // Get AP info for RSSI and channel
   wifi_ap_record_t ap_info;
   if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
     log(DEBUG, "\tRSSI: %d dBm", ap_info.rssi);
@@ -192,11 +200,12 @@ void ESPWiFi::startClient() {
   }
 }
 
+// ===================== AP mode =====================
+
 int ESPWiFi::selectBestChannel() {
   // client count for each channel, 14 for 2.4 GHz band
   int channels[14] = {0};
 
-  // Perform WiFi scan (only if WiFi is initialized)
   wifi_scan_config_t scan_config = {};
   scan_config.ssid = nullptr;
   scan_config.bssid = nullptr;
@@ -208,7 +217,6 @@ int ESPWiFi::selectBestChannel() {
 
   esp_err_t scan_ret = esp_wifi_scan_start(&scan_config, true);
   if (scan_ret != ESP_OK) {
-    // If scan fails (e.g., WiFi not initialized), return default channel
     log(WARNING, "WiFi scan not available, using default channel 1");
     return 1;
   }
@@ -224,8 +232,7 @@ int ESPWiFi::selectBestChannel() {
 
       for (int i = 0; i < numNetworks; i++) {
         int channel = ap_records[i].primary;
-        if (channel > 0 &&
-            channel <= 13) { // Ensure the channel is within a valid range
+        if (channel > 0 && channel <= 13) {
           channels[channel]++;
         }
       }
@@ -250,61 +257,64 @@ void ESPWiFi::startAP() {
   log(INFO, "📡 Starting Access Point");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
   log(DEBUG, "\tPassword: %s", password.c_str());
-  int bestChannel = selectBestChannel();
-  log(DEBUG, "\tChannel: %d", bestChannel);
 
-  // Initialize event loop if not already done
+  // No STA auto-reconnect in AP mode
+  setWiFiAutoReconnect(false);
+
+  // --- 1. Event loop / netif init if needed ---
+
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
       ESP_ERROR_CHECK(ret);
     }
     event_loop_initialized = true;
-    // Small delay to ensure event loop is fully ready
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 
-  // Initialize TCP/IP stack if not already done
   if (!netif_initialized) {
     ESP_ERROR_CHECK(esp_netif_init());
     netif_initialized = true;
   }
 
-  // Clean up any existing WiFi/netif before starting AP mode
+  // Clean up existing netif
   if (current_netif != nullptr) {
     esp_netif_destroy(current_netif);
     current_netif = nullptr;
   }
 
-  // Only stop and deinit WiFi if it's actually initialized
+  // Stop + deinit WiFi driver before reconfiguring
   if (wifi_initialized) {
     esp_wifi_stop();
     (void)esp_wifi_deinit();
     wifi_initialized = false;
-    // Small delay to allow WiFi driver to fully clean up before reinitializing
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 
-  // Initialize network interface
+  // Pick best channel (may fall back to 1 if scan fails)
+  int bestChannel = selectBestChannel();
+  log(DEBUG, "\tChannel: %d", bestChannel);
+
+  // --- 2. Create AP netif + init WiFi ---
+
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
   assert(ap_netif);
   current_netif = ap_netif;
 
   setHostname(config["deviceName"].as<std::string>());
 
-  // Initialize WiFi
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
   wifi_initialized = true;
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
-  // Configure AP
   wifi_config_t wifi_config = {};
   strncpy((char *)wifi_config.ap.ssid, ssid.c_str(),
           sizeof(wifi_config.ap.ssid) - 1);
   strncpy((char *)wifi_config.ap.password, password.c_str(),
           sizeof(wifi_config.ap.password) - 1);
+
   wifi_config.ap.ssid_len = strlen((char *)wifi_config.ap.ssid);
   wifi_config.ap.channel = bestChannel;
   wifi_config.ap.authmode =
@@ -315,7 +325,8 @@ void ESPWiFi::startAP() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  // Get IP address
+  // --- 3. Report AP IP ---
+
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(ap_netif, &ip_info));
 
@@ -334,53 +345,25 @@ void ESPWiFi::startAP() {
 #endif
 }
 
-// void ESPWiFi::startMDNS() {
-//   if (!config["wifi"]["enabled"].as<bool>()) {
-//     log(INFO, "📛  mDNS Disabled");
-//     return;
-//   }
-
-//   std::string domain = config["deviceName"].as<std::string>();
-//   toLowerCase(domain);
-
-//   esp_err_t err = mdns_init();
-//   if (err != ESP_OK) {
-//     log(ERROR, "Error setting up MDNS responder!");
-//     return;
-//   }
-
-//   err = mdns_hostname_set(domain.c_str());
-//   if (err != ESP_OK) {
-//     log(ERROR, "Error setting MDNS hostname!");
-//     return;
-//   }
-
-//   err = mdns_instance_name_set(domain.c_str());
-//   if (err != ESP_OK) {
-//     log(ERROR, "Error setting MDNS instance name!");
-//     return;
-//   }
-
-//   err = mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
-//   if (err != ESP_OK) {
-//     log(ERROR, "Error adding MDNS service!");
-//     return;
-//   }
-
-//   log(INFO, "🏷️  mDNS Started");
-//   log(DEBUG, "\tDomain Name: %s.local", domain.c_str());
-// }
+// ===================== Helper methods =====================
 
 std::string ESPWiFi::ipAddress() {
+  if (current_netif == nullptr) {
+    return "0.0.0.0";
+  }
+
   esp_netif_ip_info_t ip_info;
-  ESP_ERROR_CHECK(esp_netif_get_ip_info(current_netif, &ip_info));
+  esp_err_t err = esp_netif_get_ip_info(current_netif, &ip_info);
+  if (err != ESP_OK) {
+    return "0.0.0.0";
+  }
+
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
   return std::string(ip_str);
 }
 
 std::string ESPWiFi::getHostname() {
-
   // Attempt to get hostname from network interface
   if (current_netif != nullptr) {
     const char *hostname_ptr = nullptr;
@@ -416,19 +399,14 @@ void ESPWiFi::setHostname(std::string hostname) {
     return;
   }
 
-  // Ensure hostname is valid (lowercase, no spaces)
   toLowerCase(hostname);
 
-  // Set hostname on network interface
   esp_err_t hostname_ret =
       esp_netif_set_hostname(current_netif, hostname.c_str());
   if (hostname_ret == ESP_OK) {
-    // Update config with the hostname that was actually set
     config["hostname"] = hostname;
   } else {
     log(WARNING, "⚠️  Failed to set hostname: %s",
         esp_err_to_name(hostname_ret));
   }
 }
-
-#endif // ESPWiFi_WIFI

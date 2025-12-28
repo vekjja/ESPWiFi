@@ -73,6 +73,11 @@ bool ESPWiFi::matchPattern(const std::string &uri, const std::string &pattern) {
     } else if (patternBackup != std::string::npos) {
       // Backtrack: use wildcard to match more characters
       patternPos = patternBackup;
+      // If we've already tried consuming the entire URI, we can't match.
+      // Without this guard, uriBackup can run past the end and loop forever.
+      if (uriBackup >= uri.length()) {
+        return false;
+      }
       uriPos = ++uriBackup;
     } else {
       return false;

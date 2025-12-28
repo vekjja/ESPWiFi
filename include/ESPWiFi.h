@@ -135,7 +135,6 @@ public:
   void printConfig();
   void handleConfig();
   JsonDocument defaultConfig();
-  void mergeConfig(JsonDocument &json);
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
   void requestConfigSave(); // Request deferred config save from HTTP handlers
 

@@ -40,7 +40,7 @@ void ESPWiFi::readConfig() {
       log(WARNING, "⚙️ Failed to parse config file: %s: Using default config",
           error.c_str());
     } else {
-      mergeConfig(loadedConfig);
+      config = mergeJson(config, loadedConfig);
     }
   }
 
@@ -215,47 +215,9 @@ void ESPWiFi::saveConfig() {
   }
 
   if (config["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾 Config Saved");
+    log(INFO, "💾 Config Saved: %s", configFile.c_str());
     printConfig();
   }
-}
-
-void ESPWiFi::mergeConfig(JsonDocument &json) {
-  // Deep merge: recursively merge objects instead of replacing them
-  // Limit recursion depth to prevent stack overflow
-  const int MAX_DEPTH = 10;
-  std::function<void(JsonVariant, JsonVariantConst, int)> deepMerge =
-      [&](JsonVariant dst, JsonVariantConst src, int depth) {
-        if (depth > MAX_DEPTH) {
-          // Too deep, just replace instead of merging
-          dst.set(src);
-          return;
-        }
-
-        if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
-          // Both are objects - merge recursively
-          for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
-            JsonVariant dstValue = dst[kvp.key()];
-            if (dstValue.isNull()) {
-              // Key doesn't exist in destination, just copy it
-              dst[kvp.key()] = kvp.value();
-            } else {
-              // Key exists, recurse to merge deeper
-              deepMerge(dstValue, kvp.value(), depth + 1);
-            }
-          }
-          // Yield periodically during merge to prevent stack overflow
-          if (depth % 3 == 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-          }
-        } else {
-          // Not both objects (or one is null), just replace the value
-          dst.set(src);
-        }
-      };
-
-  // Start the deep merge from root
-  deepMerge(config.as<JsonVariant>(), json.as<JsonVariantConst>(), 0);
 }
 
 JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
@@ -435,6 +397,7 @@ void ESPWiFi::srvConfig() {
 
         // Request deferred config save (will happen in runSystem() main task)
         espwifi->requestConfigSave();
+        espwifi->handleConfig();
 
         // Return the updated config (using the already serialized string)
         espwifi->sendJsonResponse(req, 200, responseJson);

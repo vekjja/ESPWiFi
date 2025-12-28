@@ -85,19 +85,22 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
   if (!serialStarted) {
     startSerial();
   }
-  if (!loggingStarted) {
-    startLogging();
-  }
+
+  // Use lightweight printf directly to avoid stack/heap issues in HTTP handlers
+  // Skip string formatting to prevent crashes from stack overflow or heap
+  // issues
   va_list args;
   va_start(args, format);
-  std::string output = formatLog(format, args);
-  va_end(args);
+
   std::string ts = timestamp();
   std::string levelStr = logLevelToString(level);
 
-  printf("%s%s %s\n", ts.c_str(), levelStr.c_str(), output.c_str());
+  // Direct printf with format - avoids string allocations
+  printf("%s %s", ts.c_str(), levelStr.c_str());
+  vprintf(format, args);
+  printf("\n");
 
-  // writeLog(ts + levelStr + " " + output + "\n");
+  va_end(args);
 }
 
 // Function to check filesystem space and delete log if needed
@@ -206,24 +209,25 @@ std::string ESPWiFi::timestampForFilename() {
 }
 
 void ESPWiFi::logConfigHandler() {
-  static bool lastEnabled = true;
-  static std::string lastLevel = "debug";
+  // static bool lastEnabled = true;
+  // static std::string lastLevel = "debug";
 
   bool currentEnabled = config["log"]["enabled"].as<bool>();
   std::string currentLevel = config["log"]["level"].as<std::string>();
 
-  // Log when enabled state changes
-  if (currentEnabled != lastEnabled) {
-    log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
-    lastEnabled = currentEnabled;
-  }
+  log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
+  // // Log when enabled state changes
+  // if (currentEnabled != lastEnabled) {
+  //   log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
+  //   lastEnabled = currentEnabled;
+  // }
 
   // Log when level changes
-  if (currentLevel != lastLevel) {
-    log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
-        currentLevel.c_str());
-    lastLevel = currentLevel;
-  }
+  // if (currentLevel != lastLevel) {
+  //   log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
+  //       currentLevel.c_str());
+  //   lastLevel = currentLevel;
+  // }
 }
 
 void ESPWiFi::srvLog() {
@@ -244,215 +248,216 @@ void ESPWiFi::srvLog() {
         {
           ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-      // Check if LFS is initialized
-      if (!espwifi->littleFsInitialized) {
-        espwifi->sendJsonResponse(req, 503,
-                                  "{\"error\":\"Filesystem not available\"}");
-        return ESP_OK;
-      }
-
-      // Construct full path to log file
-      std::string fullPath = espwifi->lfsMountPoint + espwifi->logFilePath;
-
-      // Check if log file exists
-      struct stat fileStat;
-      if (stat(fullPath.c_str(), &fileStat) != 0) {
-        espwifi->sendJsonResponse(req, 404,
-                                  "{\"error\":\"Log file not found\"}");
-        return ESP_OK;
-      }
-
-      // Open log file
-      FILE *file = fopen(fullPath.c_str(), "r");
-      if (!file) {
-        espwifi->sendJsonResponse(req, 500,
-                                  "{\"error\":\"Failed to open log file\"}");
-        return ESP_OK;
-      }
-
-      // Set content type and CORS headers
-      espwifi->addCORS(req);
-      httpd_resp_set_type(req, "text/html");
-
-      // Send HTML header with CSS and JavaScript (stream it)
-      const char *htmlHeader =
-          "<!DOCTYPE html><html><head><meta "
-          "charset=\"utf-8\"><style>body{margin:0;padding:10px;background:#"
-          "1e1e1e;color:#d4d4d4;font-family:monospace;font-size:12px;}pre{"
-          "white-"
-          "space:pre;overflow-x:auto;margin:0;}.controls{position:fixed;"
-          "top:10px;"
-          "right:10px;z-index:1000;background:#2d2d2d;padding:10px;border-"
-          "radius:"
-          "4px;border:1px solid #444;}.controls "
-          "label{display:block;margin:5px "
-          "0;color:#d4d4d4;cursor:pointer;}.controls "
-          "input[type=\"checkbox\"]{margin-right:8px;cursor:pointer;}</"
-          "style><script>var autoScroll=true;var autoRefresh=true;var "
-          "refreshInterval;function initControls(){var "
-          "scrollCheckbox=document.getElementById('autoScroll');var "
-          "refreshCheckbox=document.getElementById('autoRefresh');"
-          "autoScroll="
-          "localStorage.getItem('autoScroll')!=='false';autoRefresh="
-          "localStorage."
-          "getItem('autoRefresh')!=='false';if(scrollCheckbox){"
-          "scrollCheckbox."
-          "checked=autoScroll;scrollCheckbox.addEventListener('change',"
-          "function()"
-          "{autoScroll=this.checked;localStorage.setItem('autoScroll',"
-          "autoScroll)"
-          ";if(autoScroll)scrollToBottom();});}if(refreshCheckbox){"
-          "refreshCheckbox.checked=autoRefresh;refreshCheckbox."
-          "addEventListener('"
-          "change',function(){autoRefresh=this.checked;localStorage."
-          "setItem('"
-          "autoRefresh',autoRefresh);if(autoRefresh){startRefresh();}else{"
-          "stopRefresh();}});}if(autoRefresh)startRefresh();}function "
-          "scrollToBottom(){if(autoScroll){window.scrollTo(0,document.body."
-          "scrollHeight||document.documentElement.scrollHeight);}}function "
-          "startRefresh(){if(refreshInterval)clearInterval(refreshInterval)"
-          ";"
-          "refreshInterval=setInterval(function(){if(autoRefresh)location."
-          "reload("
-          ");},5000);}function "
-          "stopRefresh(){if(refreshInterval){clearInterval(refreshInterval)"
-          ";"
-          "refreshInterval=null;}}window.addEventListener('load',function()"
-          "{"
-          "initControls();scrollToBottom();});document.addEventListener('"
-          "DOMContentLoaded',function(){setTimeout(scrollToBottom,100);});"
-          "setTimeout(scrollToBottom,200);</script></head><body><div "
-          "class=\"controls\"><label><input type=\"checkbox\" "
-          "id=\"autoScroll\" "
-          "checked> Auto Scroll</label><label><input type=\"checkbox\" "
-          "id=\"autoRefresh\" checked> Auto Refresh</label></div><pre>";
-
-      esp_err_t ret =
-          httpd_resp_send_chunk(req, htmlHeader, strlen(htmlHeader));
-      if (ret != ESP_OK) {
-        fclose(file);
-        return ESP_FAIL;
-      }
-
-      // Stream log file content with HTML escaping in small chunks
-      // Use heap allocation to avoid stack overflow
-      const size_t readChunkSize = 1024;    // Read 1KB at a time
-      const size_t escapeBufferSize = 4096; // Escape buffer (4KB max)
-      char *readBuffer = (char *)malloc(readChunkSize);
-      char *escapeBuffer = (char *)malloc(escapeBufferSize);
-
-      if (!readBuffer || !escapeBuffer) {
-        if (readBuffer)
-          free(readBuffer);
-        if (escapeBuffer)
-          free(escapeBuffer);
-        fclose(file);
-        espwifi->sendJsonResponse(req, 500,
-                                  "{\"error\":\"Memory allocation failed\"}");
-        return ESP_OK;
-      }
-
-      size_t escapePos = 0;
-      size_t totalRead = 0;
-
-      while ((ret == ESP_OK) && !feof(file)) {
-        vTaskDelay(pdMS_TO_TICKS(1)); // Yield before file I/O
-        size_t bytesRead = fread(readBuffer, 1, readChunkSize, file);
-        if (bytesRead == 0) {
-          break;
-        }
-        totalRead += bytesRead;
-
-        // Escape HTML special characters and accumulate in buffer
-        for (size_t i = 0; i < bytesRead; i++) {
-          if (readBuffer[i] == '<') {
-            const char *escaped = "&lt;";
-            size_t escapedLen = 4;
-            if (escapePos + escapedLen >= escapeBufferSize) {
-              // Send current buffer
-              ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-              if (ret != ESP_OK)
-                break;
-              escapePos = 0;
-              vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-            }
-            memcpy(escapeBuffer + escapePos, escaped, escapedLen);
-            escapePos += escapedLen;
-          } else if (readBuffer[i] == '>') {
-            const char *escaped = "&gt;";
-            size_t escapedLen = 4;
-            if (escapePos + escapedLen >= escapeBufferSize) {
-              // Send current buffer
-              ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-              if (ret != ESP_OK)
-                break;
-              escapePos = 0;
-              vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-            }
-            memcpy(escapeBuffer + escapePos, escaped, escapedLen);
-            escapePos += escapedLen;
-          } else if (readBuffer[i] == '&') {
-            const char *escaped = "&amp;";
-            size_t escapedLen = 5;
-            if (escapePos + escapedLen >= escapeBufferSize) {
-              // Send current buffer
-              ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-              if (ret != ESP_OK)
-                break;
-              escapePos = 0;
-              vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-            }
-            memcpy(escapeBuffer + escapePos, escaped, escapedLen);
-            escapePos += escapedLen;
-          } else {
-            if (escapePos + 1 >= escapeBufferSize) {
-              // Send current buffer
-              ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-              if (ret != ESP_OK)
-                break;
-              escapePos = 0;
-              vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-            }
-            escapeBuffer[escapePos++] = readBuffer[i];
+          // Check if LFS is initialized
+          if (!espwifi->littleFsInitialized) {
+            espwifi->sendJsonResponse(
+                req, 503, "{\"error\":\"Filesystem not available\"}");
+            return ESP_OK;
           }
-        }
 
-        // Send accumulated buffer if it's getting full
-        if (escapePos > escapeBufferSize / 2) {
-          ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-          if (ret != ESP_OK)
-            break;
-          escapePos = 0;
-          vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-        }
-      }
+          // Construct full path to log file
+          std::string fullPath = espwifi->lfsMountPoint + espwifi->logFilePath;
 
-      // Send any remaining escaped content
-      if (ret == ESP_OK && escapePos > 0) {
-        ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-      }
+          // Check if log file exists
+          struct stat fileStat;
+          if (stat(fullPath.c_str(), &fileStat) != 0) {
+            espwifi->sendJsonResponse(req, 404,
+                                      "{\"error\":\"Log file not found\"}");
+            return ESP_OK;
+          }
 
-      // Free allocated buffers
-      free(readBuffer);
-      free(escapeBuffer);
+          // Open log file
+          FILE *file = fopen(fullPath.c_str(), "r");
+          if (!file) {
+            espwifi->sendJsonResponse(
+                req, 500, "{\"error\":\"Failed to open log file\"}");
+            return ESP_OK;
+          }
 
-      fclose(file);
+          // Set content type and CORS headers
+          espwifi->addCORS(req);
+          httpd_resp_set_type(req, "text/html");
 
-      // Send closing HTML tags
-      if (ret == ESP_OK) {
-        const char *htmlFooter = "</pre></body></html>";
-        ret = httpd_resp_send_chunk(req, htmlFooter, strlen(htmlFooter));
-        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
-      }
+          // Send HTML header with CSS and JavaScript (stream it)
+          const char *htmlHeader =
+              "<!DOCTYPE html><html><head><meta "
+              "charset=\"utf-8\"><style>body{margin:0;padding:10px;background:#"
+              "1e1e1e;color:#d4d4d4;font-family:monospace;font-size:12px;}pre{"
+              "white-"
+              "space:pre;overflow-x:auto;margin:0;}.controls{position:fixed;"
+              "top:10px;"
+              "right:10px;z-index:1000;background:#2d2d2d;padding:10px;border-"
+              "radius:"
+              "4px;border:1px solid #444;}.controls "
+              "label{display:block;margin:5px "
+              "0;color:#d4d4d4;cursor:pointer;}.controls "
+              "input[type=\"checkbox\"]{margin-right:8px;cursor:pointer;}</"
+              "style><script>var autoScroll=true;var autoRefresh=true;var "
+              "refreshInterval;function initControls(){var "
+              "scrollCheckbox=document.getElementById('autoScroll');var "
+              "refreshCheckbox=document.getElementById('autoRefresh');"
+              "autoScroll="
+              "localStorage.getItem('autoScroll')!=='false';autoRefresh="
+              "localStorage."
+              "getItem('autoRefresh')!=='false';if(scrollCheckbox){"
+              "scrollCheckbox."
+              "checked=autoScroll;scrollCheckbox.addEventListener('change',"
+              "function()"
+              "{autoScroll=this.checked;localStorage.setItem('autoScroll',"
+              "autoScroll)"
+              ";if(autoScroll)scrollToBottom();});}if(refreshCheckbox){"
+              "refreshCheckbox.checked=autoRefresh;refreshCheckbox."
+              "addEventListener('"
+              "change',function(){autoRefresh=this.checked;localStorage."
+              "setItem('"
+              "autoRefresh',autoRefresh);if(autoRefresh){startRefresh();}else{"
+              "stopRefresh();}});}if(autoRefresh)startRefresh();}function "
+              "scrollToBottom(){if(autoScroll){window.scrollTo(0,document.body."
+              "scrollHeight||document.documentElement.scrollHeight);}}function "
+              "startRefresh(){if(refreshInterval)clearInterval(refreshInterval)"
+              ";"
+              "refreshInterval=setInterval(function(){if(autoRefresh)location."
+              "reload("
+              ");},5000);}function "
+              "stopRefresh(){if(refreshInterval){clearInterval(refreshInterval)"
+              ";"
+              "refreshInterval=null;}}window.addEventListener('load',function()"
+              "{"
+              "initControls();scrollToBottom();});document.addEventListener('"
+              "DOMContentLoaded',function(){setTimeout(scrollToBottom,100);});"
+              "setTimeout(scrollToBottom,200);</script></head><body><div "
+              "class=\"controls\"><label><input type=\"checkbox\" "
+              "id=\"autoScroll\" "
+              "checked> Auto Scroll</label><label><input type=\"checkbox\" "
+              "id=\"autoRefresh\" checked> Auto Refresh</label></div><pre>";
 
-      // Finalize chunked transfer
-      if (ret == ESP_OK) {
-        ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
-        vTaskDelay(pdMS_TO_TICKS(1));                 // Yield after network I/O
-      }
+          esp_err_t ret =
+              httpd_resp_send_chunk(req, htmlHeader, strlen(htmlHeader));
+          if (ret != ESP_OK) {
+            fclose(file);
+            return ESP_FAIL;
+          }
 
-      return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
+          // Stream log file content with HTML escaping in small chunks
+          // Use heap allocation to avoid stack overflow
+          const size_t readChunkSize = 1024;    // Read 1KB at a time
+          const size_t escapeBufferSize = 4096; // Escape buffer (4KB max)
+          char *readBuffer = (char *)malloc(readChunkSize);
+          char *escapeBuffer = (char *)malloc(escapeBufferSize);
+
+          if (!readBuffer || !escapeBuffer) {
+            if (readBuffer)
+              free(readBuffer);
+            if (escapeBuffer)
+              free(escapeBuffer);
+            fclose(file);
+            espwifi->sendJsonResponse(
+                req, 500, "{\"error\":\"Memory allocation failed\"}");
+            return ESP_OK;
+          }
+
+          size_t escapePos = 0;
+          size_t totalRead = 0;
+
+          while ((ret == ESP_OK) && !feof(file)) {
+            vTaskDelay(pdMS_TO_TICKS(1)); // Yield before file I/O
+            size_t bytesRead = fread(readBuffer, 1, readChunkSize, file);
+            if (bytesRead == 0) {
+              break;
+            }
+            totalRead += bytesRead;
+
+            // Escape HTML special characters and accumulate in buffer
+            for (size_t i = 0; i < bytesRead; i++) {
+              if (readBuffer[i] == '<') {
+                const char *escaped = "&lt;";
+                size_t escapedLen = 4;
+                if (escapePos + escapedLen >= escapeBufferSize) {
+                  // Send current buffer
+                  ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+                  if (ret != ESP_OK)
+                    break;
+                  escapePos = 0;
+                  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+                }
+                memcpy(escapeBuffer + escapePos, escaped, escapedLen);
+                escapePos += escapedLen;
+              } else if (readBuffer[i] == '>') {
+                const char *escaped = "&gt;";
+                size_t escapedLen = 4;
+                if (escapePos + escapedLen >= escapeBufferSize) {
+                  // Send current buffer
+                  ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+                  if (ret != ESP_OK)
+                    break;
+                  escapePos = 0;
+                  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+                }
+                memcpy(escapeBuffer + escapePos, escaped, escapedLen);
+                escapePos += escapedLen;
+              } else if (readBuffer[i] == '&') {
+                const char *escaped = "&amp;";
+                size_t escapedLen = 5;
+                if (escapePos + escapedLen >= escapeBufferSize) {
+                  // Send current buffer
+                  ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+                  if (ret != ESP_OK)
+                    break;
+                  escapePos = 0;
+                  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+                }
+                memcpy(escapeBuffer + escapePos, escaped, escapedLen);
+                escapePos += escapedLen;
+              } else {
+                if (escapePos + 1 >= escapeBufferSize) {
+                  // Send current buffer
+                  ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+                  if (ret != ESP_OK)
+                    break;
+                  escapePos = 0;
+                  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+                }
+                escapeBuffer[escapePos++] = readBuffer[i];
+              }
+            }
+
+            // Send accumulated buffer if it's getting full
+            if (escapePos > escapeBufferSize / 2) {
+              ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+              if (ret != ESP_OK)
+                break;
+              escapePos = 0;
+              vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+            }
+          }
+
+          // Send any remaining escaped content
+          if (ret == ESP_OK && escapePos > 0) {
+            ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
+            vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+          }
+
+          // Free allocated buffers
+          free(readBuffer);
+          free(escapeBuffer);
+
+          fclose(file);
+
+          // Send closing HTML tags
+          if (ret == ESP_OK) {
+            const char *htmlFooter = "</pre></body></html>";
+            ret = httpd_resp_send_chunk(req, htmlFooter, strlen(htmlFooter));
+            vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+          }
+
+          // Finalize chunked transfer
+          if (ret == ESP_OK) {
+            ret =
+                httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
+            vTaskDelay(pdMS_TO_TICKS(1)); // Yield after network I/O
+          }
+
+          return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
         }
       },
       .user_ctx = this};

@@ -51,22 +51,20 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  // log(INFO, "⚙️  Config: " + configFile);
 
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield before JSON operations
+  if (!shouldLog(VERBOSE)) {
+    return;
+  }
+
+  yield(); // Yield before JSON operations
   // Create a copy of config with masked passwords for logging
   JsonDocument logConfig;
   std::string configJson;
   serializeJson(config, configJson);
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after serialization
+  yield(); // Yield after serialization
   DeserializationError error = deserializeJson(logConfig, configJson);
   if (error) {
-    // If copy fails, just log the original (passwords will be visible)
-    vTaskDelay(pdMS_TO_TICKS(1)); // Yield before pretty serialization
-    std::string prettyConfig;
-    serializeJsonPretty(config, prettyConfig);
-    vTaskDelay(pdMS_TO_TICKS(1)); // Yield after pretty serialization
-    log(DEBUG, "\n" + prettyConfig);
+    log(ERROR, "Failed to deserialize config for printing: %s", error.c_str());
     return;
   }
 
@@ -78,12 +76,13 @@ void ESPWiFi::printConfig() {
   const size_t numSensitiveKeys =
       sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
 
-  const int MAX_DEPTH = 10; // Limit recursion depth to prevent stack overflow
+  // const int MAX_DEPTH = 10; // Limit recursion depth to prevent stack
+  // overflow
   std::function<void(JsonVariant, int)> maskSensitiveFields =
       [&](JsonVariant variant, int depth) {
-        if (depth > MAX_DEPTH) {
-          return; // Too deep, skip masking
-        }
+        // if (depth > MAX_DEPTH) {
+        //   return; // Too deep, skip masking
+        // }
 
         if (variant.is<JsonObject>()) {
           JsonObject obj = variant.as<JsonObject>();
@@ -114,7 +113,7 @@ void ESPWiFi::printConfig() {
 
             // Yield periodically to prevent stack overflow
             if (depth % 3 == 0) {
-              vTaskDelay(pdMS_TO_TICKS(1));
+              yield();
             }
           }
         } else if (variant.is<JsonArray>()) {
@@ -128,12 +127,12 @@ void ESPWiFi::printConfig() {
       };
 
   maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after masking
+  yield(); // Yield after masking
 
   std::string prettyConfig;
   serializeJsonPretty(logConfig, prettyConfig);
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after pretty serialization
-  log(DEBUG, "\n" + prettyConfig);
+  yield(); // Yield after pretty serialization
+  log(VERBOSE, "\n" + prettyConfig);
 }
 
 void ESPWiFi::saveConfig(JsonDocument &configToSave) {
@@ -144,7 +143,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
     return;
   }
 
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield before JSON operations
+  yield(); // Yield before JSON operations
 
   // Serialize to buffer - add extra padding for safety
   size_t size = measureJson(configToSave);
@@ -160,7 +159,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
     return;
   }
 
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after allocation
+  yield(); // Yield after allocation
 
   size_t written = serializeJson(configToSave, buffer, size + 32);
   if (written == 0) {
@@ -169,7 +168,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
     return;
   }
 
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after serialization
+  yield(); // Yield after serialization
 
   // Use atomic write to prevent corruption
   bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
@@ -180,7 +179,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
     return;
   }
 
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file write
+  yield(); // Yield after file write
 
   if (configToSave["log"]["enabled"].as<bool>()) {
     log(INFO, "💾  Config Saved: %s", configFile.c_str());
@@ -261,7 +260,7 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
           }
           // Yield periodically during merge to prevent stack overflow
           if (depth % 3 == 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            yield();
           }
         } else {
           // Not both objects (or one is null), just replace the value
@@ -349,63 +348,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["log"]["level"] = "debug";
 
   return doc;
-}
-
-void ESPWiFi::srvConfig() {
-  if (!webServer) {
-    log(ERROR,
-        "Cannot start config API /api/config: web server not initialized");
-    return;
-  }
-
-  // Config GET endpoint
-  httpd_uri_t config_get_route = {.uri = "/config",
-                                  .method = HTTP_GET,
-                                  .handler = [](httpd_req_t *req) -> esp_err_t {
-                                    ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
-                                    std::string json;
-                                    serializeJson(espwifi->config, json);
-                                    espwifi->sendJsonResponse(req, 200, json);
-                                    return ESP_OK;
-                                  },
-                                  .user_ctx = this};
-  httpd_register_uri_handler(webServer, &config_get_route);
-
-  // Config PUT endpoint
-  httpd_uri_t config_put_route = {
-      .uri = "/config",
-      .method = HTTP_PUT,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
-        JsonDocument reqJson = espwifi->readRequestBody(req);
-
-        // Check if JSON document is empty (parse failed or empty input)
-        if (reqJson.size() == 0) {
-          espwifi->sendJsonResponse(req, 400, "{\"error\":\"EmptyInput\"}");
-          espwifi->log(ERROR, "/config Error parsing JSON: EmptyInput");
-          return ESP_OK;
-        }
-
-        JsonDocument mergedConfig =
-            espwifi->mergeJson(espwifi->config, reqJson);
-
-        espwifi->config = mergedConfig;
-
-        std::string responseJson;
-        serializeJson(mergedConfig, responseJson);
-
-        // Request deferred config save (will happen in runSystem() main task)
-        espwifi->requestConfigSave();
-        espwifi->handleConfig();
-
-        // Return the updated config (using the already serialized string)
-        espwifi->sendJsonResponse(req, 200, responseJson);
-        return ESP_OK;
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &config_put_route);
 }
 
 #endif // ESPWiFi_CONFIG

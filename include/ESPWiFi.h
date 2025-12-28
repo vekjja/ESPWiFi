@@ -38,7 +38,7 @@
 // class WebSocket;
 
 // Log levels
-enum LogLevel { ACCESS, DEBUG, INFO, WARNING, ERROR };
+enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
 class ESPWiFi {
 private:
@@ -74,6 +74,7 @@ public:
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";
   std::string version() { return _version; }
+  void yield(int ms = 1) { vTaskDelay(pdMS_TO_TICKS(ms)); }
 
   // ---- WiFi helper API for reconnect logic ----
   // Enable/disable automatic reconnect on STA disconnect events
@@ -98,10 +99,10 @@ public:
                         uint8_t *data, size_t len, bool final);
 
   // Helper functions for filesystem operations
-  void logFilesystemInfo(const std::string &fsName, size_t totalBytes,
-                         size_t usedBytes);
   void printFilesystemInfo();
   std::string sanitizeFilename(const std::string &filename);
+  void logFilesystemInfo(const std::string &fsName, size_t totalBytes,
+                         size_t usedBytes);
   void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
   bool writeFile(const std::string &filePath, const uint8_t *data, size_t len);
@@ -113,20 +114,19 @@ public:
 
   // Logging
   void cleanLogFile();
-  int baudRate = 115200;
   int maxLogFileSize = 0;
-  std::string logLine = "";
   bool serialStarted = false;
+  int baudRate =
+      115200; // best-effort (ESP-IDF console UART is usually pre-initialized)
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
+  int getSerialBaudRate();
   std::string timestamp();
   void logConfigHandler();
   bool shouldLog(LogLevel level);
-  std::string timestampForFilename();
   void writeLog(std::string message);
-  std::string formatLog(const char *format, va_list args);
   // Log functions
   void log(LogLevel level, const char *format, ...);
   void log(LogLevel level, std::string message) {
@@ -178,14 +178,18 @@ public:
   bool authorized(httpd_req_t *req);
   httpd_handle_t webServer = nullptr;
   void handleCorsPreflight(httpd_req_t *req);
-  esp_err_t verify(httpd_req_t *req, bool requireAuth = true);
+  esp_err_t verifyRequest(httpd_req_t *req);
   // Helper to get HTTP method as string for logging
   const char *getMethodString(int method);
+  // Capture request/client info early (before long streaming responses) so
+  // access logs don't lose remote IP / headers on disconnects.
+  std::string getClientInfo(httpd_req_t *req);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
   esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
   // Nginx-like access log line for a completed response
-  void accessLog(httpd_req_t *req, int statusCode, size_t bytesSent = 0);
+  void logAccess(int statusCode, const std::string &clientInfo,
+                 size_t bytesSent = 0);
   JsonDocument readRequestBody(httpd_req_t *req);
 
   // Camera - not yet ported to ESP-IDF
@@ -210,6 +214,8 @@ public:
 
   // Utils
   void setMaxPower();
+  // Format status code properly (e.g., "200 OK", "404 Not Found")
+  std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);
   std::string bytesToHumanReadable(size_t bytes);
   std::string getFileExtension(const std::string &filename);

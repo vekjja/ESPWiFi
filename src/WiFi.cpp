@@ -138,8 +138,8 @@ void ESPWiFi::startClient() {
       connectSubroutine();
     }
 
-    printf(".");
-    fflush(stdout);
+    // printf(".");
+    // fflush(stdout);
 
     if (current_netif != nullptr) {
       esp_netif_ip_info_t ip_info;
@@ -166,7 +166,7 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  log(INFO, "🛜  WiFi Connected");
+  log(INFO, "🛜 WiFi Connected");
 
   std::string hostname = getHostname();
   log(DEBUG, "\tHostname: %s", hostname.c_str());

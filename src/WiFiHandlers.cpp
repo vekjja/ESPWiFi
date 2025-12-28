@@ -84,7 +84,7 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
   case WIFI_EVENT_STA_START:
     // Station started; we usually call esp_wifi_connect() explicitly in
     // startClient()
-    log(DEBUG, "📶 WiFi Started");
+    log(INFO, "📶 WiFi Started");
     break;
 
   case WIFI_EVENT_STA_DISCONNECTED: {
@@ -130,7 +130,7 @@ void ESPWiFi::ip_event_handler(esp_event_base_t event_base, int32_t event_id,
 
     char ip[16];
     snprintf(ip, sizeof(ip), IPSTR, IP2STR(&ip_event->ip_info.ip));
-    log(DEBUG, std::string("📶 WiFi Got IP: ") + ip);
+    log(INFO, std::string("📶 WiFi Got IP: ") + ip);
 
     // Notify waiters
     if (wifi_connect_semaphore) {

@@ -141,7 +141,7 @@ bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
 
     // Yield periodically to prevent watchdog timeout
     if (++entryCount % 10 == 0) {
-      vTaskDelay(pdMS_TO_TICKS(1));
+      yield();
     }
   }
   closedir(dir);
@@ -163,7 +163,7 @@ bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
   size_t written = fwrite(data, 1, len, file);
   // Yield after file I/O to prevent watchdog timeout
   if (len > 1024) {
-    vTaskDelay(pdMS_TO_TICKS(1));
+    yield();
   }
   fclose(file);
 
@@ -189,7 +189,7 @@ bool ESPWiFi::writeFileAtomic(const std::string &filePath, const uint8_t *data,
   }
 
   size_t bytesWritten = fwrite(data, 1, len, f);
-  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file write
+  yield(); // Yield after file write
 
   // Flush the file to ensure data is written to filesystem
   if (fflush(f) != 0) {
@@ -498,7 +498,7 @@ void ESPWiFi::srvFS() {
 
           // Yield control periodically
           if (fileCount % 10 == 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            espwifi->yield();
           }
         }
 
@@ -1043,7 +1043,7 @@ void ESPWiFi::srvFS() {
             fwrite(bodyStr.c_str() + data_start, 1, data_len, file);
         // Yield after file I/O to prevent watchdog timeout
         if (data_len > 1024) {
-          vTaskDelay(pdMS_TO_TICKS(1));
+          espwifi->yield();
         }
         fclose(file);
 

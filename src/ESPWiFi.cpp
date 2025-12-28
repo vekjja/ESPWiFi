@@ -12,9 +12,10 @@ void ESPWiFi::start() {
   // startMDNS();
   startWebServer();
   srvRoot();
+  srvAuth();
   srvConfig();
   srvInfo();
-  // srvAuth();
+  srvLog();
   // srvGPIO();
   srvWildcard();
   // startBluetooth();

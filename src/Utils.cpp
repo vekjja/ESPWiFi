@@ -1,5 +1,7 @@
 // Utils.cpp
 #include "ESPWiFi.h"
+#include "driver/uart.h"
+#include "sdkconfig.h"
 
 std::string ESPWiFi::getContentType(std::string filename) {
   if (filename.find(".html") != std::string::npos)
@@ -22,6 +24,26 @@ std::string ESPWiFi::getContentType(std::string filename) {
   else if (filename.find(".ico") != std::string::npos)
     return "image/x-icon";
   return "text/plain; charset=utf-8";
+}
+
+std::string ESPWiFi::getStatusFromCode(int statusCode) {
+  const char *status_text = "OK";
+  if (statusCode == 201)
+    status_text = "Created";
+  else if (statusCode == 204)
+    status_text = "No Content";
+  else if (statusCode == 400)
+    status_text = "Bad Request";
+  else if (statusCode == 401)
+    status_text = "Unauthorized";
+  else if (statusCode == 404)
+    status_text = "Not Found";
+  else if (statusCode == 500)
+    status_text = "Internal Server Error";
+
+  char buf[32];
+  (void)snprintf(buf, sizeof(buf), "%d %s", statusCode, status_text);
+  return std::string(buf);
 }
 
 std::string ESPWiFi::bytesToHumanReadable(size_t bytes) {
@@ -125,4 +147,31 @@ JsonDocument ESPWiFi::readRequestBody(httpd_req_t *req) {
   }
 
   return doc;
+}
+
+int ESPWiFi::getSerialBaudRate() {
+  // Start with our last-known value, then prefer sdkconfig (authoritative for
+  // ESP-IDF console), and finally try querying the UART driver if available.
+  int baud = this->baudRate;
+
+#if defined(CONFIG_ESP_CONSOLE_UART_BAUDRATE)
+  baud = CONFIG_ESP_CONSOLE_UART_BAUDRATE;
+#elif defined(CONFIG_CONSOLE_UART_BAUDRATE)
+  baud = CONFIG_CONSOLE_UART_BAUDRATE;
+#endif
+
+  int uart_num = UART_NUM_0;
+#if defined(CONFIG_ESP_CONSOLE_UART_NUM)
+  uart_num = CONFIG_ESP_CONSOLE_UART_NUM;
+#elif defined(CONFIG_CONSOLE_UART_NUM)
+  uart_num = CONFIG_CONSOLE_UART_NUM;
+#endif
+
+  uint32_t driverBaud = 0;
+  esp_err_t err = uart_get_baudrate((uart_port_t)uart_num, &driverBaud);
+  if (err == ESP_OK && driverBaud > 0) {
+    baud = (int)driverBaud;
+  }
+
+  return baud;
 }

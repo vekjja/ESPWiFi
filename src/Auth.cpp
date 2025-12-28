@@ -41,10 +41,58 @@ std::string ESPWiFi::generateToken() {
   return tokenStream.str();
 }
 
+bool ESPWiFi::isExcludedPath(const char *uri) {
+  if (uri == nullptr) {
+    return false;
+  }
+
+  // Match only against the path (ignore query string) so web clients with
+  // cache-busting params don't break auth exclusions.
+  std::string_view full(uri);
+  size_t q = full.find('?');
+  std::string_view path =
+      (q == std::string_view::npos) ? full : full.substr(0, q);
+
+  JsonVariant excludes = config["auth"]["excludePaths"];
+  if (!excludes.is<JsonArray>()) {
+    return false;
+  }
+
+  // Iterate without copying into a std::vector (min RAM, no per-request heap).
+  JsonArray arr = excludes.as<JsonArray>();
+  for (JsonVariant v : arr) {
+    const char *pat = v.as<const char *>();
+    if (pat == nullptr || pat[0] == '\0') {
+      continue;
+    }
+
+    std::string_view pattern(pat);
+
+    // Special-case "/" so it matches ONLY the root path, not "everything that
+    // contains a slash" (which would effectively disable auth).
+    if (pattern == "/") {
+      if (path == "/") {
+        return true;
+      }
+      continue;
+    }
+
+    if (matchPattern(path, pattern)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool ESPWiFi::authorized(httpd_req_t *req) {
 
   if (!authEnabled()) {
     return true; // Auth disabled, allow all
+  }
+
+  if (isExcludedPath(req->uri)) {
+    return true; // Path is excluded, allow
   }
 
   // Check for Authorization header

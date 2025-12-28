@@ -132,36 +132,61 @@ void ESPWiFi::runAtInterval(unsigned int interval,
 // Helper function to match URI against a pattern with wildcard support
 // Supports '*' to match any sequence of characters (including empty)
 // Supports '?' to match any single character
-bool ESPWiFi::matchPattern(const std::string &uri, const std::string &pattern) {
+bool ESPWiFi::matchPattern(std::string_view uri, std::string_view pattern) {
+  // Fast paths (common in config): exact match patterns, or global wildcard.
+  if (pattern == "*") {
+    return true;
+  }
+  if (pattern.find_first_of("*?") == std::string_view::npos) {
+    return uri == pattern;
+  }
+
+  const size_t uriLen = uri.size();
+  const size_t patternLen = pattern.size();
+
+  // Hard bound to keep this watchdog-safe even on adversarial input.
+  // This algorithm is linear-ish, but the bound guarantees termination.
+  uint64_t maxOps =
+      (uint64_t)(uriLen + 1) * (uint64_t)(patternLen + 1) * 2ULL + 16ULL;
+  uint64_t ops = 0;
+
   size_t uriPos = 0;
   size_t patternPos = 0;
-  size_t uriBackup = std::string::npos;
-  size_t patternBackup = std::string::npos;
+  size_t uriBackup = std::string_view::npos;
+  size_t patternBackup = std::string_view::npos;
 
-  while (uriPos < uri.length() || patternPos < pattern.length()) {
-    if (patternPos < pattern.length() && pattern[patternPos] == '*') {
-      // Wildcard: try matching zero or more characters
+  while (uriPos < uriLen || patternPos < patternLen) {
+    if (++ops > maxOps) {
+      return false;
+    }
+
+    if (patternPos < patternLen && pattern[patternPos] == '*') {
+      // Wildcard: remember positions to allow consuming more URI chars later.
       patternBackup = ++patternPos;
       uriBackup = uriPos;
-    } else if (patternPos < pattern.length() && uriPos < uri.length() &&
-               (pattern[patternPos] == uri[uriPos] ||
-                pattern[patternPos] == '?')) {
-      // Exact match or single character wildcard
+      continue;
+    }
+
+    if (patternPos < patternLen && uriPos < uriLen &&
+        (pattern[patternPos] == uri[uriPos] || pattern[patternPos] == '?')) {
       patternPos++;
       uriPos++;
-    } else if (patternBackup != std::string::npos) {
-      // Backtrack: use wildcard to match more characters
+      continue;
+    }
+
+    if (patternBackup != std::string_view::npos) {
+      // Backtrack: extend what '*' consumes by one.
       patternPos = patternBackup;
-      // If we've already tried consuming the entire URI, we can't match.
-      // Without this guard, uriBackup can run past the end and loop forever.
-      if (uriBackup >= uri.length()) {
+      if (uriBackup >= uriLen) {
         return false;
       }
       uriPos = ++uriBackup;
-    } else {
-      return false;
+      continue;
     }
+
+    return false;
   }
+
   return true;
 }
 

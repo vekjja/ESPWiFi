@@ -21,6 +21,7 @@
 #include <new>
 #include <stdio.h>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -200,6 +201,7 @@ public:
   bool webServerStarted = false;
   void addCORS(httpd_req_t *req);
   bool authorized(httpd_req_t *req);
+  bool isExcludedPath(const char *uri);
   httpd_handle_t webServer = nullptr;
   void handleCorsPreflight(httpd_req_t *req);
   // Verify request, apply CORS headers, handle OPTIONS preflight, enforce auth.
@@ -261,7 +263,7 @@ public:
   // Function to match URI against a pattern with wildcard support
   // Supports '*' to match any sequence of characters (including empty)
   // Supports '?' to match any single character
-  bool matchPattern(const std::string &uri, const std::string &pattern);
+  bool matchPattern(std::string_view uri, std::string_view pattern);
 
   // I2C
   void scanI2CDevices();

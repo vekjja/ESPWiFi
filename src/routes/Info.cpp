@@ -10,7 +10,7 @@
 void ESPWiFi::srvInfo() {
   // Info endpoint
   (void)registerRoute(
-      "/info", HTTP_GET,
+      "/info", HTTP_GET, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         JsonDocument jsonDoc;
@@ -130,8 +130,7 @@ void ESPWiFi::srvInfo() {
 
         (void)espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
         return ESP_OK;
-      },
-      true);
+      });
 }
 
 #endif // ESPWiFi_SRV_INFO

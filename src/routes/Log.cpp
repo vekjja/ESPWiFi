@@ -12,7 +12,7 @@
 void ESPWiFi::srvLog() {
   // GET /logs - return log file content as HTML
   registerRoute(
-      "/logs", HTTP_GET,
+      "/logs", HTTP_GET, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Check if LFS is initialized
@@ -225,8 +225,7 @@ void ESPWiFi::srvLog() {
 
         espwifi->logAccess(200, clientInfo, totalRead);
         return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
-      },
-      true);
+      });
 }
 
 #endif // ESPWiFi_SRV_LOG

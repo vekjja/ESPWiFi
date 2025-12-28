@@ -50,20 +50,19 @@ void ESPWiFi::startWebServer() {
 
   // Global CORS preflight handler (covers all routes)
   // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
-  (void)registerRoute("/*", HTTP_OPTIONS, &noopRouteHandler, false);
+  (void)registerRoute("/*", HTTP_OPTIONS, false, &noopRouteHandler);
 
   // Restart endpoint
-  (void)registerRoute(
-      "/api/restart", HTTP_POST,
-      [](ESPWiFi *espwifi, httpd_req_t *req,
-         const std::string &clientInfo) -> esp_err_t {
-        (void)espwifi->sendJsonResponse(req, 200, "{\"status\":\"restarting\"}",
-                                        &clientInfo);
-        vTaskDelay(pdMS_TO_TICKS(500));
-        esp_restart();
-        return ESP_OK;
-      },
-      true);
+  (void)registerRoute("/api/restart", HTTP_POST, true,
+                      [](ESPWiFi *espwifi, httpd_req_t *req,
+                         const std::string &clientInfo) -> esp_err_t {
+                        (void)espwifi->sendJsonResponse(
+                            req, 200, "{\"status\":\"restarting\"}",
+                            &clientInfo);
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        esp_restart();
+                        return ESP_OK;
+                      });
 
   // srvAll();
 
@@ -148,7 +147,7 @@ esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
 }
 
 esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
-                                 RouteHandler handler, bool requireAuth) {
+                                 bool requireAuth, RouteHandler handler) {
   if (!webServer) {
     log(ERROR, "Cannot register route %s: web server not initialized",
         (uri != nullptr) ? uri : "(null)");

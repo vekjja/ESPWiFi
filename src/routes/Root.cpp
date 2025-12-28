@@ -6,13 +6,12 @@
 void ESPWiFi::srvRoot() {
   // Root route - serve index.html from LFS (no auth required)
   (void)registerRoute(
-      "/", HTTP_GET,
+      "/", HTTP_GET, false,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         (void)espwifi->sendFileResponse(req, "/index.html", &clientInfo);
         return ESP_OK; // sendFileResponse() owns success/error responses
-      },
-      false);
+      });
 }
 
 #endif // ESPWiFi_SRV_ROOT

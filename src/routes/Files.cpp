@@ -10,7 +10,7 @@
 void ESPWiFi::srvFS() {
   // API endpoint for file browser JSON data - GET /api/files
   registerRoute(
-      "/api/files", HTTP_GET,
+      "/api/files", HTTP_GET, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -89,12 +89,11 @@ void ESPWiFi::srvFS() {
         serializeJson(jsonDoc, jsonResponse);
         (void)espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
         return ESP_OK;
-      },
-      true);
+      });
 
   // API endpoint for storage information - GET /api/storage
   registerRoute(
-      "/api/storage", HTTP_GET,
+      "/api/storage", HTTP_GET, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -115,12 +114,11 @@ void ESPWiFi::srvFS() {
         serializeJson(jsonDoc, jsonResponse);
         (void)espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
         return ESP_OK;
-      },
-      true);
+      });
 
   // API endpoint for creating directories - POST /api/files/mkdir
   registerRoute(
-      "/api/files/mkdir", HTTP_POST,
+      "/api/files/mkdir", HTTP_POST, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Read request body
@@ -201,12 +199,11 @@ void ESPWiFi::srvFS() {
         }
 
         return ESP_OK;
-      },
-      true);
+      });
 
   // API endpoint for file rename - POST /api/files/rename
   registerRoute(
-      "/api/files/rename", HTTP_POST,
+      "/api/files/rename", HTTP_POST, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -260,12 +257,11 @@ void ESPWiFi::srvFS() {
         }
 
         return ESP_OK;
-      },
-      true);
+      });
 
   // API endpoint for file deletion - POST /api/files/delete
   registerRoute(
-      "/api/files/delete", HTTP_POST,
+      "/api/files/delete", HTTP_POST, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -328,14 +324,13 @@ void ESPWiFi::srvFS() {
         }
 
         return ESP_OK;
-      },
-      true);
+      });
 
   // API endpoint for file upload - POST /api/files/upload
   // Note: ESP-IDF httpd doesn't have built-in multipart support, so we'll
   // handle it manually
   registerRoute(
-      "/api/files/upload", HTTP_POST,
+      "/api/files/upload", HTTP_POST, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Get parameters from query string
@@ -513,7 +508,6 @@ void ESPWiFi::srvFS() {
         (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                         &clientInfo);
         return ESP_OK;
-      },
-      true);
+      });
 }
 #endif // ESPWiFi_SRV_FILES

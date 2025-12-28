@@ -6,7 +6,7 @@
 void ESPWiFi::srvAuth() {
   // Login endpoint - no auth required
   registerRoute(
-      "/api/auth/login", HTTP_POST,
+      "/api/auth/login", HTTP_POST, false,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Read request body
@@ -86,12 +86,11 @@ void ESPWiFi::srvAuth() {
         std::string response = "{\"token\":\"" + token + "\"}";
         (void)espwifi->sendJsonResponse(req, 200, response, &clientInfo);
         return ESP_OK;
-      },
-      false);
+      });
 
   // Logout endpoint - invalidates token
   registerRoute(
-      "/api/auth/logout", HTTP_POST,
+      "/api/auth/logout", HTTP_POST, true,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Invalidate token by generating a new one
@@ -101,8 +100,7 @@ void ESPWiFi::srvAuth() {
         (void)espwifi->sendJsonResponse(
             req, 200, "{\"message\":\"Logged out\"}", &clientInfo);
         return ESP_OK;
-      },
-      true);
+      });
 }
 
 #endif // ESPWiFi_SRV_AUTH

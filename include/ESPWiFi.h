@@ -48,7 +48,7 @@ private:
 
   // ---- Route registration helper (optional) ----
   // Lets you register routes with a single call:
-  //   registerRoute("/config", HTTP_GET, handlerFn, /*requireAuth=*/true);
+  //   registerRoute("/config", HTTP_GET, /*requireAuth=*/true, handlerFn);
   // The trampoline will run verifyRequest() first and then call your handler.
 public:
   using RouteHandler = esp_err_t (*)(ESPWiFi *espwifi, httpd_req_t *req,
@@ -223,7 +223,7 @@ public:
   // Register a route and automatically apply verifyRequest() + stable
   // clientInfo capture before invoking the handler.
   esp_err_t registerRoute(const char *uri, httpd_method_t method,
-                          RouteHandler handler, bool requireAuth = true);
+                          bool requireAuth, RouteHandler handler);
   // Nginx-like access log line for a completed response
   void logAccess(int statusCode, const std::string &clientInfo,
                  size_t bytesSent = 0);

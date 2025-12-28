@@ -40,6 +40,57 @@
 // Log levels
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
+// ---- HTTP route helper macro ----
+// Standard route prologue:
+// - pulls `ESPWiFi *espwifi` from `req->user_ctx`
+// - runs `verifyRequest(req, &clientInfo)` which handles:
+//   - OPTIONS preflight (responds + exits)
+//   - CORS headers
+//   - auth check (responds 401 + exits)
+// - provides `std::string clientInfo` captured early for stable access logs
+//
+// Usage (inside a httpd handler lambda):
+//   ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
+//   // ... handler logic ...
+//   espwifi->sendJsonResponse(req, 200, "...", &clientInfo); // auto-logged
+//   // or for manual responses:
+//   // espwifi->logAccess(200, clientInfo, bytesSent);
+#define ESPWIFI_ROUTE_GUARD(req, espwifiVar, clientInfoVar)                    \
+  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
+  if ((espwifiVar) == nullptr) {                                               \
+    httpd_resp_send_500((req));                                                \
+    return ESP_OK;                                                             \
+  }                                                                            \
+  std::string clientInfoVar;                                                   \
+  if ((espwifiVar)->verifyRequest((req), &(clientInfoVar), true) != ESP_OK) {  \
+    return ESP_OK;                                                             \
+  }
+
+// Same as ESPWIFI_ROUTE_GUARD, but skips auth enforcement.
+// Useful for routes like "/" and "/api/auth/login".
+#define ESPWIFI_ROUTE_GUARD_NOAUTH(req, espwifiVar, clientInfoVar)             \
+  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
+  if ((espwifiVar) == nullptr) {                                               \
+    httpd_resp_send_500((req));                                                \
+    return ESP_OK;                                                             \
+  }                                                                            \
+  std::string clientInfoVar;                                                   \
+  if ((espwifiVar)->verifyRequest((req), &(clientInfoVar), false) != ESP_OK) { \
+    return ESP_OK;                                                             \
+  }
+
+// Helper for explicit HTTP_OPTIONS routes (CORS preflight).
+// Note: verifyRequest() can handle OPTIONS, but only if an OPTIONS handler is
+// registered. This macro makes those handlers trivial and consistent.
+#define ESPWIFI_OPTIONS_GUARD(req, espwifiVar)                                 \
+  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
+  if ((espwifiVar) == nullptr) {                                               \
+    httpd_resp_send_500((req));                                                \
+    return ESP_OK;                                                             \
+  }                                                                            \
+  (espwifiVar)->handleCorsPreflight((req));                                    \
+  return ESP_OK;
+
 class ESPWiFi {
 private:
   std::string _version = "v0.1.0";
@@ -178,15 +229,22 @@ public:
   bool authorized(httpd_req_t *req);
   httpd_handle_t webServer = nullptr;
   void handleCorsPreflight(httpd_req_t *req);
-  esp_err_t verifyRequest(httpd_req_t *req);
+  // Verify request, apply CORS headers, handle OPTIONS preflight, enforce auth.
+  // If provided, outClientInfo is populated on successful verification so
+  // handlers can log without re-reading socket/header state later.
+  esp_err_t verifyRequest(httpd_req_t *req,
+                          std::string *outClientInfo = nullptr,
+                          bool requireAuth = true);
   // Helper to get HTTP method as string for logging
   const char *getMethodString(int method);
   // Capture request/client info early (before long streaming responses) so
   // access logs don't lose remote IP / headers on disconnects.
   std::string getClientInfo(httpd_req_t *req);
   void sendJsonResponse(httpd_req_t *req, int statusCode,
-                        const std::string &jsonBody);
-  esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
+                        const std::string &jsonBody,
+                        const std::string *clientInfo = nullptr);
+  esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath,
+                             const std::string *clientInfo = nullptr);
   // Nginx-like access log line for a completed response
   void logAccess(int statusCode, const std::string &clientInfo,
                  size_t bytesSent = 0);

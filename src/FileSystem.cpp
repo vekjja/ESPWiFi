@@ -406,13 +406,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &files_options_route);
@@ -422,16 +416,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         std::string fsParam = getQueryParam(req, "fs");
         if (fsParam.empty()) {
@@ -448,16 +433,17 @@ void ESPWiFi::srvFS() {
 
         // Only support LittleFS for now (SD card not implemented)
         if (fsParam != "lfs" || !espwifi->littleFsInitialized) {
-          espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}");
+          espwifi->sendJsonResponse(req, 404,
+                                    "{\"error\":\"File system not available\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
         std::string fullPath = espwifi->lfsMountPoint + path;
         DIR *dir = opendir(fullPath.c_str());
         if (!dir) {
-          espwifi->sendJsonResponse(req, 404,
-                                    "{\"error\":\"Directory not found\"}");
+          espwifi->sendJsonResponse(
+              req, 404, "{\"error\":\"Directory not found\"}", &clientInfo);
           return ESP_OK;
         }
 
@@ -506,7 +492,7 @@ void ESPWiFi::srvFS() {
 
         std::string jsonResponse;
         serializeJson(jsonDoc, jsonResponse);
-        espwifi->sendJsonResponse(req, 200, jsonResponse);
+        espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
         return ESP_OK;
       },
       .user_ctx = this};
@@ -517,13 +503,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/storage",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &storage_options_route);
@@ -533,16 +513,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/storage",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         std::string fsParam = getQueryParam(req, "fs");
         if (fsParam.empty()) {
@@ -560,7 +531,7 @@ void ESPWiFi::srvFS() {
 
         std::string jsonResponse;
         serializeJson(jsonDoc, jsonResponse);
-        espwifi->sendJsonResponse(req, 200, jsonResponse);
+        espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
         return ESP_OK;
       },
       .user_ctx = this};
@@ -571,13 +542,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/mkdir",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &mkdir_options_route);
@@ -587,22 +552,13 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/mkdir",
       .method = HTTP_POST,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         // Read request body
         size_t content_len = req->content_len;
         if (content_len > 512) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Request too large\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Request too large\"}", &clientInfo);
           return ESP_OK;
         }
 
@@ -628,7 +584,8 @@ void ESPWiFi::srvFS() {
         free(content);
 
         if (error) {
-          espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
+          espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
@@ -637,8 +594,8 @@ void ESPWiFi::srvFS() {
         std::string name = jsonDoc["name"] | "";
 
         if (name.empty()) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Folder name required\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Folder name required\"}", &clientInfo);
           return ESP_OK;
         }
 
@@ -647,8 +604,9 @@ void ESPWiFi::srvFS() {
 
         // Only support LittleFS for now
         if (fsParam != "lfs" || !espwifi->littleFsInitialized) {
-          espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}");
+          espwifi->sendJsonResponse(req, 404,
+                                    "{\"error\":\"File system not available\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
@@ -665,10 +623,12 @@ void ESPWiFi::srvFS() {
         std::string fullDirPath = espwifi->lfsMountPoint + dirPath;
 
         if (mkDir(fullDirPath)) {
-          espwifi->sendJsonResponse(req, 200, "{\"success\":true}");
+          espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
+                                    &clientInfo);
         } else {
           espwifi->sendJsonResponse(
-              req, 500, "{\"error\":\"Failed to create directory\"}");
+              req, 500, "{\"error\":\"Failed to create directory\"}",
+              &clientInfo);
         }
 
         return ESP_OK;
@@ -681,13 +641,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/rename",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &rename_options_route);
@@ -697,38 +651,31 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/rename",
       .method = HTTP_POST,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         std::string fsParam = getQueryParam(req, "fs");
         std::string oldPath = getQueryParam(req, "oldPath");
         std::string newName = getQueryParam(req, "newName");
 
         if (fsParam.empty() || oldPath.empty() || newName.empty()) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Missing parameters\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing parameters\"}", &clientInfo);
           return ESP_OK;
         }
 
         // Only support LittleFS for now
         if (fsParam != "lfs" || !espwifi->littleFsInitialized) {
-          espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}");
+          espwifi->sendJsonResponse(req, 404,
+                                    "{\"error\":\"File system not available\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
         // Prevent renaming of system files
         if (espwifi->isRestrictedSystemFile(fsParam, oldPath)) {
           espwifi->sendJsonResponse(
-              req, 403, "{\"error\":\"Cannot rename system files\"}");
+              req, 403, "{\"error\":\"Cannot rename system files\"}",
+              &clientInfo);
           return ESP_OK;
         }
 
@@ -749,10 +696,11 @@ void ESPWiFi::srvFS() {
         if (rename(fullOldPath.c_str(), fullNewPath.c_str()) == 0) {
           espwifi->log(INFO, "📁 Renamed file: %s -> %s", oldPath.c_str(),
                        newName.c_str());
-          espwifi->sendJsonResponse(req, 200, "{\"success\":true}");
+          espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
+                                    &clientInfo);
         } else {
-          espwifi->sendJsonResponse(req, 500,
-                                    "{\"error\":\"Failed to rename file\"}");
+          espwifi->sendJsonResponse(
+              req, 500, "{\"error\":\"Failed to rename file\"}", &clientInfo);
         }
 
         return ESP_OK;
@@ -765,13 +713,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/delete",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &delete_options_route);
@@ -781,30 +723,22 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/delete",
       .method = HTTP_POST,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         std::string fsParam = getQueryParam(req, "fs");
         std::string filePath = getQueryParam(req, "path");
 
         if (fsParam.empty() || filePath.empty()) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Missing parameters\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing parameters\"}", &clientInfo);
           return ESP_OK;
         }
 
         // Only support LittleFS for now
         if (fsParam != "lfs" || !espwifi->littleFsInitialized) {
-          espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}");
+          espwifi->sendJsonResponse(req, 404,
+                                    "{\"error\":\"File system not available\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
@@ -812,14 +746,16 @@ void ESPWiFi::srvFS() {
 
         // Check if file exists
         if (!fileExists(fullPath) && !dirExists(fullPath)) {
-          espwifi->sendJsonResponse(req, 404, "{\"error\":\"File not found\"}");
+          espwifi->sendJsonResponse(req, 404, "{\"error\":\"File not found\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
         // Prevent deletion of system files
         if (espwifi->isRestrictedSystemFile(fsParam, filePath)) {
           espwifi->sendJsonResponse(
-              req, 403, "{\"error\":\"Cannot delete system files\"}");
+              req, 403, "{\"error\":\"Cannot delete system files\"}",
+              &clientInfo);
           return ESP_OK;
         }
 
@@ -841,10 +777,11 @@ void ESPWiFi::srvFS() {
             espwifi->log(INFO, "🗑️  Deleted file on %s: %s", fsName.c_str(),
                          filePath.c_str());
           }
-          espwifi->sendJsonResponse(req, 200, "{\"success\":true}");
+          espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
+                                    &clientInfo);
         } else {
-          espwifi->sendJsonResponse(req, 500,
-                                    "{\"error\":\"Failed to delete file\"}");
+          espwifi->sendJsonResponse(
+              req, 500, "{\"error\":\"Failed to delete file\"}", &clientInfo);
         }
 
         return ESP_OK;
@@ -857,13 +794,7 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/upload",
       .method = HTTP_OPTIONS,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-        espwifi->handleCorsPreflight(req);
-        return ESP_OK;
+        ESPWIFI_OPTIONS_GUARD(req, espwifi);
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &upload_options_route);
@@ -875,31 +806,23 @@ void ESPWiFi::srvFS() {
       .uri = "/api/files/upload",
       .method = HTTP_POST,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        if (!espwifi->authorized(req)) {
-          espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
-          return ESP_OK;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
         // Get parameters from query string
         std::string fsParam = getQueryParam(req, "fs");
         std::string path = getQueryParam(req, "path");
 
         if (fsParam.empty() || path.empty()) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Missing parameters\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing parameters\"}", &clientInfo);
           return ESP_OK;
         }
 
         // Only support LittleFS for now
         if (fsParam != "lfs" || !espwifi->littleFsInitialized) {
-          espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}");
+          espwifi->sendJsonResponse(req, 404,
+                                    "{\"error\":\"File system not available\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 
@@ -907,8 +830,8 @@ void ESPWiFi::srvFS() {
         size_t content_type_len =
             httpd_req_get_hdr_value_len(req, "Content-Type");
         if (content_type_len == 0) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Missing Content-Type\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing Content-Type\"}", &clientInfo);
           return ESP_OK;
         }
 
@@ -926,16 +849,16 @@ void ESPWiFi::srvFS() {
         free(content_type);
 
         if (contentType.find("multipart/form-data") == std::string::npos) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Invalid Content-Type\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Invalid Content-Type\"}", &clientInfo);
           return ESP_OK;
         }
 
         // Extract boundary from Content-Type
         size_t boundary_pos = contentType.find("boundary=");
         if (boundary_pos == std::string::npos) {
-          espwifi->sendJsonResponse(req, 400,
-                                    "{\"error\":\"Missing boundary\"}");
+          espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing boundary\"}", &clientInfo);
           return ESP_OK;
         }
 
@@ -945,7 +868,8 @@ void ESPWiFi::srvFS() {
         // For large files, we'd need chunked reading, but this is simpler
         size_t content_len = req->content_len;
         if (content_len > 1024 * 1024) { // 1MB limit
-          espwifi->sendJsonResponse(req, 413, "{\"error\":\"File too large\"}");
+          espwifi->sendJsonResponse(req, 413, "{\"error\":\"File too large\"}",
+                                    &clientInfo);
           return ESP_OK;
         }
 

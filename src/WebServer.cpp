@@ -41,20 +41,18 @@ void ESPWiFi::startWebServer() {
   webServerStarted = true;
 
   // Restart endpoint
-  httpd_uri_t restart_route = {
-      .uri = "/api/restart",
-      .method = HTTP_POST,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_OK; // Response already sent (OPTIONS or error)
-        }
-        espwifi->sendJsonResponse(req, 200, "{\"status\":\"restarting\"}");
-        vTaskDelay(pdMS_TO_TICKS(500));
-        esp_restart();
-        return ESP_OK;
-      },
-      .user_ctx = this};
+  httpd_uri_t restart_route = {.uri = "/api/restart",
+                               .method = HTTP_POST,
+                               .handler = [](httpd_req_t *req) -> esp_err_t {
+                                 ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
+                                 espwifi->sendJsonResponse(
+                                     req, 200, "{\"status\":\"restarting\"}",
+                                     &clientInfo);
+                                 vTaskDelay(pdMS_TO_TICKS(500));
+                                 esp_restart();
+                                 return ESP_OK;
+                               },
+                               .user_ctx = this};
   httpd_register_uri_handler(webServer, &restart_route);
 
   // srvAll();
@@ -89,7 +87,8 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
   httpd_resp_send(req, nullptr, 0);
 }
 
-esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req) {
+esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
+                                 bool requireAuth) {
   ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
   if (espwifi == nullptr) {
     httpd_resp_send_500(req);
@@ -105,12 +104,33 @@ esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req) {
   // Add CORS headers to all responses
   espwifi->addCORS(req);
 
+  // Capture early; slow/streaming sends may lose socket/headers if client
+  // resets.
+  std::string clientInfo;
+  if (outClientInfo != nullptr) {
+    clientInfo = espwifi->getClientInfo(req);
+  }
+
+  if (!requireAuth) {
+    if (outClientInfo != nullptr) {
+      *outClientInfo = std::move(clientInfo);
+    }
+    return ESP_OK;
+  }
+
   // Check if authorized
   if (!espwifi->authorized(req)) {
-    espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}");
+    if (clientInfo.empty()) {
+      clientInfo = espwifi->getClientInfo(req);
+    }
+    espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
+                              &clientInfo);
     return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
   }
 
+  if (outClientInfo != nullptr) {
+    *outClientInfo = std::move(clientInfo);
+  }
   return ESP_OK; // Verification passed, continue with handler
 }
 
@@ -139,8 +159,8 @@ const char *ESPWiFi::getMethodString(int method) {
 std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
   // Get request information for logging
   const char *method = getMethodString(req->method);
-  std::string url(req->uri);
-  std::string userAgent = "-";
+  const char *uri = req->uri;
+  const char *userAgent = "-";
 
   // Best-effort client IP extraction (capture early; socket may later die)
   char remote_ip[64];
@@ -176,21 +196,21 @@ std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
     }
   }
 
-  // Get User-Agent header if available
+  // Get User-Agent header if available (bounded; avoid heap allocs)
+  char userAgentBuf[128];
   size_t user_agent_len = httpd_req_get_hdr_value_len(req, "User-Agent");
   if (user_agent_len > 0) {
-    char *user_agent = (char *)malloc(user_agent_len + 1);
-    if (user_agent != nullptr) {
-      httpd_req_get_hdr_value_str(req, "User-Agent", user_agent,
-                                  user_agent_len + 1);
-      userAgent = std::string(user_agent);
-      free(user_agent);
+    userAgentBuf[0] = '\0';
+    if (httpd_req_get_hdr_value_str(req, "User-Agent", userAgentBuf,
+                                    sizeof(userAgentBuf)) == ESP_OK &&
+        userAgentBuf[0] != '\0') {
+      userAgent = userAgentBuf;
     }
   }
 
-  char clientInfoBuf[256];
+  char clientInfoBuf[1024];
   (void)snprintf(clientInfoBuf, sizeof(clientInfoBuf), "%s - %s - %s - %s",
-                 remote_ip, method, url.c_str(), userAgent.c_str());
+                 remote_ip, method, uri, userAgent);
   return std::string(clientInfoBuf);
 }
 
@@ -202,13 +222,16 @@ void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
 }
 
 void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
-                               const std::string &jsonBody) {
+                               const std::string &jsonBody,
+                               const std::string *clientInfo) {
   addCORS(req);
   httpd_resp_set_type(req, "application/json");
 
-  // Capture early; long/slow sends may lose socket/headers if client
-  // disconnects.
-  std::string clientInfo = getClientInfo(req);
+  // Reuse captured clientInfo when available; otherwise capture now.
+  std::string clientInfoLocal;
+  const std::string &clientInfoRef =
+      (clientInfo != nullptr) ? *clientInfo
+                              : (clientInfoLocal = getClientInfo(req));
 
   std::string httpStatus = getStatusFromCode(statusCode);
   httpd_resp_set_status(req, httpStatus.c_str());
@@ -222,7 +245,6 @@ void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
   if (jsonBody.size() <= CHUNK_SIZE) {
     ret = httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
     sent = (ret == ESP_OK) ? jsonBody.size() : 0;
-    logAccess(statusCode, clientInfo, sent);
   } else {
     const char *data = jsonBody.data();
     size_t remaining = jsonBody.size();
@@ -238,13 +260,22 @@ void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
     }
     // Finalize chunked transfer (even on error; best-effort)
     (void)httpd_resp_send_chunk(req, nullptr, 0);
-    logAccess(statusCode, clientInfo, sent);
   }
+
+  // Single access log per request
+  logAccess(statusCode, clientInfoRef, sent);
 }
 
 esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
-                                    const std::string &filePath) {
+                                    const std::string &filePath,
+                                    const std::string *clientInfo) {
   addCORS(req);
+
+  // Reuse captured clientInfo when available; otherwise capture now.
+  std::string clientInfoLocal;
+  const std::string &clientInfoRef =
+      (clientInfo != nullptr) ? *clientInfo
+                              : (clientInfoLocal = getClientInfo(req));
 
   // Check if LFS is initialized
   if (!littleFsInitialized) {
@@ -374,6 +405,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   }
 
   // Default response is 200 OK for file responses
+  logAccess(200, clientInfoRef, totalSent);
   return ESP_OK;
 }
 
@@ -388,13 +420,8 @@ void ESPWiFi::srvInfo() {
       .uri = "/info",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_OK; // Response already sent (OPTIONS or error)
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
         {
-          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
           JsonDocument jsonDoc;
 
           // Uptime in seconds
@@ -511,7 +538,7 @@ void ESPWiFi::srvInfo() {
           std::string jsonResponse;
           serializeJson(jsonDoc, jsonResponse);
 
-          espwifi->sendJsonResponse(req, 200, jsonResponse);
+          espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
           return ESP_OK;
         }
       },
@@ -530,16 +557,13 @@ void ESPWiFi::srvRoot() {
       .uri = "/",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_OK; // Response sent, return OK
-        }
-        espwifi->authorized(req);
-        esp_err_t ret = espwifi->sendFileResponse(req, "/index.html");
+        ESPWIFI_ROUTE_GUARD_NOAUTH(req, espwifi, clientInfo);
+        esp_err_t ret =
+            espwifi->sendFileResponse(req, "/index.html", &clientInfo);
         if (ret != ESP_OK) {
           // sendFileResponse failed, send 404 response
-          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
+          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                                    &clientInfo);
           return ESP_OK; // Response sent, return OK
         }
         return ESP_OK;
@@ -559,14 +583,9 @@ void ESPWiFi::srvWildcard() {
       .uri = "/*",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        std::string uri(req->uri);
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_OK; // Response already sent (OPTIONS or error)
-        }
-
-        esp_err_t ret = espwifi->sendFileResponse(req, req->uri);
+        esp_err_t ret = espwifi->sendFileResponse(req, req->uri, &clientInfo);
         if (ret != ESP_OK) {
           espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
           return ESP_OK; // Return OK since we sent a response

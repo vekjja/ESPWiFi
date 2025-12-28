@@ -14,13 +14,8 @@ void ESPWiFi::srvAuth() {
       .uri = "/api/auth/login",
       .method = HTTP_POST,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_OK; // Response already sent (OPTIONS or error)
-        }
+        ESPWIFI_ROUTE_GUARD_NOAUTH(req, espwifi, clientInfo);
         {
-          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-
           // Read request body
           size_t content_len = req->content_len;
           if (content_len > 512) {
@@ -52,7 +47,8 @@ void ESPWiFi::srvAuth() {
           JsonDocument reqJson;
           DeserializationError error = deserializeJson(reqJson, json_body);
           if (error) {
-            espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
+            espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}",
+                                      &clientInfo);
             return ESP_OK;
           }
 
@@ -62,7 +58,8 @@ void ESPWiFi::srvAuth() {
           // Check if auth is enabled
           if (!espwifi->authEnabled()) {
             espwifi->sendJsonResponse(
-                req, 200, "{\"token\":\"\",\"message\":\"Auth disabled\"}");
+                req, 200, "{\"token\":\"\",\"message\":\"Auth disabled\"}",
+                &clientInfo);
             return ESP_OK;
           }
 
@@ -70,8 +67,8 @@ void ESPWiFi::srvAuth() {
           std::string expectedUsername =
               espwifi->config["auth"]["username"].as<std::string>();
           if (username != expectedUsername) {
-            espwifi->sendJsonResponse(req, 401,
-                                      "{\"error\":\"Invalid Credentials\"}");
+            espwifi->sendJsonResponse(
+                req, 401, "{\"error\":\"Invalid Credentials\"}", &clientInfo);
             return ESP_OK;
           }
 
@@ -80,8 +77,8 @@ void ESPWiFi::srvAuth() {
           std::string expectedPassword =
               espwifi->config["auth"]["password"].as<std::string>();
           if (password != expectedPassword && expectedPassword.length() > 0) {
-            espwifi->sendJsonResponse(req, 401,
-                                      "{\"error\":\"Invalid Credentials\"}");
+            espwifi->sendJsonResponse(
+                req, 401, "{\"error\":\"Invalid Credentials\"}", &clientInfo);
             return ESP_OK;
           }
 
@@ -95,7 +92,7 @@ void ESPWiFi::srvAuth() {
           }
 
           std::string response = "{\"token\":\"" + token + "\"}";
-          espwifi->sendJsonResponse(req, 200, response);
+          espwifi->sendJsonResponse(req, 200, response, &clientInfo);
           return ESP_OK;
         }
       },
@@ -103,22 +100,20 @@ void ESPWiFi::srvAuth() {
   httpd_register_uri_handler(webServer, &login_route);
 
   // Logout endpoint - invalidates token
-  httpd_uri_t logout_route = {
-      .uri = "/api/auth/logout",
-      .method = HTTP_POST,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_OK; // Response already sent (OPTIONS or error)
-        }
-        // Invalidate token by generating a new one
-        std::string newToken = espwifi->generateToken();
-        espwifi->config["auth"]["token"] = newToken;
-        espwifi->saveConfig();
-        espwifi->sendJsonResponse(req, 200, "{\"message\":\"Logged out\"}");
-        return ESP_OK;
-      },
-      .user_ctx = this};
+  httpd_uri_t logout_route = {.uri = "/api/auth/logout",
+                              .method = HTTP_POST,
+                              .handler = [](httpd_req_t *req) -> esp_err_t {
+                                ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
+                                // Invalidate token by generating a new one
+                                std::string newToken = espwifi->generateToken();
+                                espwifi->config["auth"]["token"] = newToken;
+                                espwifi->saveConfig();
+                                espwifi->sendJsonResponse(
+                                    req, 200, "{\"message\":\"Logged out\"}",
+                                    &clientInfo);
+                                return ESP_OK;
+                              },
+                              .user_ctx = this};
   httpd_register_uri_handler(webServer, &logout_route);
 }
 

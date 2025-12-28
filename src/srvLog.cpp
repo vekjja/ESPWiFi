@@ -20,14 +20,8 @@ void ESPWiFi::srvLog() {
       .uri = "/logs",
       .method = HTTP_GET,
       .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi->verifyRequest(req) != ESP_OK) {
-          return ESP_ERR_HTTPD_INVALID_REQ;
-        }
+        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
         {
-          ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-          std::string clientInfo = espwifi->getClientInfo(req);
-
           // Check if LFS is initialized
           if (!espwifi->littleFsInitialized) {
             espwifi->sendJsonResponse(

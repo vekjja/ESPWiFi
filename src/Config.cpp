@@ -50,7 +50,7 @@ void ESPWiFi::readConfig() {
 }
 
 void ESPWiFi::printConfig() {
-  log(INFO, "⚙️ Config: " + configFile);
+  // log(INFO, "⚙️  Config: " + configFile);
 
   vTaskDelay(pdMS_TO_TICKS(1)); // Yield before JSON operations
   // Create a copy of config with masked passwords for logging
@@ -215,33 +215,7 @@ void ESPWiFi::saveConfig() {
   }
 
   if (config["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾 Config Saved: %s", configFile.c_str());
-    printConfig();
-  }
-}
-
-void ESPWiFi::saveConfigFromString(const std::string &jsonString) {
-  initLittleFS();
-
-  if (!littleFsInitialized) {
-    log(ERROR, "No filesystem available for saving config");
-    return;
-  }
-
-  // Use atomic write to prevent corruption
-  bool success = writeFileAtomic(
-      configFile, (const uint8_t *)jsonString.c_str(), jsonString.length());
-
-  if (!success) {
-    log(ERROR, " Failed to write config file");
-    return;
-  }
-
-  // Check if logging is enabled (parse from string to avoid accessing config)
-  JsonDocument logCheck;
-  DeserializationError error = deserializeJson(logCheck, jsonString);
-  if (!error && logCheck["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾 Config Saved: %s", configFile.c_str());
+    log(INFO, "💾 Config Saved");
     printConfig();
   }
 }
@@ -336,6 +310,11 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
   deepMerge(result.as<JsonVariant>(), updates.as<JsonVariantConst>(), 0);
 
   return result;
+}
+
+void ESPWiFi::requestConfigSave() {
+  // Set flag to save config from main task (safe for filesystem operations)
+  configNeedsSave = true;
 }
 
 void ESPWiFi::handleConfig() {
@@ -450,10 +429,12 @@ void ESPWiFi::srvConfig() {
             espwifi->mergeJson(espwifi->config, reqJson);
 
         espwifi->config = mergedConfig;
-        espwifi->saveConfig(mergedConfig);
 
         std::string responseJson;
         serializeJson(mergedConfig, responseJson);
+
+        // Request deferred config save (will happen in runSystem() main task)
+        espwifi->requestConfigSave();
 
         // Return the updated config (using the already serialized string)
         espwifi->sendJsonResponse(req, 200, responseJson);

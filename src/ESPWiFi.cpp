@@ -22,6 +22,12 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   taskYIELD();
 
+  // Check if config needs saving (deferred from HTTP handlers)
+  if (configNeedsSave) {
+    saveConfig(); // Save from main task context (safe for filesystem)
+    configNeedsSave = false;
+  }
+
   // static unsigned long lastHeartbeat = 0;
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 

@@ -84,6 +84,7 @@ public:
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
   std::string lfsMountPoint = "/lfs"; // LittleFS mount point
+  bool configNeedsSave = false;       // Flag for deferred config save
   bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,
                         uint8_t *data, size_t len, bool final);
@@ -136,6 +137,7 @@ public:
   JsonDocument defaultConfig();
   void mergeConfig(JsonDocument &json);
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
+  void requestConfigSave(); // Request deferred config save from HTTP handlers
 
   // WiFi
   void startAP();

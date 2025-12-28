@@ -14,6 +14,14 @@
 #include <string>
 #include <sys/stat.h>
 
+static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
+                                  const std::string &clientInfo) {
+  (void)espwifi;
+  (void)req;
+  (void)clientInfo;
+  return ESP_OK;
+}
+
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
     return;
@@ -40,36 +48,22 @@ void ESPWiFi::startWebServer() {
   }
   webServerStarted = true;
 
-  // Restart endpoint
-  httpd_uri_t restart_route = {.uri = "/api/restart",
-                               .method = HTTP_POST,
-                               .handler = [](httpd_req_t *req) -> esp_err_t {
-                                 ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
-                                 espwifi->sendJsonResponse(
-                                     req, 200, "{\"status\":\"restarting\"}",
-                                     &clientInfo);
-                                 vTaskDelay(pdMS_TO_TICKS(500));
-                                 esp_restart();
-                                 return ESP_OK;
-                               },
-                               .user_ctx = this};
-  httpd_register_uri_handler(webServer, &restart_route);
-
   // Global CORS preflight handler (covers all routes)
   // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
-  httpd_uri_t options_route = {.uri = "/*",
-                               .method = HTTP_OPTIONS,
-                               .handler = [](httpd_req_t *req) -> esp_err_t {
-                                 ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-                                 if (espwifi == nullptr) {
-                                   httpd_resp_send_500(req);
-                                   return ESP_OK;
-                                 }
-                                 espwifi->handleCorsPreflight(req);
-                                 return ESP_OK;
-                               },
-                               .user_ctx = this};
-  httpd_register_uri_handler(webServer, &options_route);
+  (void)registerRoute("/*", HTTP_OPTIONS, &noopRouteHandler, false);
+
+  // Restart endpoint
+  (void)registerRoute(
+      "/api/restart", HTTP_POST,
+      [](ESPWiFi *espwifi, httpd_req_t *req,
+         const std::string &clientInfo) -> esp_err_t {
+        (void)espwifi->sendJsonResponse(req, 200, "{\"status\":\"restarting\"}",
+                                        &clientInfo);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
+        return ESP_OK;
+      },
+      true);
 
   // srvAll();
 
@@ -105,26 +99,24 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
 
 esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
                                  bool requireAuth) {
-  ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-  if (espwifi == nullptr) {
-    httpd_resp_send_500(req);
-    return ESP_ERR_INVALID_STATE;
+  if (req == nullptr) {
+    return ESP_ERR_INVALID_ARG;
   }
 
   // Handle OPTIONS requests automatically (CORS preflight)
   if (req->method == HTTP_OPTIONS) {
-    espwifi->handleCorsPreflight(req);
+    handleCorsPreflight(req);
     return ESP_ERR_HTTPD_RESP_SEND;
   }
 
   // Add CORS headers to all responses
-  espwifi->addCORS(req);
+  addCORS(req);
 
   // Capture early; slow/streaming sends may lose socket/headers if client
   // resets.
   std::string clientInfo;
   if (outClientInfo != nullptr) {
-    clientInfo = espwifi->getClientInfo(req);
+    clientInfo = getClientInfo(req);
   }
 
   if (!requireAuth) {
@@ -135,12 +127,12 @@ esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
   }
 
   // Check if authorized
-  if (!espwifi->authorized(req)) {
+  if (!authorized(req)) {
     if (clientInfo.empty()) {
-      clientInfo = espwifi->getClientInfo(req);
+      clientInfo = getClientInfo(req);
     }
-    espwifi->sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
-                              &clientInfo);
+    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
+                           &clientInfo);
     return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
   }
 
@@ -148,6 +140,60 @@ esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
     *outClientInfo = std::move(clientInfo);
   }
   return ESP_OK; // Verification passed, continue with handler
+}
+
+esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
+  RouteCtx *ctx = (RouteCtx *)req->user_ctx;
+  if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {
+    httpd_resp_send_500(req);
+    return ESP_OK;
+  }
+
+  std::string clientInfo;
+  if (ctx->self->verifyRequest(req, &clientInfo, ctx->requireAuth) != ESP_OK) {
+    return ESP_OK; // preflight or error already handled
+  }
+
+  return ctx->handler(ctx->self, req, clientInfo);
+}
+
+esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
+                                 RouteHandler handler, bool requireAuth) {
+  if (!webServer) {
+    log(ERROR, "Cannot register route %s: web server not initialized",
+        (uri != nullptr) ? uri : "(null)");
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (uri == nullptr || handler == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Allocate a tiny per-route context. This runs at init time; keep it simple.
+  RouteCtx *ctx = new (std::nothrow) RouteCtx();
+  if (ctx == nullptr) {
+    log(ERROR, "Cannot register route %s: out of memory", uri);
+    return ESP_ERR_NO_MEM;
+  }
+  ctx->self = this;
+  ctx->handler = handler;
+  ctx->requireAuth = requireAuth;
+
+  httpd_uri_t route = {
+      .uri = uri,
+      .method = method,
+      .handler = &ESPWiFi::routeTrampoline,
+      .user_ctx = ctx,
+  };
+
+  esp_err_t ret = httpd_register_uri_handler(webServer, &route);
+  if (ret != ESP_OK) {
+    log(ERROR, "Failed to register route %s: %s", uri, esp_err_to_name(ret));
+    delete ctx;
+    return ret;
+  }
+
+  _routeContexts.push_back(ctx);
+  return ESP_OK;
 }
 
 // Helper to get HTTP method as string for logging
@@ -237,9 +283,9 @@ void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
   log(ACCESS, "%s - %s - %zu", status.c_str(), clientInfo.c_str(), bytesSent);
 }
 
-void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
-                               const std::string &jsonBody,
-                               const std::string *clientInfo) {
+esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
+                                    const std::string &jsonBody,
+                                    const std::string *clientInfo) {
   addCORS(req);
   httpd_resp_set_type(req, "application/json");
 
@@ -275,11 +321,15 @@ void ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
       yield();
     }
     // Finalize chunked transfer (even on error; best-effort)
-    (void)httpd_resp_send_chunk(req, nullptr, 0);
+    esp_err_t end_ret = httpd_resp_send_chunk(req, nullptr, 0);
+    if (ret == ESP_OK && end_ret != ESP_OK) {
+      ret = end_ret;
+    }
   }
 
   // Single access log per request
   logAccess(statusCode, clientInfoRef, sent);
+  return ret;
 }
 
 esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
@@ -298,8 +348,13 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "text/plain");
     const char *body = "Filesystem not available";
-    httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
-    return ESP_FAIL;
+    esp_err_t ret = httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+    if (ret == ESP_OK) {
+      logAccess(503, clientInfoRef, strlen(body));
+      return ESP_OK;
+    }
+    logAccess(503, clientInfoRef, 0);
+    return ret;
   }
 
   // Construct full path
@@ -309,46 +364,53 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   struct stat fileStat;
   int statResult = stat(fullPath.c_str(), &fileStat);
   if (statResult != 0) {
-    return ESP_FAIL;
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
   }
 
   // Check if it's actually a file (not a directory)
   if (S_ISDIR(fileStat.st_mode)) {
     // Path is a directory, not a file
-    return ESP_FAIL;
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
   }
 
   // Open file from LFS
   FILE *file = fopen(fullPath.c_str(), "rb");
   if (!file) {
     printf("fopen failed for %s, errno: %d\n", fullPath.c_str(), errno);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to open file\"}",
+                            &clientInfoRef);
   }
 
   // Get file size
   if (fseek(file, 0, SEEK_END) != 0) {
     printf("fseek SEEK_END failed, errno: %d\n", errno);
     fclose(file);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
   }
 
   long fileSize = ftell(file);
   if (fileSize < 0) {
     printf("ftell failed, errno: %d\n", errno);
     fclose(file);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
   }
 
   if (fseek(file, 0, SEEK_SET) != 0) {
     printf("fseek SEEK_SET failed, errno: %d\n", errno);
     fclose(file);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
   }
 
   if (fileSize == 0) {
     printf("File size is 0\n");
     fclose(file);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
   }
 
   // Determine content type based on file extension
@@ -369,7 +431,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   if (!buffer) {
     printf("💔 malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
     fclose(file);
-    return ESP_FAIL;
+    return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
+                            &clientInfoRef);
   }
 
   size_t totalSent = 0;
@@ -417,7 +480,10 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   if (ret != ESP_OK || totalSent != (size_t)fileSize) {
     printf("💔  File send incomplete: sent %zu of %ld bytes\n", totalSent,
            fileSize);
-    return ESP_FAIL;
+    // At this point headers/body may already be partially sent; best-effort
+    // log.
+    logAccess(500, clientInfoRef, totalSent);
+    return ret;
   }
 
   // Default response is 200 OK for file responses
@@ -426,189 +492,152 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 }
 
 void ESPWiFi::srvInfo() {
-  if (!webServer) {
-    log(ERROR, "Cannot start info API /api/info: web server not initialized");
-    return;
-  }
-
   // Info endpoint
-  httpd_uri_t info_route = {
-      .uri = "/info",
-      .method = HTTP_GET,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
-        {
-          JsonDocument jsonDoc;
+  (void)registerRoute(
+      "/info", HTTP_GET,
+      [](ESPWiFi *espwifi, httpd_req_t *req,
+         const std::string &clientInfo) -> esp_err_t {
+        JsonDocument jsonDoc;
 
-          // Uptime in seconds
-          jsonDoc["uptime"] = millis() / 1000;
+        // Uptime in seconds
+        jsonDoc["uptime"] = millis() / 1000;
 
-          // IP address - get from current network interface
-          std::string ip = espwifi->ipAddress();
-          jsonDoc["ip"] = ip;
+        // IP address - get from current network interface
+        std::string ip = espwifi->ipAddress();
+        jsonDoc["ip"] = ip;
 
-          // MAC address - try WiFi interface first, fallback to reading MAC
-          // directly
-          uint8_t mac[6];
-          esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
-          if (mac_ret != ESP_OK) {
-            // Fallback: read MAC directly from hardware
-            mac_ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
-          }
-          if (mac_ret == ESP_OK) {
-            char macStr[18];
-            snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-            jsonDoc["mac"] = std::string(macStr);
-          } else {
-            jsonDoc["mac"] = "";
-          }
-
-          // Hostname
-          std::string hostname = espwifi->getHostname();
-          jsonDoc["hostname"] = hostname;
-
-          // AP SSID - construct from config the same way as when starting AP
-          std::string ap_ssid =
-              espwifi->config["wifi"]["ap"]["ssid"].as<std::string>();
-          jsonDoc["ap_ssid"] = ap_ssid + "-" + hostname;
-
-          // mDNS
-          std::string deviceName =
-              espwifi->config["deviceName"].as<std::string>();
-          jsonDoc["mdns"] = deviceName + ".local";
-
-          // Yield to prevent watchdog timeout
-          vTaskDelay(pdMS_TO_TICKS(10));
-
-          // Chip model and SDK version
-          esp_chip_info_t chip_info;
-          esp_chip_info(&chip_info);
-          char chip_model[32];
-          // Format chip model based on chip_info.model
-          if (chip_info.model == CHIP_ESP32C3) {
-            snprintf(chip_model, sizeof(chip_model), "ESP32-C3");
-          } else if (chip_info.model == CHIP_ESP32) {
-            snprintf(chip_model, sizeof(chip_model), "ESP32");
-          } else if (chip_info.model == CHIP_ESP32S2) {
-            snprintf(chip_model, sizeof(chip_model), "ESP32-S2");
-          } else if (chip_info.model == CHIP_ESP32S3) {
-            snprintf(chip_model, sizeof(chip_model), "ESP32-S3");
-          } else {
-            snprintf(chip_model, sizeof(chip_model), "ESP32-Unknown");
-          }
-          jsonDoc["chip"] = std::string(chip_model);
-          jsonDoc["sdk_version"] = std::string(esp_get_idf_version());
-
-          // Heap information
-          size_t free_heap = esp_get_free_heap_size();
-          size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
-          jsonDoc["free_heap"] = free_heap;
-          jsonDoc["total_heap"] = total_heap;
-          jsonDoc["used_heap"] = total_heap - free_heap;
-
-          // Yield to prevent watchdog timeout
-          vTaskDelay(pdMS_TO_TICKS(10));
-
-          // WiFi connection status and info
-          wifi_ap_record_t ap_info;
-          if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-            // WiFi is connected as station
-            char ssid_str[33];
-            memcpy(ssid_str, ap_info.ssid, 32);
-            ssid_str[32] = '\0';
-            jsonDoc["client_ssid"] = std::string(ssid_str);
-            jsonDoc["rssi"] = ap_info.rssi;
-          }
-
-          // Yield to prevent watchdog timeout
-          vTaskDelay(pdMS_TO_TICKS(10));
-
-          // LittleFS storage information
-          if (espwifi->littleFsInitialized) {
-            size_t totalBytes, usedBytes, freeBytes;
-            espwifi->getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
-            jsonDoc["littlefs_free"] = freeBytes;
-            jsonDoc["littlefs_used"] = usedBytes;
-            jsonDoc["littlefs_total"] = totalBytes;
-          } else {
-            jsonDoc["littlefs_free"] = 0;
-            jsonDoc["littlefs_used"] = 0;
-            jsonDoc["littlefs_total"] = 0;
-          }
-
-          // Yield to prevent watchdog timeout
-          vTaskDelay(pdMS_TO_TICKS(10));
-
-          // SD card storage information if available
-          if (espwifi->sdCardInitialized) {
-            size_t sdTotalBytes, sdUsedBytes, sdFreeBytes;
-            espwifi->getStorageInfo("sd", sdTotalBytes, sdUsedBytes,
-                                    sdFreeBytes);
-            jsonDoc["sd_free"] = sdFreeBytes;
-            jsonDoc["sd_used"] = sdUsedBytes;
-            jsonDoc["sd_total"] = sdTotalBytes;
-          }
-
-          // Serialize JSON to string
-          std::string jsonResponse;
-          serializeJson(jsonDoc, jsonResponse);
-
-          espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
-          return ESP_OK;
+        // MAC address - try WiFi interface first, fallback to reading MAC
+        // directly
+        uint8_t mac[6];
+        esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
+        if (mac_ret != ESP_OK) {
+          // Fallback: read MAC directly from hardware
+          mac_ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
         }
+        if (mac_ret == ESP_OK) {
+          char macStr[18];
+          snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+          jsonDoc["mac"] = std::string(macStr);
+        } else {
+          jsonDoc["mac"] = "";
+        }
+
+        // Hostname
+        std::string hostname = espwifi->getHostname();
+        jsonDoc["hostname"] = hostname;
+
+        // AP SSID - construct from config the same way as when starting AP
+        std::string ap_ssid =
+            espwifi->config["wifi"]["ap"]["ssid"].as<std::string>();
+        jsonDoc["ap_ssid"] = ap_ssid + "-" + hostname;
+
+        // mDNS
+        std::string deviceName =
+            espwifi->config["deviceName"].as<std::string>();
+        jsonDoc["mdns"] = deviceName + ".local";
+
+        // Yield to prevent watchdog timeout
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // Chip model and SDK version
+        esp_chip_info_t chip_info;
+        esp_chip_info(&chip_info);
+        char chip_model[32];
+        // Format chip model based on chip_info.model
+        if (chip_info.model == CHIP_ESP32C3) {
+          snprintf(chip_model, sizeof(chip_model), "ESP32-C3");
+        } else if (chip_info.model == CHIP_ESP32) {
+          snprintf(chip_model, sizeof(chip_model), "ESP32");
+        } else if (chip_info.model == CHIP_ESP32S2) {
+          snprintf(chip_model, sizeof(chip_model), "ESP32-S2");
+        } else if (chip_info.model == CHIP_ESP32S3) {
+          snprintf(chip_model, sizeof(chip_model), "ESP32-S3");
+        } else {
+          snprintf(chip_model, sizeof(chip_model), "ESP32-Unknown");
+        }
+        jsonDoc["chip"] = std::string(chip_model);
+        jsonDoc["sdk_version"] = std::string(esp_get_idf_version());
+
+        // Heap information
+        size_t free_heap = esp_get_free_heap_size();
+        size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+        jsonDoc["free_heap"] = free_heap;
+        jsonDoc["total_heap"] = total_heap;
+        jsonDoc["used_heap"] = total_heap - free_heap;
+
+        // Yield to prevent watchdog timeout
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // WiFi connection status and info
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+          // WiFi is connected as station
+          char ssid_str[33];
+          memcpy(ssid_str, ap_info.ssid, 32);
+          ssid_str[32] = '\0';
+          jsonDoc["client_ssid"] = std::string(ssid_str);
+          jsonDoc["rssi"] = ap_info.rssi;
+        }
+
+        // Yield to prevent watchdog timeout
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // LittleFS storage information
+        if (espwifi->littleFsInitialized) {
+          size_t totalBytes, usedBytes, freeBytes;
+          espwifi->getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
+          jsonDoc["littlefs_free"] = freeBytes;
+          jsonDoc["littlefs_used"] = usedBytes;
+          jsonDoc["littlefs_total"] = totalBytes;
+        } else {
+          jsonDoc["littlefs_free"] = 0;
+          jsonDoc["littlefs_used"] = 0;
+          jsonDoc["littlefs_total"] = 0;
+        }
+
+        // Yield to prevent watchdog timeout
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // SD card storage information if available
+        if (espwifi->sdCardInitialized) {
+          size_t sdTotalBytes, sdUsedBytes, sdFreeBytes;
+          espwifi->getStorageInfo("sd", sdTotalBytes, sdUsedBytes, sdFreeBytes);
+          jsonDoc["sd_free"] = sdFreeBytes;
+          jsonDoc["sd_used"] = sdUsedBytes;
+          jsonDoc["sd_total"] = sdTotalBytes;
+        }
+
+        // Serialize JSON to string
+        std::string jsonResponse;
+        serializeJson(jsonDoc, jsonResponse);
+
+        (void)espwifi->sendJsonResponse(req, 200, jsonResponse, &clientInfo);
+        return ESP_OK;
       },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &info_route);
+      true);
 }
 
 void ESPWiFi::srvRoot() {
-  if (!webServer) {
-    log(ERROR, "Cannot start root route /: web server not initialized");
-    return;
-  }
-
   // Root route - serve index.html from LFS (no auth required)
-  httpd_uri_t root_route = {
-      .uri = "/",
-      .method = HTTP_GET,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_ROUTE_GUARD_NOAUTH(req, espwifi, clientInfo);
-        esp_err_t ret =
-            espwifi->sendFileResponse(req, "/index.html", &clientInfo);
-        if (ret != ESP_OK) {
-          // sendFileResponse failed, send 404 response
-          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
-                                    &clientInfo);
-          return ESP_OK; // Response sent, return OK
-        }
-        return ESP_OK;
+  (void)registerRoute(
+      "/", HTTP_GET,
+      [](ESPWiFi *espwifi, httpd_req_t *req,
+         const std::string &clientInfo) -> esp_err_t {
+        (void)espwifi->sendFileResponse(req, "/index.html", &clientInfo);
+        return ESP_OK; // sendFileResponse() owns success/error responses
       },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &root_route);
+      false);
 }
 
 void ESPWiFi::srvWildcard() {
-  if (!webServer) {
-    log(ERROR, "Cannot start wildcard route /* : web server not initialized");
-    return;
-  }
-
   // GET handler for static files
-  httpd_uri_t wildcard_route = {
-      .uri = "/*",
-      .method = HTTP_GET,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
-
-        esp_err_t ret = espwifi->sendFileResponse(req, req->uri, &clientInfo);
-        if (ret != ESP_OK) {
-          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
-          return ESP_OK; // Return OK since we sent a response
-        }
-
-        return ESP_OK;
+  (void)registerRoute(
+      "/*", HTTP_GET,
+      [](ESPWiFi *espwifi, httpd_req_t *req,
+         const std::string &clientInfo) -> esp_err_t {
+        (void)espwifi->sendFileResponse(req, req->uri, &clientInfo);
+        return ESP_OK; // sendFileResponse() owns success/error responses
       },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &wildcard_route);
+      false);
 }

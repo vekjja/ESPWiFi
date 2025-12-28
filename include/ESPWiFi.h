@@ -18,11 +18,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <new>
 #include <stdio.h>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 // ArduinoJson (compatible with ESP-IDF)
 #include <ArduinoJson.h>
@@ -40,40 +42,27 @@
 // Log levels
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
-// ---- HTTP route helper macros ----
-// Usage (inside a httpd handler lambda):
-//   ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
-//   // ... handler logic ...
-//   espwifi->sendJsonResponse(req, 200, "...", &clientInfo); // auto-logged
-//   // or for manual responses:
-//   // espwifi->logAccess(200, clientInfo, bytesSent);
-#define ESPWIFI_ROUTE_GUARD(req, espwifiVar, clientInfoVar)                    \
-  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
-  if ((espwifiVar) == nullptr) {                                               \
-    httpd_resp_send_500((req));                                                \
-    return ESP_OK;                                                             \
-  }                                                                            \
-  std::string clientInfoVar;                                                   \
-  if ((espwifiVar)->verifyRequest((req), &(clientInfoVar), true) != ESP_OK) {  \
-    return ESP_OK;                                                             \
-  }
-
-// Same as ESPWIFI_ROUTE_GUARD, but skips auth enforcement.
-// Useful for routes like "/" and "/api/auth/login".
-#define ESPWIFI_ROUTE_GUARD_NOAUTH(req, espwifiVar, clientInfoVar)             \
-  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
-  if ((espwifiVar) == nullptr) {                                               \
-    httpd_resp_send_500((req));                                                \
-    return ESP_OK;                                                             \
-  }                                                                            \
-  std::string clientInfoVar;                                                   \
-  if ((espwifiVar)->verifyRequest((req), &(clientInfoVar), false) != ESP_OK) { \
-    return ESP_OK;                                                             \
-  }
-
 class ESPWiFi {
 private:
   std::string _version = "v0.1.0";
+
+  // ---- Route registration helper (optional) ----
+  // Lets you register routes with a single call:
+  //   registerRoute("/config", HTTP_GET, handlerFn, /*requireAuth=*/true);
+  // The trampoline will run verifyRequest() first and then call your handler.
+public:
+  using RouteHandler = esp_err_t (*)(ESPWiFi *espwifi, httpd_req_t *req,
+                                     const std::string &clientInfo);
+
+private:
+  struct RouteCtx {
+    ESPWiFi *self = nullptr;
+    RouteHandler handler = nullptr;
+    bool requireAuth = true;
+  };
+
+  std::vector<RouteCtx *> _routeContexts;
+  static esp_err_t routeTrampoline(httpd_req_t *req);
 
   // WiFi event handler state
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
@@ -147,8 +136,7 @@ public:
   void cleanLogFile();
   int maxLogFileSize = 0;
   bool serialStarted = false;
-  int baudRate =
-      115200; // best-effort (ESP-IDF console UART is usually pre-initialized)
+  int baudRate = 115200; // (ESP-IDF console UART is usually pre-initialized)
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   void startLogging(std::string filePath = "/log");
@@ -220,30 +208,36 @@ public:
   // Capture request/client info early (before long streaming responses) so
   // access logs don't lose remote IP / headers on disconnects.
   std::string getClientInfo(httpd_req_t *req);
-  void sendJsonResponse(httpd_req_t *req, int statusCode,
-                        const std::string &jsonBody,
-                        const std::string *clientInfo = nullptr);
+  // Send a JSON response. Returns the underlying ESP-IDF httpd send result.
+  // Note: HTTP status (e.g. 404) is independent of this return code.
+  esp_err_t sendJsonResponse(httpd_req_t *req, int statusCode,
+                             const std::string &jsonBody,
+                             const std::string *clientInfo = nullptr);
   esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath,
                              const std::string *clientInfo = nullptr);
+  // Register a route and automatically apply verifyRequest() + stable
+  // clientInfo capture before invoking the handler.
+  esp_err_t registerRoute(const char *uri, httpd_method_t method,
+                          RouteHandler handler, bool requireAuth = true);
   // Nginx-like access log line for a completed response
   void logAccess(int statusCode, const std::string &clientInfo,
                  size_t bytesSent = 0);
   JsonDocument readRequestBody(httpd_req_t *req);
 
-  // Camera - not yet ported to ESP-IDF
-  // #ifdef ESPWiFi_CAMERA
-  //   camera_config_t camConfig;
-  //   WebSocket *camSoc = nullptr;
-  //   bool cameraOperationInProgress = false;
-  //   bool initCamera();
-  //   void startCamera();
-  //   void deinitCamera();
-  //   void streamCamera();
-  //   void clearCameraBuffer();
-  //   void cameraConfigHandler();
-  //   void updateCameraSettings();
-  //   void takeSnapshot(std::string filePath = "/snapshots/snapshot.jpg");
-  // #endif
+// Camera - not yet ported to ESP-IDF
+#ifdef ESPWiFi_CAMERA
+  camera_config_t camConfig;
+  WebSocket *camSoc = nullptr;
+  bool cameraOperationInProgress = false;
+  bool initCamera();
+  void startCamera();
+  void deinitCamera();
+  void streamCamera();
+  void clearCameraBuffer();
+  void cameraConfigHandler();
+  void updateCameraSettings();
+  void takeSnapshot(std::string filePath = "/snapshots/snapshot.jpg");
+#endif
 
   // RSSI - not yet ported to ESP-IDF
   // WebSocket *rssiWebSocket = nullptr;

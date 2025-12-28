@@ -1,7 +1,7 @@
-// Camera.cpp - Stubbed for now
+// Camera.cpp
+#ifdef ESPWiFi_CAMERA
 #include "ESPWiFi.h"
 
-#ifdef ESPWiFi_CAMERA
 bool ESPWiFi::initCamera() { return false; }
 
 void ESPWiFi::startCamera() {

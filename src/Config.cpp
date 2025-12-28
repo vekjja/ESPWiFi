@@ -135,6 +135,58 @@ void ESPWiFi::printConfig() {
   log(DEBUG, "\n" + prettyConfig);
 }
 
+void ESPWiFi::saveConfig(JsonDocument &configToSave) {
+  initLittleFS();
+
+  if (!littleFsInitialized) {
+    log(ERROR, "No filesystem available for saving config");
+    return;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield before JSON operations
+
+  // Serialize to buffer - add extra padding for safety
+  size_t size = measureJson(configToSave);
+  if (size == 0) {
+    log(ERROR, "Failed to measure config JSON size");
+    return;
+  }
+
+  // Allocate buffer with extra space for safety
+  char *buffer = (char *)malloc(size + 32);
+  if (!buffer) {
+    log(ERROR, " Failed to allocate memory for config (size: %zu)", size);
+    return;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after allocation
+
+  size_t written = serializeJson(configToSave, buffer, size + 32);
+  if (written == 0) {
+    log(ERROR, "Failed to serialize config JSON");
+    free(buffer);
+    return;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after serialization
+
+  // Use atomic write to prevent corruption
+  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  free(buffer);
+
+  if (!success) {
+    log(ERROR, "💾  Failed to write config file");
+    return;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file write
+
+  if (configToSave["log"]["enabled"].as<bool>()) {
+    log(INFO, "💾  Config Saved: %s", configFile.c_str());
+    // printConfig();
+  }
+}
+
 void ESPWiFi::saveConfig() {
   initLittleFS();
 
@@ -163,6 +215,32 @@ void ESPWiFi::saveConfig() {
   }
 
   if (config["log"]["enabled"].as<bool>()) {
+    log(INFO, "💾 Config Saved: %s", configFile.c_str());
+    printConfig();
+  }
+}
+
+void ESPWiFi::saveConfigFromString(const std::string &jsonString) {
+  initLittleFS();
+
+  if (!littleFsInitialized) {
+    log(ERROR, "No filesystem available for saving config");
+    return;
+  }
+
+  // Use atomic write to prevent corruption
+  bool success = writeFileAtomic(
+      configFile, (const uint8_t *)jsonString.c_str(), jsonString.length());
+
+  if (!success) {
+    log(ERROR, " Failed to write config file");
+    return;
+  }
+
+  // Check if logging is enabled (parse from string to avoid accessing config)
+  JsonDocument logCheck;
+  DeserializationError error = deserializeJson(logCheck, jsonString);
+  if (!error && logCheck["log"]["enabled"].as<bool>()) {
     log(INFO, "💾 Config Saved: %s", configFile.c_str());
     printConfig();
   }
@@ -204,6 +282,60 @@ void ESPWiFi::mergeConfig(JsonDocument &json) {
 
   // Start the deep merge from root
   deepMerge(config.as<JsonVariant>(), json.as<JsonVariantConst>(), 0);
+}
+
+JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
+                                const JsonDocument &updates) {
+  // Create a new JsonDocument by copying the base
+  JsonDocument result;
+
+  // Copy base into result by serializing and deserializing
+  std::string baseJson;
+  serializeJson(base, baseJson);
+  DeserializationError error = deserializeJson(result, baseJson);
+  if (error) {
+    // If copy fails, return empty document
+    log(ERROR, "Failed to copy base JSON in mergeJson: %s", error.c_str());
+    return result;
+  }
+
+  // Deep merge: recursively merge objects instead of replacing them
+  // Limit recursion depth to prevent stack overflow
+  const int MAX_DEPTH = 10;
+  std::function<void(JsonVariant, JsonVariantConst, int)> deepMerge =
+      [&](JsonVariant dst, JsonVariantConst src, int depth) {
+        if (depth > MAX_DEPTH) {
+          // Too deep, just replace instead of merging
+          dst.set(src);
+          return;
+        }
+
+        if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
+          // Both are objects - merge recursively
+          for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
+            JsonVariant dstValue = dst[kvp.key()];
+            if (dstValue.isNull()) {
+              // Key doesn't exist in destination, just copy it
+              dst[kvp.key()] = kvp.value();
+            } else {
+              // Key exists, recurse to merge deeper
+              deepMerge(dstValue, kvp.value(), depth + 1);
+            }
+          }
+          // Yield periodically during merge to prevent stack overflow
+          if (depth % 3 == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+          }
+        } else {
+          // Not both objects (or one is null), just replace the value
+          dst.set(src);
+        }
+      };
+
+  // Start the deep merge from root
+  deepMerge(result.as<JsonVariant>(), updates.as<JsonVariantConst>(), 0);
+
+  return result;
 }
 
 void ESPWiFi::handleConfig() {
@@ -305,69 +437,25 @@ void ESPWiFi::srvConfig() {
       .handler = [](httpd_req_t *req) -> esp_err_t {
         ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
 
-        // if (espwifi->verify(req, true) != ESP_OK) {
-        //   return ESP_OK; // Response already sent (OPTIONS or error)
-        // }
+        JsonDocument reqJson = espwifi->readRequestBody(req);
 
-        // Read request body
-        size_t content_len = req->content_len;
-        if (content_len > 4096) { // Limit to 4KB
-          httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                              "Request body too large");
-          return ESP_FAIL;
-        }
-
-        char *content = (char *)malloc(content_len + 1);
-        if (content == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        int ret = httpd_req_recv(req, content, content_len);
-        if (ret <= 0) {
-          free(content);
-          if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            httpd_resp_send_408(req);
-          }
-          return ESP_FAIL;
-        }
-
-        content[content_len] = '\0';
-        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after reading request body
-        std::string json_body(content);
-        free(content);
-
-        // Parse JSON request body
-        if (json_body.empty()) {
+        // Check if JSON document is empty (parse failed or empty input)
+        if (reqJson.size() == 0) {
           espwifi->sendJsonResponse(req, 400, "{\"error\":\"EmptyInput\"}");
           espwifi->log(ERROR, "/config Error parsing JSON: EmptyInput");
           return ESP_OK;
         }
 
-        JsonDocument jsonDoc;
-        DeserializationError error = deserializeJson(jsonDoc, json_body);
-        if (error) {
-          espwifi->sendJsonResponse(req, 400, "{\"error\":\"Invalid JSON\"}");
-          espwifi->log(ERROR, "/config Error parsing JSON: %s", error.c_str());
-          return ESP_OK;
-        }
+        JsonDocument mergedConfig =
+            espwifi->mergeJson(espwifi->config, reqJson);
 
-        // Merge the new config
-        espwifi->mergeConfig(jsonDoc);
+        espwifi->config = mergedConfig;
+        espwifi->saveConfig(mergedConfig);
 
-        // Check if this is a PUT request (save to file)
-        // Note: ESP-IDF httpd uses HTTP_PUT, but we're registering POST
-        // If you want to support PUT, add a separate route handler
-        // For now, we'll save config for POST requests
-        espwifi->saveConfig();
-        vTaskDelay(pdMS_TO_TICKS(1)); // Yield after file I/O
-
-        // Handle config updates (bluetooth, camera, log handlers)
-        espwifi->handleConfig();
-
-        // Return the updated config
         std::string responseJson;
-        serializeJson(espwifi->config, responseJson);
+        serializeJson(mergedConfig, responseJson);
+
+        // Return the updated config (using the already serialized string)
         espwifi->sendJsonResponse(req, 200, responseJson);
         return ESP_OK;
       },

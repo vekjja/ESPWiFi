@@ -34,27 +34,6 @@ void ESPWiFi::startWebServer() {
   }
   webServerStarted = true;
 
-  // Root route - serve index.html from LFS (no auth required)
-  httpd_uri_t root_route = {
-      .uri = "/",
-      .method = HTTP_GET,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
-        if (espwifi == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_OK; // Response sent, return OK
-        }
-        esp_err_t ret = espwifi->sendFileResponse(req, "/index.html");
-        if (ret != ESP_OK) {
-          // sendFileResponse failed, send 404 response
-          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
-          return ESP_OK; // Response sent, return OK
-        }
-        return ESP_OK;
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &root_route);
-
   // Restart endpoint
   httpd_uri_t restart_route = {
       .uri = "/api/restart",
@@ -72,7 +51,7 @@ void ESPWiFi::startWebServer() {
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &restart_route);
 
-  srvAll();
+  // srvAll();
 
   webServerStarted = true;
   log(INFO, "🗄️  HTTP Web Server started");
@@ -442,6 +421,34 @@ void ESPWiFi::srvInfo() {
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &info_route);
+}
+
+void ESPWiFi::srvRoot() {
+  if (!webServer) {
+    log(ERROR, "Cannot start root route /: web server not initialized");
+    return;
+  }
+
+  // Root route - serve index.html from LFS (no auth required)
+  httpd_uri_t root_route = {
+      .uri = "/",
+      .method = HTTP_GET,
+      .handler = [](httpd_req_t *req) -> esp_err_t {
+        ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+        if (espwifi == nullptr) {
+          httpd_resp_send_500(req);
+          return ESP_OK; // Response sent, return OK
+        }
+        esp_err_t ret = espwifi->sendFileResponse(req, "/index.html");
+        if (ret != ESP_OK) {
+          // sendFileResponse failed, send 404 response
+          espwifi->sendJsonResponse(req, 404, "{\"error\":\"Not found\"}");
+          return ESP_OK; // Response sent, return OK
+        }
+        return ESP_OK;
+      },
+      .user_ctx = this};
+  httpd_register_uri_handler(webServer, &root_route);
 }
 
 void ESPWiFi::srvWildcard() {

@@ -80,3 +80,44 @@ bool ESPWiFi::matchPattern(const std::string &uri, const std::string &pattern) {
   }
   return true;
 }
+
+JsonDocument ESPWiFi::readRequestBody(httpd_req_t *req) {
+  JsonDocument doc;
+
+  // Get content length
+  size_t content_len = req->content_len;
+  if (content_len == 0 || content_len > 10240) { // Limit to 10KB
+    // Return empty document if no content or too large
+    return doc;
+  }
+
+  // Allocate buffer for request body
+  char *content = (char *)malloc(content_len + 1);
+  if (content == nullptr) {
+    // Return empty document if memory allocation fails
+    return doc;
+  }
+
+  // Read the request body
+  int ret = httpd_req_recv(req, content, content_len);
+  if (ret <= 0) {
+    free(content);
+    // Return empty document if read failed
+    return doc;
+  }
+
+  // Null-terminate the string
+  content[content_len] = '\0';
+  std::string json_body(content, content_len);
+  free(content);
+
+  // Parse JSON
+  DeserializationError error = deserializeJson(doc, json_body);
+  if (error) {
+    // Return empty document if JSON parsing fails (doc is already empty)
+    JsonDocument emptyDoc;
+    return emptyDoc;
+  }
+
+  return doc;
+}

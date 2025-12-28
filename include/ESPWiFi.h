@@ -128,11 +128,14 @@ public:
 
   // Config
   void saveConfig();
+  void saveConfig(JsonDocument &configToSave);
+  void saveConfigFromString(const std::string &jsonString);
   void readConfig();
   void printConfig();
   void handleConfig();
   JsonDocument defaultConfig();
   void mergeConfig(JsonDocument &json);
+  JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
 
   // WiFi
   void startAP();
@@ -152,6 +155,7 @@ public:
   void srvAll();
   void srvLog();
   void srvInfo();
+  void srvRoot();
   void srvGPIO();
   void srvAuth();
   void srvConfig();
@@ -173,6 +177,7 @@ public:
   void sendJsonResponse(httpd_req_t *req, int statusCode,
                         const std::string &jsonBody);
   esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath);
+  JsonDocument readRequestBody(httpd_req_t *req);
 
   // Camera - not yet ported to ESP-IDF
   // #ifdef ESPWiFi_CAMERA

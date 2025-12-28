@@ -40,15 +40,7 @@
 // Log levels
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
-// ---- HTTP route helper macro ----
-// Standard route prologue:
-// - pulls `ESPWiFi *espwifi` from `req->user_ctx`
-// - runs `verifyRequest(req, &clientInfo)` which handles:
-//   - OPTIONS preflight (responds + exits)
-//   - CORS headers
-//   - auth check (responds 401 + exits)
-// - provides `std::string clientInfo` captured early for stable access logs
-//
+// ---- HTTP route helper macros ----
 // Usage (inside a httpd handler lambda):
 //   ESPWIFI_ROUTE_GUARD(req, espwifi, clientInfo);
 //   // ... handler logic ...
@@ -78,18 +70,6 @@ enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
   if ((espwifiVar)->verifyRequest((req), &(clientInfoVar), false) != ESP_OK) { \
     return ESP_OK;                                                             \
   }
-
-// Helper for explicit HTTP_OPTIONS routes (CORS preflight).
-// Note: verifyRequest() can handle OPTIONS, but only if an OPTIONS handler is
-// registered. This macro makes those handlers trivial and consistent.
-#define ESPWIFI_OPTIONS_GUARD(req, espwifiVar)                                 \
-  ESPWiFi *espwifiVar = (ESPWiFi *)(req)->user_ctx;                            \
-  if ((espwifiVar) == nullptr) {                                               \
-    httpd_resp_send_500((req));                                                \
-    return ESP_OK;                                                             \
-  }                                                                            \
-  (espwifiVar)->handleCorsPreflight((req));                                    \
-  return ESP_OK;
 
 class ESPWiFi {
 private:

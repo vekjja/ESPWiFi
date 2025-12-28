@@ -55,6 +55,22 @@ void ESPWiFi::startWebServer() {
                                .user_ctx = this};
   httpd_register_uri_handler(webServer, &restart_route);
 
+  // Global CORS preflight handler (covers all routes)
+  // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
+  httpd_uri_t options_route = {.uri = "/*",
+                               .method = HTTP_OPTIONS,
+                               .handler = [](httpd_req_t *req) -> esp_err_t {
+                                 ESPWiFi *espwifi = (ESPWiFi *)req->user_ctx;
+                                 if (espwifi == nullptr) {
+                                   httpd_resp_send_500(req);
+                                   return ESP_OK;
+                                 }
+                                 espwifi->handleCorsPreflight(req);
+                                 return ESP_OK;
+                               },
+                               .user_ctx = this};
+  httpd_register_uri_handler(webServer, &options_route);
+
   // srvAll();
 
   webServerStarted = true;

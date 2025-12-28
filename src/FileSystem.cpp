@@ -401,16 +401,6 @@ void ESPWiFi::srvFS() {
     return;
   }
 
-  // OPTIONS handler for CORS preflight - /api/files
-  httpd_uri_t files_options_route = {
-      .uri = "/api/files",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &files_options_route);
-
   // API endpoint for file browser JSON data - GET /api/files
   httpd_uri_t files_get_route = {
       .uri = "/api/files",
@@ -498,16 +488,6 @@ void ESPWiFi::srvFS() {
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &files_get_route);
 
-  // OPTIONS handler for storage endpoint
-  httpd_uri_t storage_options_route = {
-      .uri = "/api/storage",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &storage_options_route);
-
   // API endpoint for storage information - GET /api/storage
   httpd_uri_t storage_get_route = {
       .uri = "/api/storage",
@@ -536,16 +516,6 @@ void ESPWiFi::srvFS() {
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &storage_get_route);
-
-  // OPTIONS handler for mkdir endpoint
-  httpd_uri_t mkdir_options_route = {
-      .uri = "/api/files/mkdir",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &mkdir_options_route);
 
   // API endpoint for creating directories - POST /api/files/mkdir
   httpd_uri_t mkdir_post_route = {
@@ -636,16 +606,6 @@ void ESPWiFi::srvFS() {
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &mkdir_post_route);
 
-  // OPTIONS handler for rename endpoint
-  httpd_uri_t rename_options_route = {
-      .uri = "/api/files/rename",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &rename_options_route);
-
   // API endpoint for file rename - POST /api/files/rename
   httpd_uri_t rename_post_route = {
       .uri = "/api/files/rename",
@@ -707,16 +667,6 @@ void ESPWiFi::srvFS() {
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &rename_post_route);
-
-  // OPTIONS handler for delete endpoint
-  httpd_uri_t delete_options_route = {
-      .uri = "/api/files/delete",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &delete_options_route);
 
   // API endpoint for file deletion - POST /api/files/delete
   httpd_uri_t delete_post_route = {
@@ -788,16 +738,6 @@ void ESPWiFi::srvFS() {
       },
       .user_ctx = this};
   httpd_register_uri_handler(webServer, &delete_post_route);
-
-  // OPTIONS handler for upload endpoint
-  httpd_uri_t upload_options_route = {
-      .uri = "/api/files/upload",
-      .method = HTTP_OPTIONS,
-      .handler = [](httpd_req_t *req) -> esp_err_t {
-        ESPWIFI_OPTIONS_GUARD(req, espwifi);
-      },
-      .user_ctx = this};
-  httpd_register_uri_handler(webServer, &upload_options_route);
 
   // API endpoint for file upload - POST /api/files/upload
   // Note: ESP-IDF httpd doesn't have built-in multipart support, so we'll

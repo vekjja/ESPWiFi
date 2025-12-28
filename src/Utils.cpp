@@ -3,6 +3,63 @@
 #include "driver/uart.h"
 #include "sdkconfig.h"
 
+bool ESPWiFi::fileExists(const std::string &fullPath) {
+  struct stat st;
+  if (stat(fullPath.c_str(), &st) == 0) {
+    return !S_ISDIR(st.st_mode);
+  }
+  return false;
+}
+
+bool ESPWiFi::dirExists(const std::string &fullPath) {
+  struct stat st;
+  if (stat(fullPath.c_str(), &st) == 0) {
+    return S_ISDIR(st.st_mode);
+  }
+  return false;
+}
+
+bool ESPWiFi::mkDir(const std::string &fullPath) {
+  if (dirExists(fullPath)) {
+    return true;
+  }
+
+  // Create parent directories if needed (mkdir -p style)
+  size_t pos = fullPath.find_last_of('/');
+  if (pos != std::string::npos && pos > 0) {
+    std::string parent = fullPath.substr(0, pos);
+    if (!dirExists(parent)) {
+      (void)mkDir(parent);
+    }
+  }
+
+  if (::mkdir(fullPath.c_str(), 0755) == 0) {
+    return true;
+  }
+
+  // Check if directory was actually created despite the error
+  return dirExists(fullPath);
+}
+
+std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
+  size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+  if (buf_len > 1) {
+    char *buf = (char *)malloc(buf_len);
+    if (buf) {
+      if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+        char value[128];
+        if (httpd_query_key_value(buf, key, value, sizeof(value)) == ESP_OK) {
+          std::string result(value);
+          free(buf);
+          return result;
+        }
+      }
+      free(buf);
+    }
+  }
+  return "";
+}
+
 std::string ESPWiFi::getContentType(std::string filename) {
   if (filename.find(".html") != std::string::npos)
     return "text/html";

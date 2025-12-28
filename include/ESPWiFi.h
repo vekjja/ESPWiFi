@@ -131,6 +131,11 @@ public:
   char *readFile(const std::string &filePath, size_t *outSize = nullptr);
   bool isRestrictedSystemFile(const std::string &fsParam,
                               const std::string &filePath);
+  // Small helpers used by filesystem HTTP routes (implemented in Utils.cpp)
+  bool fileExists(const std::string &fullPath);
+  bool dirExists(const std::string &fullPath);
+  bool mkDir(const std::string &fullPath);
+  std::string getQueryParam(httpd_req_t *req, const char *key);
 
   // Logging
   void cleanLogFile();

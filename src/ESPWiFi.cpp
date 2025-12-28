@@ -16,7 +16,7 @@ void ESPWiFi::start() {
   srvConfig();
   srvInfo();
   srvLog();
-  // srvGPIO();
+  srvGPIO();
   srvWildcard();
   // startBluetooth();
   // startRSSIWebSocket();

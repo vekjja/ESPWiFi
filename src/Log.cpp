@@ -30,8 +30,8 @@ void ESPWiFi::startSerial(int baudRate) {
   // Just mark it as started
   serialStarted = true;
   vTaskDelay(pdMS_TO_TICKS(300)); // Small delay for serial to stabilize
-  printf("%s [INFO] 📺 Serial Started\n", timestamp().c_str());
-  printf("%s [INFO]\tBaud: %d\n", timestamp().c_str(), baudRate);
+  printf("%s  [INFO] 📺 Serial Started\n", timestamp().c_str());
+  printf("%s  [INFO]\tBaud: %d\n", timestamp().c_str(), baudRate);
 }
 
 void ESPWiFi::startLogging(std::string filePath) {
@@ -96,11 +96,28 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
   std::string levelStr = logLevelToString(level);
 
   // Direct printf with format - avoids string allocations
-  printf("%s %s", ts.c_str(), levelStr.c_str());
+  printf("%s %s ", ts.c_str(), levelStr.c_str());
   vprintf(format, args);
   printf("\n");
 
+  // Only build logLine if needed (for file logging) and if safe to do so
+  // Restart va_list since it was consumed by vprintf above
+  va_list args2;
+  va_copy(args2, args); // Copy args before va_end
+
+  // Use smaller buffer to reduce stack usage in HTTP handlers
+  char buffer[512]; // Reduced from 2048 to prevent stack overflow
+  vsnprintf(buffer, sizeof(buffer), format, args2);
+  va_end(args2);
+
+  logLine = ts + levelStr + " " + std::string(buffer) + "\n";
+
   va_end(args);
+
+  // Only write to file if logging is initialized (safe context)
+  if (loggingStarted && littleFsInitialized) {
+    writeLog(logLine);
+  }
 }
 
 // Function to check filesystem space and delete log if needed
@@ -160,7 +177,8 @@ bool ESPWiFi::shouldLog(LogLevel level) {
 }
 
 std::string ESPWiFi::formatLog(const char *format, va_list args) {
-  char buffer[2048];
+  // Reduced buffer size to prevent stack overflow in HTTP handlers
+  char buffer[512]; // Reduced from 2048
   vsnprintf(buffer, sizeof(buffer), format, args);
   return std::string(buffer);
 }
@@ -209,25 +227,24 @@ std::string ESPWiFi::timestampForFilename() {
 }
 
 void ESPWiFi::logConfigHandler() {
-  // static bool lastEnabled = true;
-  // static std::string lastLevel = "debug";
+  static bool lastEnabled = true;
+  static std::string lastLevel = "debug";
 
   bool currentEnabled = config["log"]["enabled"].as<bool>();
   std::string currentLevel = config["log"]["level"].as<std::string>();
 
-  log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
   // // Log when enabled state changes
-  // if (currentEnabled != lastEnabled) {
-  //   log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
-  //   lastEnabled = currentEnabled;
-  // }
+  if (currentEnabled != lastEnabled) {
+    log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
+    lastEnabled = currentEnabled;
+  }
 
   // Log when level changes
-  // if (currentLevel != lastLevel) {
-  //   log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
-  //       currentLevel.c_str());
-  //   lastLevel = currentLevel;
-  // }
+  if (currentLevel != lastLevel) {
+    log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
+        currentLevel.c_str());
+    lastLevel = currentLevel;
+  }
 }
 
 void ESPWiFi::srvLog() {

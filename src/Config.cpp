@@ -44,6 +44,7 @@ void ESPWiFi::readConfig() {
     }
   }
 
+  log(INFO, "⚙️  Config loaded: %s", configFile.c_str());
   printConfig();
 
   readingConfig = false;

@@ -107,6 +107,7 @@ public:
   void cleanLogFile();
   int baudRate = 115200;
   int maxLogFileSize = 0;
+  std::string logLine = "";
   bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";

@@ -109,6 +109,8 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
+  vTaskDelay(pdMS_TO_TICKS(999));
+
   // Get MAC address (after WiFi is initialized)
   uint8_t mac[6];
   esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);

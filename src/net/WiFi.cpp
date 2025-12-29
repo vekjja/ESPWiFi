@@ -26,7 +26,7 @@ static esp_netif_t *current_netif = nullptr;
 
 void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
-    log(INFO, "🛜  WiFi Disabled");
+    log(INFO, "📶 WiFi Disabled");
     return;
   }
 
@@ -56,7 +56,7 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  log(INFO, "🔗 Connecting to WiFi Network:");
+  log(INFO, "📶 Connecting to WiFi Network");
   log(DEBUG, "\tSSID: %s", ssid.c_str());
   log(DEBUG, "\tPassword: **********");
 
@@ -159,14 +159,14 @@ void ESPWiFi::startClient() {
   // bool connected = waitForWiFiConnection(connectTimeout);
 
   if (!connected) {
-    log(ERROR, "🛜 Failed to connect to WiFi, falling back to AP");
+    log(ERROR, "📶 Failed to connect to WiFi, falling back to AP");
     setWiFiAutoReconnect(false); // no reconnect when we switch to AP
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
 
-  log(INFO, "🛜 WiFi Connected");
+  log(INFO, "📶✅ WiFi Connected");
 
   std::string hostname = getHostname();
   log(DEBUG, "\tHostname: %s", hostname.c_str());
@@ -390,12 +390,12 @@ std::string ESPWiFi::getHostname() {
 
 void ESPWiFi::setHostname(std::string hostname) {
   if (current_netif == nullptr) {
-    log(WARNING, "⚠️  Cannot set hostname: network interface not initialized");
+    log(WARNING, "📶 Cannot set hostname: network interface not initialized");
     return;
   }
 
   if (hostname.empty()) {
-    log(WARNING, "⚠️  Cannot set new hostname: hostname provided is empty");
+    log(WARNING, "📶  Cannot set new hostname: hostname provided is empty");
     return;
   }
 
@@ -406,7 +406,7 @@ void ESPWiFi::setHostname(std::string hostname) {
   if (hostname_ret == ESP_OK) {
     config["hostname"] = hostname;
   } else {
-    log(WARNING, "⚠️  Failed to set hostname: %s",
+    log(WARNING, "📶  Failed to set hostname: %s",
         esp_err_to_name(hostname_ret));
   }
 }

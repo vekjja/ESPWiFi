@@ -86,6 +86,7 @@ public:
   // ------------------------------------------------------------
   void initSDCard();
   void deinitSDCard();
+  void sdCardConfigHandler();
   void initLittleFS();
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
@@ -211,6 +212,9 @@ public:
   void srvAuth();
   void srvConfig();
   void srvWildcard();
+#if defined(CONFIG_BT_ENABLED)
+  void srvBluetooth();
+#endif
 #ifdef ESPWiFi_CAMERA
   void srvCamera();
 #endif
@@ -243,6 +247,10 @@ public:
                      std::function<void()> functionToRun);
   bool matchPattern(std::string_view uri, std::string_view pattern);
 
+  // ---- JSON helpers (implemented in Utils.cpp)
+  // --------------------------------------------
+  void deepMerge(JsonVariant dst, JsonVariantConst src, int depth = 0);
+
   // ---- I2C
   // -------------------------------------------------------------------
   void scanI2CDevices();
@@ -266,15 +274,21 @@ public:
   std::string otaErrorString;
   std::string otaMD5Hash;
 
-  // ---- Bluetooth
-  // -------------------------------------------------------------
-  bool startBluetooth();
-  void stopBluetooth();
-  bool isBluetoothConnected();
-  void scanBluetoothDevices();
-  bool bluetoothStarted = false;
-  void bluetoothConfigHandler();
-  void checkBluetoothConnectionStatus();
+  // ---- Bluetooth Classic Audio (A2DP source; WAV-first)
+  // ------------------------------------------------------
+  // Config handler is called from `handleConfig()` (main task) so we never do
+  // heavy BT work in HTTP handlers.
+  void bluetoothAudioConfigHandler();
+  bool startBluetoothAudio();
+  void stopBluetoothAudio();
+  void btEnterPairingMode(uint32_t seconds = 10);
+  void btStopPairingMode();
+  void btConnect(const std::string &addr);
+  void btDisconnect();
+  void btPlayWavFromSd(const std::string &path);
+  void btStopAudio();
+  std::string btStatusJson();
+  std::string btScanJson();
 
 private:
   // ---- Version

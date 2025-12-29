@@ -252,6 +252,19 @@ void ESPWiFi::initSDCard() {
 #endif
 }
 
+void ESPWiFi::sdCardConfigHandler() {
+  // Config-gated SD mount/unmount. Keep this out of HTTP handlers.
+  const bool enabled = config["sd"]["enabled"].isNull()
+                           ? false
+                           : config["sd"]["enabled"].as<bool>();
+
+  if (!enabled && sdCardInitialized) {
+    deinitSDCard();
+  } else if (enabled && !sdCardInitialized) {
+    initSDCard();
+  }
+}
+
 void ESPWiFi::deinitSDCard() {
   if (!sdCardInitialized) {
     // Still ensure config reflects current state.

@@ -11,6 +11,9 @@ void ESPWiFi::srvAll() {
   srvLog();
   srvFiles();
   srvGPIO();
+#if defined(CONFIG_BT_ENABLED)
+  srvBluetooth();
+#endif
 #ifdef ESPWiFi_CAMERA
   srvCamera();
 #endif

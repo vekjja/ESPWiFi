@@ -46,6 +46,44 @@ std::string urlDecode(const char *in) {
 }
 } // namespace
 
+// -----------------------------------------------------------------------------
+// JSON helpers (used by Config + other services)
+// -----------------------------------------------------------------------------
+void ESPWiFi::deepMerge(JsonVariant dst, JsonVariantConst src, int depth) {
+  // Bounded deep merge to avoid pathological inputs.
+  static constexpr int kMaxMergeDepth = 12;
+  if (depth > kMaxMergeDepth) {
+    return;
+  }
+
+  if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
+    JsonObject dstObj = dst.as<JsonObject>();
+    JsonObjectConst srcObj = src.as<JsonObjectConst>();
+    for (JsonPairConst kv : srcObj) {
+      const char *key = kv.key().c_str();
+      JsonVariantConst srcVal = kv.value();
+      JsonVariant dstVal = dstObj[key];
+
+      if (srcVal.is<JsonObjectConst>()) {
+        if (!dstVal.is<JsonObject>()) {
+          dstObj[key] = JsonObject();
+          dstVal = dstObj[key];
+        }
+        deepMerge(dstVal, srcVal, depth + 1);
+      } else {
+        // Arrays + scalars: replace.
+        dstObj[key].set(srcVal);
+      }
+    }
+    if ((depth % 3) == 0) {
+      yield();
+    }
+    return;
+  }
+
+  dst.set(src);
+}
+
 bool ESPWiFi::fileExists(const std::string &fullPath) {
   struct stat st;
   if (stat(fullPath.c_str(), &st) == 0) {

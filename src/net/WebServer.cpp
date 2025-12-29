@@ -382,23 +382,17 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
 
-  // Use chunked encoding for all files to allow yields between chunks
-  // This prevents watchdog timeouts on slow networks
-  const size_t CHUNK_SIZE =
-      8192; // 8KB chunks (smaller chunks = more frequent yields)
+  // Use chunked encoding for all files to allow yields between chunks.
+  // IMPORTANT: Avoid dynamic allocations here (BT + TLS can make heap tight).
+  // Keep the buffer small and on-stack.
+  constexpr size_t CHUNK_SIZE = 2048;
 
   esp_err_t ret = ESP_OK;
 
-  // Enable buffered I/O for better performance
+  // Enable buffered I/O for better performance (no extra heap from us).
   setvbuf(file, nullptr, _IOFBF, CHUNK_SIZE);
 
-  char *buffer = (char *)malloc(CHUNK_SIZE);
-  if (!buffer) {
-    printf("💔 malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
-    fclose(file);
-    return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
-                            &clientInfoRef);
-  }
+  char buffer[CHUNK_SIZE];
 
   size_t totalSent = 0;
 
@@ -410,7 +404,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 
     size_t bytesRead = fread(buffer, 1, toRead, file);
     if (bytesRead == 0) {
-      printf("💔  fread returned 0, expected %zu bytes\n", toRead);
+      printf("fread returned 0, expected %zu bytes\n", toRead);
       ret = ESP_FAIL;
       break;
     }
@@ -419,8 +413,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Send chunk
     ret = httpd_resp_send_chunk(req, buffer, bytesRead);
     if (ret != ESP_OK) {
-      log(ERROR, "💔  httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
-          totalSent, esp_err_to_name(ret));
+      printf("httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
+             totalSent, esp_err_to_name(ret));
       break;
     }
     yield(); // Yield after network I/O
@@ -433,18 +427,16 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     yield();                                      // Yield before finalizing
     ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
     if (ret != ESP_OK) {
-      log(ERROR, "💔 Failed to finalize chunked transfer: %s\n",
-          esp_err_to_name(ret));
+      printf("Failed to finalize chunked transfer: %s\n", esp_err_to_name(ret));
     }
     yield(); // Yield after finalizing
   }
 
-  free(buffer);
   fclose(file);
 
   if (ret != ESP_OK || totalSent != (size_t)fileSize) {
-    log(ERROR, "💔  File send incomplete: sent %zu of %ld bytes\n", totalSent,
-        fileSize);
+    printf("File send incomplete: sent %zu of %ld bytes\n", totalSent,
+           fileSize);
     // At this point headers/body may already be partially sent; best-effort
     // log.
     logAccess(500, clientInfoRef, totalSent);

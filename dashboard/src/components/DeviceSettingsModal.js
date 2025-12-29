@@ -32,9 +32,7 @@ export default function DeviceSettingsModal({
 
   // Network settings state
   const [ssid, setSsid] = useState("");
-  const [deviceName, setDeviceName] = useState(
-    config?.["deviceName"] || config?.["mdns"] || ""
-  );
+  const [deviceName, setDeviceName] = useState(config?.["deviceName"] || "");
   const [password, setPassword] = useState("");
   const [apSsid, setApSsid] = useState("");
   const [apPassword, setApPassword] = useState("");
@@ -70,7 +68,7 @@ export default function DeviceSettingsModal({
       // Handle backward compatibility: "ap" mode is now "accessPoint"
       const wifiMode = config.wifi?.mode || "client";
       setMode(wifiMode === "ap" ? "accessPoint" : wifiMode);
-      setDeviceName(config.deviceName || config.mdns || "");
+      setDeviceName(config.deviceName || "");
       setAuthEnabled(config.auth?.enabled ?? false);
       setAuthUsername(config.auth?.username || "");
       setAuthPassword(config.auth?.password || "");
@@ -304,15 +302,9 @@ export default function DeviceSettingsModal({
     try {
       const parsedConfig = JSON.parse(jsonConfig);
 
-      if (!parsedConfig.deviceName && !parsedConfig.mdns) {
+      if (!parsedConfig.deviceName) {
         setJsonError("Configuration must include 'deviceName' field");
         return;
-      }
-
-      // Migrate mdns to deviceName if needed
-      if (parsedConfig.mdns && !parsedConfig.deviceName) {
-        parsedConfig.deviceName = parsedConfig.mdns;
-        delete parsedConfig.mdns;
       }
 
       delete parsedConfig.apiURL;

@@ -92,7 +92,7 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
         static_cast<wifi_event_sta_disconnected_t *>(event_data);
 
     wifi_connection_success = false;
-    log(WARNING, "⛓️‍💥 WiFi Disconnected: %d", disc->reason);
+    log(WARNING, "🛜 WiFi Disconnected: %d ⛓️‍💥", disc->reason);
 
     // Wake up any waiters
     if (wifi_connect_semaphore) {

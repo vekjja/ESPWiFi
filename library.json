@@ -1,14 +1,39 @@
 {
     "name": "ESPWiFi",
     "version": "0.0.2",
-    "description": "Lightweight and Easy to Use Management library for ESP8266, ESP32-C3, and ESP32-S3 devices.",
+    "description": "Lightweight and Easy to Use Management library for ESP32 devices.",
     "keywords": [
         "wifi",
         "esp32",
         "esp32-c3",
         "esp32-s3",
-        "esp8266",
-        "network"
+        "network",
+        "management",
+        "web",
+        "web-ui",
+        "web-dashboard",
+        "web-api",
+        "web-socket",
+        "web-server",
+        "web-client",
+        "web-browser",
+        "web-app",
+        "web-interface",
+        "websocket",
+        "webserver",
+        "http",
+        "https",
+        "mdns",
+        "ota",
+        "littlefs",
+        "sd",
+        "log",
+        "logging",
+        "dashboard",
+        "esp32-camera",
+        "esp32-cam",
+        "esp32-s2",
+        "esp32-s1"
     ],
     "authors": [
         {
@@ -27,7 +52,6 @@
         "arduino"
     ],
     "platforms": [
-        "espressif32",
-        "espressif8266"
+        "espressif32"
     ]
 }

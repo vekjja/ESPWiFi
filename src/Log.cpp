@@ -1,83 +1,138 @@
-#include <FS.h>
-#include <LittleFS.h>
-#include <SD.h>
-#include <SPI.h>
+#ifndef ESPWiFi_LOG
+#define ESPWiFi_LOG
 
 #include "ESPWiFi.h"
+#include "driver/uart.h"
+#include "esp_timer.h"
+#include "sdkconfig.h"
+#include <cstring>
 #include <stdarg.h>
+#include <sys/time.h>
+
+std::string logLevelToString(LogLevel level) {
+  switch (level) {
+  case ACCESS:
+    return "[ACCESS]";
+  case DEBUG:
+    return "[DEBUG]";
+  case INFO:
+    return " [INFO]";
+  case WARNING:
+    return " [WARN] ⚠️";
+  case ERROR:
+    return "[ERROR] 💔";
+  default:
+    return "[LOG]";
+  }
+}
 
 void ESPWiFi::startSerial(int baudRate) {
   if (serialStarted) {
     return;
   }
+  // ESP-IDF: Serial is already initialized by default via UART
+  // Just mark it as started
   this->baudRate = baudRate;
-  Serial.begin(baudRate);
-  Serial.setDebugOutput(true);
   serialStarted = true;
-  delay(1500); // wait for serial to start
-  Serial.println(timestamp() + "📺  Serial Started:");
-  Serial.printf("%s\tBaud: %d\n", timestamp().c_str(), baudRate);
+  vTaskDelay(pdMS_TO_TICKS(300)); // Small delay for serial to stabilize
+  printf("%s  [INFO] 📺 Serial Started\n", timestamp().c_str());
+  printf("%s  [INFO]\tBaud: %d\n", timestamp().c_str(), getSerialBaudRate());
 }
 
-void ESPWiFi::startLogging(String filePath) {
+void ESPWiFi::startLogging(std::string filePath) {
   if (loggingStarted) {
     return;
   }
+  loggingStarted = true;
 
   if (!serialStarted) {
     startSerial();
   }
 
-  loggingStarted = true;
-
   initLittleFS();
-  initSDCard();
+  // initSDCard();  // Commented out for now
   this->logFilePath = filePath;
 
-  openLogFile();
   cleanLogFile();
 
-  // writeLog("\n\n\t\t\t🌌 FirmaMint " + version + "\n\n");
-  log(INFO, "🌌 ESPWiFi Version: " + version);
+  writeLog("\n\t========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
-  if (Serial) {
+  if (serialStarted) {
     log(INFO, "📺 Serial Output Enabled");
-    log(DEBUG, "\tBaud: %d", baudRate);
+    log(DEBUG, "\tBaud: %d", getSerialBaudRate());
   }
 
   printFilesystemInfo();
 }
 
-// Function to check filesystem space and delete log if needed
-void ESPWiFi::cleanLogFile() {
-  if (logFile) {
-    size_t logFileSize = logFile.size();
-    if (logFileSize > maxLogFileSize) {
-      closeLogFile();
-      bool deleted = false;
-      if (sdCardInitialized && sd) {
-        deleted = sd->remove(logFilePath);
-      } else if (lfs) {
-        deleted = lfs->remove(logFilePath);
-      }
-
-      if (!deleted) {
-        log(ERROR, "Failed to delete log file");
-      }
-      openLogFile();
+void ESPWiFi::writeLog(std::string message) {
+  if (!littleFsInitialized) {
+    return;
+  }
+  std::string full_path = lfsMountPoint + logFilePath;
+  FILE *f = fopen(full_path.c_str(), "a");
+  if (f) {
+    size_t len = message.length();
+    size_t written = fwrite(message.c_str(), 1, len, f);
+    if (written != len) {
+      printf("Warning: Failed to write complete message to log file\n");
     }
+    fflush(f);
+    fclose(f);
   }
 }
 
-void ESPWiFi::writeLog(String message) {
-  // Check if log file is valid, if not try to recreate it
-  if (!logFile) {
-    openLogFile();
+void ESPWiFi::log(LogLevel level, const char *format, ...) {
+  if (!shouldLog(level)) {
+    return;
   }
+  if (!serialStarted) {
+    startSerial();
+  }
+  // Use lightweight printf directly to avoid stack/heap issues in HTTP handlers
+  // Skip string formatting to prevent crashes from stack overflow or heap
+  // issues
+  va_list args;
+  va_start(args, format);
 
-  if (logFile) {
-    logFile.print(message);
-    logFile.flush(); // Ensure data is written immediately
+  std::string ts = timestamp();
+  std::string levelStr = logLevelToString(level);
+
+  // Direct printf with format - avoids string allocations
+  printf("%s %s ", ts.c_str(), levelStr.c_str());
+  vprintf(format, args);
+  printf("\n");
+
+  // Restart va_list since it was consumed by vprintf above
+  va_list args2;
+  va_copy(args2, args); // Copy args before va_end
+
+  // Use smaller buffer to reduce stack usage in HTTP handlers
+  char buffer[512]; // Reduced from 2048 to prevent stack overflow
+  vsnprintf(buffer, sizeof(buffer), format, args2);
+  va_end(args2); // Clean up va_list 2nd copy
+
+  std::string logLine = ts + levelStr + " " + std::string(buffer) + "\n";
+
+  va_end(args); // Clean up va_list 1st copy
+
+  writeLog(logLine);
+}
+
+// Function to check filesystem space and delete log if needed
+void ESPWiFi::cleanLogFile() {
+  if (maxLogFileSize > -1 && littleFsInitialized) {
+    std::string full_path = lfsMountPoint + logFilePath;
+    struct stat st;
+    if (stat(full_path.c_str(), &st) == 0) {
+      if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+        log(INFO, "🗑️  Log file deleted");
+        bool deleted = ::remove(full_path.c_str()) == 0;
+        if (!deleted) {
+          log(ERROR, "Failed to delete log file");
+        }
+      }
+    }
   }
 }
 
@@ -91,20 +146,24 @@ bool ESPWiFi::shouldLog(LogLevel level) {
     return false;
   }
 
-  String configuredLevel = config["log"]["level"].isNull()
-                               ? "info"
-                               : config["log"]["level"].as<String>();
-  configuredLevel.toLowerCase();
+  std::string configuredLevel = config["log"]["level"].isNull()
+                                    ? "info"
+                                    : config["log"]["level"].as<std::string>();
+  toLowerCase(configuredLevel);
 
-  // Hierarchy: access > debug > info > warn > error
+  // Hierarchy: verbose > access > debug > info > warn > error
+  // verbose: shows verbose, access, debug, info, warning and error
   // access: shows access, debug, info, warning and error
   // debug: shows debug, info, warning and error
   // info: shows info, warning and error
   // warning: shows warning and error
   // error: shows only error
 
-  if (configuredLevel == "access") {
+  if (configuredLevel == "verbose") {
     return true; // Show all levels
+  } else if (configuredLevel == "access") {
+    return (level == ACCESS || level == DEBUG || level == INFO ||
+            level == WARNING || level == ERROR);
   } else if (configuredLevel == "debug") {
     return (level == DEBUG || level == INFO || level == WARNING ||
             level == ERROR);
@@ -115,58 +174,14 @@ bool ESPWiFi::shouldLog(LogLevel level) {
   } else if (configuredLevel == "error") {
     return (level == ERROR);
   }
-
   // Default: if level is not recognized, allow it (backward compatibility)
   return true;
 }
 
-String ESPWiFi::formatLog(const char *format, va_list args) {
-  char buffer[2048];
-  vsnprintf(buffer, sizeof(buffer), format, args);
-  return String(buffer);
-}
-
-String logLevelToString(LogLevel level) {
-  switch (level) {
-  case ACCESS:
-    return "[ACCESS]";
-  case DEBUG:
-    return "[DEBUG]";
-  case INFO:
-    return " [INFO]";
-  case WARNING:
-    return " [WARN] ⚠️";
-  case ERROR:
-    return "[ERROR] 💔";
-  default:
-    // return "📝 [LOG]";
-    return "[LOG]";
-  }
-}
-
-void ESPWiFi::log(LogLevel level, const char *format, ...) {
-  if (!shouldLog(level)) {
-    return;
-  }
-  if (!serialStarted) {
-    startSerial();
-  }
-  if (!loggingStarted) {
-    startLogging();
-  }
-  va_list args;
-  va_start(args, format);
-  String output = formatLog(format, args);
-  va_end(args);
-  String ts = timestamp();
-  String levelStr = logLevelToString(level);
-  Serial.println(ts + levelStr + " " + output);
-  Serial.flush(); // Ensure immediate output
-  writeLog(ts + levelStr + " " + output + "\n");
-}
-
-String ESPWiFi::timestamp() {
-  unsigned long milliseconds = millis();
+std::string ESPWiFi::timestamp() {
+  // Use esp_timer_get_time() for microseconds since boot
+  int64_t time_us = esp_timer_get_time();
+  unsigned long milliseconds = time_us / 1000;
   unsigned long seconds = milliseconds / 1000;
   unsigned long minutes = (seconds % 3600) / 60;
   unsigned long hours = (seconds % 86400) / 3600;
@@ -174,56 +189,31 @@ String ESPWiFi::timestamp() {
   seconds = seconds % 60;
   milliseconds = milliseconds % 1000;
 
-  // Format all values with consistent padding: 2 digits for days, hours,
-  // minutes, seconds; 3 for milliseconds
-  char buffer[20];
-  snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%02lu:%03lu] ", days,
-           hours, minutes, seconds, milliseconds);
-  return String(buffer);
-}
-
-String ESPWiFi::timestampForFilename() {
-  unsigned long milliseconds = millis();
-  unsigned long seconds = milliseconds / 1000;
-  unsigned long days = seconds / 86400;
-  unsigned long minutes = (seconds % 86400) / 60;
-  seconds = seconds % 60;
-  milliseconds = milliseconds % 1000;
-
-  return String(days) + "_" + String(minutes) + "_" + String(seconds) + "_" +
-         String(milliseconds);
-}
-
-void ESPWiFi::closeLogFile() {
-  if (logFile) {
-    logFile.close();
-  }
-}
-
-void ESPWiFi::openLogFile() {
-  // Try SD card first, fallback to LittleFS for logging
-  if (sdCardInitialized && sd) {
-    logFile = sd->open(logFilePath, "a");
-  } else if (lfs) {
-    logFile = lfs->open(logFilePath, "a");
+  // Format all values with consistent padding: [00:00:00:00:000]
+  // 2 digits for days, hours, minutes, seconds; 3 for milliseconds
+  // but if the value is 00 then don't show it
+  char buffer[30];
+  if (days > 0) {
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%02lu:%03lu] ", days,
+             hours, minutes, seconds, milliseconds);
+  } else if (hours > 0) {
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%02lu:%03lu] ", hours,
+             minutes, seconds, milliseconds);
   } else {
-    log(ERROR, "No file system available for logging");
-    return;
+    snprintf(buffer, sizeof(buffer), "[%02lu:%02lu:%03lu] ", minutes, seconds,
+             milliseconds);
   }
-
-  if (!logFile) {
-    log(ERROR, "Failed to open log file");
-  }
+  return std::string(buffer);
 }
 
 void ESPWiFi::logConfigHandler() {
   static bool lastEnabled = true;
-  static String lastLevel = "info";
+  static std::string lastLevel = "debug";
 
   bool currentEnabled = config["log"]["enabled"].as<bool>();
-  String currentLevel = config["log"]["level"].as<String>();
+  std::string currentLevel = config["log"]["level"].as<std::string>();
 
-  // Log when enabled state changes
+  // // Log when enabled state changes
   if (currentEnabled != lastEnabled) {
     log(INFO, "📝 Logging %s", currentEnabled ? "enabled" : "disabled");
     lastEnabled = currentEnabled;
@@ -237,102 +227,4 @@ void ESPWiFi::logConfigHandler() {
   }
 }
 
-void ESPWiFi::srvLog() {
-  initWebServer();
-
-  // GET /log - return log file content
-  webServer->on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (request->method() == HTTP_OPTIONS) {
-      handleCorsPreflight(request);
-      return;
-    }
-
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-
-    // Try SD card first, then LittleFS
-    FS *filesystem = nullptr;
-    if (sdCardInitialized && sd && sd->exists(logFilePath)) {
-      filesystem = sd;
-    } else if (lfs && lfs->exists(logFilePath)) {
-      filesystem = lfs;
-    }
-
-    if (!filesystem) {
-      sendJsonResponse(request, 404, "{\"error\":\"Log file not found\"}");
-      return;
-    }
-
-    // Read log file and wrap in HTML with CSS to prevent word wrapping
-    File file = filesystem->open(logFilePath, "r");
-    if (!file) {
-      sendJsonResponse(request, 500, "{\"error\":\"Failed to open log file\"}");
-      return;
-    }
-
-    String htmlContent =
-        "<!DOCTYPE html><html><head><meta "
-        "charset=\"utf-8\"><style>body{margin:0;padding:10px;background:#"
-        "1e1e1e;color:#d4d4d4;font-family:monospace;font-size:12px;}pre{white-"
-        "space:pre;overflow-x:auto;margin:0;}.controls{position:fixed;top:10px;"
-        "right:10px;z-index:1000;background:#2d2d2d;padding:10px;border-radius:"
-        "4px;border:1px solid #444;}.controls label{display:block;margin:5px "
-        "0;color:#d4d4d4;cursor:pointer;}.controls "
-        "input[type=\"checkbox\"]{margin-right:8px;cursor:pointer;}</"
-        "style><script>var autoScroll=true;var autoRefresh=true;var "
-        "refreshInterval;function initControls(){var "
-        "scrollCheckbox=document.getElementById('autoScroll');var "
-        "refreshCheckbox=document.getElementById('autoRefresh');autoScroll="
-        "localStorage.getItem('autoScroll')!=='false';autoRefresh=localStorage."
-        "getItem('autoRefresh')!=='false';if(scrollCheckbox){scrollCheckbox."
-        "checked=autoScroll;scrollCheckbox.addEventListener('change',function()"
-        "{autoScroll=this.checked;localStorage.setItem('autoScroll',autoScroll)"
-        ";if(autoScroll)scrollToBottom();});}if(refreshCheckbox){"
-        "refreshCheckbox.checked=autoRefresh;refreshCheckbox.addEventListener('"
-        "change',function(){autoRefresh=this.checked;localStorage.setItem('"
-        "autoRefresh',autoRefresh);if(autoRefresh){startRefresh();}else{"
-        "stopRefresh();}});}if(autoRefresh)startRefresh();}function "
-        "scrollToBottom(){if(autoScroll){window.scrollTo(0,document.body."
-        "scrollHeight||document.documentElement.scrollHeight);}}function "
-        "startRefresh(){if(refreshInterval)clearInterval(refreshInterval);"
-        "refreshInterval=setInterval(function(){if(autoRefresh)location.reload("
-        ");},5000);}function "
-        "stopRefresh(){if(refreshInterval){clearInterval(refreshInterval);"
-        "refreshInterval=null;}}window.addEventListener('load',function(){"
-        "initControls();scrollToBottom();});document.addEventListener('"
-        "DOMContentLoaded',function(){setTimeout(scrollToBottom,100);});"
-        "setTimeout(scrollToBottom,200);</script></head><body><div "
-        "class=\"controls\"><label><input type=\"checkbox\" id=\"autoScroll\" "
-        "checked> Auto Scroll</label><label><input type=\"checkbox\" "
-        "id=\"autoRefresh\" checked> Auto Refresh</label></div><pre>";
-
-    // Read file in chunks and append to HTML
-    const size_t chunkSize = 1024;
-    char buffer[chunkSize];
-    while (file.available()) {
-      size_t bytesRead = file.readBytes(buffer, chunkSize);
-      // Escape HTML special characters
-      for (size_t i = 0; i < bytesRead; i++) {
-        if (buffer[i] == '<') {
-          htmlContent += "&lt;";
-        } else if (buffer[i] == '>') {
-          htmlContent += "&gt;";
-        } else if (buffer[i] == '&') {
-          htmlContent += "&amp;";
-        } else {
-          htmlContent += buffer[i];
-        }
-      }
-    }
-    file.close();
-
-    htmlContent += "</pre></body></html>";
-
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "text/html", htmlContent);
-    addCORS(response);
-    request->send(response);
-  });
-}
+#endif // ESPWiFi_LOG

@@ -1,0 +1,56 @@
+# Common Configuration (shared across all boards)
+# Board-specific configurations should be in sdkconfig.{env-name}.defaults files
+
+# Main task stack size (ESP-IDF 5.x uses CONFIG_ESP_MAIN_TASK_STACK_SIZE).
+# Bigger stack reduces available heap, so keep this as small as you can while stable.
+# If you hit stack overflows, increase gradually and use uxTaskGetStackHighWaterMark()
+# to measure.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Note: esp_http_server task stack is NOT a Kconfig option; it’s set via
+# httpd_config_t.stack_size in code (see src/WebServer.cpp).
+
+# Secure Boot V2 (ESP32-C3 uses ECDSA - auto-selected when RSA is disabled)
+# CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
+# CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+# CONFIG_SECURE_BOOT_V2_ENABLED=y
+# CONFIG_SECURE_BOOT=y
+
+# Flash Encryption
+# CONFIG_SECURE_FLASH_ENC_ENABLED=n
+
+# Secure/Insecure Download Mode
+CONFIG_SECURE_INSECURE_ALLOW_DL_MODE=y
+CONFIG_SECURE_ROM_DL_MODE_ENABLED=y
+
+# Bluetooth (NimBLE)
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+
+# WiFi
+CONFIG_ESP32_WIFI_ENABLED=y
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# mDNS
+CONFIG_MDNS_MAX_SERVICES=10
+CONFIG_MDNS_TASK_PRIORITY=1
+CONFIG_MDNS_TASK_STACK_SIZE=4096
+CONFIG_MDNS_TASK_AFFINITY_CPU0=y
+CONFIG_MDNS_SERVICE_ADD_TIMEOUT_MS=2000
+
+# LittleFS
+CONFIG_LITTLEFS_MAX_PARTITIONS=3
+CONFIG_LITTLEFS_OBJ_NAME_LEN=64
+CONFIG_LITTLEFS_PAGE_SIZE=256
+CONFIG_LITTLEFS_USE_MTIME=y
+
+# Logging
+# Changed from DEBUG to INFO to reduce binary size
+# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
+
+# Optimization
+# CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y

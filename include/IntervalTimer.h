@@ -1,16 +1,21 @@
 #ifndef ESPWiFi_INTERVALTIMER
 #define ESPWiFi_INTERVALTIMER
-#include <Arduino.h>
 
-#include <functional>  // Include for std::function
+#include "esp_timer.h"
+#include <functional>
+
+// Helper function to replace Arduino's millis()
+inline unsigned long millis() {
+  return (unsigned long)(esp_timer_get_time() / 1000ULL);
+}
 
 // Helper class for interval timing
 class IntervalTimer {
   unsigned long lastRun = 0;
   unsigned int interval;
-  std::function<void()> runFunc = nullptr;  // Use std::function for callback
+  std::function<void()> runFunc = nullptr; // Use std::function for callback
 
- public:
+public:
   void reset() { lastRun = millis(); }
   void setInterval(unsigned int ms) { interval = ms; }
   void setCallback(std::function<void()> callback) { runFunc = callback; }
@@ -36,4 +41,4 @@ class IntervalTimer {
   void run(unsigned int ms = 0) { shouldRun(ms); }
 };
 
-#endif  // ESPWiFi_INTERVALTIMER
+#endif // ESPWiFi_INTERVALTIMER

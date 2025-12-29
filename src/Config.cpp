@@ -2,6 +2,7 @@
 #define ESPWiFi_CONFIG
 
 #include "ESPWiFi.h"
+#include <sys/stat.h>
 
 void ESPWiFi::readConfig() {
   static bool readingConfig = false;
@@ -11,64 +12,271 @@ void ESPWiFi::readConfig() {
   readingConfig = true;
 
   initLittleFS();
-  File file = LittleFS.open(configFile, "r");
 
-  if (!file) {
+  if (!littleFsInitialized) {
     config = defaultConfig();
-    log(WARNING, "⚙️ Failed to open config file: Using default config");
-  } else {
-    JsonDocument loadedConfig;
-    DeserializationError error = deserializeJson(loadedConfig, file);
-    if (error) {
-      config = defaultConfig();
-      log(WARNING, "⚙️ Failed to read config file: %s: Using default config",
-          error.c_str());
-    } else {
-      mergeConfig(loadedConfig);
-    }
-    file.close();
+    log(WARNING, "⚙️ No filesystem: Using default config");
+    printConfig();
+    readingConfig = false;
+    return;
   }
 
+  size_t fileSize = 0;
+  char *buffer = readFile(configFile, &fileSize);
+
+  if (!buffer || fileSize == 0 || fileSize >= 10240) { // Limit to 10KB
+    if (buffer)
+      free(buffer);
+    config = defaultConfig();
+    log(WARNING, "⚙️ Failed to read config file: Using default config");
+  } else {
+    // Parse JSON
+    JsonDocument loadedConfig;
+    DeserializationError error = deserializeJson(loadedConfig, buffer);
+    free(buffer);
+
+    if (error) {
+      config = defaultConfig();
+      log(WARNING, "⚙️ Failed to parse config file: %s: Using default config",
+          error.c_str());
+    } else {
+      config = mergeJson(config, loadedConfig);
+    }
+  }
+
+  log(INFO, "⚙️ Config loaded: %s", configFile.c_str());
   printConfig();
-  file.close();
 
   readingConfig = false;
 }
 
+void ESPWiFi::printConfig() {
+
+  if (!shouldLog(VERBOSE)) {
+    return;
+  }
+
+  yield(); // Yield before JSON operations
+  // Create a copy of config with masked passwords for logging
+  JsonDocument logConfig;
+  std::string configJson;
+  serializeJson(config, configJson);
+  yield(); // Yield after serialization
+  DeserializationError error = deserializeJson(logConfig, configJson);
+  if (error) {
+    log(ERROR, "Failed to deserialize config for printing: %s", error.c_str());
+    return;
+  }
+
+  // Recursively mask any fields with keys matching sensitive field names
+  // ArduinoJson doesn't have a built-in recursive search, so we implement our
+  // own
+  const char *sensitiveKeys[] = {"password", "passwd",  "key",   "token",
+                                 "apiKey",   "api_key", "secret"};
+  const size_t numSensitiveKeys =
+      sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
+
+  // const int MAX_DEPTH = 10; // Limit recursion depth to prevent stack
+  // overflow
+  std::function<void(JsonVariant, int)> maskSensitiveFields =
+      [&](JsonVariant variant, int depth) {
+        // if (depth > MAX_DEPTH) {
+        //   return; // Too deep, skip masking
+        // }
+
+        if (variant.is<JsonObject>()) {
+          JsonObject obj = variant.as<JsonObject>();
+          for (JsonPair kvp : obj) {
+            std::string key = kvp.key().c_str();
+            JsonVariant value = obj[key]; // Get mutable reference
+
+            // Case-insensitive check for sensitive fields
+            std::string lowerKey = key;
+            for (char &c : lowerKey) {
+              c = tolower(c);
+            }
+
+            bool shouldMask = false;
+            for (size_t i = 0; i < numSensitiveKeys; i++) {
+              if (lowerKey == sensitiveKeys[i]) {
+                shouldMask = true;
+                break;
+              }
+            }
+
+            if (shouldMask) {
+              value.set("********");
+            } else if (value.is<JsonObject>() || value.is<JsonArray>()) {
+              // Recursively process nested objects and arrays
+              maskSensitiveFields(value, depth + 1);
+            }
+
+            // Yield periodically to prevent stack overflow
+            if (depth % 3 == 0) {
+              yield();
+            }
+          }
+        } else if (variant.is<JsonArray>()) {
+          JsonArray arr = variant.as<JsonArray>();
+          for (JsonVariant item : arr) {
+            if (item.is<JsonObject>() || item.is<JsonArray>()) {
+              maskSensitiveFields(item, depth + 1);
+            }
+          }
+        }
+      };
+
+  maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
+  yield(); // Yield after masking
+
+  std::string prettyConfig;
+  serializeJsonPretty(logConfig, prettyConfig);
+  yield(); // Yield after pretty serialization
+  log(VERBOSE, "\n" + prettyConfig);
+}
+
+void ESPWiFi::saveConfig(JsonDocument &configToSave) {
+  initLittleFS();
+
+  if (!littleFsInitialized) {
+    log(ERROR, "No filesystem available for saving config");
+    return;
+  }
+
+  yield(); // Yield before JSON operations
+
+  // Serialize to buffer - add extra padding for safety
+  size_t size = measureJson(configToSave);
+  if (size == 0) {
+    log(ERROR, "Failed to measure config JSON size");
+    return;
+  }
+
+  // Allocate buffer with extra space for safety
+  char *buffer = (char *)malloc(size + 32);
+  if (!buffer) {
+    log(ERROR, " Failed to allocate memory for config (size: %zu)", size);
+    return;
+  }
+
+  yield(); // Yield after allocation
+
+  size_t written = serializeJson(configToSave, buffer, size + 32);
+  if (written == 0) {
+    log(ERROR, "Failed to serialize config JSON");
+    free(buffer);
+    return;
+  }
+
+  yield(); // Yield after serialization
+
+  // Use atomic write to prevent corruption
+  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  free(buffer);
+
+  if (!success) {
+    log(ERROR, "💾  Failed to write config file");
+    return;
+  }
+
+  yield(); // Yield after file write
+
+  if (configToSave["log"]["enabled"].as<bool>()) {
+    log(INFO, "💾  Config Saved: %s", configFile.c_str());
+    // printConfig();
+  }
+}
+
 void ESPWiFi::saveConfig() {
   initLittleFS();
-  File file = LittleFS.open(configFile, "w");
-  if (!file) {
-    log(ERROR, " Failed to open config file for writing");
+
+  if (!littleFsInitialized) {
+    log(ERROR, "No filesystem available for saving config");
     return;
   }
-  size_t written = serializeJson(config, file);
-  file.close();
-  if (written == 0) {
-    log(ERROR, " Failed to write config JSON to file");
+
+  // Serialize to buffer
+  size_t size = measureJson(config);
+  char *buffer = (char *)malloc(size + 1);
+  if (!buffer) {
+    log(ERROR, " Failed to allocate memory for config");
     return;
   }
+
+  size_t written = serializeJson(config, buffer, size + 1);
+
+  // Use atomic write to prevent corruption
+  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  free(buffer);
+
+  if (!success) {
+    log(ERROR, " Failed to write config file");
+    return;
+  }
+
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "💾 Config Saved: %s", configFile.c_str());
     printConfig();
   }
 }
 
-void ESPWiFi::printConfig() {
-  JsonDocument logConfig = config;
-  logConfig["wifi"]["accessPoint"]["password"] = "********";
-  logConfig["wifi"]["client"]["password"] = "********";
-  logConfig["auth"]["password"] = "********";
-  String prettyConfig;
-  serializeJsonPretty(logConfig, prettyConfig);
-  log(INFO, "⚙️ Config: " + configFile);
-  log(DEBUG, "\n" + prettyConfig);
+JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
+                                const JsonDocument &updates) {
+  // Create a new JsonDocument by copying the base
+  JsonDocument result;
+
+  // Copy base into result by serializing and deserializing
+  std::string baseJson;
+  serializeJson(base, baseJson);
+  DeserializationError error = deserializeJson(result, baseJson);
+  if (error) {
+    // If copy fails, return empty document
+    log(ERROR, "Failed to copy base JSON in mergeJson: %s", error.c_str());
+    return result;
+  }
+
+  // Deep merge: recursively merge objects instead of replacing them
+  // Limit recursion depth to prevent stack overflow
+  const int MAX_DEPTH = 10;
+  std::function<void(JsonVariant, JsonVariantConst, int)> deepMerge =
+      [&](JsonVariant dst, JsonVariantConst src, int depth) {
+        if (depth > MAX_DEPTH) {
+          // Too deep, just replace instead of merging
+          dst.set(src);
+          return;
+        }
+
+        if (src.is<JsonObjectConst>() && dst.is<JsonObject>()) {
+          // Both are objects - merge recursively
+          for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
+            JsonVariant dstValue = dst[kvp.key()];
+            if (dstValue.isNull()) {
+              // Key doesn't exist in destination, just copy it
+              dst[kvp.key()] = kvp.value();
+            } else {
+              // Key exists, recurse to merge deeper
+              deepMerge(dstValue, kvp.value(), depth + 1);
+            }
+          }
+          // Yield periodically during merge to prevent stack overflow
+          if (depth % 3 == 0) {
+            yield();
+          }
+        } else {
+          // Not both objects (or one is null), just replace the value
+          dst.set(src);
+        }
+      };
+
+  // Start the deep merge from root
+  deepMerge(result.as<JsonVariant>(), updates.as<JsonVariantConst>(), 0);
+
+  return result;
 }
 
-void ESPWiFi::mergeConfig(JsonDocument &json) {
-  for (JsonPair kv : json.as<JsonObject>()) {
-    config[kv.key()] = kv.value();
-  }
+void ESPWiFi::requestConfigSave() {
+  // Set flag to save config from main task (safe for filesystem operations)
+  configNeedsSave = true;
 }
 
 void ESPWiFi::handleConfig() {
@@ -83,117 +291,65 @@ void ESPWiFi::handleConfig() {
 }
 
 JsonDocument ESPWiFi::defaultConfig() {
-  JsonDocument defaultConfig;
+  JsonDocument doc;
 
-  defaultConfig["deviceName"] = "ESPWiFi";
-  defaultConfig["hostname"] = String(WiFi.getHostname());
+  doc["deviceName"] = "ESPWiFi";
+  doc["hostname"] = getHostname();
 
-  defaultConfig["wifi"]["enabled"] = true;
-  defaultConfig["wifi"]["mode"] = "accessPoint";
+  doc["wifi"]["enabled"] = true;
+  doc["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  String ssid = "ESPWiFi-" + String(WiFi.getHostname());
-  defaultConfig["wifi"]["ap"]["ssid"] = ssid;
-  defaultConfig["wifi"]["ap"]["password"] = "espwifi!";
+  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"].as<std::string>();
+  doc["wifi"]["accessPoint"]["password"] = "espwifi!";
 
   // WiFi Client
-  defaultConfig["wifi"]["client"]["ssid"] = "";
-  defaultConfig["wifi"]["client"]["password"] = "";
+  doc["wifi"]["client"]["ssid"] = "";
+  doc["wifi"]["client"]["password"] = "";
 
 // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
 #if defined(CONFIG_BT_ENABLED)
-  defaultConfig["bluetooth"]["installed"] = true;
+  doc["bluetooth"]["installed"] = true;
 #else
-  defaultConfig["bluetooth"]["installed"] = false;
+  doc["bluetooth"]["installed"] = false;
 #endif
-  defaultConfig["bluetooth"]["enabled"] = false;
+  doc["bluetooth"]["enabled"] = false;
 
   // Camera
 #ifdef ESPWiFi_CAMERA
-  defaultConfig["camera"]["installed"] = true;
-  defaultConfig["camera"]["enabled"] = false;
-  defaultConfig["camera"]["frameRate"] = 10;
-  defaultConfig["camera"]["rotation"] = 0;
-  defaultConfig["camera"]["brightness"] = 1;
-  defaultConfig["camera"]["contrast"] = 1;
-  defaultConfig["camera"]["saturation"] = 1;
-  defaultConfig["camera"]["exposure_level"] = 1;
-  defaultConfig["camera"]["exposure_value"] = 400;
-  defaultConfig["camera"]["agc_gain"] = 2;
-  defaultConfig["camera"]["gain_ceiling"] = 2;
-  defaultConfig["camera"]["white_balance"] = 1;
-  defaultConfig["camera"]["awb_gain"] = 1;
-  defaultConfig["camera"]["wb_mode"] = 0;
+  doc["camera"]["installed"] = true;
+  doc["camera"]["enabled"] = false;
+  doc["camera"]["frameRate"] = 10;
+  doc["camera"]["rotation"] = 0;
+  doc["camera"]["brightness"] = 1;
+  doc["camera"]["contrast"] = 1;
+  doc["camera"]["saturation"] = 1;
+  doc["camera"]["exposure_level"] = 1;
+  doc["camera"]["exposure_value"] = 400;
+  doc["camera"]["agc_gain"] = 2;
+  doc["camera"]["gain_ceiling"] = 2;
+  doc["camera"]["white_balance"] = 1;
+  doc["camera"]["awb_gain"] = 1;
+  doc["camera"]["wb_mode"] = 0;
 #else
-  defaultConfig["camera"]["installed"] = false;
+  doc["camera"]["installed"] = false;
 #endif
 
-  // OTA - based on partition table
-  defaultConfig["ota"]["enabled"] = isOTAEnabled();
+  // OTA - based on LittleFS partition
+  doc["ota"]["enabled"] = isOTAEnabled();
 
   // Auth
-  defaultConfig["auth"]["enabled"] = false;
-  defaultConfig["auth"]["password"] = "admin";
-  defaultConfig["auth"]["username"] = "admin";
+  doc["auth"]["enabled"] = false;
+  doc["auth"]["password"] = "admin";
+  doc["auth"]["username"] = "admin";
+  doc["auth"]["excludePaths"] = {"/", "/static/*", "/favicon.ico",
+                                 "/api/auth/login", "/asset-manifest.json"};
 
-  // Logging: access, debug, info, warning, error
-  defaultConfig["log"]["enabled"] = true;
-  defaultConfig["log"]["level"] = "debug";
+  // Logging: verbose, access, debug, info, warning, error
+  doc["log"]["enabled"] = true;
+  doc["log"]["level"] = "debug";
 
-  return defaultConfig;
+  return doc;
 }
 
-void ESPWiFi::srvConfig() {
-  initWebServer();
-
-  // Add OPTIONS handler for /config endpoint
-  webServer->on(
-      "/config", HTTP_OPTIONS,
-      [this](AsyncWebServerRequest *request) { handleCorsPreflight(request); });
-
-  webServer->on("/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    String responseStr;
-    serializeJson(config, responseStr);
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", responseStr);
-    addCORS(response);
-    request->send(response);
-  });
-
-  webServer->addHandler(new AsyncCallbackJsonWebHandler(
-      "/config", [this](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (!authorized(request)) {
-          sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-          return;
-        }
-        if (json.isNull()) {
-          AsyncWebServerResponse *response = request->beginResponse(
-              400, "application/json", "{\"error\":\"EmptyInput\"}");
-          addCORS(response);
-          request->send(response);
-          log(ERROR, "/config Error parsing JSON: EmptyInput");
-          return;
-        }
-
-        JsonDocument jsonDoc = json;
-        mergeConfig(jsonDoc);
-
-        if (request->method() == HTTP_PUT) {
-          saveConfig();
-        }
-
-        handleConfig();
-
-        String responseStr;
-        serializeJson(config, responseStr);
-        AsyncWebServerResponse *response =
-            request->beginResponse(200, "application/json", responseStr);
-        addCORS(response);
-        request->send(response);
-      }));
-}
 #endif // ESPWiFi_CONFIG

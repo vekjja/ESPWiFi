@@ -1,164 +1,472 @@
-#ifndef ESPWiFi_WEB_SERVER_H
-#define ESPWiFi_WEB_SERVER_H
-
+// WebServer.cpp - ESP-IDF HTTP Server Implementation
 #include "ESPWiFi.h"
+#include "esp_chip_info.h"
+#include "esp_heap_caps.h"
+#include "esp_http_server.h"
+#include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_wifi.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
+#include <ArduinoJson.h>
+#include <cstring>
+#include <errno.h>
+#include <string>
+#include <sys/stat.h>
 
-// Helper: Add CORS headers to a response
-void ESPWiFi::addCORS(AsyncWebServerResponse *response) {
-  response->addHeader("Access-Control-Allow-Origin", "*");
-  response->addHeader("Access-Control-Allow-Methods",
-                      "GET, POST, OPTIONS, PUT, DELETE");
-  response->addHeader("Access-Control-Allow-Headers",
-                      "Content-Type, Authorization");
-}
-
-void ESPWiFi::handleCorsPreflight(AsyncWebServerRequest *request) {
-  AsyncWebServerResponse *response = request->beginResponse(204);
-  addCORS(response);
-  request->send(response);
-}
-
-void ESPWiFi::sendJsonResponse(AsyncWebServerRequest *request, int statusCode,
-                               const String &jsonBody) {
-  AsyncWebServerResponse *response =
-      request->beginResponse(statusCode, "application/json", jsonBody);
-  addCORS(response);
-  request->send(response);
-}
-
-void ESPWiFi::initWebServer() {
-  // Only create web server if WiFi is enabled (no point without network access)
-  if (!webServer && config["wifi"]["enabled"].as<bool>()) {
-    webServer = new AsyncWebServer(80);
-  }
+static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
+                                  const std::string &clientInfo) {
+  (void)espwifi;
+  (void)req;
+  (void)clientInfo;
+  return ESP_OK;
 }
 
 void ESPWiFi::startWebServer() {
-  if (webServerStarted || !config["wifi"]["enabled"].as<bool>()) {
-    log(INFO, "🗄️  HTTP Web Server Disabled");
+  if (webServerStarted) {
     return;
   }
-  initWebServer();
-  srvAll();
-  webServer->begin();
+
+  // Configure HTTP server
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.max_uri_len = 512;
+  config.max_open_sockets = 7;
+  config.max_uri_handlers = 32;
+  config.lru_purge_enable = true;
+  config.uri_match_fn = httpd_uri_match_wildcard; // Enable wildcard matching
+  // HTTP server runs in its own task; stack is a common “heap killer” if set
+  // too big. 4096 is default in IDF; bump only if you see stack overflows
+  // during handlers.
+  config.stack_size = 8192;
+
+  // Start the HTTP server
+  esp_err_t ret = httpd_start(&webServer, &config);
+  if (ret != ESP_OK) {
+    log(ERROR, "❌ Failed to start HTTP server: %s", esp_err_to_name(ret));
+    webServerStarted = false;
+    return;
+  }
   webServerStarted = true;
-  log(INFO, "🗄️  HTTP Web Server Started");
-  String serverIP = WiFi.isConnected() ? WiFi.localIP().toString()
-                                       : WiFi.softAPIP().toString();
-  log(DEBUG, "\tURL: http://%s", serverIP.c_str());
-  log(DEBUG, "\tURL: http://%s.local",
-      config["deviceName"].as<String>().c_str());
+
+  // Global CORS preflight handler (covers all routes)
+  // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
+  (void)registerRoute("/*", HTTP_OPTIONS, &noopRouteHandler);
+
+  // Restart endpoint
+  (void)registerRoute("/api/restart", HTTP_POST,
+                      [](ESPWiFi *espwifi, httpd_req_t *req,
+                         const std::string &clientInfo) -> esp_err_t {
+                        (void)espwifi->sendJsonResponse(
+                            req, 200, "{\"status\":\"restarting\"}",
+                            &clientInfo);
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        esp_restart();
+                        return ESP_OK;
+                      });
+
+  // srvAll();
+
+  webServerStarted = true;
+  log(INFO, "🗄️ HTTP Web Server started");
+  log(DEBUG, "\thttp://%s:%d", getHostname().c_str(), 80);
+  log(DEBUG, "\thttp://%s:%d", ipAddress().c_str(), 80);
 }
 
-void ESPWiFi::srvRoot() {
-  initWebServer();
-  // Serve index.html at root - no auth required (login page needs to load)
-  webServer->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/index.html")) {
-      AsyncWebServerResponse *response =
-          request->beginResponse(LittleFS, "/index.html", "text/html");
-      addCORS(response);
-      request->send(response);
-    } else {
-      AsyncWebServerResponse *response =
-          request->beginResponse(404, "text/plain", "File Not Found");
-      addCORS(response);
-      request->send(response);
-    }
-  });
-
-  // webServer->on("/foo", HTTP_GET, [this](AsyncWebServerRequest *request) {
-  //   if (LittleFS.exists("/index.html")) {
-  //     AsyncWebServerResponse *response =
-  //         request->beginResponse(200, "text/plain", "BAR!");
-  //     addCORS(response);
-  //     request->send(response);
-  //   }
-  // });
+void ESPWiFi::addCORS(httpd_req_t *req) {
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Methods",
+                     "GET, POST, PUT, DELETE, OPTIONS");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Headers",
+                     "Content-Type, Authorization");
 }
 
-void ESPWiFi::srvRestart() {
-  initWebServer();
-  webServer->on("/restart", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "text/plain", "Restarting...");
-    addCORS(response);
-    request->send(response);
-    delay(1000);
-    ESP.restart();
-  });
+void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
+  addCORS(req);
+  httpd_resp_set_status(req, "204 No Content");
+  httpd_resp_send(req, nullptr, 0);
 }
 
-void ESPWiFi::srvInfo() {
-  initWebServer();
-  // Device info endpoint
-  webServer->on("/info", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if (!authorized(request)) {
-      sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
-      return;
+esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
+  if (req == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Handle OPTIONS requests automatically (CORS preflight)
+  if (req->method == HTTP_OPTIONS) {
+    handleCorsPreflight(req);
+    return ESP_ERR_HTTPD_RESP_SEND;
+  }
+
+  // Add CORS headers to all responses
+  addCORS(req);
+
+  // Capture early; slow/streaming sends may lose socket/headers if client
+  // resets.
+  std::string clientInfo;
+  if (outClientInfo != nullptr) {
+    clientInfo = getClientInfo(req);
+  }
+
+  // Check if authorized
+  if (!authorized(req)) {
+    if (clientInfo.empty()) {
+      clientInfo = getClientInfo(req);
     }
-    JsonDocument jsonDoc;
-    jsonDoc["uptime"] = millis() / 1000;
-    jsonDoc["ip"] = WiFi.isConnected() ? WiFi.localIP().toString()
-                                       : WiFi.softAPIP().toString();
-    jsonDoc["mac"] = WiFi.macAddress();
+    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
+                           &clientInfo);
+    return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
+  }
 
-    // Construct AP SSID from config the same way as when starting AP
-    String hostname = String(WiFi.getHostname());
-    jsonDoc["hostname"] = hostname;
-    jsonDoc["ap_ssid"] =
-        config["wifi"]["ap"]["ssid"].as<String>() + "-" + hostname;
-    jsonDoc["mdns"] = config["deviceName"].as<String>() + ".local";
-    jsonDoc["chip"] = String(ESP.getChipModel());
-    jsonDoc["sdk_version"] = String(ESP.getSdkVersion());
-    jsonDoc["free_heap"] = ESP.getFreeHeap();
-    jsonDoc["total_heap"] = ESP.getHeapSize();
-    jsonDoc["used_heap"] = ESP.getHeapSize() - ESP.getFreeHeap();
-
-    if (WiFi.isConnected()) {
-      jsonDoc["client_ssid"] = WiFi.SSID();
-      jsonDoc["rssi"] = WiFi.RSSI();
-    }
-
-    size_t totalBytes = LittleFS.totalBytes();
-    size_t usedBytes = LittleFS.usedBytes();
-    jsonDoc["littlefs_free"] = totalBytes - usedBytes;
-    jsonDoc["littlefs_used"] = usedBytes;
-    jsonDoc["littlefs_total"] = totalBytes;
-
-    // Add SD card storage information if available
-    if (sdCardInitialized && sd) {
-      size_t sdTotalBytes, sdUsedBytes, sdFreeBytes;
-      getStorageInfo("sd", sdTotalBytes, sdUsedBytes, sdFreeBytes);
-      jsonDoc["sd_free"] = sdFreeBytes;
-      jsonDoc["sd_used"] = sdUsedBytes;
-      jsonDoc["sd_total"] = sdTotalBytes;
-    }
-
-    String jsonResponse;
-    serializeJson(jsonDoc, jsonResponse);
-    AsyncWebServerResponse *response =
-        request->beginResponse(200, "application/json", jsonResponse);
-    addCORS(response);
-    request->send(response);
-  });
+  if (outClientInfo != nullptr) {
+    *outClientInfo = std::move(clientInfo);
+  }
+  return ESP_OK; // Verification passed, continue with handler
 }
 
-void ESPWiFi::srvAll() {
-  srvAuth(); // Auth endpoints must be registered first
-  srvRoot();
-  srvOTA();
-  srvInfo();
-  srvGPIO();
-  srvFiles();
-  srvConfig();
-  srvBluetooth();
-  srvLog();
-  srvRestart();
+esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
+  RouteCtx *ctx = (RouteCtx *)req->user_ctx;
+  if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {
+    httpd_resp_send_500(req);
+    return ESP_OK;
+  }
+
+  std::string clientInfo;
+  if (ctx->self->verifyRequest(req, &clientInfo) != ESP_OK) {
+    return ESP_OK; // preflight or error already handled
+  }
+
+  return ctx->handler(ctx->self, req, clientInfo);
 }
 
-#endif // ESPWiFi_WEB_SERVER_H
+esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
+                                 RouteHandler handler) {
+  if (!webServer) {
+    log(ERROR, "Cannot register route %s: web server not initialized",
+        (uri != nullptr) ? uri : "(null)");
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (uri == nullptr || handler == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Allocate a tiny per-route context. This runs at init time; keep it simple.
+  RouteCtx *ctx = new (std::nothrow) RouteCtx();
+  if (ctx == nullptr) {
+    log(ERROR, "Cannot register route %s: out of memory", uri);
+    return ESP_ERR_NO_MEM;
+  }
+  ctx->self = this;
+  ctx->handler = handler;
+
+  httpd_uri_t route = {
+      .uri = uri,
+      .method = method,
+      .handler = &ESPWiFi::routeTrampoline,
+      .user_ctx = ctx,
+  };
+
+  esp_err_t ret = httpd_register_uri_handler(webServer, &route);
+  if (ret != ESP_OK) {
+    log(ERROR, "Failed to register route %s: %s", uri, esp_err_to_name(ret));
+    delete ctx;
+    return ret;
+  }
+
+  _routeContexts.push_back(ctx);
+  return ESP_OK;
+}
+
+// Helper to get HTTP method as string for logging
+const char *ESPWiFi::getMethodString(int method) {
+  switch (static_cast<httpd_method_t>(method)) {
+  case HTTP_GET:
+    return "GET";
+  case HTTP_POST:
+    return "POST";
+  case HTTP_PUT:
+    return "PUT";
+  case HTTP_DELETE:
+    return "DELETE";
+  case HTTP_PATCH:
+    return "PATCH";
+  case HTTP_HEAD:
+    return "HEAD";
+  case HTTP_OPTIONS:
+    return "OPTIONS";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
+  // Get request information for logging
+  const char *method = getMethodString(req->method);
+  const char *uri = req->uri;
+  const char *userAgent = "-";
+
+  // Best-effort client IP extraction (capture early; socket may later die)
+  char remote_ip[64];
+  strncpy(remote_ip, "-", sizeof(remote_ip) - 1);
+  remote_ip[sizeof(remote_ip) - 1] = '\0';
+
+  int sockfd = httpd_req_to_sockfd(req);
+  if (sockfd >= 0) {
+    struct sockaddr_storage addr;
+    socklen_t addr_len = sizeof(addr);
+    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) == 0) {
+      if (addr.ss_family == AF_INET) {
+        struct sockaddr_in *a = (struct sockaddr_in *)&addr;
+        (void)inet_ntop(AF_INET, &a->sin_addr, remote_ip, sizeof(remote_ip));
+      } else if (addr.ss_family == AF_INET6) {
+        struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)&addr;
+        // If this is an IPv4 client represented as an IPv4-mapped IPv6 address
+        // (::ffff:a.b.c.d), log it as plain IPv4 for readability.
+        const uint8_t *b = (const uint8_t *)&a6->sin6_addr;
+        const bool isV4Mapped =
+            (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 && b[4] == 0 &&
+             b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0 &&
+             b[10] == 0xff && b[11] == 0xff);
+        if (isV4Mapped) {
+          struct in_addr v4;
+          memcpy(&v4, b + 12, sizeof(v4));
+          (void)inet_ntop(AF_INET, &v4, remote_ip, sizeof(remote_ip));
+        } else {
+          (void)inet_ntop(AF_INET6, &a6->sin6_addr, remote_ip,
+                          sizeof(remote_ip));
+        }
+      }
+    }
+  }
+
+  // Get User-Agent header if available (bounded; avoid heap allocs)
+  char userAgentBuf[128];
+  size_t user_agent_len = httpd_req_get_hdr_value_len(req, "User-Agent");
+  if (user_agent_len > 0) {
+    userAgentBuf[0] = '\0';
+    if (httpd_req_get_hdr_value_str(req, "User-Agent", userAgentBuf,
+                                    sizeof(userAgentBuf)) == ESP_OK &&
+        userAgentBuf[0] != '\0') {
+      userAgent = userAgentBuf;
+    }
+  }
+
+  char clientInfoBuf[1024];
+  (void)snprintf(clientInfoBuf, sizeof(clientInfoBuf), "%s - %s - %s - %s",
+                 remote_ip, method, uri, userAgent);
+  return std::string(clientInfoBuf);
+}
+
+void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
+                        size_t bytesSent) {
+
+  std::string status = getStatusFromCode(statusCode);
+  log(ACCESS, "%s - %s - %zu", status.c_str(), clientInfo.c_str(), bytesSent);
+}
+
+esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
+                                    const std::string &jsonBody,
+                                    const std::string *clientInfo) {
+  addCORS(req);
+  httpd_resp_set_type(req, "application/json");
+
+  // Reuse captured clientInfo when available; otherwise capture now.
+  std::string clientInfoLocal;
+  const std::string &clientInfoRef =
+      (clientInfo != nullptr) ? *clientInfo
+                              : (clientInfoLocal = getClientInfo(req));
+
+  std::string httpStatus = getStatusFromCode(statusCode);
+  httpd_resp_set_status(req, httpStatus.c_str());
+
+  // For larger JSON payloads, stream in chunks with tiny yields to avoid
+  // starving the httpd task / triggering the task watchdog on slow links.
+  constexpr size_t CHUNK_SIZE = 1024;
+  esp_err_t ret = ESP_OK;
+  size_t sent = 0;
+
+  if (jsonBody.size() <= CHUNK_SIZE) {
+    ret = httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
+    sent = (ret == ESP_OK) ? jsonBody.size() : 0;
+  } else {
+    const char *data = jsonBody.data();
+    size_t remaining = jsonBody.size();
+    while (remaining > 0) {
+      size_t toSend = remaining > CHUNK_SIZE ? CHUNK_SIZE : remaining;
+      ret = httpd_resp_send_chunk(req, data + sent, toSend);
+      if (ret != ESP_OK) {
+        break;
+      }
+      sent += toSend;
+      remaining -= toSend;
+      yield();
+    }
+    // Finalize chunked transfer (even on error; best-effort)
+    esp_err_t end_ret = httpd_resp_send_chunk(req, nullptr, 0);
+    if (ret == ESP_OK && end_ret != ESP_OK) {
+      ret = end_ret;
+    }
+  }
+
+  // Single access log per request
+  logAccess(statusCode, clientInfoRef, sent);
+  return ret;
+}
+
+esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
+                                    const std::string &filePath,
+                                    const std::string *clientInfo) {
+  addCORS(req);
+
+  // Reuse captured clientInfo when available; otherwise capture now.
+  std::string clientInfoLocal;
+  const std::string &clientInfoRef =
+      (clientInfo != nullptr) ? *clientInfo
+                              : (clientInfoLocal = getClientInfo(req));
+
+  // Check if LFS is initialized
+  if (!littleFsInitialized) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, "text/plain");
+    const char *body = "Filesystem not available";
+    esp_err_t ret = httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+    if (ret == ESP_OK) {
+      logAccess(503, clientInfoRef, strlen(body));
+      return ESP_OK;
+    }
+    logAccess(503, clientInfoRef, 0);
+    return ret;
+  }
+
+  // Construct full path
+  std::string fullPath = lfsMountPoint + filePath;
+
+  // Check if file exists first
+  struct stat fileStat;
+  int statResult = stat(fullPath.c_str(), &fileStat);
+  if (statResult != 0) {
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
+  }
+
+  // Check if it's actually a file (not a directory)
+  if (S_ISDIR(fileStat.st_mode)) {
+    // Path is a directory, not a file
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
+  }
+
+  // Open file from LFS
+  FILE *file = fopen(fullPath.c_str(), "rb");
+  if (!file) {
+    printf("fopen failed for %s, errno: %d\n", fullPath.c_str(), errno);
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to open file\"}",
+                            &clientInfoRef);
+  }
+
+  // Get file size
+  if (fseek(file, 0, SEEK_END) != 0) {
+    printf("fseek SEEK_END failed, errno: %d\n", errno);
+    fclose(file);
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
+  }
+
+  long fileSize = ftell(file);
+  if (fileSize < 0) {
+    printf("ftell failed, errno: %d\n", errno);
+    fclose(file);
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
+  }
+
+  if (fseek(file, 0, SEEK_SET) != 0) {
+    printf("fseek SEEK_SET failed, errno: %d\n", errno);
+    fclose(file);
+    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
+                            &clientInfoRef);
+  }
+
+  if (fileSize == 0) {
+    printf("File size is 0\n");
+    fclose(file);
+    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
+                            &clientInfoRef);
+  }
+
+  // Determine content type based on file extension
+  std::string contentType = getContentType(filePath);
+  httpd_resp_set_type(req, contentType.c_str());
+
+  // Use chunked encoding for all files to allow yields between chunks
+  // This prevents watchdog timeouts on slow networks
+  const size_t CHUNK_SIZE =
+      8192; // 8KB chunks (smaller chunks = more frequent yields)
+
+  esp_err_t ret = ESP_OK;
+
+  // Enable buffered I/O for better performance
+  setvbuf(file, nullptr, _IOFBF, CHUNK_SIZE);
+
+  char *buffer = (char *)malloc(CHUNK_SIZE);
+  if (!buffer) {
+    printf("💔 malloc failed for chunk buffer of %zu bytes\n", CHUNK_SIZE);
+    fclose(file);
+    return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
+                            &clientInfoRef);
+  }
+
+  size_t totalSent = 0;
+
+  // Stream file in chunks with frequent yields to prevent watchdog timeout
+  while (totalSent < (size_t)fileSize && ret == ESP_OK) {
+    yield(); // Yield before each chunk
+    size_t toRead = (fileSize - totalSent < CHUNK_SIZE) ? (fileSize - totalSent)
+                                                        : CHUNK_SIZE;
+
+    size_t bytesRead = fread(buffer, 1, toRead, file);
+    if (bytesRead == 0) {
+      printf("💔  fread returned 0, expected %zu bytes\n", toRead);
+      ret = ESP_FAIL;
+      break;
+    }
+    yield(); // Yield after file I/O
+
+    // Send chunk
+    ret = httpd_resp_send_chunk(req, buffer, bytesRead);
+    if (ret != ESP_OK) {
+      printf("💔  httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
+             totalSent, esp_err_to_name(ret));
+      break;
+    }
+    yield(); // Yield after network I/O
+
+    totalSent += bytesRead;
+  }
+
+  // Finalize chunked transfer
+  if (ret == ESP_OK) {
+    yield();                                      // Yield before finalizing
+    ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
+    if (ret != ESP_OK) {
+      printf("💔  Failed to finalize chunked transfer: %s\n",
+             esp_err_to_name(ret));
+    }
+    yield(); // Yield after finalizing
+  }
+
+  free(buffer);
+  fclose(file);
+
+  if (ret != ESP_OK || totalSent != (size_t)fileSize) {
+    printf("💔  File send incomplete: sent %zu of %ld bytes\n", totalSent,
+           fileSize);
+    // At this point headers/body may already be partially sent; best-effort
+    // log.
+    logAccess(500, clientInfoRef, totalSent);
+    return ret;
+  }
+
+  // Default response is 200 OK for file responses
+  logAccess(200, clientInfoRef, totalSent);
+  return ESP_OK;
+}

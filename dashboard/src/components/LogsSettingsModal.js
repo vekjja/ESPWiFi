@@ -39,7 +39,13 @@ export default function LogsSettingsModal({
         maxHeight: { xs: "90%", sm: "88vh" },
       }}
       // Keep the left rail fixed; only the log output should scroll
-      contentSx={{ overflowY: "hidden" }}
+      contentSx={{
+        overflowY: "hidden",
+        // Tighter content spacing so more fits on screen
+        p: { xs: 2, sm: 1.5 },
+        pt: { xs: 1.5, sm: 1.25 },
+        pb: { xs: 1.5, sm: 1.25 },
+      }}
     >
       <DeviceSettingsLogsTab
         config={config}

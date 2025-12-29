@@ -36,7 +36,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [logLevel, setLogLevel] = useState(config?.log?.level || "info");
   // Auto refresh interval: null (disabled) or 3 seconds
   const [refreshInterval, setRefreshInterval] = useState(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(false);
   const [lineWrap, setLineWrap] = useState(false);
   const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);
@@ -69,8 +69,11 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const menuIconSx = (color) => ({
     color,
     pointerEvents: "none",
-    p: 0.5,
+    p: isMobile ? 0.25 : 0.5,
     justifySelf: isMobile ? "center" : "center",
+    "& svg": {
+      fontSize: isMobile ? 20 : 24,
+    },
   });
 
   const menuLabelSx = (color, extra = {}) => ({
@@ -429,7 +432,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       sx={{
         display: "flex",
         flexDirection: isMobile ? "column" : "row",
-        gap: 1,
+        gap: 0.75,
         alignItems: "stretch",
         height: "100%",
         flex: 1,
@@ -458,8 +461,8 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       >
         <CardContent
           sx={{
-            py: isMobile ? 1.5 : 2,
-            px: isMobile ? 2 : 2,
+            py: isMobile ? 1.25 : 1.5,
+            px: isMobile ? 1.5 : 1.5,
             flex: 1,
           }}
         >
@@ -739,7 +742,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            p: 2,
+            p: 1.5,
           }}
         >
           {logError && (
@@ -753,7 +756,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
             onScroll={handleLogScroll}
             sx={{
               flex: 1,
-              p: 2,
+              p: 1.5,
               bgcolor: "grey.900",
               color: "grey.100",
               fontFamily: "monospace",

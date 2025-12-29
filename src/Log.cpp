@@ -119,9 +119,11 @@ void ESPWiFi::writeLog(std::string message) {
   const std::string &base = logToSD ? sdMountPoint : lfsMountPoint;
   std::string full_path = base + logFilePath;
 
-  // Best-effort mutex: never block the httpd task.
+  // Best-effort mutex: wait briefly to reduce dropped *file* log lines, but
+  // keep the wait bounded so logging can’t noticeably stall request handling.
+  // (Serial output still prints even if we return early.)
   if (logFileMutex != nullptr) {
-    if (xSemaphoreTake(logFileMutex, 0) != pdTRUE) {
+    if (xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(18)) != pdTRUE) {
       return;
     }
   }
@@ -312,6 +314,28 @@ void ESPWiFi::logConfigHandler() {
   const bool desiredLogToSD =
       currentEnabled && currentPreferSD && sdCardInitialized;
 
+  // First run: establish baseline without emitting “changed” messages.
+  // This prevents noisy logs at boot when defaults differ from the persisted
+  // config (e.g. debug->access, false->true).
+  if (!initialized) {
+    if (logFileMutex != nullptr) {
+      (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
+    }
+    logFilePath = currentFile;
+    logToSD = desiredLogToSD;
+    if (logFileMutex != nullptr) {
+      xSemaphoreGive(logFileMutex);
+    }
+
+    lastEnabled = currentEnabled;
+    lastPreferSD = currentPreferSD;
+    lastLevel = currentLevel;
+    lastFile = currentFile;
+    lastLogToSD = desiredLogToSD;
+    initialized = true;
+    return;
+  }
+
   // Apply runtime changes (do not hold mutex while calling log()).
   bool needLogEnabledMsg = (currentEnabled != lastEnabled);
   bool needLevelMsg = (currentLevel != lastLevel);
@@ -339,18 +363,17 @@ void ESPWiFi::logConfigHandler() {
     lastEnabled = currentEnabled;
   }
   if (needLevelMsg) {
-    log(INFO, "📝 Log level changed: %s -> %s", lastLevel.c_str(),
+    log(INFO, "📝 Log level: %s -> %s", lastLevel.c_str(),
         currentLevel.c_str());
     lastLevel = currentLevel;
   }
   if (needPreferMsg) {
-    log(INFO, "📝 Log preferSD changed: %s -> %s",
-        lastPreferSD ? "true" : "false", currentPreferSD ? "true" : "false");
+    log(INFO, "📝 Log preferSD: %s -> %s", lastPreferSD ? "true" : "false",
+        currentPreferSD ? "true" : "false");
     lastPreferSD = currentPreferSD;
   }
   if (needFileMsg) {
-    log(INFO, "📝 Log file changed: %s -> %s", lastFile.c_str(),
-        currentFile.c_str());
+    log(INFO, "📝 Log file: %s -> %s", lastFile.c_str(), currentFile.c_str());
     lastFile = currentFile;
   }
   if (needSinkMsg) {

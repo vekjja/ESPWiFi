@@ -211,8 +211,9 @@ void ESPWiFi::printFilesystemInfo() {
   if (sdInitAttempted) {
     if (sdInitNotConfiguredForTarget) {
       log(WARNING,
-          "💾 SD Card enabled, but not configured for this target (mountpoint "
-          "%s)",
+          "💾 SD enabled in config (mountpoint %s)\n"
+          "ESPWiFi does not currently support SD mounting for this device\n"
+          "Disable (sd.enabled=false) in the config to avoid this message.",
           sdMountPoint.c_str());
     } else if (sdInitLastErr != ESP_OK) {
       log(WARNING, "💾 SD Card init failed: %s",

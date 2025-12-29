@@ -301,20 +301,20 @@ private:
   // ---- Log file synchronization (best-effort; avoid blocking httpd)
   // ----------
   SemaphoreHandle_t logFileMutex = nullptr;
-  // NOTE: We intentionally use this mutex in a **non-blocking / best-effort**
-  // way for log file I/O (see Log.cpp):
-  // - Pros: avoids stalling the ESP-IDF `httpd` task, improves perceived UI/API
-  //   latency under load, reduces risk of watchdog issues caused by logging.
-  // - Cons: if the mutex is busy, some log lines may be skipped for the *file*
-  //   sink (serial still prints). This trades perfect log persistence for
-  //   responsiveness and system robustness.
+  // NOTE: We intentionally use this mutex in a **best-effort / bounded-wait**
+  // way for log file I/O (see `src/Log.cpp`):
+  // - Pros: much fewer dropped *file* log lines vs fully non-blocking, while
+  //   still keeping waits short so the ESP-IDF `httpd` task stays responsive.
+  // - Cons: file logging can still drop lines under heavy contention (serial
+  //   still prints), and even a short wait can add tiny latency if logging is
+  //   called from request paths.
   //
   // If you want **blocking + precise file logging** (every log line is appended
   // to the file, in order), change the policy in `src/Log.cpp`:
   // - In `writeLog()`:
-  //   - Replace `xSemaphoreTake(logFileMutex, 0)` with a blocking take like
-  //     `xSemaphoreTake(logFileMutex, portMAX_DELAY)` (or a bounded wait such
-  //     as `pdMS_TO_TICKS(50)`).
+  //   - Replace the bounded wait (e.g. `pdMS_TO_TICKS(3)`) with a blocking take
+  //     like `xSemaphoreTake(logFileMutex, portMAX_DELAY)` (or a longer bounded
+  //     wait such as `pdMS_TO_TICKS(50)`).
   //   - Consider adding a `fflush()`/`fsync()` strategy if you need durability
   //     across power loss (higher latency + wear).
   // - In `logConfigHandler()` / `cleanLogFile()`:

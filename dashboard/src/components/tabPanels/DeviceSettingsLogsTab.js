@@ -37,7 +37,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   // Auto refresh interval: null (disabled) or 3 seconds
   const [refreshInterval, setRefreshInterval] = useState(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [lineWrap, setLineWrap] = useState(true);
+  const [lineWrap, setLineWrap] = useState(false);
   const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);
   const refreshIntervalRef = useRef(null);
@@ -49,11 +49,14 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
   const menuRowSx = (extra = {}) => ({
     display: "grid",
-    gridTemplateColumns: isMobile ? "auto" : "36px 1fr",
+    gridTemplateColumns: isMobile ? "1fr" : "44px minmax(0, 1fr)",
     alignItems: "center",
-    columnGap: 1,
+    justifyItems: isMobile ? "center" : "start",
+    columnGap: 0.75,
     cursor: "pointer",
-    width: isMobile ? "auto" : "100%",
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
     px: isMobile ? 0 : 0.5,
     py: isMobile ? 0 : 0.25,
     borderRadius: 1,
@@ -67,12 +70,15 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     color,
     pointerEvents: "none",
     p: 0.5,
+    justifySelf: isMobile ? "center" : "center",
   });
 
   const menuLabelSx = (color, extra = {}) => ({
     color,
     pointerEvents: "none",
     fontSize: "0.9rem",
+    minWidth: 0,
+    display: "block",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -459,11 +465,16 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
         >
           <Box
             sx={{
-              display: "flex",
-              flexDirection: isMobile ? "row" : "column",
-              flexWrap: isMobile ? "wrap" : "nowrap",
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile
+                ? "repeat(4, minmax(0, 1fr))"
+                : undefined,
+              justifyItems: isMobile ? "center" : undefined,
+              flexDirection: isMobile ? undefined : "column",
+              flexWrap: isMobile ? undefined : "nowrap",
               alignItems: isMobile ? "center" : "stretch",
               gap: isMobile ? 1 : 1,
+              // Keep mobile rows balanced; avoid a single icon on its own line.
             }}
           >
             {/* Enable/Disable Logging */}

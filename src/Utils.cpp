@@ -130,7 +130,9 @@ std::string ESPWiFi::getContentType(std::string filename) {
 }
 
 std::string ESPWiFi::getStatusFromCode(int statusCode) {
-  const char *status_text = "OK";
+  const char *status_text = "IDK This Status Code";
+  if (statusCode == 200)
+    status_text = "OK";
   if (statusCode == 201)
     status_text = "Created";
   else if (statusCode == 204)
@@ -139,6 +141,8 @@ std::string ESPWiFi::getStatusFromCode(int statusCode) {
     status_text = "Bad Request";
   else if (statusCode == 401)
     status_text = "Unauthorized";
+  else if (statusCode == 403)
+    status_text = "Forbidden";
   else if (statusCode == 404)
     status_text = "Not Found";
   else if (statusCode == 503)

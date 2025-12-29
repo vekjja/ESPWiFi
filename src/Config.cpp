@@ -274,12 +274,22 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
   return result;
 }
 
-void ESPWiFi::requestConfigSave() {
-  // Set flag to save config from main task (safe for filesystem operations)
-  configNeedsSave = true;
+void ESPWiFi::requestConfigUpdate() {
+  // Single “commit” flag: apply config + save config in main task.
+  configNeedsUpdate = true;
 }
 
 void ESPWiFi::handleConfig() {
+  // Storage config (mount/unmount) - can be slow; keep out of HTTP handlers.
+  const bool sdEnabled = config["sd"]["enabled"].isNull()
+                             ? false
+                             : config["sd"]["enabled"].as<bool>();
+  if (!sdEnabled && sdCardInitialized) {
+    deinitSDCard();
+  } else if (sdEnabled && !sdCardInitialized) {
+    initSDCard();
+  }
+
   bluetoothConfigHandler();
 #ifdef ESPWiFi_CAMERA
   cameraConfigHandler();
@@ -338,6 +348,11 @@ JsonDocument ESPWiFi::defaultConfig() {
   // OTA - based on LittleFS partition
   doc["ota"]["enabled"] = isOTAEnabled();
 
+  // SD card (optional; disabled by default)
+  doc["sd"]["enabled"] = false;
+  // type is informational today (mounting is config-gated and target-specific)
+  doc["sd"]["type"] = "auto";
+
   // Auth
   doc["auth"]["enabled"] = false;
   doc["auth"]["password"] = "admin";
@@ -350,8 +365,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   excludePaths.add("/asset-manifest.json");
 
   // Logging: verbose, access, debug, info, warning, error
+  doc["log"]["file"] = "/log";
   doc["log"]["enabled"] = true;
   doc["log"]["level"] = "debug";
+  doc["log"]["preferSD"] = true;
 
   return doc;
 }

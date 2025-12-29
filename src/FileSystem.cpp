@@ -4,6 +4,9 @@
 #include "ESPWiFi.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
+#include "esp_vfs_fat.h"
+#include "ff.h"
+#include "sdmmc_cmd.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <dirent.h>
@@ -43,9 +46,73 @@ void ESPWiFi::initLittleFS() {
 }
 
 void ESPWiFi::initSDCard() {
-  // SD Card support commented out for now
+  if (sdCardInitialized) {
+    return;
+  }
+
+  sdInitAttempted = true;
+  sdInitLastErr = ESP_OK;
+  sdInitNotConfiguredForTarget = false;
+
+  // Config-gated: keep boot fast / deterministic unless explicitly enabled.
+  bool enabled = false;
+  if (config["sd"].is<JsonObject>()) {
+    enabled = config["sd"]["enabled"] | false;
+  }
+  if (!enabled) {
+    sdCardInitialized = false;
+    // Not an error; SD just disabled.
+    sdInitAttempted = false;
+    return;
+  }
+
+  // Mount FATFS on SD. This is target/board specific; we implement a safe
+  // default for SDMMC-capable targets. If this fails, APIs will report SD as
+  // unavailable.
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+  sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+  slot_config.width = 1;
+
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
+  mount_config.format_if_mount_failed = false;
+  mount_config.max_files = 5;
+  mount_config.allocation_unit_size = 16 * 1024;
+
+  sdmmc_card_t *card = nullptr;
+  esp_err_t ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host,
+                                          &slot_config, &mount_config, &card);
+  if (ret != ESP_OK) {
+    sdCardInitialized = false;
+    sdCard = nullptr;
+    sdInitLastErr = ret;
+    return;
+  }
+  sdCard = (void *)card;
+  sdCardInitialized = true;
+#else
+  // For non-ESP32 targets, SD wiring varies widely (SDSPI vs SDMMC, pin mux,
+  // etc). Keep this explicit to avoid accidental pin conflicts.
   sdCardInitialized = false;
-  log(WARNING, "💾 SD Card not implemented yet");
+  sdCard = nullptr;
+  sdInitNotConfiguredForTarget = true;
+  sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+void ESPWiFi::deinitSDCard() {
+  if (!sdCardInitialized) {
+    return;
+  }
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  // Best-effort unmount. This can fail if card was never mounted correctly.
+  sdmmc_card_t *card = (sdmmc_card_t *)sdCard;
+  esp_vfs_fat_sdcard_unmount(sdMountPoint.c_str(), card);
+#endif
+
+  sdCardInitialized = false;
+  sdCard = nullptr;
 }
 
 std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
@@ -91,6 +158,23 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
       usedBytes = used;
       freeBytes = total - used;
     }
+    return;
+  }
+
+  if (fsParam == "sd" && sdCardInitialized) {
+    // FATFS free/total calculation (best-effort).
+    FATFS *fs = nullptr;
+    DWORD fre_clust = 0;
+    FRESULT fr = f_getfree("0:", &fre_clust, &fs);
+    if (fr == FR_OK && fs != nullptr) {
+      const uint64_t bytesPerClust = (uint64_t)fs->csize * 512ULL;
+      const uint64_t totalClust = (uint64_t)(fs->n_fatent - 2);
+      const uint64_t total = totalClust * bytesPerClust;
+      const uint64_t freeb = (uint64_t)fre_clust * bytesPerClust;
+      totalBytes = (size_t)total;
+      freeBytes = (size_t)freeb;
+      usedBytes = (totalBytes >= freeBytes) ? (totalBytes - freeBytes) : 0;
+    }
   }
 }
 
@@ -108,6 +192,36 @@ void ESPWiFi::printFilesystemInfo() {
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("LittleFS", totalBytes, usedBytes);
+  }
+
+  // SD status: show whether it is enabled, and if we tried to init it.
+  const bool sdEnabled =
+      config["sd"].is<JsonObject>() ? (config["sd"]["enabled"] | false) : false;
+  if (!sdEnabled) {
+    return;
+  }
+
+  if (sdCardInitialized) {
+    size_t totalBytes, usedBytes, freeBytes;
+    getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
+    logFilesystemInfo("SD", totalBytes, usedBytes);
+    return;
+  }
+
+  if (sdInitAttempted) {
+    if (sdInitNotConfiguredForTarget) {
+      log(WARNING,
+          "💾 SD Card enabled, but not configured for this target (mountpoint "
+          "%s)",
+          sdMountPoint.c_str());
+    } else if (sdInitLastErr != ESP_OK) {
+      log(WARNING, "💾 SD Card init failed: %s",
+          esp_err_to_name(sdInitLastErr));
+    } else {
+      log(WARNING, "💾 SD Card enabled but not initialized");
+    }
+  } else {
+    log(WARNING, "💾 SD Card enabled but init was not attempted");
   }
 }
 

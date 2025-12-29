@@ -323,8 +323,24 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
       (clientInfo != nullptr) ? *clientInfo
                               : (clientInfoLocal = getClientInfo(req));
 
-  // Check if LFS is initialized
-  if (!littleFsInitialized) {
+  // Resolve which filesystem this path maps to.
+  // - "/sd/..." is served from the SD mount (FATFS)
+  // - "/lfs/..." is served directly from the LittleFS mount
+  // - everything else is served from LittleFS root (prefixed by lfsMountPoint)
+  std::string fullPath;
+  bool fsAvailable = false;
+  if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
+    fsAvailable = sdCardInitialized;
+    fullPath = filePath; // already includes mountpoint
+  } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
+    fsAvailable = littleFsInitialized;
+    fullPath = filePath; // already includes mountpoint
+  } else {
+    fsAvailable = littleFsInitialized;
+    fullPath = lfsMountPoint + filePath;
+  }
+
+  if (!fsAvailable) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "text/plain");
     const char *body = "Filesystem not available";
@@ -336,9 +352,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     logAccess(503, clientInfoRef, 0);
     return ret;
   }
-
-  // Construct full path
-  std::string fullPath = lfsMountPoint + filePath;
 
   // Check if file exists first
   struct stat fileStat;

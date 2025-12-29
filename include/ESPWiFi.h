@@ -85,11 +85,16 @@ public:
   // ---- Filesystem
   // ------------------------------------------------------------
   void initSDCard();
+  void deinitSDCard();
   void initLittleFS();
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
   std::string lfsMountPoint = "/lfs"; // LittleFS mount point
-  bool configNeedsSave = false;       // Deferred config save flag
+  std::string sdMountPoint = "/sd";   // SD card mount point (FATFS)
+  void *sdCard = nullptr; // Opaque handle (SD card pointer from IDF)
+  bool sdInitAttempted = false;
+  esp_err_t sdInitLastErr = ESP_OK;
+  bool sdInitNotConfiguredForTarget = false;
 
   bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,
@@ -123,6 +128,7 @@ public:
   int baudRate = 115200; // ESP-IDF console UART is usually pre-initialized
   bool loggingStarted = false;
   std::string logFilePath = "/log";
+  bool logToSD = false; // When true, write logs to SD mount instead of LFS
 
   void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
@@ -149,7 +155,8 @@ public:
   void handleConfig();
   JsonDocument defaultConfig();
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
-  void requestConfigSave(); // Request deferred config save from HTTP handlers
+  void
+  requestConfigUpdate(); // Request deferred config apply+save from main task
 
   // ---- WiFi
   // ------------------------------------------------------------------
@@ -194,7 +201,7 @@ public:
   JsonDocument readRequestBody(httpd_req_t *req);
 
   // Route groups
-  void srvFS();
+  void srvFiles();
   void srvAll();
   void srvLog();
   void srvInfo();
@@ -286,6 +293,39 @@ private:
   bool wifi_auto_reconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
+
+  // ---- Deferred config update (avoid heavy work in HTTP handlers)
+  // ------------
+  bool configNeedsUpdate = false;
+
+  // ---- Log file synchronization (best-effort; avoid blocking httpd)
+  // ----------
+  SemaphoreHandle_t logFileMutex = nullptr;
+  // NOTE: We intentionally use this mutex in a **non-blocking / best-effort**
+  // way for log file I/O (see Log.cpp):
+  // - Pros: avoids stalling the ESP-IDF `httpd` task, improves perceived UI/API
+  //   latency under load, reduces risk of watchdog issues caused by logging.
+  // - Cons: if the mutex is busy, some log lines may be skipped for the *file*
+  //   sink (serial still prints). This trades perfect log persistence for
+  //   responsiveness and system robustness.
+  //
+  // If you want **blocking + precise file logging** (every log line is appended
+  // to the file, in order), change the policy in `src/Log.cpp`:
+  // - In `writeLog()`:
+  //   - Replace `xSemaphoreTake(logFileMutex, 0)` with a blocking take like
+  //     `xSemaphoreTake(logFileMutex, portMAX_DELAY)` (or a bounded wait such
+  //     as `pdMS_TO_TICKS(50)`).
+  //   - Consider adding a `fflush()`/`fsync()` strategy if you need durability
+  //     across power loss (higher latency + wear).
+  // - In `logConfigHandler()` / `cleanLogFile()`:
+  //   - Use a blocking take (or slightly longer bounded wait) so
+  //   reconfiguration
+  //     cannot race with file writes.
+  //
+  // Tradeoffs of blocking mode:
+  // - Pros: deterministic file persistence (no skipped lines).
+  // - Cons: can stall the `httpd` task during bursts, increasing perceived
+  //   latency and watchdog risk if logging is done inside request paths.
 
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();

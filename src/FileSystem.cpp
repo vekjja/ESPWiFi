@@ -2,6 +2,7 @@
 #define ESPWiFi_FileSystem
 
 #include "ESPWiFi.h"
+#include "SDCardPins.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
 #include "esp_vfs_fat.h"
@@ -10,6 +11,9 @@
 #include "sdmmc_cmd.h"
 #if defined(CONFIG_IDF_TARGET_ESP32)
 #include "driver/sdmmc_host.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include "driver/spi_master.h"
 #endif
 #include <ArduinoJson.h>
 #include <cstring>
@@ -59,11 +63,19 @@ void ESPWiFi::initSDCard() {
   sdInitAttempted = true;
   sdInitLastErr = ESP_OK;
   sdInitNotConfiguredForTarget = false;
+  sdSpiBusOwned = false;
+  sdSpiHost = -1;
 
   // Config-gated: keep boot fast / deterministic unless explicitly enabled.
   bool enabled = false;
+  std::string type = "auto";
   if (config["sd"].is<JsonObject>()) {
     enabled = config["sd"]["enabled"] | false;
+    if (!config["sd"]["type"].isNull()) {
+      type = config["sd"]["type"].as<std::string>();
+    } else if (!config["sd"]["mode"].isNull()) {
+      type = config["sd"]["mode"].as<std::string>();
+    }
   }
   if (!enabled) {
     sdCardInitialized = false;
@@ -73,32 +85,158 @@ void ESPWiFi::initSDCard() {
     return;
   }
 
+  log(INFO, "💾 SD enabled: attempting mount at %s", sdMountPoint.c_str());
+
   // Mount FATFS on SD. This is target/board specific; we implement a safe
   // default for SDMMC-capable targets. If this fails, APIs will report SD as
   // unavailable.
 #if defined(CONFIG_IDF_TARGET_ESP32)
-  sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-  sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-  slot_config.width = 1;
+  // Normalize type
+  toLowerCase(type);
 
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
   mount_config.format_if_mount_failed = false;
   mount_config.max_files = 5;
   mount_config.allocation_unit_size = 16 * 1024;
 
-  sdmmc_card_t *card = nullptr;
-  esp_err_t ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host,
-                                          &slot_config, &mount_config, &card);
+  auto try_sdmmc = [&]() -> esp_err_t {
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+    slot_config.width = 1;
+
+    sdmmc_card_t *card = nullptr;
+    esp_err_t ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host,
+                                            &slot_config, &mount_config, &card);
+    if (ret == ESP_OK) {
+      sdCard = (void *)card;
+      sdCardInitialized = true;
+      config["sd"]["initialized"] = true;
+    }
+    return ret;
+  };
+
+  auto try_sdspi = [&]() -> esp_err_t {
+    // Default pins commonly used on ESP32 display boards (VSPI):
+    // SCLK=18, MISO=19, MOSI=23, CS=5
+    int mosi = SDCARD_SPI_MOSI_GPIO_NUM;
+    int miso = SDCARD_SPI_MISO_GPIO_NUM;
+    int sclk = SDCARD_SPI_SCK_GPIO_NUM;
+    int cs = SDCARD_SPI_CS_GPIO_NUM;
+    int hostId = -1;
+
+    JsonVariant sd = config["sd"];
+    JsonVariant spi = sd["spi"];
+    if (spi.is<JsonObject>()) {
+      if (!spi["mosi"].isNull())
+        mosi = spi["mosi"].as<int>();
+      if (!spi["miso"].isNull())
+        miso = spi["miso"].as<int>();
+      if (!spi["sclk"].isNull())
+        sclk = spi["sclk"].as<int>();
+      if (!spi["cs"].isNull())
+        cs = spi["cs"].as<int>();
+      if (!spi["host"].isNull())
+        hostId = spi["host"].as<int>();
+    } else {
+      // Allow flat keys: sd.mosi, sd.miso, sd.sclk, sd.cs
+      if (!sd["mosi"].isNull())
+        mosi = sd["mosi"].as<int>();
+      if (!sd["miso"].isNull())
+        miso = sd["miso"].as<int>();
+      if (!sd["sclk"].isNull())
+        sclk = sd["sclk"].as<int>();
+      if (!sd["cs"].isNull())
+        cs = sd["cs"].as<int>();
+      if (!sd["host"].isNull())
+        hostId = sd["host"].as<int>();
+    }
+
+    // If user explicitly provided invalid pins, bail out (avoid conflicts).
+    if (cs < 0 || sclk < 0 || mosi < 0 || miso < 0) {
+      sdInitNotConfiguredForTarget = true;
+      return ESP_ERR_INVALID_ARG;
+    }
+
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    // Choose a default host bus if not provided
+    if (hostId == 2 || hostId == 3) {
+      host.slot = hostId;
+    } else {
+      host.slot = SDCARD_SPI_HOST;
+    }
+    sdSpiHost = host.slot;
+
+    log(INFO, "💾 SD(SPI) pins: host=%d sclk=%d miso=%d mosi=%d cs=%d",
+        host.slot, sclk, miso, mosi, cs);
+
+    spi_bus_config_t bus_cfg = {};
+    bus_cfg.mosi_io_num = mosi;
+    bus_cfg.miso_io_num = miso;
+    bus_cfg.sclk_io_num = sclk;
+    bus_cfg.quadwp_io_num = -1;
+    bus_cfg.quadhd_io_num = -1;
+
+    // Best-effort bus init: if already initialized by another driver (e.g.
+    // LCD), proceed without owning/freeing it.
+    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg,
+                                       SPI_DMA_CH_AUTO);
+    if (ret == ESP_OK) {
+      sdSpiBusOwned = true;
+    } else if (ret == ESP_ERR_INVALID_STATE) {
+      // Bus already initialized elsewhere.
+      sdSpiBusOwned = false;
+      ret = ESP_OK;
+    }
+    if (ret != ESP_OK) {
+      return ret;
+    }
+
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = (gpio_num_t)cs;
+    slot_config.host_id = (spi_host_device_t)host.slot;
+
+    sdmmc_card_t *card = nullptr;
+    ret = esp_vfs_fat_sdspi_mount(sdMountPoint.c_str(), &host, &slot_config,
+                                  &mount_config, &card);
+    if (ret != ESP_OK) {
+      if (sdSpiBusOwned) {
+        (void)spi_bus_free((spi_host_device_t)host.slot);
+        sdSpiBusOwned = false;
+      }
+      sdSpiHost = -1;
+      return ret;
+    }
+
+    sdCard = (void *)card;
+    sdCardInitialized = true;
+    config["sd"]["initialized"] = true;
+    return ESP_OK;
+  };
+
+  esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+  if (type == "sdspi" || type == "spi") {
+    ret = try_sdspi();
+  } else if (type == "sdmmc") {
+    ret = try_sdmmc();
+  } else {
+    // auto: try SDMMC first, then SPI
+    ret = try_sdmmc();
+    if (ret != ESP_OK) {
+      ret = try_sdspi();
+    }
+  }
+
   if (ret != ESP_OK) {
     sdCardInitialized = false;
     sdCard = nullptr;
     sdInitLastErr = ret;
     config["sd"]["initialized"] = false;
+    log(WARNING, "💾 SD mount failed (%s): %s", type.c_str(),
+        esp_err_to_name(ret));
     return;
   }
-  sdCard = (void *)card;
-  sdCardInitialized = true;
-  config["sd"]["initialized"] = true;
+
+  log(INFO, "💾 SD mounted: %s", sdMountPoint.c_str());
 #else
   // For non-ESP32 targets, SD wiring varies widely (SDSPI vs SDMMC, pin mux,
   // etc). Keep this explicit to avoid accidental pin conflicts.
@@ -107,6 +245,7 @@ void ESPWiFi::initSDCard() {
   sdInitNotConfiguredForTarget = true;
   sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
   config["sd"]["initialized"] = false;
+  log(WARNING, "💾 SD enabled but not supported on this target");
 #endif
 }
 
@@ -121,10 +260,15 @@ void ESPWiFi::deinitSDCard() {
   // Best-effort unmount. This can fail if card was never mounted correctly.
   sdmmc_card_t *card = (sdmmc_card_t *)sdCard;
   esp_vfs_fat_sdcard_unmount(sdMountPoint.c_str(), card);
+  if (sdSpiBusOwned && sdSpiHost >= 0) {
+    (void)spi_bus_free((spi_host_device_t)sdSpiHost);
+  }
 #endif
 
   sdCardInitialized = false;
   sdCard = nullptr;
+  sdSpiBusOwned = false;
+  sdSpiHost = -1;
   config["sd"]["initialized"] = false;
 }
 

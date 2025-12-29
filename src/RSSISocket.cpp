@@ -25,7 +25,9 @@ void ESPWiFi::startRSSIWebSocket() {
                                  /*onMessage*/ nullptr,
                                  /*onConnect*/ nullptr,
                                  /*onDisconnect*/ nullptr,
-                                 /*maxMessageLen*/ 32);
+                                 /*maxMessageLen*/ 32,
+                                 /*maxBroadcastLen*/ 32,
+                                 /*requireAuth*/ false);
 
   if (!s_rssiStarted) {
     log(ERROR, "📶 RSSI WebSocket failed to start");

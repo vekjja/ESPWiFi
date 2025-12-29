@@ -11,6 +11,9 @@ void ESPWiFi::srvAll() {
   srvLog();
   srvFiles();
   srvGPIO();
+#ifdef ESPWiFi_CAMERA
+  srvCamera();
+#endif
   srvWildcard();
 }
 

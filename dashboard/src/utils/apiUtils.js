@@ -61,7 +61,20 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
  */
 export const buildWebSocketUrl = (path, mdnsHostname = null) => {
   const wsUrl = getWebSocketUrl(mdnsHostname);
-  return `${wsUrl}${path}`;
+  let url = `${wsUrl}${path}`;
+
+  // WebSocket API doesn't allow setting custom headers.
+  // Pass auth token via query param so firmware can validate connections.
+  const authHeader = getAuthHeader();
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice("Bearer ".length);
+    if (token) {
+      const sep = url.includes("?") ? "&" : "?";
+      url = `${url}${sep}token=${encodeURIComponent(token)}`;
+    }
+  }
+
+  return url;
 };
 
 /**

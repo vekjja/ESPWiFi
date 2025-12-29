@@ -204,7 +204,13 @@ export default function LogsSettingsModal({
         logFilePath = `/${logFilePath}`;
       }
 
-      const candidates = [`/sd${logFilePath}`, `/lfs${logFilePath}`];
+      // Avoid fetching huge log files (can exceed UI timeout and cause the device
+      // to see ECONNRESET mid-stream). Ask for the last ~64KB.
+      const tailBytes = 256 * 1024;
+      const candidates = [
+        `/sd${logFilePath}?tail=${tailBytes}`,
+        `/lfs${logFilePath}?tail=${tailBytes}`,
+      ];
       let lastResponse = null;
 
       for (const path of candidates) {

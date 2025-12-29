@@ -34,6 +34,7 @@ private:
   size_t clientCount_ = 0;
 
   size_t maxMessageLen_ = 1024;
+  size_t maxBroadcastLen_ = 8192;
   std::vector<uint8_t> rxBuf_;
 
 public:
@@ -51,6 +52,7 @@ private:
   OnMessageCb onMessage_ = nullptr;
 
   bool started_ = false;
+  bool requireAuth_ = false;
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   static void getRemoteInfo_(int fd, char *outIp, size_t outIpLen,
@@ -158,6 +160,31 @@ private:
     // fail with errors like "Invalid WebSocket frame: RSV1 must be clear".
     if (req->method == HTTP_GET) {
       const int fd = httpd_req_to_sockfd(req);
+
+      // Optional auth gate (websocket handshake already upgraded; do NOT try to
+      // send 401 here). Instead, immediately close the session if unauthorized.
+      if (requireAuth_ && espWifi_ != nullptr && espWifi_->authEnabled() &&
+          !espWifi_->isExcludedPath(req->uri)) {
+        bool ok = espWifi_->authorized(req);
+        if (!ok) {
+          // Browser WebSocket APIs can't set Authorization headers. Allow token
+          // via query param: ws://host/path?token=...
+          std::string tok = espWifi_->getQueryParam(req, "token");
+          std::string expected =
+              espWifi_->config["auth"]["token"].as<std::string>();
+          ok = (!tok.empty() && !expected.empty() && tok == expected);
+        }
+        if (!ok) {
+          if (espWifi_) {
+            espWifi_->log(WARNING, "🔒 WS(%s) unauthorized; closing (fd=%d)",
+                          uri_, fd);
+          }
+          // Best-effort: terminate the session.
+          (void)httpd_sess_trigger_close(espWifi_->webServer, fd);
+          return ESP_OK;
+        }
+      }
+
       addClient_(fd);
       if (espWifi_) {
         char ip[64];
@@ -311,8 +338,8 @@ public:
   // Note: `uri` is copied into a fixed buffer (bounded RAM).
   bool begin(const char *uri, ESPWiFi *espWifi, OnMessageCb onMessage = nullptr,
              OnConnectCb onConnect = nullptr,
-             OnDisconnectCb onDisconnect = nullptr,
-             size_t maxMessageLen = 1024) {
+             OnDisconnectCb onDisconnect = nullptr, size_t maxMessageLen = 1024,
+             size_t maxBroadcastLen = 8192, bool requireAuth = false) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
     (void)uri;
     (void)espWifi;
@@ -330,11 +357,16 @@ public:
     onMessage_ = onMessage;
     onConnect_ = onConnect;
     onDisconnect_ = onDisconnect;
+    requireAuth_ = requireAuth;
 
     // Keep limits sane and bounded.
     maxMessageLen_ = (maxMessageLen == 0) ? 1 : maxMessageLen;
     if (maxMessageLen_ > 8192) {
       maxMessageLen_ = 8192; // hard cap to prevent pathological allocations
+    }
+    maxBroadcastLen_ = (maxBroadcastLen == 0) ? 1 : maxBroadcastLen;
+    if (maxBroadcastLen_ > 262144) {
+      maxBroadcastLen_ = 262144; // hard cap to prevent pathological allocations
     }
     rxBuf_.clear();
     rxBuf_.shrink_to_fit();
@@ -403,7 +435,7 @@ public:
       return ESP_OK;
     }
     // Bounded allocation: refuse absurdly large broadcasts.
-    if (len > 8192) {
+    if (len > maxBroadcastLen_) {
       return ESP_ERR_INVALID_SIZE;
     }
 
@@ -436,7 +468,7 @@ public:
     if (len == 0) {
       return ESP_OK;
     }
-    if (len > 8192) {
+    if (len > maxBroadcastLen_) {
       return ESP_ERR_INVALID_SIZE;
     }
 
@@ -451,6 +483,21 @@ public:
 
     return httpd_queue_work(espWifi_->webServer,
                             &WebSocket::broadcastWorkTrampoline, job);
+#endif
+  }
+
+  void closeAll() {
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    if (!started_ || espWifi_ == nullptr || espWifi_->webServer == nullptr) {
+      return;
+    }
+    httpd_handle_t hd = espWifi_->webServer;
+    // Best-effort close; keep bounded.
+    for (size_t i = 0; i < clientCount_;) {
+      int fd = clientFds_[i];
+      (void)httpd_sess_trigger_close(hd, fd);
+      removeClient_(fd);
+    }
 #endif
   }
 };

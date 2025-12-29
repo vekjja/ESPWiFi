@@ -340,12 +340,36 @@ export default function CameraModule({
     }
   };
 
-  const handleSnapshot = () => {
+  const handleSnapshot = async () => {
     const mdnsHostname = globalConfig?.deviceName;
     const snapshotUrl = buildApiUrl("/camera/snapshot", mdnsHostname);
 
-    // Open the snapshot in a new tab
-    window.open(snapshotUrl, "_blank");
+    try {
+      const response = await fetch(
+        snapshotUrl,
+        getFetchOptions({
+          method: "GET",
+          headers: {
+            Accept: "image/jpeg",
+          },
+          signal: AbortSignal.timeout(10000),
+        })
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank");
+      // Best-effort cleanup after a bit (the new tab will have loaded it by then).
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+    } catch (err) {
+      console.error("Failed to fetch snapshot:", err);
+      // fallback: attempt direct open (may still work if auth disabled)
+      window.open(snapshotUrl, "_blank");
+    }
   };
 
   const handleOpenSettings = () => {

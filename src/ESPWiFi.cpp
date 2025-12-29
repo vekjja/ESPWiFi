@@ -34,9 +34,9 @@ void ESPWiFi::runSystem() {
 
   streamRSSI();
   // checkBluetoothConnectionStatus();
-  // #ifdef ESPWiFi_CAMERA
-  //   streamCamera();
-  // #endif
+#ifdef ESPWiFi_CAMERA
+  streamCamera();
+#endif
 }
 
 #endif // ESPWiFi_DEVICE

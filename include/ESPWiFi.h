@@ -95,6 +95,10 @@ public:
   bool sdInitAttempted = false;
   esp_err_t sdInitLastErr = ESP_OK;
   bool sdInitNotConfiguredForTarget = false;
+  // If we mount SD via SDSPI and we were the one to init the SPI bus, track it
+  // so we can free it on deinit.
+  bool sdSpiBusOwned = false;
+  int sdSpiHost = -1;
 
   bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,
@@ -207,6 +211,9 @@ public:
   void srvAuth();
   void srvConfig();
   void srvWildcard();
+#ifdef ESPWiFi_CAMERA
+  void srvCamera();
+#endif
 
   // ---- Camera (stubs; ESP-IDF port TBD) -------------------------------------
 #ifdef ESPWiFi_CAMERA
@@ -217,7 +224,7 @@ public:
   void clearCameraBuffer();
   void cameraConfigHandler();
   void updateCameraSettings();
-  void takeSnapshot(std::string filePath = "/snapshots/snapshot.jpg");
+  esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
 #endif
 
   // ---- RSSI (stub)

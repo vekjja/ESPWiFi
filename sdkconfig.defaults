@@ -37,6 +37,10 @@ CONFIG_LITTLEFS_OBJ_NAME_LEN=64
 CONFIG_LITTLEFS_PAGE_SIZE=256
 CONFIG_LITTLEFS_USE_MTIME=y
 
+# Camera (esp32-camera component)
+# Needed when building with esp32-camera; harmless otherwise.
+CONFIG_SCCB_CLK_FREQ=100000
+
 # WebSocket
 CONFIG_HTTPD_WS_SUPPORT=y
 

@@ -419,8 +419,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Send chunk
     ret = httpd_resp_send_chunk(req, buffer, bytesRead);
     if (ret != ESP_OK) {
-      printf("💔  httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
-             totalSent, esp_err_to_name(ret));
+      log(ERROR, "💔  httpd_resp_send_chunk failed at %zu bytes, error: %s\n",
+          totalSent, esp_err_to_name(ret));
       break;
     }
     yield(); // Yield after network I/O
@@ -433,8 +433,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     yield();                                      // Yield before finalizing
     ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
     if (ret != ESP_OK) {
-      printf("💔  Failed to finalize chunked transfer: %s\n",
-             esp_err_to_name(ret));
+      log(ERROR, "💔 Failed to finalize chunked transfer: %s\n",
+          esp_err_to_name(ret));
     }
     yield(); // Yield after finalizing
   }
@@ -443,8 +443,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   fclose(file);
 
   if (ret != ESP_OK || totalSent != (size_t)fileSize) {
-    printf("💔  File send incomplete: sent %zu of %ld bytes\n", totalSent,
-           fileSize);
+    log(ERROR, "💔  File send incomplete: sent %zu of %ld bytes\n", totalSent,
+        fileSize);
     // At this point headers/body may already be partially sent; best-effort
     // log.
     logAccess(500, clientInfoRef, totalSent);

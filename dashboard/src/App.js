@@ -348,7 +348,9 @@ function App() {
         const configWithAPI = { ...savedConfig, apiURL };
         setConfig(configWithAPI);
         setLocalConfig(configWithAPI);
-        console.log("Configuration Saved to Device:", savedConfig);
+        if (process.env.NODE_ENV !== "production") {
+          console.log("Configuration Saved to Device:", savedConfig);
+        }
         setSaving(false);
         // Force a fresh fetch to ensure we have the latest config
         fetchConfig(true);

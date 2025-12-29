@@ -28,6 +28,56 @@ const STORAGE_KEY = "settingsButtonOrder.v1";
 const ENABLED_KEY = "settingsButtonEnabled.v1";
 
 const NON_REMOVABLE_IDS = new Set(["deviceSettings", "addModule"]);
+const DEFAULT_ORDER_PRIORITY = [
+  "rssi",
+  "deviceSettings",
+  "addModule",
+  "files",
+  "logs",
+];
+
+function computeDefaultOrder(ids) {
+  const remaining = new Set(ids);
+  const out = [];
+  for (const id of DEFAULT_ORDER_PRIORITY) {
+    if (remaining.has(id)) {
+      out.push(id);
+      remaining.delete(id);
+    }
+  }
+  // Append any other buttons in their existing/available order
+  for (const id of ids) {
+    if (remaining.has(id)) {
+      out.push(id);
+      remaining.delete(id);
+    }
+  }
+  return out;
+}
+
+function insertAfter(list, id, afterId) {
+  if (list.includes(id)) return list;
+  const idx = list.indexOf(afterId);
+  if (idx === -1) return [...list, id];
+  return [...list.slice(0, idx + 1), id, ...list.slice(idx + 1)];
+}
+
+function ensureNonRemovablesInPreferredPositions(list) {
+  let next = Array.isArray(list) ? [...list] : [];
+  // Settings after RSSI when possible
+  if (!next.includes("deviceSettings")) {
+    next = next.includes("rssi")
+      ? insertAfter(next, "deviceSettings", "rssi")
+      : ["deviceSettings", ...next];
+  }
+  // Add after Settings when possible
+  if (!next.includes("addModule")) {
+    next = next.includes("deviceSettings")
+      ? insertAfter(next, "addModule", "deviceSettings")
+      : [...next, "addModule"];
+  }
+  return next;
+}
 
 const BUTTON_LABELS = {
   deviceSettings: "Device Settings",
@@ -252,9 +302,9 @@ export default function SettingsButtonBar({
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
-      return Array.isArray(parsed) ? parsed : visibleIds;
+      return Array.isArray(parsed) ? parsed : computeDefaultOrder(visibleIds);
     } catch {
-      return visibleIds;
+      return computeDefaultOrder(visibleIds);
     }
   });
   const [activeId, setActiveId] = useState(null);
@@ -285,11 +335,8 @@ export default function SettingsButtonBar({
       for (const id of enabledIds) {
         if (enabledSet.has(id) && !next.includes(id)) next.push(id);
       }
-      // Ensure required ids are present if available
-      for (const id of NON_REMOVABLE_IDS) {
-        if (visibleIds.includes(id) && !next.includes(id)) next.unshift(id);
-      }
-      return next;
+      // Ensure required ids are present without forcing them to the front.
+      return ensureNonRemovablesInPreferredPositions(next);
     });
   }, [enabledIds, visibleIds]);
 

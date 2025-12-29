@@ -63,6 +63,18 @@ export default function FileBrowserButton({
           }
           maxWidth={false}
           fullWidth={false}
+          paperSx={{
+            width: { xs: "90%", sm: "95vw" },
+            maxWidth: { xs: "90%", sm: "95vw" },
+            height: { xs: "90%", sm: "88vh" },
+            maxHeight: { xs: "90%", sm: "88vh" },
+          }}
+          contentSx={{
+            overflowY: "hidden",
+            p: { xs: 2, sm: 1.5 },
+            pt: { xs: 1.5, sm: 1.25 },
+            pb: { xs: 1.5, sm: 1.25 },
+          }}
         >
           <FileBrowserComponent config={config} deviceOnline={deviceOnline} />
         </SettingsModal>

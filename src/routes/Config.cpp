@@ -33,7 +33,7 @@ void ESPWiFi::srvConfig() {
                   espwifi->config = mergedConfig;
 
                   std::string responseJson;
-                  serializeJson(mergedConfig, responseJson);
+                  serializeJson(espwifi->config, responseJson);
 
                   // Request deferred config save (will happen in runSystem()
                   // main task)

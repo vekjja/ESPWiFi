@@ -354,6 +354,8 @@ JsonDocument ESPWiFi::defaultConfig() {
 
   // SD card (optional; disabled by default)
   doc["sd"]["enabled"] = false;
+  // Runtime mount state (persisted so UI can reason about availability)
+  doc["sd"]["initialized"] = false;
   // type is informational today (mounting is config-gated and target-specific)
   doc["sd"]["type"] = "auto";
 

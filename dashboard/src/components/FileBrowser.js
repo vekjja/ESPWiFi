@@ -63,7 +63,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     folderName: "",
   });
   const [currentPath, setCurrentPath] = useState("/");
-  const [fileSystem, setFileSystem] = useState("sd"); // 'sd' or 'lfs'
+  const [fileSystem, setFileSystem] = useState("lfs"); // 'sd' or 'lfs'
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [storageInfo, setStorageInfo] = useState({
@@ -252,7 +252,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         setLoading(false);
       }
     },
-    [apiURL, currentPath, fileSystem]
+    [apiURL, fetchStorageInfo]
   );
 
   // Handle file system change
@@ -594,7 +594,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   // Initialize
   useEffect(() => {
     if (config && deviceOnline) {
-      fetchFiles();
+      const initialFs = config?.sd?.initialized === true ? "sd" : "lfs";
+      fetchFiles("/", initialFs);
     }
   }, [config, deviceOnline]);
 
@@ -611,13 +612,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   return (
     <Box
       sx={{
-        height: { xs: "100vh", sm: "calc(80vh - 120px)" }, // Full height on mobile, calculated on desktop
+        height: "100%",
+        flex: 1,
         display: "flex",
         flexDirection: "column",
-        width: { xs: "100%", sm: "600px" },
-        maxWidth: { xs: "100%", sm: "600px" },
-        minWidth: { xs: "100%", sm: "600px" },
-        mx: "auto", // Center the entire file browser
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        mx: 0,
+        minHeight: 0,
         "& .MuiPaper-root": {
           p: { xs: 1, sm: 1.5 },
         },
@@ -650,7 +653,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               },
             }}
           >
-            {config?.sd?.enabled === true && (
+            {config?.sd?.initialized === true && (
               <ToggleButton value="sd">
                 <Storage sx={{ mr: 0.5 }} />
                 <Box sx={{ display: { xs: "none", sm: "inline" } }}>

@@ -74,14 +74,14 @@ export default function PinModule({
         ) {
           cleanURL = "http://" + cleanURL;
         }
-        if (!cleanURL.endsWith("/gpio")) {
-          cleanURL = cleanURL.replace(/\/$/, "") + "/gpio";
+        if (!cleanURL.endsWith("/api/gpio")) {
+          cleanURL = cleanURL.replace(/\/$/, "") + "/api/gpio";
         }
         targetURL = cleanURL;
       } else {
         // Use apiURL if available, otherwise use current hostname
         const baseURL = config.apiURL || window.location.origin;
-        targetURL = `${baseURL}/gpio`;
+        targetURL = `${baseURL}/api/gpio`;
       }
 
       // Prepare request body - only include duty for PWM mode

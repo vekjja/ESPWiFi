@@ -114,7 +114,7 @@ function App() {
         const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
 
         const response = await fetch(
-          buildApiUrl("/config"),
+          buildApiUrl("/api/config"),
           getFetchOptions({
             signal: controller.signal,
           })
@@ -327,7 +327,7 @@ function App() {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for saves
 
     fetch(
-      buildApiUrl("/config"),
+      buildApiUrl("/api/config"),
       getFetchOptions({
         method: "PUT",
         body: JSON.stringify(configToSave),

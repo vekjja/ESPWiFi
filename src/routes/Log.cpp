@@ -18,9 +18,9 @@ void ESPWiFi::srvLog() {
         // Check active log filesystem is available
         if ((espwifi->logToSD && !espwifi->sdCardInitialized) ||
             (!espwifi->logToSD && !espwifi->littleFsInitialized)) {
-          (void)espwifi->sendJsonResponse(
-              req, 503, "{\"error\":\"Filesystem not available\"}");
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 503, "{\"error\":\"Filesystem not available\"}",
+              &clientInfo);
         }
 
         // Construct full path to log file
@@ -31,17 +31,15 @@ void ESPWiFi::srvLog() {
         // Check if log file exists
         struct stat fileStat;
         if (stat(fullPath.c_str(), &fileStat) != 0) {
-          (void)espwifi->sendJsonResponse(req, 404,
-                                          "{\"error\":\"Log file not found\"}");
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 404, "{\"error\":\"Log file not found\"}", &clientInfo);
         }
 
         // Open log file
         FILE *file = fopen(fullPath.c_str(), "r");
         if (!file) {
-          (void)espwifi->sendJsonResponse(
-              req, 500, "{\"error\":\"Failed to open log file\"}");
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 500, "{\"error\":\"Failed to open log file\"}", &clientInfo);
         }
 
         httpd_resp_set_type(req, "text/html");
@@ -119,9 +117,9 @@ void ESPWiFi::srvLog() {
           if (escapeBuffer)
             free(escapeBuffer);
           fclose(file);
-          (void)espwifi->sendJsonResponse(
-              req, 500, "{\"error\":\"Memory allocation failed\"}");
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 500, "{\"error\":\"Memory allocation failed\"}",
+              &clientInfo);
         }
 
         size_t escapePos = 0;

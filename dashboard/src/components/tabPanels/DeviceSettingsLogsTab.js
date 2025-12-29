@@ -308,68 +308,79 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     <Box
       sx={{
         display: "flex",
-        flexDirection: "column",
+        flexDirection: isMobile ? "column" : "row",
+        gap: 1,
         height: "100%",
-        mt: -3,
+        flex: 1,
+        minHeight: 0,
       }}
     >
-      {/* Controls Row - Fixed at top */}
+      {/* Controls */}
       <Card
         sx={{
-          position: "sticky",
-          top: -24, // Offset for TabPanel's pt: 3 (3 * 8px = 24px)
+          // Sticky is useful on mobile where content scrolls as a whole.
+          // On desktop we want a full-height left rail.
+          position: isMobile ? "sticky" : "sticky",
+          top: 0,
           zIndex: 10,
-          mb: 1,
           bgcolor: "background.paper",
           boxShadow: 2,
+          flex: isMobile ? "0 0 auto" : "0 0 240px",
+          height: isMobile ? "auto" : "100%",
+          minHeight: 0,
+          maxHeight: isMobile ? undefined : "100%",
+          overflow: isMobile ? undefined : "auto",
+          display: "flex",
+          flexDirection: "column",
+          alignSelf: "stretch",
         }}
       >
-        <CardContent sx={{ py: isMobile ? 1.5 : 2, px: isMobile ? 2 : 3 }}>
+        <CardContent
+          sx={{
+            py: isMobile ? 1.5 : 2,
+            px: isMobile ? 2 : 3,
+            flex: 1,
+          }}
+        >
           <Box
             sx={{
               display: "flex",
-              flexDirection: "column",
-              gap: 2,
+              flexDirection: isMobile ? "row" : "column",
+              flexWrap: isMobile ? "wrap" : "nowrap",
+              alignItems: isMobile ? "center" : "stretch",
+              gap: isMobile ? 1 : 1.5,
             }}
           >
-            {/* Top Row: Enable and Auto Options */}
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 2,
-              }}
+            {/* Enable/Disable Logging */}
+            <Tooltip
+              title={
+                logEnabled
+                  ? "Click to disable Logging"
+                  : "Click to enable Logging"
+              }
             >
-              {/* Enable/Disable Logging */}
-              <Tooltip
-                title={
-                  logEnabled
-                    ? "Click to disable Logging"
-                    : "Click to enable Logging"
-                }
+              <Box
+                onClick={handleLogEnabledChange}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  cursor: "pointer",
+                  width: isMobile ? "auto" : "100%",
+                  "&:hover": {
+                    opacity: 0.8,
+                  },
+                }}
               >
-                <Box
-                  onClick={handleLogEnabledChange}
+                <IconButton
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    cursor: "pointer",
-                    "&:hover": {
-                      opacity: 0.8,
-                    },
+                    color: logEnabled ? "primary.main" : "text.disabled",
+                    pointerEvents: "none",
                   }}
                 >
-                  <IconButton
-                    sx={{
-                      color: logEnabled ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {logEnabled ? <PowerSettingsNewIcon /> : <PowerOffIcon />}
-                  </IconButton>
+                  {logEnabled ? <PowerSettingsNewIcon /> : <PowerOffIcon />}
+                </IconButton>
+                {!isMobile && (
                   <Typography
                     variant="body2"
                     sx={{
@@ -379,50 +390,53 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   >
                     {logEnabled ? "Logging Enabled" : "Logging Disabled"}
                   </Typography>
-                </Box>
-              </Tooltip>
+                )}
+              </Box>
+            </Tooltip>
 
-              {/* Auto Scroll - Toggle */}
-              <Tooltip
-                title={
-                  autoScroll
-                    ? "Click to disable Auto Scroll"
-                    : "Click to enable Auto Scroll"
-                }
+            {/* Auto Scroll - Toggle */}
+            <Tooltip
+              title={
+                autoScroll
+                  ? "Click to disable Auto Scroll"
+                  : "Click to enable Auto Scroll"
+              }
+            >
+              <Box
+                onClick={() => {
+                  const newValue = !autoScroll;
+                  setAutoScroll(newValue);
+                  if (newValue) {
+                    // Reset state when enabling auto-scroll
+                    // The effect will handle scrolling when autoScroll changes
+                    hasScrolledInitiallyRef.current = false;
+                    setIsAtBottom(true);
+                  }
+                }}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  cursor: "pointer",
+                  width: isMobile ? "auto" : "100%",
+                  "&:hover": {
+                    opacity: 0.8,
+                  },
+                }}
               >
-                <Box
-                  onClick={() => {
-                    const newValue = !autoScroll;
-                    setAutoScroll(newValue);
-                    if (newValue) {
-                      // Reset state when enabling auto-scroll
-                      // The effect will handle scrolling when autoScroll changes
-                      hasScrolledInitiallyRef.current = false;
-                      setIsAtBottom(true);
-                    }
-                  }}
+                <IconButton
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    cursor: "pointer",
-                    "&:hover": {
-                      opacity: 0.8,
-                    },
+                    color: autoScroll ? "primary.main" : "text.disabled",
+                    pointerEvents: "none",
                   }}
                 >
-                  <IconButton
-                    sx={{
-                      color: autoScroll ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {autoScroll ? (
-                      <VerticalAlignBottomIcon />
-                    ) : (
-                      <VerticalAlignBottomOutlinedIcon />
-                    )}
-                  </IconButton>
+                  {autoScroll ? (
+                    <VerticalAlignBottomIcon />
+                  ) : (
+                    <VerticalAlignBottomOutlinedIcon />
+                  )}
+                </IconButton>
+                {!isMobile && (
                   <Typography
                     variant="body2"
                     sx={{
@@ -432,55 +446,58 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   >
                     Auto Scroll
                   </Typography>
-                </Box>
-              </Tooltip>
+                )}
+              </Box>
+            </Tooltip>
 
-              {/* Auto Refresh - Toggles between disabled and 3s, also acts as refresh button */}
-              <Tooltip
-                title={
-                  logLoading
-                    ? "Loading logs..."
-                    : refreshInterval
-                    ? `Auto Refresh: ${refreshInterval}s (Click to disable or refresh)`
-                    : "Click to enable Auto Refresh (3s) or refresh now"
-                }
+            {/* Auto Refresh - Toggles between disabled and 3s, also acts as refresh button */}
+            <Tooltip
+              title={
+                logLoading
+                  ? "Loading logs..."
+                  : refreshInterval
+                  ? `Auto Refresh: ${refreshInterval}s (Click to disable or refresh)`
+                  : "Click to enable Auto Refresh (3s) or refresh now"
+              }
+            >
+              <Box
+                onClick={() => {
+                  if (logLoading) return;
+
+                  // Always fetch logs when clicked
+                  fetchLogs();
+
+                  // Toggle between: null (disabled) <-> 3s
+                  if (refreshInterval === null) {
+                    setRefreshInterval(3);
+                  } else {
+                    setRefreshInterval(null);
+                  }
+                }}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  cursor: logLoading ? "not-allowed" : "pointer",
+                  opacity: logLoading ? 0.6 : 1,
+                  width: isMobile ? "auto" : "100%",
+                  "&:hover": logLoading
+                    ? {}
+                    : {
+                        opacity: 0.8,
+                      },
+                }}
               >
-                <Box
-                  onClick={() => {
-                    if (logLoading) return;
-
-                    // Always fetch logs when clicked
-                    fetchLogs();
-
-                    // Toggle between: null (disabled) <-> 3s
-                    if (refreshInterval === null) {
-                      setRefreshInterval(3);
-                    } else {
-                      setRefreshInterval(null);
-                    }
-                  }}
+                <IconButton
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    cursor: logLoading ? "not-allowed" : "pointer",
-                    opacity: logLoading ? 0.6 : 1,
-                    "&:hover": logLoading
-                      ? {}
-                      : {
-                          opacity: 0.8,
-                        },
+                    color: refreshInterval ? "primary.main" : "text.disabled",
+                    pointerEvents: "none",
                   }}
+                  disabled={logLoading}
                 >
-                  <IconButton
-                    sx={{
-                      color: refreshInterval ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
-                    disabled={logLoading}
-                  >
-                    <AutorenewIcon />
-                  </IconButton>
+                  <AutorenewIcon />
+                </IconButton>
+                {!isMobile && (
                   <Typography
                     variant="body2"
                     sx={{
@@ -494,42 +511,34 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                           refreshInterval ? ` (${refreshInterval}s)` : ""
                         }`}
                   </Typography>
-                </Box>
-              </Tooltip>
-            </Box>
+                )}
+              </Box>
+            </Tooltip>
 
-            {/* Bottom Row: Other Options */}
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 2,
-              }}
-            >
-              {/* Log Level - Filter */}
-              <Tooltip title="Click to change log level">
-                <Box
-                  onClick={handleLogLevelMenuOpen}
+            {/* Log Level - Filter */}
+            <Tooltip title="Click to change log level">
+              <Box
+                onClick={handleLogLevelMenuOpen}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  cursor: "pointer",
+                  width: isMobile ? "auto" : "100%",
+                  "&:hover": {
+                    opacity: 0.8,
+                  },
+                }}
+              >
+                <IconButton
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    cursor: "pointer",
-                    "&:hover": {
-                      opacity: 0.8,
-                    },
+                    color: "primary.main",
+                    pointerEvents: "none",
                   }}
                 >
-                  <IconButton
-                    sx={{
-                      color: "primary.main",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <FilterListIcon />
-                  </IconButton>
+                  <FilterListIcon />
+                </IconButton>
+                {!isMobile && (
                   <Typography
                     variant="body2"
                     sx={{
@@ -540,67 +549,70 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   >
                     Log Level: {logLevel}
                   </Typography>
-                </Box>
-              </Tooltip>
-              <Menu
-                anchorEl={logLevelMenuAnchor}
-                open={Boolean(logLevelMenuAnchor)}
-                onClose={handleLogLevelMenuClose}
+                )}
+              </Box>
+            </Tooltip>
+            <Menu
+              anchorEl={logLevelMenuAnchor}
+              open={Boolean(logLevelMenuAnchor)}
+              onClose={handleLogLevelMenuClose}
+            >
+              <MenuItem
+                onClick={() => handleLogLevelChange("access")}
+                selected={logLevel === "access"}
               >
-                <MenuItem
-                  onClick={() => handleLogLevelChange("access")}
-                  selected={logLevel === "access"}
-                >
-                  Access
-                </MenuItem>
-                <MenuItem
-                  onClick={() => handleLogLevelChange("debug")}
-                  selected={logLevel === "debug"}
-                >
-                  Debug
-                </MenuItem>
-                <MenuItem
-                  onClick={() => handleLogLevelChange("info")}
-                  selected={logLevel === "info"}
-                >
-                  Info
-                </MenuItem>
-                <MenuItem
-                  onClick={() => handleLogLevelChange("warning")}
-                  selected={logLevel === "warning"}
-                >
-                  Warning
-                </MenuItem>
-                <MenuItem
-                  onClick={() => handleLogLevelChange("error")}
-                  selected={logLevel === "error"}
-                >
-                  Error
-                </MenuItem>
-              </Menu>
+                Access
+              </MenuItem>
+              <MenuItem
+                onClick={() => handleLogLevelChange("debug")}
+                selected={logLevel === "debug"}
+              >
+                Debug
+              </MenuItem>
+              <MenuItem
+                onClick={() => handleLogLevelChange("info")}
+                selected={logLevel === "info"}
+              >
+                Info
+              </MenuItem>
+              <MenuItem
+                onClick={() => handleLogLevelChange("warning")}
+                selected={logLevel === "warning"}
+              >
+                Warning
+              </MenuItem>
+              <MenuItem
+                onClick={() => handleLogLevelChange("error")}
+                selected={logLevel === "error"}
+              >
+                Error
+              </MenuItem>
+            </Menu>
 
-              {/* View Logs */}
-              <Tooltip title="Open logs in new tab">
-                <Box
-                  onClick={handleViewLogs}
+            {/* View Logs */}
+            <Tooltip title="Open logs in new tab">
+              <Box
+                onClick={handleViewLogs}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  cursor: "pointer",
+                  width: isMobile ? "auto" : "100%",
+                  "&:hover": {
+                    opacity: 0.8,
+                  },
+                }}
+              >
+                <IconButton
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    cursor: "pointer",
-                    "&:hover": {
-                      opacity: 0.8,
-                    },
+                    color: "primary.main",
+                    pointerEvents: "none",
                   }}
                 >
-                  <IconButton
-                    sx={{
-                      color: "primary.main",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <DescriptionIcon />
-                  </IconButton>
+                  <DescriptionIcon />
+                </IconButton>
+                {!isMobile && (
                   <Typography
                     variant="body2"
                     sx={{
@@ -610,21 +622,35 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   >
                     Open Log File
                   </Typography>
-                </Box>
-              </Tooltip>
-            </Box>
+                )}
+              </Box>
+            </Tooltip>
           </Box>
         </CardContent>
       </Card>
 
       {/* Log Viewer */}
-      <Card sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <Card
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <CardContent
-          sx={{ flex: 1, display: "flex", flexDirection: "column", p: 2 }}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            p: 2,
+          }}
         >
-          <Typography variant="h6" gutterBottom>
-            Log Output
-          </Typography>
+          {/* <Typography variant="h6" gutterBottom>
+            ESPWiFi Logs
+          </Typography> */}
 
           {logError && (
             <Alert severity="error" sx={{ mb: 2 }}>

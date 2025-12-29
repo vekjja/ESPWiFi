@@ -3,6 +3,7 @@ import { Stack, Paper } from "@mui/material";
 import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
+import LogsButton from "./LogsButton";
 import FileBrowserButton from "./FileBrowserButton";
 import BluetoothButton from "./BluetoothButton";
 import AddModuleButton from "./AddModuleButton";
@@ -52,7 +53,6 @@ export default function SettingsButtonBar({
         <DeviceSettingsButton
           config={config}
           deviceOnline={deviceOnline}
-          onNetworkSettings={onNetworkSettings}
           saveConfigToDevice={saveConfigToDevice}
         />
         <RSSIButton
@@ -86,6 +86,11 @@ export default function SettingsButtonBar({
           config={config}
           deviceOnline={deviceOnline}
           onFileBrowser={onFileBrowser}
+        />
+        <LogsButton
+          config={config}
+          deviceOnline={deviceOnline}
+          saveConfigToDevice={saveConfigToDevice}
         />
         <AddModuleButton
           config={config}

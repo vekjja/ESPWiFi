@@ -15,7 +15,21 @@
     "auth": {
         "enabled": true,
         "username": "admin",
-        "password": "admin"
+        "password": "admin",
+        "cors": {
+            "enabled": true,
+            "origins": [
+                "http://localhost:3000",
+                "http://espwifi",
+                "http://*.local"
+            ],
+            "methods": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE"
+            ]
+        }
     },
     "bluetooth": {
         "enabled": false,

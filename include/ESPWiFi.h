@@ -295,6 +295,17 @@ private:
   // ------------
   bool configNeedsUpdate = false;
 
+  // ---- CORS cache (minimize per-request work/allocations)
+  // -------------------------------------------------------
+  // Recomputed in the main task via handleConfig() after config changes.
+  void refreshCorsCache();
+  bool cors_cache_enabled = true;
+  bool cors_cache_has_origins = false;
+  bool cors_cache_allow_any_origin = true; // true when origins contains "*", or
+                                           // when cors isn't configured
+  std::string cors_cache_allow_methods;    // e.g. "GET, POST, PUT, OPTIONS"
+  std::string cors_cache_allow_headers;    // e.g. "Content-Type, Authorization"
+
   // ---- Log file synchronization (best-effort; avoid blocking httpd)
   // ----------
   SemaphoreHandle_t logFileMutex = nullptr;

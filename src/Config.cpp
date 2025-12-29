@@ -45,6 +45,8 @@ void ESPWiFi::readConfig() {
   }
 
   log(INFO, "⚙️ Config loaded: %s", configFile.c_str());
+  // Update cached config-derived helpers (CORS, etc.)
+  refreshCorsCache();
   printConfig();
 
   readingConfig = false;
@@ -280,6 +282,8 @@ void ESPWiFi::requestConfigUpdate() {
 }
 
 void ESPWiFi::handleConfig() {
+  // Keep small config-derived caches in sync (fast; main task only).
+  refreshCorsCache();
   // Storage config (mount/unmount) - can be slow; keep out of HTTP handlers.
   const bool sdEnabled = config["sd"]["enabled"].isNull()
                              ? false
@@ -357,6 +361,19 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["enabled"] = false;
   doc["auth"]["password"] = "admin";
   doc["auth"]["username"] = "admin";
+  // CORS (auth.cors)
+  // - enabled: controls whether CORS headers are emitted
+  // - origins: allowed Origin patterns (supports '*' and '?')
+  // - methods: allowed methods for preflight
+  // - paths: optional URI path patterns to apply CORS to (supports '*' and '?')
+  doc["auth"]["cors"]["enabled"] = true;
+  JsonArray corsOrigins = doc["auth"]["cors"]["origins"].to<JsonArray>();
+  corsOrigins.add("*");
+  JsonArray corsMethods = doc["auth"]["cors"]["methods"].to<JsonArray>();
+  corsMethods.add("GET");
+  corsMethods.add("POST");
+  corsMethods.add("PUT");
+  corsMethods.add("DELETE");
   JsonArray excludePaths = doc["auth"]["excludePaths"].to<JsonArray>();
   excludePaths.add("/");
   excludePaths.add("/static/*");

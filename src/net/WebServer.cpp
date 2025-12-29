@@ -92,20 +92,6 @@ void ESPWiFi::startWebServer() {
   log(DEBUG, "\thttp://%s:%d", ipAddress().c_str(), 80);
 }
 
-void ESPWiFi::addCORS(httpd_req_t *req) {
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Methods",
-                     "GET, POST, PUT, DELETE, OPTIONS");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Headers",
-                     "Content-Type, Authorization");
-}
-
-void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
-  addCORS(req);
-  httpd_resp_set_status(req, "204 No Content");
-  httpd_resp_send(req, nullptr, 0);
-}
-
 esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
   RouteCtx *ctx = (RouteCtx *)req->user_ctx;
   if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {

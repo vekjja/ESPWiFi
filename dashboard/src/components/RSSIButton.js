@@ -19,12 +19,44 @@ export default function RSSIButton({
   const [modalOpen, setModalOpen] = useState(false);
   const [rssiValue, setRssiValue] = useState(null);
   const wsRef = useRef(null);
+  const connectTimeoutRef = useRef(null);
+  const retryTimeoutRef = useRef(null);
+  const deviceOnlineRef = useRef(deviceOnline);
+  const shouldReconnectRef = useRef(true);
+
+  // WebSocket connection for RSSI data - always connect when device is online
+  useEffect(() => {
+    deviceOnlineRef.current = deviceOnline;
+  }, [deviceOnline]);
+
+  // Stop all reconnect attempts when the component unmounts (e.g. button removed)
+  useEffect(() => {
+    return () => {
+      shouldReconnectRef.current = false;
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        try {
+          wsRef.current.close(1000, "RSSI button removed");
+        } catch {
+          // ignore
+        }
+        wsRef.current = null;
+      }
+    };
+  }, []);
 
   // WebSocket connection for RSSI data - always connect when device is online
   useEffect(() => {
     if (deviceOnline) {
       // Add a delay to allow the backend to start the RSSI service
-      const connectTimeout = setTimeout(() => {
+      connectTimeoutRef.current = setTimeout(() => {
         // Construct WebSocket URL
         const mdnsHostname = config?.deviceName || config?.mdns;
         const wsUrl = buildWebSocketUrl("/rssi", mdnsHostname);
@@ -68,10 +100,18 @@ export default function RSSIButton({
           }
 
           // Only retry if device is still online
-          if (event.code !== 1000 && deviceOnline) {
-            setTimeout(() => {
+          if (
+            shouldReconnectRef.current &&
+            event.code !== 1000 &&
+            deviceOnlineRef.current
+          ) {
+            retryTimeoutRef.current = setTimeout(() => {
               // Double-check that device is still online before retrying
-              if (deviceOnline && !wsRef.current) {
+              if (
+                shouldReconnectRef.current &&
+                deviceOnlineRef.current &&
+                !wsRef.current
+              ) {
                 // Retry connection
                 const retryWs = new WebSocket(wsUrl);
                 wsRef.current = retryWs;
@@ -115,16 +155,27 @@ export default function RSSIButton({
       }, 300); // 300ms delay
 
       return () => {
-        clearTimeout(connectTimeout);
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
         if (wsRef.current) {
-          wsRef.current.close();
+          wsRef.current.close(1000, "RSSI effect cleanup");
           wsRef.current = null;
         }
       };
     } else if (!deviceOnline) {
       // Disconnect if device offline
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       if (wsRef.current) {
-        wsRef.current.close();
+        wsRef.current.close(1000, "Device offline");
         wsRef.current = null;
       }
       setRssiValue(null);
@@ -135,7 +186,7 @@ export default function RSSIButton({
   useEffect(() => {
     return () => {
       if (wsRef.current) {
-        wsRef.current.close();
+        wsRef.current.close(1000, "RSSI unmount");
         wsRef.current = null;
       }
     };

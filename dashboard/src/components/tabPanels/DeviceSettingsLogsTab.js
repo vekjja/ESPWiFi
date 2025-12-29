@@ -19,7 +19,10 @@ import PowerOffIcon from "@mui/icons-material/PowerOff";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import VerticalAlignBottomIcon from "@mui/icons-material/VerticalAlignBottom";
 import VerticalAlignBottomOutlinedIcon from "@mui/icons-material/VerticalAlignBottomOutlined";
+import VerticalAlignTopIcon from "@mui/icons-material/VerticalAlignTop";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import WrapTextIcon from "@mui/icons-material/WrapText";
+import NotesIcon from "@mui/icons-material/Notes";
 import { buildApiUrl, getFetchOptions } from "../../utils/apiUtils";
 
 export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
@@ -32,8 +35,9 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const [logEnabled, setLogEnabled] = useState(config?.log?.enabled !== false);
   const [logLevel, setLogLevel] = useState(config?.log?.level || "info");
   // Auto refresh interval: null (disabled) or 3 seconds
-  const [refreshInterval, setRefreshInterval] = useState(3);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(null);
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [lineWrap, setLineWrap] = useState(false);
   const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);
   const refreshIntervalRef = useRef(null);
@@ -42,6 +46,73 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
   const hasScrolledInitiallyRef = useRef(false);
   const prevAutoScrollRef = useRef(autoScroll);
   const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const menuRowSx = (extra = {}) => ({
+    display: "grid",
+    gridTemplateColumns: isMobile ? "1fr" : "44px minmax(0, 1fr)",
+    alignItems: "center",
+    justifyItems: isMobile ? "center" : "start",
+    columnGap: 0.75,
+    cursor: "pointer",
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    px: isMobile ? 0 : 0.5,
+    py: isMobile ? 0 : 0.25,
+    borderRadius: 1,
+    "&:hover": isMobile
+      ? { opacity: 0.85 }
+      : { opacity: 0.9, backgroundColor: "action.hover" },
+    ...extra,
+  });
+
+  const menuIconSx = (color) => ({
+    color,
+    pointerEvents: "none",
+    p: isMobile ? 0.25 : 0.5,
+    justifySelf: isMobile ? "center" : "center",
+    "& svg": {
+      fontSize: isMobile ? 20 : 24,
+    },
+  });
+
+  const menuLabelSx = (color, extra = {}) => ({
+    color,
+    pointerEvents: "none",
+    fontSize: "0.9rem",
+    minWidth: 0,
+    display: "block",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    ...extra,
+  });
+
+  const scrollToTop = useCallback(() => {
+    const container = logContainerRef.current;
+    if (!container) return;
+    container.scrollTop = 0;
+    // If user intentionally scrolls away, disable auto-scroll so UI matches behavior
+    setAutoScroll(false);
+    // Ensure we don't immediately auto-scroll back down on next update
+    setIsAtBottom(false);
+    hasScrolledInitiallyRef.current = true;
+  }, []);
+
+  // If user manually scrolls away from the bottom, disable auto-scroll so the UI reflects it.
+  const handleLogScroll = useCallback(() => {
+    if (!autoScroll) return;
+    const container = logContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+
+    // If user is not near the bottom, treat this as a manual scroll-up and disable auto-scroll.
+    if (distanceFromBottom > 100) {
+      setAutoScroll(false);
+    }
+  }, [autoScroll]);
 
   // Use Intersection Observer API (industry standard) to detect if user is at bottom
   useEffect(() => {
@@ -284,10 +355,62 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     setLogLevelMenuAnchor(null);
   };
 
-  // Handle view logs in new window
-  const handleViewLogs = () => {
-    const apiUrl = config?.apiURL || buildApiUrl("");
-    window.open(`${apiUrl}/logs`, "_blank");
+  // Handle view logs in new window (must include auth headers; window.open can't set headers)
+  const handleViewLogs = async () => {
+    // Open first to avoid popup blockers, then navigate once we have the blob URL
+    const newTab = window.open("", "_blank");
+    if (newTab) {
+      newTab.document.title = "Logs";
+      newTab.document.body.style.background = "#111";
+      newTab.document.body.style.color = "#fff";
+      newTab.document.body.style.fontFamily = "system-ui, sans-serif";
+      newTab.document.body.style.padding = "16px";
+      newTab.document.body.textContent = "Loading logs…";
+    }
+
+    const fetchUrl = buildApiUrl("/logs");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(
+        fetchUrl,
+        getFetchOptions({ method: "GET", signal: controller.signal })
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const contentType =
+        response.headers.get("content-type") || "text/plain;charset=utf-8";
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(
+        new Blob([blob], { type: contentType })
+      );
+
+      if (newTab) {
+        newTab.location.href = blobUrl;
+      } else {
+        window.open(blobUrl, "_blank");
+      }
+
+      // Revoke after navigation has time to happen
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      const msg =
+        error?.name === "AbortError"
+          ? "Request timed out - device may be offline"
+          : `Failed to open logs: ${error.message || error}`;
+
+      setLogError(msg);
+      if (newTab) {
+        newTab.document.body.textContent = msg;
+      }
+    }
   };
 
   // Initial fetch on mount
@@ -309,7 +432,8 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       sx={{
         display: "flex",
         flexDirection: isMobile ? "column" : "row",
-        gap: 1,
+        gap: 0.75,
+        alignItems: "stretch",
         height: "100%",
         flex: 1,
         minHeight: 0,
@@ -318,14 +442,14 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       {/* Controls */}
       <Card
         sx={{
-          // Sticky is useful on mobile where content scrolls as a whole.
-          // On desktop we want a full-height left rail.
-          position: isMobile ? "sticky" : "sticky",
-          top: 0,
+          // On desktop the modal content doesn't scroll; the log output does.
+          // So we can keep this as a full-height left rail without sticky positioning.
+          position: isMobile ? "sticky" : "relative",
+          top: isMobile ? 0 : "auto",
           zIndex: 10,
           bgcolor: "background.paper",
           boxShadow: 2,
-          flex: isMobile ? "0 0 auto" : "0 0 240px",
+          flex: isMobile ? "0 0 auto" : "0 0 200px",
           height: isMobile ? "auto" : "100%",
           minHeight: 0,
           maxHeight: isMobile ? undefined : "100%",
@@ -337,18 +461,23 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
       >
         <CardContent
           sx={{
-            py: isMobile ? 1.5 : 2,
-            px: isMobile ? 2 : 3,
+            py: isMobile ? 1.25 : 1.5,
+            px: isMobile ? 1.5 : 1.5,
             flex: 1,
           }}
         >
           <Box
             sx={{
-              display: "flex",
-              flexDirection: isMobile ? "row" : "column",
-              flexWrap: isMobile ? "wrap" : "nowrap",
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile
+                ? "repeat(4, minmax(0, 1fr))"
+                : undefined,
+              justifyItems: isMobile ? "center" : undefined,
+              flexDirection: isMobile ? undefined : "column",
+              flexWrap: isMobile ? undefined : "nowrap",
               alignItems: isMobile ? "center" : "stretch",
-              gap: isMobile ? 1 : 1.5,
+              gap: isMobile ? 1 : 1,
+              // Keep mobile rows balanced; avoid a single icon on its own line.
             }}
           >
             {/* Enable/Disable Logging */}
@@ -359,34 +488,19 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                   : "Click to enable Logging"
               }
             >
-              <Box
-                onClick={handleLogEnabledChange}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  cursor: "pointer",
-                  width: isMobile ? "auto" : "100%",
-                  "&:hover": {
-                    opacity: 0.8,
-                  },
-                }}
-              >
+              <Box onClick={handleLogEnabledChange} sx={menuRowSx()}>
                 <IconButton
-                  sx={{
-                    color: logEnabled ? "primary.main" : "text.disabled",
-                    pointerEvents: "none",
-                  }}
+                  size="small"
+                  sx={menuIconSx(logEnabled ? "primary.main" : "text.disabled")}
                 >
                   {logEnabled ? <PowerSettingsNewIcon /> : <PowerOffIcon />}
                 </IconButton>
                 {!isMobile && (
                   <Typography
                     variant="body2"
-                    sx={{
-                      color: logEnabled ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
+                    sx={menuLabelSx(
+                      logEnabled ? "primary.main" : "text.disabled"
+                    )}
                   >
                     {logEnabled ? "Logging Enabled" : "Logging Disabled"}
                   </Typography>
@@ -413,22 +527,11 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                     setIsAtBottom(true);
                   }
                 }}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  cursor: "pointer",
-                  width: isMobile ? "auto" : "100%",
-                  "&:hover": {
-                    opacity: 0.8,
-                  },
-                }}
+                sx={menuRowSx()}
               >
                 <IconButton
-                  sx={{
-                    color: autoScroll ? "primary.main" : "text.disabled",
-                    pointerEvents: "none",
-                  }}
+                  size="small"
+                  sx={menuIconSx(autoScroll ? "primary.main" : "text.disabled")}
                 >
                   {autoScroll ? (
                     <VerticalAlignBottomIcon />
@@ -439,12 +542,25 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                 {!isMobile && (
                   <Typography
                     variant="body2"
-                    sx={{
-                      color: autoScroll ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
+                    sx={menuLabelSx(
+                      autoScroll ? "primary.main" : "text.disabled"
+                    )}
                   >
                     Auto Scroll
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+
+            {/* Scroll to Top */}
+            <Tooltip title="Scroll to top">
+              <Box onClick={scrollToTop} sx={menuRowSx()}>
+                <IconButton size="small" sx={menuIconSx("primary.main")}>
+                  <VerticalAlignTopIcon />
+                </IconButton>
+                {!isMobile && (
+                  <Typography variant="body2" sx={menuLabelSx("primary.main")}>
+                    Top
                   </Typography>
                 )}
               </Box>
@@ -474,25 +590,21 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                     setRefreshInterval(null);
                   }
                 }}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
+                sx={menuRowSx({
                   cursor: logLoading ? "not-allowed" : "pointer",
                   opacity: logLoading ? 0.6 : 1,
-                  width: isMobile ? "auto" : "100%",
                   "&:hover": logLoading
                     ? {}
-                    : {
-                        opacity: 0.8,
-                      },
-                }}
+                    : isMobile
+                    ? { opacity: 0.85 }
+                    : { opacity: 0.9, backgroundColor: "action.hover" },
+                })}
               >
                 <IconButton
-                  sx={{
-                    color: refreshInterval ? "primary.main" : "text.disabled",
-                    pointerEvents: "none",
-                  }}
+                  size="small"
+                  sx={menuIconSx(
+                    refreshInterval ? "primary.main" : "text.disabled"
+                  )}
                   disabled={logLoading}
                 >
                   <AutorenewIcon />
@@ -500,10 +612,9 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                 {!isMobile && (
                   <Typography
                     variant="body2"
-                    sx={{
-                      color: refreshInterval ? "primary.main" : "text.disabled",
-                      pointerEvents: "none",
-                    }}
+                    sx={menuLabelSx(
+                      refreshInterval ? "primary.main" : "text.disabled"
+                    )}
                   >
                     {logLoading
                       ? "Loading..."
@@ -517,37 +628,18 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
             {/* Log Level - Filter */}
             <Tooltip title="Click to change log level">
-              <Box
-                onClick={handleLogLevelMenuOpen}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  cursor: "pointer",
-                  width: isMobile ? "auto" : "100%",
-                  "&:hover": {
-                    opacity: 0.8,
-                  },
-                }}
-              >
-                <IconButton
-                  sx={{
-                    color: "primary.main",
-                    pointerEvents: "none",
-                  }}
-                >
+              <Box onClick={handleLogLevelMenuOpen} sx={menuRowSx()}>
+                <IconButton size="small" sx={menuIconSx("primary.main")}>
                   <FilterListIcon />
                 </IconButton>
                 {!isMobile && (
                   <Typography
                     variant="body2"
-                    sx={{
-                      color: "primary.main",
-                      pointerEvents: "none",
+                    sx={menuLabelSx("primary.main", {
                       textTransform: "capitalize",
-                    }}
+                    })}
                   >
-                    Log Level: {logLevel}
+                    {logLevel}
                   </Typography>
                 )}
               </Box>
@@ -589,38 +681,43 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
               </MenuItem>
             </Menu>
 
-            {/* View Logs */}
-            <Tooltip title="Open logs in new tab">
-              <Box
-                onClick={handleViewLogs}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  cursor: "pointer",
-                  width: isMobile ? "auto" : "100%",
-                  "&:hover": {
-                    opacity: 0.8,
-                  },
-                }}
-              >
+            {/* Line Wrap */}
+            <Tooltip
+              title={
+                lineWrap
+                  ? "Disable line wrap (enable horizontal scrolling)"
+                  : "Enable line wrap"
+              }
+            >
+              <Box onClick={() => setLineWrap((v) => !v)} sx={menuRowSx()}>
                 <IconButton
-                  sx={{
-                    color: "primary.main",
-                    pointerEvents: "none",
-                  }}
+                  size="small"
+                  sx={menuIconSx(lineWrap ? "primary.main" : "text.disabled")}
                 >
-                  <DescriptionIcon />
+                  {lineWrap ? <WrapTextIcon /> : <NotesIcon />}
                 </IconButton>
                 {!isMobile && (
                   <Typography
                     variant="body2"
-                    sx={{
-                      color: "primary.main",
-                      pointerEvents: "none",
-                    }}
+                    sx={menuLabelSx(
+                      lineWrap ? "primary.main" : "text.disabled"
+                    )}
                   >
-                    Open Log File
+                    Line Wrap
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+
+            {/* View Logs */}
+            <Tooltip title="Open logs in new tab">
+              <Box onClick={handleViewLogs} sx={menuRowSx()}>
+                <IconButton size="small" sx={menuIconSx("primary.main")}>
+                  <DescriptionIcon />
+                </IconButton>
+                {!isMobile && (
+                  <Typography variant="body2" sx={menuLabelSx("primary.main")}>
+                    Log
                   </Typography>
                 )}
               </Box>
@@ -645,13 +742,9 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            p: 2,
+            p: 1.5,
           }}
         >
-          {/* <Typography variant="h6" gutterBottom>
-            ESPWiFi Logs
-          </Typography> */}
-
           {logError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {logError}
@@ -660,16 +753,17 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
           <Paper
             ref={logContainerRef}
+            onScroll={handleLogScroll}
             sx={{
               flex: 1,
-              p: 2,
+              p: 1.5,
               bgcolor: "grey.900",
               color: "grey.100",
               fontFamily: "monospace",
-              fontSize: "0.875rem",
+              fontSize: "0.8rem",
               overflow: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              whiteSpace: lineWrap ? "pre-wrap" : "pre",
+              wordBreak: lineWrap ? "break-word" : "normal",
               minHeight: 0, // Important for flex children
               textAlign: "left",
               direction: "ltr",

@@ -9,6 +9,8 @@ export default function AddModuleButton({
   onAddModule,
   saveConfig,
   saveConfigToDevice,
+  missingSettingsButtons = [],
+  onAddSettingsButton,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -51,6 +53,8 @@ export default function AddModuleButton({
           config={config}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
+          missingSettingsButtons={missingSettingsButtons}
+          onAddSettingsButton={onAddSettingsButton}
         />
       )}
     </>

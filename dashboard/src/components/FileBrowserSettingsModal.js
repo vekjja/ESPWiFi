@@ -1,12 +1,12 @@
 import React from "react";
 import { Box } from "@mui/material";
-import DescriptionIcon from "@mui/icons-material/Description";
+import { FolderOpen as FolderOpenIcon } from "@mui/icons-material";
 import SettingsModal from "./SettingsModal";
-import DeviceSettingsLogsTab from "./tabPanels/DeviceSettingsLogsTab";
+import FileBrowser from "./FileBrowser";
 
-export default function LogsSettingsModal({
+export default function FileBrowserSettingsModal({
   config,
-  saveConfigToDevice,
+  deviceOnline,
   open = false,
   onClose,
 }) {
@@ -24,33 +24,30 @@ export default function LogsSettingsModal({
             width: "100%",
           }}
         >
-          <DescriptionIcon color="primary" />
-          <span>Logs</span>
+          <FolderOpenIcon color="primary" />
+          <span>File Browser</span>
         </Box>
       }
       maxWidth={false}
+      fullWidth={false}
       paperSx={{
         // Better desktop use of space; keep mobile behavior intact
         width: { xs: "99%", sm: "99vw" },
         minWidth: { xs: "90%", sm: "650px" },
-        maxWidth: { xs: "99%", sm: "95vw" },
-        // Stretch a bit further toward the bottom of the viewport on desktop
+        maxWidth: { xs: "90%", sm: "95vw" },
         height: { xs: "90%", sm: "88vh" },
         maxHeight: { xs: "90%", sm: "88vh" },
       }}
-      // Keep the left rail fixed; only the log output should scroll
       contentSx={{
         overflowY: "hidden",
-        // Tighter content spacing so more fits on screen
         p: { xs: 2, sm: 1.5 },
         pt: { xs: 1.5, sm: 1.25 },
         pb: { xs: 1.5, sm: 1.25 },
       }}
     >
-      <DeviceSettingsLogsTab
-        config={config}
-        saveConfigToDevice={saveConfigToDevice}
-      />
+      <FileBrowser config={config} deviceOnline={deviceOnline} />
     </SettingsModal>
   );
 }
+
+

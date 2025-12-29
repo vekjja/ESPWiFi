@@ -47,6 +47,8 @@ void ESPWiFi::initLittleFS() {
 
 void ESPWiFi::initSDCard() {
   if (sdCardInitialized) {
+    // Keep config in sync (in case config was loaded without this field).
+    config["sd"]["initialized"] = true;
     return;
   }
 
@@ -61,6 +63,7 @@ void ESPWiFi::initSDCard() {
   }
   if (!enabled) {
     sdCardInitialized = false;
+    config["sd"]["initialized"] = false;
     // Not an error; SD just disabled.
     sdInitAttempted = false;
     return;
@@ -86,10 +89,12 @@ void ESPWiFi::initSDCard() {
     sdCardInitialized = false;
     sdCard = nullptr;
     sdInitLastErr = ret;
+    config["sd"]["initialized"] = false;
     return;
   }
   sdCard = (void *)card;
   sdCardInitialized = true;
+  config["sd"]["initialized"] = true;
 #else
   // For non-ESP32 targets, SD wiring varies widely (SDSPI vs SDMMC, pin mux,
   // etc). Keep this explicit to avoid accidental pin conflicts.
@@ -97,11 +102,14 @@ void ESPWiFi::initSDCard() {
   sdCard = nullptr;
   sdInitNotConfiguredForTarget = true;
   sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
+  config["sd"]["initialized"] = false;
 #endif
 }
 
 void ESPWiFi::deinitSDCard() {
   if (!sdCardInitialized) {
+    // Still ensure config reflects current state.
+    config["sd"]["initialized"] = false;
     return;
   }
 
@@ -113,6 +121,7 @@ void ESPWiFi::deinitSDCard() {
 
   sdCardInitialized = false;
   sdCard = nullptr;
+  config["sd"]["initialized"] = false;
 }
 
 std::string ESPWiFi::sanitizeFilename(const std::string &filename) {

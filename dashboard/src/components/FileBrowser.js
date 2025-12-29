@@ -63,7 +63,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     folderName: "",
   });
   const [currentPath, setCurrentPath] = useState("/");
-  const [fileSystem, setFileSystem] = useState("sd"); // 'sd' or 'lfs'
+  const [fileSystem, setFileSystem] = useState("lfs"); // 'sd' or 'lfs'
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [storageInfo, setStorageInfo] = useState({
@@ -85,6 +85,109 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   });
 
   const apiURL = config?.apiURL || "";
+
+  const openFileWithAuth = useCallback(
+    async (file) => {
+      // window.open can't attach headers; fetch with auth then open a blob URL
+      const newTab = window.open("", "_blank");
+      if (newTab) {
+        newTab.document.title = file?.name || "File";
+        newTab.document.body.style.background = "#111";
+        newTab.document.body.style.color = "#fff";
+        newTab.document.body.style.fontFamily = "system-ui, sans-serif";
+        newTab.document.body.style.padding = "16px";
+        newTab.document.body.textContent = "Loading…";
+      }
+
+      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(
+          fileUrl,
+          getFetchOptions({ method: "GET", signal: controller.signal })
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType =
+          response.headers.get("content-type") || "application/octet-stream";
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(
+          new Blob([blob], { type: contentType })
+        );
+
+        if (newTab) {
+          newTab.location.href = blobUrl;
+        } else {
+          window.open(blobUrl, "_blank");
+        }
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const msg =
+          err?.name === "AbortError"
+            ? "Request timed out - device may be offline"
+            : `Failed to open file: ${err.message || err}`;
+        setError(msg);
+        if (newTab) {
+          newTab.document.body.textContent = msg;
+        }
+      }
+    },
+    [apiURL, fileSystem]
+  );
+
+  const downloadFileWithAuth = useCallback(
+    async (file) => {
+      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(
+          fileUrl,
+          getFetchOptions({ method: "GET", signal: controller.signal })
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType =
+          response.headers.get("content-type") || "application/octet-stream";
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(
+          new Blob([blob], { type: contentType })
+        );
+
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = file?.name || "download";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const msg =
+          err?.name === "AbortError"
+            ? "Request timed out - device may be offline"
+            : `Failed to download file: ${err.message || err}`;
+        setError(msg);
+      }
+    },
+    [apiURL, fileSystem]
+  );
 
   // Fetch files from ESP32
   // Fetch storage information
@@ -149,7 +252,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         setLoading(false);
       }
     },
-    [apiURL, currentPath, fileSystem]
+    [apiURL, fetchStorageInfo]
   );
 
   // Handle file system change
@@ -169,8 +272,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         : currentPath + "/" + file.name;
       fetchFiles(newPath, fileSystem);
     } else {
-      // Download file
-      window.open(`${apiURL}/${fileSystem}${file.path}`, "_blank");
+      openFileWithAuth(file);
     }
   };
 
@@ -492,7 +594,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   // Initialize
   useEffect(() => {
     if (config && deviceOnline) {
-      fetchFiles();
+      const initialFs = config?.sd?.initialized === true ? "sd" : "lfs";
+      fetchFiles("/", initialFs);
     }
   }, [config, deviceOnline]);
 
@@ -509,13 +612,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   return (
     <Box
       sx={{
-        height: { xs: "100vh", sm: "calc(80vh - 120px)" }, // Full height on mobile, calculated on desktop
+        height: "100%",
+        flex: 1,
         display: "flex",
         flexDirection: "column",
-        width: { xs: "100%", sm: "600px" },
-        maxWidth: { xs: "100%", sm: "600px" },
-        minWidth: { xs: "100%", sm: "600px" },
-        mx: "auto", // Center the entire file browser
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        mx: 0,
+        minHeight: 0,
         "& .MuiPaper-root": {
           p: { xs: 1, sm: 1.5 },
         },
@@ -525,13 +630,13 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       <Paper sx={{ flexShrink: 0, mb: 1, p: { xs: 1.5, sm: 2 } }}>
         <Box
           sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             mb: 1,
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 2, sm: 2 },
-            flexWrap: "wrap",
+            display: { xs: "grid", sm: "flex" },
+            gridTemplateColumns: { xs: "1fr 1fr", sm: "none" },
+            alignItems: { xs: "stretch", sm: "center" },
+            justifyContent: { xs: "stretch", sm: "center" },
+            gap: { xs: 1, sm: 2 },
+            flexWrap: { sm: "wrap" },
           }}
         >
           <ToggleButtonGroup
@@ -542,13 +647,13 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             sx={{
               width: { xs: "100%", sm: "auto" },
               "& .MuiToggleButton-root": {
-                minWidth: "100px",
+                minWidth: { xs: 0, sm: "100px" },
                 height: "32px",
-                flex: { xs: 1, sm: "none" },
+                flex: 1,
               },
             }}
           >
-            {config?.sd?.enabled === true && (
+            {config?.sd?.initialized === true && (
               <ToggleButton value="sd">
                 <Storage sx={{ mr: 0.5 }} />
                 <Box sx={{ display: { xs: "none", sm: "inline" } }}>
@@ -571,7 +676,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
-              minWidth: "80px",
+              minWidth: { xs: 0, sm: "80px" },
               px: 1,
               height: "32px", // Match toggle button height
             }}
@@ -592,7 +697,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
-              minWidth: "100px",
+              minWidth: { xs: 0, sm: "100px" },
               px: 1,
               height: "32px", // Match toggle button height
             }}
@@ -718,6 +823,10 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               maxWidth: { xs: "100px", sm: "150px" },
+            },
+            "& .MuiLink-root, & .MuiTypography-root": {
+              fontSize: { xs: "0.75rem", sm: "0.8125rem" },
+              lineHeight: 1.2,
             },
           }}
         >
@@ -876,10 +985,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         {contextMenu.file && !contextMenu.file.isDirectory && (
           <MenuItem
             onClick={() => {
-              window.open(
-                `${apiURL}/${fileSystem}${contextMenu.file.path}`,
-                "_blank"
-              );
+              downloadFileWithAuth(contextMenu.file);
               handleContextMenuClose();
             }}
           >

@@ -238,35 +238,26 @@ export default function SettingsButtonBar({
     [availableButtons]
   );
 
-  const [enabledIds, setEnabledIds] = useState(visibleIds);
-  const [order, setOrder] = useState(visibleIds);
-  const [activeId, setActiveId] = useState(null);
-
-  // Load saved order once
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      setOrder(parsed);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Load enabled buttons once
-  useEffect(() => {
+  const [enabledIds, setEnabledIds] = useState(() => {
     try {
       const raw = window.localStorage.getItem(ENABLED_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      setEnabledIds(parsed);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : visibleIds;
     } catch {
-      // ignore
+      return visibleIds;
     }
-  }, []);
+  });
+
+  const [order, setOrder] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : visibleIds;
+    } catch {
+      return visibleIds;
+    }
+  });
+  const [activeId, setActiveId] = useState(null);
 
   // Reconcile when visible buttons change (e.g. camera/bluetooth appears/disappears)
   useEffect(() => {

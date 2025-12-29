@@ -5,8 +5,6 @@
 
 void ESPWiFi::start() {
   startSerial();
-  // Load config before starting logging so we can select the log filesystem
-  // (prefer SD when available) and mount SD only when enabled in config.
   initLittleFS();
   readConfig();
   startLogging();
@@ -14,9 +12,9 @@ void ESPWiFi::start() {
   startWiFi();
   // startMDNS();
   startWebServer();
+  startRSSIWebSocket();
   srvAll();
   // startBluetooth();
-  // startRSSIWebSocket();
   handleConfig();
 }
 
@@ -34,7 +32,7 @@ void ESPWiFi::runSystem() {
   // static unsigned long lastHeartbeat = 0;
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 
-  // streamRSSI();
+  streamRSSI();
   // checkBluetoothConnectionStatus();
   // #ifdef ESPWiFi_CAMERA
   //   streamCamera();

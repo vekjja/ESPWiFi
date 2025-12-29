@@ -15,6 +15,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import SdCardIcon from "@mui/icons-material/SdCard";
 import MemoryIcon from "@mui/icons-material/Memory";
 import { bytesToHumanReadable, formatUptime } from "../../utils/formatUtils";
+import { getRSSIChipColor, isValidRssi } from "../../utils/rssiUtils";
 
 export default function DeviceSettingsInfoTab({
   deviceInfo,
@@ -123,7 +124,7 @@ export default function DeviceSettingsInfoTab({
                       {deviceInfo.client_ssid}
                     </Typography>
                   </Box>
-                  {deviceInfo.rssi && (
+                  {isValidRssi(deviceInfo.rssi) && (
                     <Box
                       sx={{ display: "flex", justifyContent: "space-between" }}
                     >
@@ -132,13 +133,7 @@ export default function DeviceSettingsInfoTab({
                       </Typography>
                       <Chip
                         label={`${deviceInfo.rssi} dBm`}
-                        color={
-                          deviceInfo.rssi > -50
-                            ? "primary"
-                            : deviceInfo.rssi > -70
-                            ? "warning"
-                            : "error"
-                        }
+                        color={getRSSIChipColor(deviceInfo.rssi)}
                         sx={{ fontWeight: 600 }}
                       />
                     </Box>

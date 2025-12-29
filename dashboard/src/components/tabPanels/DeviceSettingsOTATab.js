@@ -43,10 +43,7 @@ export default function DeviceSettingsOTATab({ config }) {
 
   // Fetch OTA status information
   const fetchOTAStatus = async () => {
-    const fetchUrl = buildApiUrl(
-      "/api/ota/status",
-      config?.deviceName || config?.mdns
-    );
+    const fetchUrl = buildApiUrl("/api/ota/status", config?.deviceName);
     console.log("Fetching OTA status from:", fetchUrl);
 
     setOtaLoading(true);
@@ -92,10 +89,7 @@ export default function DeviceSettingsOTATab({ config }) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const fetchUrl = buildApiUrl(
-          "/api/ota/progress",
-          config?.deviceName || config?.mdns
-        );
+        const fetchUrl = buildApiUrl("/api/ota/progress", config?.deviceName);
         const response = await fetch(fetchUrl, getFetchOptions());
         if (response.ok) {
           const data = await response.json();
@@ -128,10 +122,7 @@ export default function DeviceSettingsOTATab({ config }) {
   // Check if device is back online after restart
   const checkDeviceStatus = async () => {
     try {
-      const fetchUrl = buildApiUrl(
-        "/api/ota/status",
-        config?.deviceName || config?.mdns
-      );
+      const fetchUrl = buildApiUrl("/api/ota/status", config?.deviceName);
       const response = await fetch(fetchUrl, getFetchOptions());
       if (response.ok) {
         setFirmwareUploadStatus(
@@ -181,7 +172,7 @@ export default function DeviceSettingsOTATab({ config }) {
       // Step 1: Start OTA update
       const startUrl = buildApiUrl(
         "/api/ota/start?mode=firmware",
-        config?.deviceName || config?.mdns
+        config?.deviceName
       );
       console.log("Starting OTA with URL:", startUrl);
       const startResponse = await fetch(
@@ -271,7 +262,7 @@ export default function DeviceSettingsOTATab({ config }) {
         }
       });
 
-      const uploadUrl = buildApiUrl("/api/ota/upload", config?.mdns);
+      const uploadUrl = buildApiUrl("/api/ota/upload", config?.deviceName);
       xhr.open("POST", uploadUrl);
       xhr.send(formData);
     } catch (error) {
@@ -316,7 +307,7 @@ export default function DeviceSettingsOTATab({ config }) {
           formData.append("path", uploadPath);
 
           const response = await fetch(
-            buildApiUrl("/api/ota/filesystem", config?.mdns),
+            buildApiUrl("/api/ota/filesystem", config?.deviceName),
             getFetchOptions({
               method: "POST",
               body: formData,

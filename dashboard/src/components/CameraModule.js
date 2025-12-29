@@ -144,7 +144,7 @@ export default function CameraModule({
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       if (wsUrl.startsWith("/")) {
         // For relative paths, use the mDNS hostname from global config
-        const mdnsHostname = globalConfig?.deviceName || globalConfig?.mdns;
+        const mdnsHostname = globalConfig?.deviceName;
         wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname);
       } else {
         // URL doesn't have protocol and doesn't start with /, add ws:// protocol
@@ -153,7 +153,7 @@ export default function CameraModule({
     }
 
     setStreamUrl(wsUrl);
-  }, [config?.url, globalConfig?.deviceName, globalConfig?.mdns]); // Re-run if URL or device name changes
+  }, [config?.url, globalConfig?.deviceName]); // Re-run if URL or device name changes
 
   // Update camera status when global config or device online status changes
   useEffect(() => {
@@ -341,7 +341,7 @@ export default function CameraModule({
   };
 
   const handleSnapshot = () => {
-    const mdnsHostname = globalConfig?.mdns;
+    const mdnsHostname = globalConfig?.deviceName;
     const snapshotUrl = buildApiUrl("/camera/snapshot", mdnsHostname);
 
     // Open the snapshot in a new tab

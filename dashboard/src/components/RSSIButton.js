@@ -58,8 +58,8 @@ export default function RSSIButton({
       // Add a delay to allow the backend to start the RSSI service
       connectTimeoutRef.current = setTimeout(() => {
         // Construct WebSocket URL
-        const mdnsHostname = config?.deviceName || config?.mdns;
-        const wsUrl = buildWebSocketUrl("/rssi", mdnsHostname);
+        const mdnsHostname = config?.deviceName;
+        const wsUrl = buildWebSocketUrl("/ws/rssi", mdnsHostname);
 
         // Connect to RSSI WebSocket
         const ws = new WebSocket(wsUrl);
@@ -180,7 +180,7 @@ export default function RSSIButton({
       }
       setRssiValue(null);
     }
-  }, [deviceOnline, config?.deviceName, config?.mdns]);
+  }, [deviceOnline, config?.deviceName]);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {

@@ -9,6 +9,7 @@ import Login from "./components/Login";
 import SettingsButtonBar from "./components/SettingsButtonBar";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
+import { getRSSIThemeColor } from "./utils/rssiUtils";
 
 // Define the theme
 const theme = createTheme({
@@ -375,16 +376,7 @@ function App() {
   const handleAddModule = () => {}; // Add module now handled by AddModuleButton
 
   // RSSI helper functions
-  const getRSSIColor = (rssi) => {
-    if (rssi === null || rssi === undefined) {
-      return "text.disabled";
-    }
-    if (rssi >= -50) return "primary.main";
-    if (rssi >= -60) return "primary.main";
-    if (rssi >= -70) return "warning.main";
-    if (rssi >= -80) return "warning.main";
-    return "error.main";
-  };
+  const getRSSIColor = (rssi) => getRSSIThemeColor(rssi);
 
   const getRSSIIcon = (rssi) => {
     if (rssi === null || rssi === undefined) {
@@ -431,11 +423,7 @@ function App() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {localConfig?.["deviceName"] ||
-            config?.["deviceName"] ||
-            localConfig?.["mdns"] ||
-            config?.["mdns"] ||
-            "ESPWiFi"}
+          {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
         </Box>
       </Container>
 

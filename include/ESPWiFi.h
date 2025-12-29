@@ -212,9 +212,6 @@ public:
   void srvAuth();
   void srvConfig();
   void srvWildcard();
-#if defined(CONFIG_BT_ENABLED)
-  void srvBluetooth();
-#endif
 #ifdef ESPWiFi_CAMERA
   void srvCamera();
 #endif
@@ -276,19 +273,8 @@ public:
 
   // ---- Bluetooth Classic Audio (A2DP source; WAV-first)
   // ------------------------------------------------------
-  // Config handler is called from `handleConfig()` (main task) so we never do
-  // heavy BT work in HTTP handlers.
+  // Config handler is called from `handleConfig()` (main task).
   void bluetoothAudioConfigHandler();
-  bool startBluetoothAudio();
-  void stopBluetoothAudio();
-  void btEnterPairingMode(uint32_t seconds = 10);
-  void btStopPairingMode();
-  void btConnect(const std::string &addr);
-  void btDisconnect();
-  void btPlayWavFromSd(const std::string &path);
-  void btStopAudio();
-  std::string btStatusJson();
-  std::string btScanJson();
 
 private:
   // ---- Version

@@ -6,7 +6,11 @@
 #include "esp_littlefs.h"
 #include "esp_vfs_fat.h"
 #include "ff.h"
+#include "sdkconfig.h"
 #include "sdmmc_cmd.h"
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#include "driver/sdmmc_host.h"
+#endif
 #include <ArduinoJson.h>
 #include <cstring>
 #include <dirent.h>

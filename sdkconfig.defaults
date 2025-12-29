@@ -1,14 +1,5 @@
 # Common Configuration (shared across all boards)
-# Board-specific configurations should be in sdkconfig.{env-name}.defaults files
 
-# Main task stack size (ESP-IDF 5.x uses CONFIG_ESP_MAIN_TASK_STACK_SIZE).
-# Bigger stack reduces available heap, so keep this as small as you can while stable.
-# If you hit stack overflows, increase gradually and use uxTaskGetStackHighWaterMark()
-# to measure.
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
-
-# Note: esp_http_server task stack is NOT a Kconfig option; it’s set via
-# httpd_config_t.stack_size in code (see src/WebServer.cpp).
 
 # Secure Boot V2 (ESP32-C3 uses ECDSA - auto-selected when RSA is disabled)
 # CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
@@ -48,6 +39,32 @@ CONFIG_LITTLEFS_USE_MTIME=y
 
 # WebSocket
 CONFIG_HTTPD_WS_SUPPORT=y
+
+# -----------------------------------------------------------------------------
+# System event task (ESP-IDF)
+# -----------------------------------------------------------------------------
+#
+# ESP-IDF runs the "sys_evt" task for system/event loop callbacks (WiFi/BT/etc).
+# The default stack is too small for this project on ESP32-WROOM-32 class boards
+# and results in a reboot loop:
+#   "***ERROR*** A stack overflow in task sys_evt has been detected."
+#
+# Keep this reasonably sized; 4096 has been sufficient in practice.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+# Back-compat name seen in some configs/IDF versions.
+CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+
+# -----------------------------------------------------------------------------
+# Flash size (ESP-IDF / esptoolpy)
+# -----------------------------------------------------------------------------
+# Many ESP32 / ESP32-C3 dev boards ship with 4MB (32Mbit) flash. PlatformIO’s
+# board definition expects 4MB for esp32dev, so align the sdkconfig to avoid:
+#   "Expected 4MB, found 2MB!"
+#
+# CONFIG_ESPTOOLPY_FLASHSIZE_2MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
 # Logging
 # Changed from DEBUG to INFO to reduce binary size

@@ -164,12 +164,12 @@ private:
         uint16_t port = 0;
         getRemoteInfo_(fd, ip, sizeof(ip), &port);
         if (ip[0] != '\0') {
-          espWifi_->log(INFO, "🧦 WebSocket Client Connected: %s", uri_);
+          espWifi_->log(INFO, "🔗 WebSocket Client Connected: %s", uri_);
           espWifi_->log(DEBUG, "\tFD: %d", fd);
           espWifi_->log(DEBUG, "\tIP: %s", ip);
           espWifi_->log(DEBUG, "\tPort: %u", (unsigned)port);
         } else {
-          espWifi_->log(INFO, "🧦 WebSocket Client Connected: %s (fd=%d)", uri_,
+          espWifi_->log(INFO, "🔗 WebSocket Client Connected: %s (fd=%d)", uri_,
                         fd);
         }
       }
@@ -195,7 +195,7 @@ private:
       if (espWifi_) {
         espWifi_->log(
             INFO,
-            "🧦 WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
+            "🔗 WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
             uri_, fd);
         espWifi_->log(DEBUG, "\tDisconnect Time: %llu ms",
                       (unsigned long long)(esp_timer_get_time() / 1000ULL));
@@ -279,7 +279,7 @@ private:
         if (espWifi_) {
           espWifi_->log(
               INFO,
-              "🧦 WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
+              "🔗 WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
               uri_, fd);
         }
         if (onDisconnect_) {
@@ -362,14 +362,14 @@ public:
 
     esp_err_t err = httpd_register_uri_handler(espWifi_->webServer, &wsUri);
     if (err != ESP_OK) {
-      espWifi_->log(ERROR, "🧦 WebSocket(%s) register failed: %s", uri_,
+      espWifi_->log(ERROR, "🔗 WebSocket(%s) register failed: %s", uri_,
                     esp_err_to_name(err));
       started_ = false;
       return false;
     }
 
     started_ = true;
-    espWifi_->log(INFO, "🧦 WebSocket Started: %s", uri_);
+    espWifi_->log(INFO, "🔗 WebSocket Started: %s", uri_);
     return true;
 #endif
   }

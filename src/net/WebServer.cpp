@@ -132,6 +132,11 @@ esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
       .method = method,
       .handler = &ESPWiFi::routeTrampoline,
       .user_ctx = ctx,
+      // ESP-IDF adds fields over time;
+      // explicitly initialize the newer ones.
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
   };
 
   esp_err_t ret = httpd_register_uri_handler(webServer, &route);

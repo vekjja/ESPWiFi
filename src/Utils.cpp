@@ -107,26 +107,62 @@ std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
 }
 
 std::string ESPWiFi::getContentType(std::string filename) {
-  if (filename.find(".html") != std::string::npos)
-    return "text/html";
-  else if (filename.find(".css") != std::string::npos)
-    return "text/css";
-  else if (filename.find(".js") != std::string::npos)
-    return "application/javascript";
-  else if (filename.find(".json") != std::string::npos)
-    return "application/json";
-  else if (filename.find(".png") != std::string::npos)
-    return "image/png";
-  else if (filename.find(".jpg") != std::string::npos ||
-           filename.find(".jpeg") != std::string::npos)
-    return "image/jpeg";
-  else if (filename.find(".gif") != std::string::npos)
-    return "image/gif";
-  else if (filename.find(".svg") != std::string::npos)
+  // Strip query string (e.g. "/log?tail=65536") before extension checks.
+  size_t q = filename.find('?');
+  if (q != std::string::npos) {
+    filename.resize(q);
+  }
+
+  // Extract extension (without dot) and normalize.
+  std::string ext = getFileExtension(filename);
+  toLowerCase(ext);
+
+  // Text types: include charset so browsers render correctly.
+  if (ext == "html" || ext == "htm")
+    return "text/html; charset=utf-8";
+  if (ext == "css")
+    return "text/css; charset=utf-8";
+  if (ext == "js" || ext == "mjs")
+    return "application/javascript; charset=utf-8";
+  if (ext == "json")
+    return "application/json; charset=utf-8";
+  if (ext == "txt" || ext == "log")
+    return "text/plain; charset=utf-8";
+  if (ext == "svg")
     return "image/svg+xml";
-  else if (filename.find(".ico") != std::string::npos)
+
+  // Binary types
+  if (ext == "png")
+    return "image/png";
+  if (ext == "jpg" || ext == "jpeg")
+    return "image/jpeg";
+  if (ext == "gif")
+    return "image/gif";
+  if (ext == "ico")
     return "image/x-icon";
-  return "text/plain; charset=utf-8";
+  if (ext == "wasm")
+    return "application/wasm";
+  if (ext == "mp3")
+    return "audio/mpeg";
+  if (ext == "wav")
+    return "audio/wav";
+  if (ext == "ogg")
+    return "audio/ogg";
+  if (ext == "oga")
+    return "audio/ogg";
+  if (ext == "opus")
+    return "audio/opus";
+  if (ext == "mp4")
+    return "video/mp4";
+  if (ext == "webm")
+    return "video/webm";
+  if (ext == "ogg")
+    return "video/ogg";
+  if (ext == "ogv")
+    return "video/ogg";
+  if (ext == "mov")
+    return "video/quicktime";
+  return "application/octet-stream";
 }
 
 std::string ESPWiFi::getStatusFromCode(int statusCode) {

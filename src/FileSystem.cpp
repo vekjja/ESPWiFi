@@ -166,8 +166,11 @@ void ESPWiFi::initSDCard() {
     }
     sdSpiHost = host.slot;
 
-    log(INFO, "💾 SD(SPI) pins: host=%d sclk=%d miso=%d mosi=%d cs=%d",
-        host.slot, sclk, miso, mosi, cs);
+    log(DEBUG, "\tSD(SPI) host: %d", host.slot);
+    log(DEBUG, "\tSD(SPI) sclk: %d", sclk);
+    log(DEBUG, "\tSD(SPI) miso: %d", miso);
+    log(DEBUG, "\tSD(SPI) mosi: %d", mosi);
+    log(DEBUG, "\tSD(SPI) cs: %d", cs);
 
     spi_bus_config_t bus_cfg = {};
     bus_cfg.mosi_io_num = mosi;

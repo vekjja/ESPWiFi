@@ -378,7 +378,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
                             &clientInfoRef);
   }
 
-  // Determine content type based on file extension
+  // Determine content type based on file extension (ignore query string)
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
 

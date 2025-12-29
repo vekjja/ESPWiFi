@@ -170,17 +170,6 @@ std::string ESPWiFi::bytesToHumanReadable(size_t bytes) {
   return std::string(buffer);
 }
 
-void ESPWiFi::runAtInterval(unsigned int interval,
-                            unsigned long &lastIntervalRun,
-                            std::function<void()> functionToRun) {
-  unsigned long currentTime =
-      esp_timer_get_time() / 1000; // Convert to milliseconds
-  if (currentTime - lastIntervalRun >= interval) {
-    functionToRun();
-    lastIntervalRun = currentTime;
-  }
-}
-
 // Helper function to match URI against a pattern with wildcard support
 // Supports '*' to match any sequence of characters (including empty)
 // Supports '?' to match any single character

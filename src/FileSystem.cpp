@@ -385,6 +385,16 @@ bool ESPWiFi::isProtectedFile(const std::string &fsParam,
                               const std::string &filePath) {
   (void)fsParam; // Protection is config-driven and applies to all filesystems.
 
+  // Hard-coded protection: the active config file must never be modifiable via
+  // HTTP file APIs, even if not listed in auth.protectFiles.
+  std::string normalizedPath = filePath;
+  if (!normalizedPath.empty() && normalizedPath.front() != '/') {
+    normalizedPath.insert(normalizedPath.begin(), '/');
+  }
+  if (!configFile.empty() && normalizedPath == configFile) {
+    return true;
+  }
+
   // First: config-driven protection (applies to BOTH LFS and SD if configured).
   // These paths are "protected": no filesystem operation should be allowed via
   // the HTTP API, even if the request is authenticated.
@@ -393,11 +403,6 @@ bool ESPWiFi::isProtectedFile(const std::string &fsParam,
     // filePath is expected to be normalized (leading '/', no trailing '/'
     // unless it's root). Be defensive anyway: normalize minimally so config
     // patterns like "config.json" match even if callers pass "config.json".
-    std::string normalizedPath = filePath;
-    if (!normalizedPath.empty() && normalizedPath.front() != '/') {
-      normalizedPath.insert(normalizedPath.begin(), '/');
-    }
-
     std::string_view path(normalizedPath);
     for (JsonVariant v : protectedFiles.as<JsonArray>()) {
       const char *pat = v.as<const char *>();

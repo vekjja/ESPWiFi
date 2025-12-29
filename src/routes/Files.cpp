@@ -10,7 +10,7 @@
 void ESPWiFi::srvFS() {
   // API endpoint for file browser JSON data - GET /api/files
   registerRoute(
-      "/api/files", HTTP_GET, true,
+      "/api/files", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -93,7 +93,7 @@ void ESPWiFi::srvFS() {
 
   // API endpoint for storage information - GET /api/storage
   registerRoute(
-      "/api/storage", HTTP_GET, true,
+      "/api/storage", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -118,7 +118,7 @@ void ESPWiFi::srvFS() {
 
   // API endpoint for creating directories - POST /api/files/mkdir
   registerRoute(
-      "/api/files/mkdir", HTTP_POST, true,
+      "/api/files/mkdir", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Read request body
@@ -203,7 +203,7 @@ void ESPWiFi::srvFS() {
 
   // API endpoint for file rename - POST /api/files/rename
   registerRoute(
-      "/api/files/rename", HTTP_POST, true,
+      "/api/files/rename", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -261,7 +261,7 @@ void ESPWiFi::srvFS() {
 
   // API endpoint for file deletion - POST /api/files/delete
   registerRoute(
-      "/api/files/delete", HTTP_POST, true,
+      "/api/files/delete", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
@@ -330,7 +330,7 @@ void ESPWiFi::srvFS() {
   // Note: ESP-IDF httpd doesn't have built-in multipart support, so we'll
   // handle it manually
   registerRoute(
-      "/api/files/upload", HTTP_POST, true,
+      "/api/files/upload", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Get parameters from query string

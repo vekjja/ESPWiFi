@@ -342,8 +342,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["enabled"] = false;
   doc["auth"]["password"] = "admin";
   doc["auth"]["username"] = "admin";
+  doc["auth"]["excludePaths"] = {"/", "/static/*", "/favicon.ico",
+                                 "/api/auth/login", "/asset-manifest.json"};
 
-  // Logging: access, debug, info, warning, error
+  // Logging: verbose, access, debug, info, warning, error
   doc["log"]["enabled"] = true;
   doc["log"]["level"] = "debug";
 

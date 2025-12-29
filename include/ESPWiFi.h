@@ -59,7 +59,6 @@ private:
   struct RouteCtx {
     ESPWiFi *self = nullptr;
     RouteHandler handler = nullptr;
-    bool requireAuth = true;
   };
 
   std::vector<RouteCtx *> _routeContexts;
@@ -208,8 +207,7 @@ public:
   // If provided, outClientInfo is populated on successful verification so
   // handlers can log without re-reading socket/header state later.
   esp_err_t verifyRequest(httpd_req_t *req,
-                          std::string *outClientInfo = nullptr,
-                          bool requireAuth = true);
+                          std::string *outClientInfo = nullptr);
   // Helper to get HTTP method as string for logging
   const char *getMethodString(int method);
   // Capture request/client info early (before long streaming responses) so
@@ -225,7 +223,7 @@ public:
   // Register a route and automatically apply verifyRequest() + stable
   // clientInfo capture before invoking the handler.
   esp_err_t registerRoute(const char *uri, httpd_method_t method,
-                          bool requireAuth, RouteHandler handler);
+                          RouteHandler handler);
   // Nginx-like access log line for a completed response
   void logAccess(int statusCode, const std::string &clientInfo,
                  size_t bytesSent = 0);

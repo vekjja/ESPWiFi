@@ -50,10 +50,10 @@ void ESPWiFi::startWebServer() {
 
   // Global CORS preflight handler (covers all routes)
   // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
-  (void)registerRoute("/*", HTTP_OPTIONS, false, &noopRouteHandler);
+  (void)registerRoute("/*", HTTP_OPTIONS, &noopRouteHandler);
 
   // Restart endpoint
-  (void)registerRoute("/api/restart", HTTP_POST, true,
+  (void)registerRoute("/api/restart", HTTP_POST,
                       [](ESPWiFi *espwifi, httpd_req_t *req,
                          const std::string &clientInfo) -> esp_err_t {
                         (void)espwifi->sendJsonResponse(
@@ -86,8 +86,7 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
   httpd_resp_send(req, nullptr, 0);
 }
 
-esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
-                                 bool requireAuth) {
+esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
   if (req == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
@@ -106,13 +105,6 @@ esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo,
   std::string clientInfo;
   if (outClientInfo != nullptr) {
     clientInfo = getClientInfo(req);
-  }
-
-  if (!requireAuth) {
-    if (outClientInfo != nullptr) {
-      *outClientInfo = std::move(clientInfo);
-    }
-    return ESP_OK;
   }
 
   // Check if authorized
@@ -139,7 +131,7 @@ esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
   }
 
   std::string clientInfo;
-  if (ctx->self->verifyRequest(req, &clientInfo, ctx->requireAuth) != ESP_OK) {
+  if (ctx->self->verifyRequest(req, &clientInfo) != ESP_OK) {
     return ESP_OK; // preflight or error already handled
   }
 
@@ -147,7 +139,7 @@ esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
 }
 
 esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
-                                 bool requireAuth, RouteHandler handler) {
+                                 RouteHandler handler) {
   if (!webServer) {
     log(ERROR, "Cannot register route %s: web server not initialized",
         (uri != nullptr) ? uri : "(null)");
@@ -165,7 +157,6 @@ esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
   }
   ctx->self = this;
   ctx->handler = handler;
-  ctx->requireAuth = requireAuth;
 
   httpd_uri_t route = {
       .uri = uri,

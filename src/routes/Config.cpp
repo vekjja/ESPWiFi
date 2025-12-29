@@ -7,7 +7,7 @@
 void ESPWiFi::srvConfig() {
   // Config GET endpoint
   registerRoute(
-      "/config", HTTP_GET, true,
+      "/config", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         std::string json;
@@ -18,7 +18,7 @@ void ESPWiFi::srvConfig() {
 
   // Config PUT endpoint
   registerRoute(
-      "/config", HTTP_PUT, true,
+      "/config", HTTP_PUT,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         JsonDocument reqJson = espwifi->readRequestBody(req);

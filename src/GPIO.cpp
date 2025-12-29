@@ -3,7 +3,7 @@
 
 void ESPWiFi::srvGPIO() {
   registerRoute(
-      "/api/gpio", HTTP_POST, true,
+      "/api/gpio", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         (void)espwifi->sendJsonResponse(req, 200, "{\"status\":\"ok\"}",

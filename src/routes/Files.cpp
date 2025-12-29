@@ -167,7 +167,7 @@ void ESPWiFi::srvFiles() {
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
           (void)espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}",
+              req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
           return ESP_OK;
         }
@@ -324,7 +324,7 @@ void ESPWiFi::srvFiles() {
         }
         body[content_len] = '\0';
 
-        StaticJsonDocument<384> jsonDoc;
+        JsonDocument jsonDoc;
         DeserializationError error = deserializeJson(jsonDoc, body);
         if (error) {
           (void)espwifi->sendJsonResponse(
@@ -345,7 +345,7 @@ void ESPWiFi::srvFiles() {
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
           (void)espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}",
+              req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
           return ESP_OK;
         }
@@ -401,7 +401,7 @@ void ESPWiFi::srvFiles() {
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
           (void)espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}",
+              req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
           return ESP_OK;
         }
@@ -472,7 +472,7 @@ void ESPWiFi::srvFiles() {
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
           (void)espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}",
+              req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
           return ESP_OK;
         }
@@ -651,7 +651,7 @@ void ESPWiFi::srvFiles() {
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
           (void)espwifi->sendJsonResponse(
-              req, 404, "{\"error\":\"File system not available\"}",
+              req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
           return ESP_OK;
         }

@@ -2,6 +2,49 @@
 #include "ESPWiFi.h"
 #include "driver/uart.h"
 #include "sdkconfig.h"
+#include <cctype>
+#include <cstring>
+
+namespace {
+inline int hexNibble(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  c = (char)std::tolower((unsigned char)c);
+  if (c >= 'a' && c <= 'f') {
+    return 10 + (c - 'a');
+  }
+  return -1;
+}
+
+std::string urlDecode(const char *in) {
+  if (in == nullptr) {
+    return std::string();
+  }
+  const size_t n = strlen(in);
+  std::string out;
+  out.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    const char c = in[i];
+    if (c == '+') {
+      out.push_back(' ');
+      continue;
+    }
+    if (c == '%' && (i + 2) < n) {
+      const int hi = hexNibble(in[i + 1]);
+      const int lo = hexNibble(in[i + 2]);
+      if (hi >= 0 && lo >= 0) {
+        out.push_back((char)((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+      // Invalid escape; fall through and keep the '%' literal.
+    }
+    out.push_back(c);
+  }
+  return out;
+}
+} // namespace
 
 bool ESPWiFi::fileExists(const std::string &fullPath) {
   struct stat st;
@@ -47,9 +90,12 @@ std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
     char *buf = (char *)malloc(buf_len);
     if (buf) {
       if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
-        char value[128];
+        // Keep in sync with path limits in routes (e.g. /api/files allows 255).
+        // Note: this is the *decoded* max we care about; encoded values may be
+        // longer but should still fit under max_uri_len.
+        char value[256];
         if (httpd_query_key_value(buf, key, value, sizeof(value)) == ESP_OK) {
-          std::string result(value);
+          std::string result = urlDecode(value);
           free(buf);
           return result;
         }
@@ -95,6 +141,8 @@ std::string ESPWiFi::getStatusFromCode(int statusCode) {
     status_text = "Unauthorized";
   else if (statusCode == 404)
     status_text = "Not Found";
+  else if (statusCode == 503)
+    status_text = "Service Unavailable";
   else if (statusCode == 500)
     status_text = "Internal Server Error";
 

@@ -312,7 +312,8 @@ private:
   // If you want **blocking + precise file logging** (every log line is appended
   // to the file, in order), change the policy in `src/Log.cpp`:
   // - In `writeLog()`:
-  //   - Replace the bounded wait (e.g. `pdMS_TO_TICKS(3)`) with a blocking take
+  //   - Replace the bounded wait (e.g. `pdMS_TO_TICKS(18)`) with a blocking
+  //   take
   //     like `xSemaphoreTake(logFileMutex, portMAX_DELAY)` (or a longer bounded
   //     wait such as `pdMS_TO_TICKS(50)`).
   //   - Consider adding a `fflush()`/`fsync()` strategy if you need durability

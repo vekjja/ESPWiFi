@@ -422,6 +422,19 @@ export default function DeviceSettingsModal({
         </Box>
       }
       maxWidth={false}
+      paperSx={{
+        // Better desktop use of space; keep mobile behavior intact
+        width: { xs: "90%", sm: "95vw" },
+        maxWidth: { xs: "90%", sm: "95vw" },
+        height: { xs: "90%", sm: "88vh" },
+        maxHeight: { xs: "90%", sm: "88vh" },
+      }}
+      contentSx={{
+        // Tighter padding so more fits on screen
+        p: { xs: 2, sm: 1.5 },
+        pt: { xs: 1.5, sm: 1.25 },
+        pb: { xs: 1.5, sm: 1.25 },
+      }}
       actions={getActions()}
       tabs={
         <Tabs

@@ -630,13 +630,13 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       <Paper sx={{ flexShrink: 0, mb: 1, p: { xs: 1.5, sm: 2 } }}>
         <Box
           sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             mb: 1,
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 2, sm: 2 },
-            flexWrap: "wrap",
+            display: { xs: "grid", sm: "flex" },
+            gridTemplateColumns: { xs: "1fr 1fr", sm: "none" },
+            alignItems: { xs: "stretch", sm: "center" },
+            justifyContent: { xs: "stretch", sm: "center" },
+            gap: { xs: 1, sm: 2 },
+            flexWrap: { sm: "wrap" },
           }}
         >
           <ToggleButtonGroup
@@ -647,9 +647,9 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             sx={{
               width: { xs: "100%", sm: "auto" },
               "& .MuiToggleButton-root": {
-                minWidth: "100px",
+                minWidth: { xs: 0, sm: "100px" },
                 height: "32px",
-                flex: { xs: 1, sm: "none" },
+                flex: 1,
               },
             }}
           >
@@ -676,7 +676,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
-              minWidth: "80px",
+              minWidth: { xs: 0, sm: "80px" },
               px: 1,
               height: "32px", // Match toggle button height
             }}
@@ -697,7 +697,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
-              minWidth: "100px",
+              minWidth: { xs: 0, sm: "100px" },
               px: 1,
               height: "32px", // Match toggle button height
             }}
@@ -823,6 +823,10 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               maxWidth: { xs: "100px", sm: "150px" },
+            },
+            "& .MuiLink-root, & .MuiTypography-root": {
+              fontSize: { xs: "0.75rem", sm: "0.8125rem" },
+              lineHeight: 1.2,
             },
           }}
         >

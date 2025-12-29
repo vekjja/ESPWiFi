@@ -82,15 +82,15 @@ export default function SettingsButtonBar({
             getCameraColor={getCameraColor}
           />
         )}
-        <FileBrowserButton
-          config={config}
-          deviceOnline={deviceOnline}
-          onFileBrowser={onFileBrowser}
-        />
         <LogsButton
           config={config}
           deviceOnline={deviceOnline}
           saveConfigToDevice={saveConfigToDevice}
+        />
+        <FileBrowserButton
+          config={config}
+          deviceOnline={deviceOnline}
+          onFileBrowser={onFileBrowser}
         />
         <AddModuleButton
           config={config}

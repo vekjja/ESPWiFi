@@ -44,8 +44,6 @@ void ESPWiFi::srvLog() {
           return ESP_OK;
         }
 
-        // Set content type and CORS headers
-        espwifi->addCORS(req);
         httpd_resp_set_type(req, "text/html");
 
         // Send HTML header with CSS and JavaScript (stream it)

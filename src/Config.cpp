@@ -171,7 +171,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   yield(); // Yield after serialization
 
   // Use atomic write to prevent corruption
-  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  bool success = writeFile(configFile, (const uint8_t *)buffer, written);
   free(buffer);
 
   if (!success) {
@@ -206,7 +206,7 @@ void ESPWiFi::saveConfig() {
   size_t written = serializeJson(config, buffer, size + 1);
 
   // Use atomic write to prevent corruption
-  bool success = writeFileAtomic(configFile, (const uint8_t *)buffer, written);
+  bool success = writeFile(configFile, (const uint8_t *)buffer, written);
   free(buffer);
 
   if (!success) {
@@ -363,6 +363,15 @@ JsonDocument ESPWiFi::defaultConfig() {
   excludePaths.add("/favicon.ico");
   excludePaths.add("/api/auth/login");
   excludePaths.add("/asset-manifest.json");
+
+  // Paths that are always protected from HTTP file APIs (even when authorized).
+  // Patterns support '*' and '?' (same matcher as excludePaths).
+  JsonArray protectFiles = doc["auth"]["protectFiles"].to<JsonArray>();
+  protectFiles.add("/log");
+  protectFiles.add("/static/*");
+  protectFiles.add("/index.html");
+  protectFiles.add("/config.json");
+  protectFiles.add("/asset-manifest.json");
 
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/log";

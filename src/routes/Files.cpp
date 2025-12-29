@@ -364,6 +364,12 @@ void ESPWiFi::srvFiles() {
         }
         dirPath += sanitizedName;
 
+        // Prevent creation of protected paths
+        if (espwifi->isProtectedFile(fsParam, dirPath)) {
+          return espwifi->sendJsonResponse(
+              req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
+        }
+
         std::string fullDirPath = mountPoint + dirPath;
         if (espwifi->mkDir(fullDirPath)) {
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
@@ -406,12 +412,10 @@ void ESPWiFi::srvFiles() {
           return ESP_OK;
         }
 
-        // Prevent renaming of system files
-        if (espwifi->isRestrictedSystemFile(fsParam, oldPath)) {
-          (void)espwifi->sendJsonResponse(
-              req, 403, "{\"error\":\"Cannot rename system files\"}",
-              &clientInfo);
-          return ESP_OK;
+        // Prevent renaming of protected paths
+        if (espwifi->isProtectedFile(fsParam, oldPath)) {
+          return espwifi->sendJsonResponse(
+              req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
         }
 
         // Sanitize and validate the new name.
@@ -433,6 +437,13 @@ void ESPWiFi::srvFiles() {
           newPath += "/";
         }
         newPath += sanitizedNewName;
+
+        // Prevent renaming INTO a protected path as well.
+        if (espwifi->isProtectedFile(fsParam, newPath)) {
+          return espwifi->sendJsonResponse(
+              req, 403, "{\"error\":\"Target path is protected\"}",
+              &clientInfo);
+        }
 
         std::string fullOldPath = mountPoint + oldPath;
         std::string fullNewPath = mountPoint + newPath;
@@ -486,12 +497,10 @@ void ESPWiFi::srvFiles() {
           return ESP_OK;
         }
 
-        // Prevent deletion of system files
-        if (espwifi->isRestrictedSystemFile(fsParam, filePath)) {
-          (void)espwifi->sendJsonResponse(
-              req, 403, "{\"error\":\"Cannot delete system files\"}",
-              &clientInfo);
-          return ESP_OK;
+        // Prevent deletion of protected paths
+        if (espwifi->isProtectedFile(fsParam, filePath)) {
+          return espwifi->sendJsonResponse(
+              req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
         }
 
         // Iterative delete to avoid deep recursion; yield periodically.
@@ -790,6 +799,13 @@ void ESPWiFi::srvFiles() {
             }
             relFilePath += sanitized;
             fullFilePath = mountPoint + relFilePath;
+
+            // Prevent uploads that would create/overwrite protected paths.
+            if (espwifi->isProtectedFile(fsParam, relFilePath)) {
+              closeAndCleanup();
+              return espwifi->sendJsonResponse(
+                  req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
+            }
 
             out = fopen(fullFilePath.c_str(), "wb");
             if (!out) {

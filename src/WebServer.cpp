@@ -106,43 +106,6 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
   httpd_resp_send(req, nullptr, 0);
 }
 
-esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
-  if (req == nullptr) {
-    return ESP_ERR_INVALID_ARG;
-  }
-
-  // Handle OPTIONS requests automatically (CORS preflight)
-  if (req->method == HTTP_OPTIONS) {
-    handleCorsPreflight(req);
-    return ESP_ERR_HTTPD_RESP_SEND;
-  }
-
-  // Add CORS headers to all responses
-  addCORS(req);
-
-  // Capture early; slow/streaming sends may lose socket/headers if client
-  // resets.
-  std::string clientInfo;
-  if (outClientInfo != nullptr) {
-    clientInfo = getClientInfo(req);
-  }
-
-  // Check if authorized
-  if (!authorized(req)) {
-    if (clientInfo.empty()) {
-      clientInfo = getClientInfo(req);
-    }
-    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
-                           &clientInfo);
-    return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
-  }
-
-  if (outClientInfo != nullptr) {
-    *outClientInfo = std::move(clientInfo);
-  }
-  return ESP_OK; // Verification passed, continue with handler
-}
-
 esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
   RouteCtx *ctx = (RouteCtx *)req->user_ctx;
   if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {

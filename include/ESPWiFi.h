@@ -108,11 +108,8 @@ public:
   void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
                       size_t &usedBytes, size_t &freeBytes);
   bool writeFile(const std::string &filePath, const uint8_t *data, size_t len);
-  bool writeFileAtomic(const std::string &filePath, const uint8_t *data,
-                       size_t len);
   char *readFile(const std::string &filePath, size_t *outSize = nullptr);
-  bool isRestrictedSystemFile(const std::string &fsParam,
-                              const std::string &filePath);
+  bool isProtectedFile(const std::string &fsParam, const std::string &filePath);
 
   // Small helpers used by filesystem HTTP routes (implemented in Utils.cpp)
   bool fileExists(const std::string &fullPath);

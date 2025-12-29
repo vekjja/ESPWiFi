@@ -270,26 +270,6 @@ bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
   if (!littleFsInitialized)
     return false;
 
-  std::string full_path = lfsMountPoint + filePath;
-  FILE *file = fopen(full_path.c_str(), "wb");
-  if (!file)
-    return false;
-
-  size_t written = fwrite(data, 1, len, file);
-  // Yield after file I/O to prevent watchdog timeout
-  if (len > 1024) {
-    yield();
-  }
-  fclose(file);
-
-  return written == len;
-}
-
-bool ESPWiFi::writeFileAtomic(const std::string &filePath, const uint8_t *data,
-                              size_t len) {
-  if (!littleFsInitialized)
-    return false;
-
   // Use atomic write: write to temp file first, then rename
   // This prevents corruption if write fails partway through
   std::string full_path = lfsMountPoint + filePath;
@@ -401,24 +381,50 @@ char *ESPWiFi::readFile(const std::string &filePath, size_t *outSize) {
   return buffer;
 }
 
-bool ESPWiFi::isRestrictedSystemFile(const std::string &fsParam,
-                                     const std::string &filePath) {
-  // Only restrict files on LittleFS, not SD card
-  if (fsParam != "lfs") {
-    return false;
-  }
+bool ESPWiFi::isProtectedFile(const std::string &fsParam,
+                              const std::string &filePath) {
+  (void)fsParam; // Protection is config-driven and applies to all filesystems.
 
-  // List of restricted system files and directories
-  if (filePath == "/config.json" || filePath == "/index.html" ||
-      filePath == "/asset-manifest.json" || filePath == "/dashboard.zip" ||
-      filePath.find("/static/") == 0 || filePath.find("/system/") == 0 ||
-      filePath.find("/boot/") == 0) {
-    return true;
-  }
+  // First: config-driven protection (applies to BOTH LFS and SD if configured).
+  // These paths are "protected": no filesystem operation should be allowed via
+  // the HTTP API, even if the request is authenticated.
+  JsonVariant protectedFiles = config["auth"]["protectFiles"];
+  if (protectedFiles.is<JsonArray>()) {
+    // filePath is expected to be normalized (leading '/', no trailing '/'
+    // unless it's root). Be defensive anyway: normalize minimally so config
+    // patterns like "config.json" match even if callers pass "config.json".
+    std::string normalizedPath = filePath;
+    if (!normalizedPath.empty() && normalizedPath.front() != '/') {
+      normalizedPath.insert(normalizedPath.begin(), '/');
+    }
 
-  // Also protect config file and log file
-  if (filePath == configFile || filePath == logFilePath) {
-    return true;
+    std::string_view path(normalizedPath);
+    for (JsonVariant v : protectedFiles.as<JsonArray>()) {
+      const char *pat = v.as<const char *>();
+      if (pat == nullptr || pat[0] == '\0') {
+        continue;
+      }
+
+      std::string patternStr(pat);
+      // Allow config entries like "index.html" or "static/*" (no leading '/').
+      if (!patternStr.empty() && patternStr.front() != '/') {
+        patternStr.insert(patternStr.begin(), '/');
+      }
+
+      std::string_view pattern(patternStr);
+
+      // Special-case "/" so it matches ONLY the root path.
+      if (pattern == "/") {
+        if (path == "/") {
+          return true;
+        }
+        continue;
+      }
+
+      if (matchPattern(path, pattern)) {
+        return true;
+      }
+    }
   }
 
   return false;

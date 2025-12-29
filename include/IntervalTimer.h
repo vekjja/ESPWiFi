@@ -2,43 +2,76 @@
 #define ESPWiFi_INTERVALTIMER
 
 #include "esp_timer.h"
-#include <functional>
+#include <cstdint>
 
-// Helper function to replace Arduino's millis()
+// Helper function to replace Arduino's millis().
+// Keep the classic signature for existing code; esp_timer_get_time() is
+// monotonic.
 inline unsigned long millis() {
-  return (unsigned long)(esp_timer_get_time() / 1000ULL);
+  return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
 }
 
-// Helper class for interval timing
+// Low-overhead interval helper:
+// - No std::function (avoids heap + type erasure)
+// - Uses esp_timer_get_time() (microseconds) for long-uptime safety
 class IntervalTimer {
-  unsigned long lastRun = 0;
-  unsigned int interval;
-  std::function<void()> runFunc = nullptr; // Use std::function for callback
+public:
+  using Callback = void (*)(void *ctx);
+
+private:
+  int64_t lastRunUs_ = 0;
+  uint32_t intervalUs_ = 0;
+  Callback cb_ = nullptr;
+  void *cbCtx_ = nullptr;
 
 public:
-  void reset() { lastRun = millis(); }
-  void setInterval(unsigned int ms) { interval = ms; }
-  void setCallback(std::function<void()> callback) { runFunc = callback; }
+  IntervalTimer() = default;
+  explicit IntervalTimer(uint32_t intervalMs, Callback cb = nullptr,
+                         void *cbCtx = nullptr)
+      : lastRunUs_(0), intervalUs_(intervalMs * 1000U), cb_(cb), cbCtx_(cbCtx) {
+  }
 
-  IntervalTimer(unsigned int ms, std::function<void()> callback = nullptr)
-      : interval(ms), runFunc(callback) {}
+  void reset() { lastRunUs_ = esp_timer_get_time(); }
+  void resetAt(int64_t nowUs) { lastRunUs_ = nowUs; }
 
-  bool shouldRun(unsigned int ms = 0) {
-    if (ms > 0) {
-      interval = ms;
-    }
-    unsigned long now = millis();
-    if (now - lastRun >= interval) {
-      lastRun = now;
-      if (runFunc) {
-        runFunc();
+  void setIntervalMs(uint32_t intervalMs) { intervalUs_ = intervalMs * 1000U; }
+  uint32_t intervalMs() const { return intervalUs_ / 1000U; }
+
+  void setCallback(Callback cb, void *cbCtx = nullptr) {
+    cb_ = cb;
+    cbCtx_ = cbCtx;
+  }
+
+  bool shouldRun() { return shouldRunAt(esp_timer_get_time()); }
+
+  bool shouldRunAt(int64_t nowUs) {
+    // interval == 0 => always run
+    if (intervalUs_ == 0) {
+      lastRunUs_ = nowUs;
+      if (cb_) {
+        cb_(cbCtx_);
       }
       return true;
     }
+
+    if (lastRunUs_ == 0) {
+      lastRunUs_ = nowUs;
+      if (cb_) {
+        cb_(cbCtx_);
+      }
+      return true;
+    }
+
+    if ((nowUs - lastRunUs_) >= (int64_t)intervalUs_) {
+      lastRunUs_ = nowUs;
+      if (cb_) {
+        cb_(cbCtx_);
+      }
+      return true;
+    }
+
     return false;
   }
-
-  void run(unsigned int ms = 0) { shouldRun(ms); }
 };
 
 #endif // ESPWiFi_INTERVALTIMER

@@ -455,7 +455,14 @@ export default function DeviceSettingsModal({
         </Tabs>
       }
     >
-      <Box>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
         <TabPanel value={activeTab} index={0}>
           <DeviceSettingsInfoTab
             deviceInfo={deviceInfo}
@@ -506,6 +513,7 @@ export default function DeviceSettingsModal({
             jsonError={jsonError}
             setJsonError={setJsonError}
             isEditable={isEditable}
+            isMobile={isMobile}
           />
         </TabPanel>
 

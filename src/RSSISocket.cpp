@@ -1,5 +1,6 @@
 // RSSISocket.cpp - Stubbed for now
 #include "ESPWiFi.h"
+#include "IntervalTimer.h"
 #include "WebSocket.h"
 #include "esp_wifi.h"
 
@@ -43,17 +44,18 @@ void ESPWiFi::streamRSSI() {
     return; // No one is listening; do no work.
   }
 
-  // runSystem() ticks every ~10ms, so hard-throttle here.
-  static int64_t lastSendUs = 0;
-  static int lastSentRssi = 0x7fffffff;
-  static int64_t lastForceUs = 0;
-
   constexpr int kIntervalMs = 500; // smooth UI without spamming
   constexpr int kForceMs = 2000;   // keep-alive update even if RSSI is stable
   constexpr int kMinDeltaDbm = 1;  // suppress identical repeats
 
+  // runSystem() ticks every ~10ms. Use IntervalTimer to keep this bounded and
+  // avoid doing work every loop iteration.
+  static IntervalTimer pollTimer(kIntervalMs);
+  static IntervalTimer keepAliveTimer(kForceMs);
+  static int lastSentRssi = 0x7fffffff;
+
   const int64_t nowUs = esp_timer_get_time();
-  if (lastSendUs != 0 && (nowUs - lastSendUs) < (int64_t)kIntervalMs * 1000) {
+  if (!pollTimer.shouldRunAt(nowUs)) {
     return;
   }
 
@@ -66,8 +68,7 @@ void ESPWiFi::streamRSSI() {
   const int rssi = ap.rssi;
   const bool changed = (lastSentRssi == 0x7fffffff) ||
                        (abs(rssi - lastSentRssi) >= kMinDeltaDbm);
-  const bool forced =
-      (lastForceUs == 0) || ((nowUs - lastForceUs) >= (int64_t)kForceMs * 1000);
+  const bool forced = keepAliveTimer.shouldRunAt(nowUs);
   if (!changed && !forced) {
     return;
   }
@@ -81,12 +82,7 @@ void ESPWiFi::streamRSSI() {
   }
 
   (void)s_rssiWs.textAll(msg, (size_t)n);
-  lastSendUs = nowUs;
-  if (changed) {
-    lastSentRssi = rssi;
-  }
-  if (forced) {
-    lastForceUs = nowUs;
-  }
+  lastSentRssi = rssi;
+  keepAliveTimer.resetAt(nowUs); // extend keep-alive after any successful send
 #endif
 }

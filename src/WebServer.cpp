@@ -249,7 +249,6 @@ void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
 esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
                                     const std::string &jsonBody,
                                     const std::string *clientInfo) {
-  addCORS(req);
   httpd_resp_set_type(req, "application/json");
 
   // Reuse captured clientInfo when available; otherwise capture now.
@@ -298,7 +297,6 @@ esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
 esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
                                     const std::string &filePath,
                                     const std::string *clientInfo) {
-  addCORS(req);
 
   // Reuse captured clientInfo when available; otherwise capture now.
   std::string clientInfoLocal;

@@ -278,7 +278,9 @@ export default function DeviceSettingsModal({
   };
 
   const handleRestart = () => {
-    const restartUrl = buildApiUrl("/api/restart");
+    // In dev, buildApiUrl() defaults to localhost unless we pass a device host.
+    // Always target the device.
+    const restartUrl = buildApiUrl("/api/restart", config?.deviceName);
     fetch(restartUrl, getFetchOptions({ method: "POST" })).catch((error) => {
       // Ignore errors since device will restart
     });

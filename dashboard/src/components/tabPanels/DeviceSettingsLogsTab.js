@@ -639,7 +639,7 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
                       textTransform: "capitalize",
                     })}
                   >
-                    Level: {logLevel}
+                    {logLevel}
                   </Typography>
                 )}
               </Box>

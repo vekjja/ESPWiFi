@@ -64,10 +64,10 @@ export default function FileBrowserButton({
           maxWidth={false}
           fullWidth={false}
           paperSx={{
-            width: { xs: "90%", sm: "95vw" },
-            maxWidth: { xs: "90%", sm: "95vw" },
-            height: { xs: "90%", sm: "88vh" },
-            maxHeight: { xs: "90%", sm: "88vh" },
+            width: { xs: "99%", sm: "63vw" },
+            maxWidth: { xs: "99%", sm: "95vw" },
+            height: { xs: "90%", sm: "90vh" },
+            maxHeight: { xs: "99%", sm: "99vh" },
           }}
           contentSx={{
             overflowY: "hidden",

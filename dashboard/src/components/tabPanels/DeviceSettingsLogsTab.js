@@ -177,7 +177,6 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
 
   // Fetch logs from device
   const fetchLogs = async () => {
-    const fetchUrl = buildApiUrl("/log");
     setLogLoading(true);
     setLogError("");
 
@@ -185,28 +184,68 @@ export default function DeviceSettingsLogsTab({ config, saveConfigToDevice }) {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(
-        fetchUrl,
-        getFetchOptions({
-          signal: controller.signal,
-        })
-      );
+      // The device serves logs as a normal file:
+      // - SD:  /sd/<logFilePath>
+      // - LFS: /lfs/<logFilePath>
+      //
+      // The log file path can be configured in firmware via config.log.file or
+      // config.log.filePath; default is "/log".
+      let logFilePath = config?.log?.file || config?.log?.filePath || "/log";
+      if (typeof logFilePath !== "string" || logFilePath.trim() === "") {
+        logFilePath = "/log";
+      }
+      if (!logFilePath.startsWith("/")) {
+        logFilePath = `/${logFilePath}`;
+      }
+
+      const candidates = [`/sd${logFilePath}`, `/lfs${logFilePath}`];
+      let lastResponse = null;
+
+      for (const path of candidates) {
+        const fetchUrl = buildApiUrl(path);
+        // eslint-disable-next-line no-await-in-loop
+        const response = await fetch(
+          fetchUrl,
+          getFetchOptions({
+            signal: controller.signal,
+          })
+        );
+        lastResponse = response;
+
+        if (response.ok) {
+          // eslint-disable-next-line no-await-in-loop
+          const text = await response.text();
+          setLogs(text);
+          setLogError("");
+          clearTimeout(timeoutId);
+          return;
+        }
+
+        // If SD isn't mounted or file doesn't exist there, fall back to LFS.
+        if (response.status === 404 || response.status === 503) {
+          continue;
+        }
+
+        // Auth errors etc should be surfaced immediately.
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          setLogs(
-            "Log file not found. Logging may be disabled or the file hasn't been created yet."
-          );
-          setLogError("");
-        } else {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-      } else {
-        const text = await response.text();
-        setLogs(text);
+      // Both candidates failed.
+      if (lastResponse?.status === 404) {
+        setLogs(
+          "Log file not found. Logging may be disabled or the file hasn't been created yet."
+        );
         setLogError("");
+      } else if (lastResponse?.status === 503) {
+        setLogError("Filesystem not available");
+      } else {
+        throw new Error(
+          `Failed to fetch logs${
+            lastResponse ? ` (HTTP ${lastResponse.status})` : ""
+          }`
+        );
       }
     } catch (error) {
       clearTimeout(timeoutId);

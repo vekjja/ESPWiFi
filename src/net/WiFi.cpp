@@ -217,7 +217,7 @@ int ESPWiFi::selectBestChannel() {
 
   esp_err_t scan_ret = esp_wifi_scan_start(&scan_config, true);
   if (scan_ret != ESP_OK) {
-    log(WARNING, "WiFi scan not available, using default channel 1");
+    log(WARNING, " WiFi scan not available, using default channel 1");
     return 1;
   }
 

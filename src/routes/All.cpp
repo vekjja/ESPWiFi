@@ -4,11 +4,12 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::srvAll() {
-  srvFS();
-  srvLog();
-  srvInfo();
-  srvConfig();
+  srvRoot();
   srvAuth();
+  srvConfig();
+  srvInfo();
+  srvLog();
+  srvFiles();
   srvGPIO();
   srvWildcard();
 }

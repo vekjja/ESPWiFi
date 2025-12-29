@@ -125,4 +125,95 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
   return token == expectedToken && expectedToken.length() > 0;
 }
 
+esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
+  if (req == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Handle OPTIONS requests automatically (CORS preflight)
+  if (req->method == HTTP_OPTIONS) {
+    handleCorsPreflight(req);
+    return ESP_ERR_HTTPD_RESP_SEND;
+  }
+
+  // Add CORS headers to all responses
+  addCORS(req);
+
+  // Capture early; slow/streaming sends may lose socket/headers if client
+  // resets.
+  std::string clientInfo;
+  if (outClientInfo != nullptr) {
+    clientInfo = getClientInfo(req);
+  }
+
+  // Check if authorized
+  if (!authorized(req)) {
+    if (clientInfo.empty()) {
+      clientInfo = getClientInfo(req);
+    }
+    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
+                           &clientInfo);
+    return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
+  }
+
+  // If the request targets a protected file via the file APIs, treat it as an
+  // invalid request (even if the token is valid).
+  //
+  // Note: some file operations (e.g. mkdir JSON body, upload multipart
+  // filename) cannot be determined here and must still be enforced inside the
+  // handler.
+  auto normalizeApiPath = [](std::string p) -> std::string {
+    if (p.empty()) {
+      return std::string("/");
+    }
+    if (p.front() != '/') {
+      p.insert(p.begin(), '/');
+    }
+    while (p.size() > 1 && p.back() == '/') {
+      p.pop_back();
+    }
+    return p;
+  };
+
+  const char *uri = req->uri;
+  if (uri != nullptr) {
+    std::string_view full(uri);
+    size_t q = full.find('?');
+    std::string_view pathOnly =
+        (q == std::string_view::npos) ? full : full.substr(0, q);
+
+    // Block file delete/rename targets early (query-param based).
+    if (pathOnly == "/api/files/delete") {
+      std::string fsParam = getQueryParam(req, "fs");
+      std::string filePath = normalizeApiPath(getQueryParam(req, "path"));
+      if (!fsParam.empty() && !filePath.empty() &&
+          isProtectedFile(fsParam, filePath)) {
+        if (clientInfo.empty()) {
+          clientInfo = getClientInfo(req);
+        }
+        (void)sendJsonResponse(req, 403, "{\"error\":\"Path is protected\"}",
+                               &clientInfo);
+        return ESP_ERR_HTTPD_INVALID_REQ;
+      }
+    } else if (pathOnly == "/api/files/rename") {
+      std::string fsParam = getQueryParam(req, "fs");
+      std::string oldPath = normalizeApiPath(getQueryParam(req, "oldPath"));
+      if (!fsParam.empty() && !oldPath.empty() &&
+          isProtectedFile(fsParam, oldPath)) {
+        if (clientInfo.empty()) {
+          clientInfo = getClientInfo(req);
+        }
+        (void)sendJsonResponse(req, 403, "{\"error\":\"Path is protected\"}",
+                               &clientInfo);
+        return ESP_ERR_HTTPD_INVALID_REQ;
+      }
+    }
+  }
+
+  if (outClientInfo != nullptr) {
+    *outClientInfo = std::move(clientInfo);
+  }
+  return ESP_OK; // Verification passed, continue with handler
+}
+
 #endif // ESPWiFi_AUTH

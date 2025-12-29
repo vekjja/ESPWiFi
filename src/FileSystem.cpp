@@ -4,6 +4,9 @@
 #include "ESPWiFi.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
+#include "esp_vfs_fat.h"
+#include "ff.h"
+#include "sdmmc_cmd.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <dirent.h>
@@ -43,9 +46,73 @@ void ESPWiFi::initLittleFS() {
 }
 
 void ESPWiFi::initSDCard() {
-  // SD Card support commented out for now
+  if (sdCardInitialized) {
+    return;
+  }
+
+  sdInitAttempted = true;
+  sdInitLastErr = ESP_OK;
+  sdInitNotConfiguredForTarget = false;
+
+  // Config-gated: keep boot fast / deterministic unless explicitly enabled.
+  bool enabled = false;
+  if (config["sd"].is<JsonObject>()) {
+    enabled = config["sd"]["enabled"] | false;
+  }
+  if (!enabled) {
+    sdCardInitialized = false;
+    // Not an error; SD just disabled.
+    sdInitAttempted = false;
+    return;
+  }
+
+  // Mount FATFS on SD. This is target/board specific; we implement a safe
+  // default for SDMMC-capable targets. If this fails, APIs will report SD as
+  // unavailable.
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+  sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+  slot_config.width = 1;
+
+  esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
+  mount_config.format_if_mount_failed = false;
+  mount_config.max_files = 5;
+  mount_config.allocation_unit_size = 16 * 1024;
+
+  sdmmc_card_t *card = nullptr;
+  esp_err_t ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host,
+                                          &slot_config, &mount_config, &card);
+  if (ret != ESP_OK) {
+    sdCardInitialized = false;
+    sdCard = nullptr;
+    sdInitLastErr = ret;
+    return;
+  }
+  sdCard = (void *)card;
+  sdCardInitialized = true;
+#else
+  // For non-ESP32 targets, SD wiring varies widely (SDSPI vs SDMMC, pin mux,
+  // etc). Keep this explicit to avoid accidental pin conflicts.
   sdCardInitialized = false;
-  log(WARNING, "💾 SD Card not implemented yet");
+  sdCard = nullptr;
+  sdInitNotConfiguredForTarget = true;
+  sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+void ESPWiFi::deinitSDCard() {
+  if (!sdCardInitialized) {
+    return;
+  }
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  // Best-effort unmount. This can fail if card was never mounted correctly.
+  sdmmc_card_t *card = (sdmmc_card_t *)sdCard;
+  esp_vfs_fat_sdcard_unmount(sdMountPoint.c_str(), card);
+#endif
+
+  sdCardInitialized = false;
+  sdCard = nullptr;
 }
 
 std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
@@ -91,6 +158,23 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
       usedBytes = used;
       freeBytes = total - used;
     }
+    return;
+  }
+
+  if (fsParam == "sd" && sdCardInitialized) {
+    // FATFS free/total calculation (best-effort).
+    FATFS *fs = nullptr;
+    DWORD fre_clust = 0;
+    FRESULT fr = f_getfree("0:", &fre_clust, &fs);
+    if (fr == FR_OK && fs != nullptr) {
+      const uint64_t bytesPerClust = (uint64_t)fs->csize * 512ULL;
+      const uint64_t totalClust = (uint64_t)(fs->n_fatent - 2);
+      const uint64_t total = totalClust * bytesPerClust;
+      const uint64_t freeb = (uint64_t)fre_clust * bytesPerClust;
+      totalBytes = (size_t)total;
+      freeBytes = (size_t)freeb;
+      usedBytes = (totalBytes >= freeBytes) ? (totalBytes - freeBytes) : 0;
+    }
   }
 }
 
@@ -108,6 +192,37 @@ void ESPWiFi::printFilesystemInfo() {
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("LittleFS", totalBytes, usedBytes);
+  }
+
+  // SD status: show whether it is enabled, and if we tried to init it.
+  const bool sdEnabled =
+      config["sd"].is<JsonObject>() ? (config["sd"]["enabled"] | false) : false;
+  if (!sdEnabled) {
+    return;
+  }
+
+  if (sdCardInitialized) {
+    size_t totalBytes, usedBytes, freeBytes;
+    getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
+    logFilesystemInfo("SD", totalBytes, usedBytes);
+    return;
+  }
+
+  if (sdInitAttempted) {
+    if (sdInitNotConfiguredForTarget) {
+      log(WARNING,
+          "💾 SD enabled in config (mountpoint %s)\n"
+          "ESPWiFi does not currently support SD mounting for this device\n"
+          "Disable (sd.enabled=false) in the config to avoid this message.",
+          sdMountPoint.c_str());
+    } else if (sdInitLastErr != ESP_OK) {
+      log(WARNING, "💾 SD Card init failed: %s",
+          esp_err_to_name(sdInitLastErr));
+    } else {
+      log(WARNING, "💾 SD Card enabled but not initialized");
+    }
+  } else {
+    log(WARNING, "💾 SD Card enabled but init was not attempted");
   }
 }
 
@@ -152,26 +267,6 @@ bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
 
 bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
                         size_t len) {
-  if (!littleFsInitialized)
-    return false;
-
-  std::string full_path = lfsMountPoint + filePath;
-  FILE *file = fopen(full_path.c_str(), "wb");
-  if (!file)
-    return false;
-
-  size_t written = fwrite(data, 1, len, file);
-  // Yield after file I/O to prevent watchdog timeout
-  if (len > 1024) {
-    yield();
-  }
-  fclose(file);
-
-  return written == len;
-}
-
-bool ESPWiFi::writeFileAtomic(const std::string &filePath, const uint8_t *data,
-                              size_t len) {
   if (!littleFsInitialized)
     return false;
 
@@ -286,24 +381,50 @@ char *ESPWiFi::readFile(const std::string &filePath, size_t *outSize) {
   return buffer;
 }
 
-bool ESPWiFi::isRestrictedSystemFile(const std::string &fsParam,
-                                     const std::string &filePath) {
-  // Only restrict files on LittleFS, not SD card
-  if (fsParam != "lfs") {
-    return false;
-  }
+bool ESPWiFi::isProtectedFile(const std::string &fsParam,
+                              const std::string &filePath) {
+  (void)fsParam; // Protection is config-driven and applies to all filesystems.
 
-  // List of restricted system files and directories
-  if (filePath == "/config.json" || filePath == "/index.html" ||
-      filePath == "/asset-manifest.json" || filePath == "/dashboard.zip" ||
-      filePath.find("/static/") == 0 || filePath.find("/system/") == 0 ||
-      filePath.find("/boot/") == 0) {
-    return true;
-  }
+  // First: config-driven protection (applies to BOTH LFS and SD if configured).
+  // These paths are "protected": no filesystem operation should be allowed via
+  // the HTTP API, even if the request is authenticated.
+  JsonVariant protectedFiles = config["auth"]["protectFiles"];
+  if (protectedFiles.is<JsonArray>()) {
+    // filePath is expected to be normalized (leading '/', no trailing '/'
+    // unless it's root). Be defensive anyway: normalize minimally so config
+    // patterns like "config.json" match even if callers pass "config.json".
+    std::string normalizedPath = filePath;
+    if (!normalizedPath.empty() && normalizedPath.front() != '/') {
+      normalizedPath.insert(normalizedPath.begin(), '/');
+    }
 
-  // Also protect config file and log file
-  if (filePath == configFile || filePath == logFilePath) {
-    return true;
+    std::string_view path(normalizedPath);
+    for (JsonVariant v : protectedFiles.as<JsonArray>()) {
+      const char *pat = v.as<const char *>();
+      if (pat == nullptr || pat[0] == '\0') {
+        continue;
+      }
+
+      std::string patternStr(pat);
+      // Allow config entries like "index.html" or "static/*" (no leading '/').
+      if (!patternStr.empty() && patternStr.front() != '/') {
+        patternStr.insert(patternStr.begin(), '/');
+      }
+
+      std::string_view pattern(patternStr);
+
+      // Special-case "/" so it matches ONLY the root path.
+      if (pattern == "/") {
+        if (path == "/") {
+          return true;
+        }
+        continue;
+      }
+
+      if (matchPattern(path, pattern)) {
+        return true;
+      }
+    }
   }
 
   return false;

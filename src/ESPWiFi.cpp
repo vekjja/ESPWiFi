@@ -5,19 +5,16 @@
 
 void ESPWiFi::start() {
   startSerial();
-  startLogging();
+  // Load config before starting logging so we can select the log filesystem
+  // (prefer SD when available) and mount SD only when enabled in config.
+  initLittleFS();
   readConfig();
+  startLogging();
   // setMaxPower();
   startWiFi();
   // startMDNS();
   startWebServer();
-  srvRoot();
-  srvAuth();
-  srvConfig();
-  srvInfo();
-  srvLog();
-  srvGPIO();
-  srvWildcard();
+  srvAll();
   // startBluetooth();
   // startRSSIWebSocket();
   handleConfig();
@@ -26,10 +23,12 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   taskYIELD();
 
-  // Check if config needs saving (deferred from HTTP handlers)
-  if (configNeedsSave) {
+  // Apply + save config changes in the main task
+  // (keeps HTTP handlers fast/safe)
+  if (configNeedsUpdate) {
+    handleConfig();
     saveConfig();
-    configNeedsSave = false;
+    configNeedsUpdate = false;
   }
 
   // static unsigned long lastHeartbeat = 0;

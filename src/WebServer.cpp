@@ -14,6 +14,26 @@
 #include <string>
 #include <sys/stat.h>
 
+// ESP-IDF includes the full request URI (including "?query") in req->uri.
+// Route matching must ignore the query string, otherwise "/api/foo" will not
+// match "/api/foo?x=1" and requests can fall through to the catch-all handler.
+static bool uri_match_no_query(const char *uri, const char *uri_template,
+                               size_t tpl_len) {
+  if (uri == nullptr || uri_template == nullptr) {
+    return false;
+  }
+
+  // max_uri_len is configured below to 512; keep stack bounded.
+  char pathOnly[512];
+  size_t i = 0;
+  for (; i < sizeof(pathOnly) - 1 && uri[i] != '\0' && uri[i] != '?'; ++i) {
+    pathOnly[i] = uri[i];
+  }
+  pathOnly[i] = '\0';
+
+  return httpd_uri_match_wildcard(pathOnly, uri_template, tpl_len);
+}
+
 static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
                                   const std::string &clientInfo) {
   (void)espwifi;
@@ -33,7 +53,7 @@ void ESPWiFi::startWebServer() {
   config.max_open_sockets = 7;
   config.max_uri_handlers = 32;
   config.lru_purge_enable = true;
-  config.uri_match_fn = httpd_uri_match_wildcard; // Enable wildcard matching
+  config.uri_match_fn = &uri_match_no_query; // wildcard matching (path-only)
   // HTTP server runs in its own task; stack is a common “heap killer” if set
   // too big. 4096 is default in IDF; bump only if you see stack overflows
   // during handlers.
@@ -84,43 +104,6 @@ void ESPWiFi::handleCorsPreflight(httpd_req_t *req) {
   addCORS(req);
   httpd_resp_set_status(req, "204 No Content");
   httpd_resp_send(req, nullptr, 0);
-}
-
-esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
-  if (req == nullptr) {
-    return ESP_ERR_INVALID_ARG;
-  }
-
-  // Handle OPTIONS requests automatically (CORS preflight)
-  if (req->method == HTTP_OPTIONS) {
-    handleCorsPreflight(req);
-    return ESP_ERR_HTTPD_RESP_SEND;
-  }
-
-  // Add CORS headers to all responses
-  addCORS(req);
-
-  // Capture early; slow/streaming sends may lose socket/headers if client
-  // resets.
-  std::string clientInfo;
-  if (outClientInfo != nullptr) {
-    clientInfo = getClientInfo(req);
-  }
-
-  // Check if authorized
-  if (!authorized(req)) {
-    if (clientInfo.empty()) {
-      clientInfo = getClientInfo(req);
-    }
-    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
-                           &clientInfo);
-    return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
-  }
-
-  if (outClientInfo != nullptr) {
-    *outClientInfo = std::move(clientInfo);
-  }
-  return ESP_OK; // Verification passed, continue with handler
 }
 
 esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
@@ -323,8 +306,24 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
       (clientInfo != nullptr) ? *clientInfo
                               : (clientInfoLocal = getClientInfo(req));
 
-  // Check if LFS is initialized
-  if (!littleFsInitialized) {
+  // Resolve which filesystem this path maps to.
+  // - "/sd/..." is served from the SD mount (FATFS)
+  // - "/lfs/..." is served directly from the LittleFS mount
+  // - everything else is served from LittleFS root (prefixed by lfsMountPoint)
+  std::string fullPath;
+  bool fsAvailable = false;
+  if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
+    fsAvailable = sdCardInitialized;
+    fullPath = filePath; // already includes mountpoint
+  } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
+    fsAvailable = littleFsInitialized;
+    fullPath = filePath; // already includes mountpoint
+  } else {
+    fsAvailable = littleFsInitialized;
+    fullPath = lfsMountPoint + filePath;
+  }
+
+  if (!fsAvailable) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "text/plain");
     const char *body = "Filesystem not available";
@@ -336,9 +335,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     logAccess(503, clientInfoRef, 0);
     return ret;
   }
-
-  // Construct full path
-  std::string fullPath = lfsMountPoint + filePath;
 
   // Check if file exists first
   struct stat fileStat;

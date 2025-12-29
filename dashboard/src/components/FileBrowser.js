@@ -86,6 +86,109 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
   const apiURL = config?.apiURL || "";
 
+  const openFileWithAuth = useCallback(
+    async (file) => {
+      // window.open can't attach headers; fetch with auth then open a blob URL
+      const newTab = window.open("", "_blank");
+      if (newTab) {
+        newTab.document.title = file?.name || "File";
+        newTab.document.body.style.background = "#111";
+        newTab.document.body.style.color = "#fff";
+        newTab.document.body.style.fontFamily = "system-ui, sans-serif";
+        newTab.document.body.style.padding = "16px";
+        newTab.document.body.textContent = "Loading…";
+      }
+
+      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(
+          fileUrl,
+          getFetchOptions({ method: "GET", signal: controller.signal })
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType =
+          response.headers.get("content-type") || "application/octet-stream";
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(
+          new Blob([blob], { type: contentType })
+        );
+
+        if (newTab) {
+          newTab.location.href = blobUrl;
+        } else {
+          window.open(blobUrl, "_blank");
+        }
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const msg =
+          err?.name === "AbortError"
+            ? "Request timed out - device may be offline"
+            : `Failed to open file: ${err.message || err}`;
+        setError(msg);
+        if (newTab) {
+          newTab.document.body.textContent = msg;
+        }
+      }
+    },
+    [apiURL, fileSystem]
+  );
+
+  const downloadFileWithAuth = useCallback(
+    async (file) => {
+      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(
+          fileUrl,
+          getFetchOptions({ method: "GET", signal: controller.signal })
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const contentType =
+          response.headers.get("content-type") || "application/octet-stream";
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(
+          new Blob([blob], { type: contentType })
+        );
+
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = file?.name || "download";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        const msg =
+          err?.name === "AbortError"
+            ? "Request timed out - device may be offline"
+            : `Failed to download file: ${err.message || err}`;
+        setError(msg);
+      }
+    },
+    [apiURL, fileSystem]
+  );
+
   // Fetch files from ESP32
   // Fetch storage information
   const fetchStorageInfo = useCallback(
@@ -169,8 +272,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         : currentPath + "/" + file.name;
       fetchFiles(newPath, fileSystem);
     } else {
-      // Download file
-      window.open(`${apiURL}/${fileSystem}${file.path}`, "_blank");
+      openFileWithAuth(file);
     }
   };
 
@@ -876,10 +978,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         {contextMenu.file && !contextMenu.file.isDirectory && (
           <MenuItem
             onClick={() => {
-              window.open(
-                `${apiURL}/${fileSystem}${contextMenu.file.path}`,
-                "_blank"
-              );
+              downloadFileWithAuth(contextMenu.file);
               handleContextMenuClose();
             }}
           >

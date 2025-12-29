@@ -31,10 +31,11 @@ export default function LogsSettingsModal({
       maxWidth={false}
       paperSx={{
         // Better desktop use of space; keep mobile behavior intact
-        width: { xs: "90%", sm: "90vw" },
+        width: { xs: "90%", sm: "95vw" },
         minWidth: { xs: "90%", sm: "650px" },
-        maxWidth: { xs: "90%", sm: "90vw" },
+        maxWidth: { xs: "90%", sm: "95vw" },
         // Stretch a bit further toward the bottom of the viewport on desktop
+        height: { xs: "90%", sm: "88vh" },
         maxHeight: { xs: "90%", sm: "88vh" },
       }}
       // Keep the left rail fixed; only the log output should scroll

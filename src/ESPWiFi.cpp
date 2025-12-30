@@ -13,7 +13,6 @@ void ESPWiFi::start() {
   // startMDNS();
   startWebServer();
   startRSSIWebSocket();
-  startBluetooth();
   handleConfig();
   srvAll();
 }
@@ -21,9 +20,9 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   yield();
 
-  // Apply + save config changes in the main task
-  // (keeps HTTP handlers fast/safe)
   if (configNeedsUpdate) {
+    // Apply + save config changes in the main task
+    // (keeps HTTP handlers fast/safe)
     handleConfig();
     saveConfig();
     configNeedsUpdate = false;
@@ -33,9 +32,6 @@ void ESPWiFi::runSystem() {
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 
   streamRSSI();
-#ifdef ESPWiFi_CAMERA
-  streamCamera();
-#endif
 }
 
 #endif // ESPWiFi_DEVICE

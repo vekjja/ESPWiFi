@@ -191,13 +191,13 @@ private:
         uint16_t port = 0;
         getRemoteInfo_(fd, ip, sizeof(ip), &port);
         if (ip[0] != '\0') {
-          espWifi_->log(INFO, "🕸️🔗 WebSocket Client Connected: %s", uri_);
-          espWifi_->log(DEBUG, "\tFD: %d", fd);
-          espWifi_->log(DEBUG, "\tIP: %s", ip);
-          espWifi_->log(DEBUG, "\tPort: %u", (unsigned)port);
+          espWifi_->log(INFO, "🕸️ WebSocket Client Connected: %s", uri_);
+          espWifi_->log(DEBUG, "🕸️\tFD: %d", fd);
+          espWifi_->log(DEBUG, "🕸️\tIP: %s", ip);
+          espWifi_->log(DEBUG, "🕸️\tPort: %u", (unsigned)port);
         } else {
-          espWifi_->log(INFO, "🕸️🔗 WebSocket Client Connected: %s (fd=%d)",
-                        uri_, fd);
+          espWifi_->log(INFO, "🕸️ WebSocket Client Connected: %s (fd=%d)", uri_,
+                        fd);
         }
       }
       if (onConnect_) {
@@ -220,11 +220,9 @@ private:
     if (frame.type == HTTPD_WS_TYPE_CLOSE) {
       // Client initiated close
       if (espWifi_) {
-        espWifi_->log(
-            INFO,
-            "🕸️ WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
-            uri_, fd);
-        espWifi_->log(DEBUG, "\tDisconnect Time: %llu ms",
+        espWifi_->log(INFO, "🕸️ WebSocket Client Disconnected: %s (fd=%d)",
+                      uri_, fd);
+        espWifi_->log(DEBUG, "🕸️\tDisconnect Time: %llu ms",
                       (unsigned long long)(esp_timer_get_time() / 1000ULL));
       }
       removeClient_(fd);
@@ -306,7 +304,7 @@ private:
         if (espWifi_) {
           espWifi_->log(
               INFO,
-              "🕸️ WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
+              "🕸️⛓️‍💥 WebSocket Client Disconnected: %s (fd=%d)",
               uri_, fd);
         }
         if (onDisconnect_) {

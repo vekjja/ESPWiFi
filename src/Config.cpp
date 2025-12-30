@@ -19,7 +19,7 @@ void ESPWiFi::readConfig() {
     config = defaultConfig();
     usedDefaultConfig = true;
     log(WARNING, "⚙️ No filesystem: Using default config");
-    printConfig();
+    log(INFO, "⚙️ Using Config:\n%s", prettyConfig().c_str());
     readingConfig = false;
     return;
   }
@@ -104,24 +104,16 @@ void ESPWiFi::readConfig() {
   }
 
   if (usedDefaultConfig) {
-    log(INFO, "⚙️ Config defaulted: %s", configFile.c_str());
+    log(WARNING, "⚙️ Using Default Config:\n%s", prettyConfig());
   } else {
-    log(INFO, "⚙️ Config loaded: %s", configFile.c_str());
+    log(INFO, "⚙️ Using Config:\n%s", prettyConfig());
   }
-  // Update cached config-derived helpers (CORS, etc.)
-  refreshCorsCache();
-  printConfig();
+  configNeedsUpdate = true;
 
   readingConfig = false;
 }
 
-void ESPWiFi::printConfig() {
-
-  // if (!shouldLog(VERBOSE)) {
-  //   return;
-  // }
-
-  yield(); // Yield before JSON operations
+std::string ESPWiFi::prettyConfig() {
   // Create a copy of config with masked passwords for logging
   JsonDocument logConfig;
   std::string configJson;
@@ -129,8 +121,9 @@ void ESPWiFi::printConfig() {
   yield(); // Yield after serialization
   DeserializationError error = deserializeJson(logConfig, configJson);
   if (error) {
-    log(ERROR, "Failed to deserialize config for printing: %s", error.c_str());
-    return;
+    log(WARNING, "⚙️ Failed to deserialize config for printing: %s",
+        error.c_str());
+    return "";
   }
 
   // Recursively mask any fields with keys matching sensitive field names
@@ -197,14 +190,14 @@ void ESPWiFi::printConfig() {
   std::string prettyConfig;
   serializeJsonPretty(logConfig, prettyConfig);
   yield(); // Yield after pretty serialization
-  log(DEBUG, "\n" + prettyConfig);
+  return prettyConfig;
 }
 
 void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   initLittleFS();
 
   if (!littleFsInitialized) {
-    log(ERROR, "No filesystem available for saving config");
+    log(ERROR, "⚙️ No filesystem available for saving config");
     return;
   }
 
@@ -213,14 +206,14 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   // Serialize to buffer - add extra padding for safety
   size_t size = measureJson(configToSave);
   if (size == 0) {
-    log(ERROR, "Failed to measure config JSON size");
+    log(ERROR, "⚙️ Failed to measure config JSON size");
     return;
   }
 
   // Allocate buffer with extra space for safety
   char *buffer = (char *)malloc(size + 32);
   if (!buffer) {
-    log(ERROR, " Failed to allocate memory for config (size: %zu)", size);
+    log(ERROR, "⚙️ Failed to allocate memory for config (size: %zu)", size);
     return;
   }
 
@@ -228,7 +221,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
 
   size_t written = serializeJson(configToSave, buffer, size + 32);
   if (written == 0) {
-    log(ERROR, "Failed to serialize config JSON");
+    log(ERROR, "⚙️ Failed to serialize config JSON");
     free(buffer);
     return;
   }
@@ -240,15 +233,15 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   free(buffer);
 
   if (!success) {
-    log(ERROR, "💾  Failed to write config file");
+    log(ERROR, "⚙️ Failed to write config file");
     return;
   }
 
   yield(); // Yield after file write
 
   if (configToSave["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾  Config Saved: %s", configFile.c_str());
-    // printConfig();
+    log(INFO, "⚙️ Config Saved: %s", configFile.c_str());
+    // prettyConfig();
   }
 }
 
@@ -256,7 +249,7 @@ void ESPWiFi::saveConfig() {
   initLittleFS();
 
   if (!littleFsInitialized) {
-    log(ERROR, "No filesystem available for saving config");
+    log(ERROR, "⚙️ No filesystem available for saving config");
     return;
   }
 
@@ -264,7 +257,7 @@ void ESPWiFi::saveConfig() {
   size_t size = measureJson(config);
   char *buffer = (char *)malloc(size + 1);
   if (!buffer) {
-    log(ERROR, " Failed to allocate memory for config");
+    log(ERROR, "⚙️ Failed to allocate memory for config");
     return;
   }
 
@@ -275,13 +268,12 @@ void ESPWiFi::saveConfig() {
   free(buffer);
 
   if (!success) {
-    log(ERROR, " Failed to write config file");
+    log(ERROR, "⚙️ Failed to write config file");
     return;
   }
 
   if (config["log"]["enabled"].as<bool>()) {
-    log(INFO, "💾 Config Saved: %s", configFile.c_str());
-    printConfig();
+    log(INFO, "⚙️ Config Saved: %s", configFile.c_str());
   }
 }
 
@@ -296,7 +288,7 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
   DeserializationError error = deserializeJson(result, baseJson);
   if (error) {
     // If copy fails, return empty document
-    log(ERROR, "Failed to copy base JSON in mergeJson: %s", error.c_str());
+    log(ERROR, "⚙️ Failed to copy base JSON in mergeJson: %s", error.c_str());
     return result;
   }
 
@@ -313,12 +305,10 @@ void ESPWiFi::requestConfigUpdate() {
 }
 
 void ESPWiFi::handleConfig() {
-  // Keep small config-derived caches in sync (fast; main task only).
   refreshCorsCache();
   logConfigHandler();
-  // Storage config (mount/unmount)
-  // can be slow; keep out of HTTP handlers.
   sdCardConfigHandler();
+  bluetoothConfigHandler();
 }
 
 JsonDocument ESPWiFi::defaultConfig() {
@@ -339,7 +329,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["wifi"]["client"]["password"] = "";
 
   // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
-  doc["bt"]["enabled"] = false;
+  doc["bluetooth"]["enabled"] = false;
 
   // SD Card
   doc["sd"]["enabled"] = true;

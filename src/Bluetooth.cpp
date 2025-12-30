@@ -8,7 +8,7 @@
 
 static const char *BT_TAG = "ESPWiFi_BT";
 
-BluetoothA2DPSource a2dp_source;
+BluetoothA2DPSource *a2dp_source = nullptr;
 
 // Callback function to provide audio data to A2DP source
 int32_t get_data(uint8_t *data, int32_t len) {
@@ -28,24 +28,63 @@ void ESPWiFi::startBluetooth() {
   if (btStarted) {
     return;
   }
-  a2dp_source.set_data_callback(get_data);
-  a2dp_source.set_avrc_passthru_command_callback(button_handler);
-  a2dp_source.start("My vision");
+  // Allocate Bluetooth object only when starting
+  if (a2dp_source == nullptr) {
+    a2dp_source = new BluetoothA2DPSource();
+  }
+  a2dp_source->set_data_callback(get_data);
+  a2dp_source->set_avrc_passthru_command_callback(button_handler);
+  a2dp_source->start("My vision");
   btStarted = true;
-  log(INFO, "🛜🟢 Bluetooth Started");
+  // Register event handlers after Bluetooth is started
+  RegisterBluetoothHandlers();
+  log(INFO, "🛜 Bluetooth Started");
 }
-
-bool btStarted = false;
-bool btConnected = false;
 
 void ESPWiFi::stopBluetooth() {
   if (!btStarted) {
     return;
   }
-  a2dp_source.end();
+  // Unregister handlers before stopping
+  UnregisterBluetoothHandlers();
+
+  if (a2dp_source != nullptr) {
+    a2dp_source->end(true); // release memory
+    delete a2dp_source;
+    a2dp_source = nullptr;
+  }
   btStarted = false;
-  btConnected = false;
-  log(INFO, "🛜🛑 Bluetooth Stopped");
+  connectBluetoothed = false;
+  log(INFO, "🛜 Bluetooth Stopped");
+}
+
+void ESPWiFi::scanBluetooth() {
+  if (!btStarted || a2dp_source == nullptr) {
+    log(WARNING, "🛜 Bluetooth Skipping scan: not started or not initialized");
+    return;
+  }
+  log(INFO, "🛜 Bluetooth Scanning");
+}
+
+void ESPWiFi::connectBluetooth(const std::string &address) {
+  if (!btStarted) {
+    return;
+  }
+  log(INFO, "🛜 Bluetooth Connecting to %s", address.c_str());
+}
+
+void ESPWiFi::bluetoothConfigHandler() {
+  static bool lastEnabled = false;
+  static bool currentEnabled = false;
+
+  currentEnabled = config["bluetooth"]["enabled"].as<bool>();
+  if (currentEnabled != lastEnabled) {
+    if (currentEnabled) {
+      startBluetooth();
+    } else {
+      stopBluetooth();
+    }
+  }
 }
 
 #endif // ESPWiFi_BLUETOOTH_H

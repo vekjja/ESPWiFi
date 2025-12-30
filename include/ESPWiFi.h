@@ -1,10 +1,6 @@
 #ifndef ESPWiFi_H
 #define ESPWiFi_H
 
-// -----------------------------------------------------------------------------
-// Includes
-// -----------------------------------------------------------------------------
-
 // Standard library
 #include <cctype>
 #include <cstdarg>
@@ -24,6 +20,7 @@
 #include <unistd.h>
 
 // ESP-IDF
+#include "esp_a2dp_api.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -37,33 +34,17 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-// Third-party (compatible with ESP-IDF)
 #include <ArduinoJson.h>
 #include <IntervalTimer.h>
 
-// -----------------------------------------------------------------------------
-// Logging
-// -----------------------------------------------------------------------------
-
-// NOTE: This stays as a plain enum to avoid a larger refactor across the .cpps.
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
-
-// -----------------------------------------------------------------------------
-// Main device/application class
-// -----------------------------------------------------------------------------
 
 class ESPWiFi {
 public:
-  // ---- Types ----------------------------------------------------------------
-  // Route handler signature used by registerRoute(). The caller receives:
-  // - this pointer (ESPWiFi instance)
-  // - the ESP-IDF request
-  // - a stable, pre-captured clientInfo string for access logging
   using RouteHandler = esp_err_t (*)(ESPWiFi *espwifi, httpd_req_t *req,
                                      const std::string &clientInfo);
 
   // ---- Basic helpers/state
-  // ---------------------------------------------------
   std::string version() { return _version; }
   void yield(int ms = 1) { vTaskDelay(pdMS_TO_TICKS(ms)); }
 
@@ -73,31 +54,27 @@ public:
   std::string configFile = "/config.json";
 
   // Enable/disable automatic reconnect on STA disconnect events.
-  void setWiFiAutoReconnect(bool enable) { wifi_auto_reconnect = enable; }
+  void setWiFiAutoReconnect(bool enable) { wifiAutoReconnect = enable; }
   // Current connection status tracked by the WiFi event handlers.
   bool isWiFiConnected() const { return wifi_connection_success; }
 
   // ---- Lifecycle
-  // -------------------------------------------------------------
   void start();
   void runSystem();
 
   // ---- Filesystem
-  // ------------------------------------------------------------
   void initSDCard();
   void deinitSDCard();
-  void sdCardConfigHandler();
   void initLittleFS();
+  void sdCardConfigHandler();
   bool sdCardInitialized = false;
   bool littleFsInitialized = false;
-  std::string lfsMountPoint = "/lfs"; // LittleFS mount point
-  std::string sdMountPoint = "/sd";   // SD card mount point (FATFS)
-  void *sdCard = nullptr; // Opaque handle (SD card pointer from IDF)
+  std::string lfsMountPoint = "/lfs";
+  std::string sdMountPoint = "/sd";
+  void *sdCard = nullptr;
   bool sdInitAttempted = false;
   esp_err_t sdInitLastErr = ESP_OK;
   bool sdInitNotConfiguredForTarget = false;
-  // If we mount SD via SDSPI and we were the one to init the SPI bus, track it
-  // so we can free it on deinit.
   bool sdSpiBusOwned = false;
   int sdSpiHost = -1;
 
@@ -123,14 +100,13 @@ public:
   std::string getQueryParam(httpd_req_t *req, const char *key);
 
   // ---- Logging
-  // ---------------------------------------------------------------
   void cleanLogFile();
+  bool logToSD = false;
+  int baudRate = 115200;
   int maxLogFileSize = 0;
   bool serialStarted = false;
-  int baudRate = 115200; // ESP-IDF console UART is usually pre-initialized
   bool loggingStarted = false;
   std::string logFilePath = "/log";
-  bool logToSD = false; // When true, write logs to SD mount instead of LFS
 
   void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
@@ -149,19 +125,17 @@ public:
   }
 
   // ---- Config
-  // ----------------------------------------------------------------
   void saveConfig();
   void saveConfig(JsonDocument &configToSave);
   void readConfig();
-  void printConfig();
   void handleConfig();
+  std::string prettyConfig();
   JsonDocument defaultConfig();
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
   void
   requestConfigUpdate(); // Request deferred config apply+save from main task
 
   // ---- WiFi
-  // ------------------------------------------------------------------
   void startAP();
   void startWiFi();
   void startClient();
@@ -171,7 +145,6 @@ public:
   void setHostname(std::string hostname);
 
   // ---- HTTP server / routes
-  // --------------------------------------------------
   void startWebServer();
   bool webServerStarted = false;
   httpd_handle_t webServer = nullptr;
@@ -215,12 +188,10 @@ public:
   void srvWildcard();
 
   // ---- RSSI (stub)
-  // -----------------------------------------------------------
   void startRSSIWebSocket();
   void streamRSSI();
 
   // ---- Utilities
-  // -------------------------------------------------------------
   void setMaxPower();
   std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);
@@ -231,16 +202,13 @@ public:
   bool matchPattern(std::string_view uri, std::string_view pattern);
 
   // ---- JSON helpers (implemented in Utils.cpp)
-  // --------------------------------------------
   void deepMerge(JsonVariant dst, JsonVariantConst src, int depth = 0);
 
   // ---- I2C
-  // -------------------------------------------------------------------
   void scanI2CDevices();
   bool checkI2CDevice(uint8_t address);
 
   // ---- OTA
-  // -------------------------------------------------------------------
   void startOTA();
   bool isOTAEnabled();
   void handleOTAStart(void *req);
@@ -257,21 +225,21 @@ public:
   std::string otaErrorString;
   std::string otaMD5Hash;
 
-  // ---- Bluetooth Classic Audio
-  // ------------------------------------------------------
+  // ---- Bluetooth Audio
+  bool connectBluetoothed = false;
+  bool btStarted = false;
   void startBluetooth();
   void stopBluetooth();
   void scanBluetooth();
-  bool btStarted = false;
-  bool btConnected = false;
+  void bluetoothConfigHandler();
+  void connectBluetooth(const std::string &address);
+  esp_err_t RegisterBluetoothHandlers();
+  void UnregisterBluetoothHandlers();
 
 private:
-  // ---- Version
-  // ---------------------------------------------------------------
   std::string _version = "v0.1.0";
 
   // ---- Route trampoline/state
-  // ------------------------------------------------
   struct RouteCtx {
     ESPWiFi *self = nullptr;
     RouteHandler handler = nullptr;
@@ -280,20 +248,16 @@ private:
   static esp_err_t routeTrampoline(httpd_req_t *req);
 
   // ---- WiFi event handling
-  // ---------------------------------------------------
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
   bool wifi_connection_success = false;
-  bool wifi_auto_reconnect = true; // auto-reconnect on STA disconnect
+  bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
   // ---- Deferred config update (avoid heavy work in HTTP handlers)
-  // ------------
   bool configNeedsUpdate = false;
 
   // ---- CORS cache (minimize per-request work/allocations)
-  // -------------------------------------------------------
-  // Recomputed in the main task via handleConfig() after config changes.
   void refreshCorsCache();
   bool cors_cache_enabled = true;
   bool cors_cache_has_origins = false;
@@ -303,35 +267,9 @@ private:
   std::string cors_cache_allow_headers;    // e.g. "Content-Type, Authorization"
 
   // ---- Log file synchronization (best-effort; avoid blocking httpd)
-  // ----------
   SemaphoreHandle_t logFileMutex = nullptr;
-  // NOTE: We intentionally use this mutex in a **best-effort / bounded-wait**
-  // way for log file I/O (see `src/Log.cpp`):
-  // - Pros: much fewer dropped *file* log lines vs fully non-blocking, while
-  //   still keeping waits short so the ESP-IDF `httpd` task stays responsive.
-  // - Cons: file logging can still drop lines under heavy contention (serial
-  //   still prints), and even a short wait can add tiny latency if logging is
-  //   called from request paths.
-  //
-  // If you want **blocking + precise file logging** (every log line is appended
-  // to the file, in order), change the policy in `src/Log.cpp`:
-  // - In `writeLog()`:
-  //   - Replace the bounded wait (e.g. `pdMS_TO_TICKS(18)`) with a blocking
-  //   take
-  //     like `xSemaphoreTake(logFileMutex, portMAX_DELAY)` (or a longer bounded
-  //     wait such as `pdMS_TO_TICKS(50)`).
-  //   - Consider adding a `fflush()`/`fsync()` strategy if you need durability
-  //     across power loss (higher latency + wear).
-  // - In `logConfigHandler()` / `cleanLogFile()`:
-  //   - Use a blocking take (or slightly longer bounded wait) so
-  //   reconfiguration
-  //     cannot race with file writes.
-  //
-  // Tradeoffs of blocking mode:
-  // - Pros: deterministic file persistence (no skipped lines).
-  // - Cons: can stall the `httpd` task during bursts, increasing perceived
-  //   latency and watchdog risk if logging is done inside request paths.
 
+  // ---- WiFi event handlers
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();
   bool waitForWiFiConnection(int timeout_ms, int check_interval_ms = 100);
@@ -344,12 +282,16 @@ private:
                                      int32_t event_id, void *event_data);
   static void ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
                                    int32_t event_id, void *event_data);
+
+  // Bluetooth event handlers
+  void bluetoothConnectionSC(esp_a2d_connection_state_t state, void *obj);
+  void btAudioStateChange(esp_a2d_audio_state_t state, void *obj);
+  static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
+                                          void *obj);
+  static void btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj);
 };
 
-// -----------------------------------------------------------------------------
-// Small string helpers
-// -----------------------------------------------------------------------------
-
+// String helper
 inline void toLowerCase(std::string &s) {
   for (char &c : s) {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));

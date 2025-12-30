@@ -354,9 +354,9 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
 void ESPWiFi::logFilesystemInfo(const std::string &fsName, size_t totalBytes,
                                 size_t usedBytes) {
   log(INFO, "💾 %s Filesystem", fsName.c_str());
-  log(DEBUG, "\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
-  log(DEBUG, "\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
-  log(DEBUG, "\tFree: %s",
+  log(DEBUG, "💾\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
+  log(DEBUG, "💾\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
+  log(DEBUG, "💾\tFree: %s",
       bytesToHumanReadable(totalBytes - usedBytes).c_str());
 }
 
@@ -367,10 +367,7 @@ void ESPWiFi::printFilesystemInfo() {
     logFilesystemInfo("LittleFS", totalBytes, usedBytes);
   }
 
-  // SD status: show whether it is enabled, and if we tried to init it.
-  const bool sdEnabled =
-      config["sd"].is<JsonObject>() ? (config["sd"]["enabled"] | false) : false;
-  if (!sdEnabled) {
+  if (!config["sd"]["enabled"]) {
     return;
   }
 

@@ -57,8 +57,8 @@ void ESPWiFi::startClient() {
   }
 
   log(INFO, "📶 Connecting to WiFi Network");
-  log(DEBUG, "\tSSID: %s", ssid.c_str());
-  log(DEBUG, "\tPassword: **********");
+  log(DEBUG, "📶\tSSID: %s", ssid.c_str());
+  log(DEBUG, "📶\tPassword: **********");
 
   // --- 1. One-time event-loop / netif init per boot ---
 
@@ -166,10 +166,10 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  log(INFO, "📶🔗 WiFi Connected");
+  log(INFO, "📶 WiFi Connected");
 
   std::string hostname = getHostname();
-  log(DEBUG, "\tHostname: %s", hostname.c_str());
+  log(DEBUG, "📶\tHostname: %s", hostname.c_str());
 
   // --- 6. Log IP/network info ---
 
@@ -178,25 +178,25 @@ void ESPWiFi::startClient() {
 
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-  log(DEBUG, "\tIP Address: %s", ip_str);
+  log(DEBUG, "📶\tIP Address: %s", ip_str);
 
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.netmask));
-  log(DEBUG, "\tSubnet: %s", ip_str);
+  log(DEBUG, "📶\tSubnet: %s", ip_str);
 
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.gw));
-  log(DEBUG, "\tGateway: %s", ip_str);
+  log(DEBUG, "📶\tGateway: %s", ip_str);
 
   esp_netif_dns_info_t dns_info;
   if (esp_netif_get_dns_info(current_netif, ESP_NETIF_DNS_MAIN, &dns_info) ==
       ESP_OK) {
     snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
-    log(DEBUG, "\tDNS: %s", ip_str);
+    log(DEBUG, "📶\tDNS: %s", ip_str);
   }
 
   wifi_ap_record_t ap_info;
   if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-    log(DEBUG, "\tRSSI: %d dBm", ap_info.rssi);
-    log(DEBUG, "\tChannel: %d", ap_info.primary);
+    log(DEBUG, "📶\tRSSI: %d dBm", ap_info.rssi);
+    log(DEBUG, "📶\tChannel: %d", ap_info.primary);
   }
 }
 
@@ -255,8 +255,8 @@ void ESPWiFi::startAP() {
       config["wifi"]["accessPoint"]["password"].as<std::string>();
 
   log(INFO, "📡 Starting Access Point");
-  log(DEBUG, "\tSSID: %s", ssid.c_str());
-  log(DEBUG, "\tPassword: %s", password.c_str());
+  log(DEBUG, "📶\tSSID: %s", ssid.c_str());
+  log(DEBUG, "📶\tPassword: %s", password.c_str());
 
   // No STA auto-reconnect in AP mode
   setWiFiAutoReconnect(false);
@@ -293,7 +293,7 @@ void ESPWiFi::startAP() {
 
   // Pick best channel (may fall back to 1 if scan fails)
   int bestChannel = selectBestChannel();
-  log(DEBUG, "\tChannel: %d", bestChannel);
+  log(DEBUG, "📶\tChannel: %d", bestChannel);
 
   // --- 2. Create AP netif + init WiFi ---
 
@@ -337,7 +337,7 @@ void ESPWiFi::startAP() {
 
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-  log(DEBUG, "\tIP Address: %s", ip_str);
+  log(DEBUG, "📶\tIP Address: %s", ip_str);
 
 #ifdef LED_BUILTIN
   gpio_set_direction((gpio_num_t)LED_BUILTIN, GPIO_MODE_OUTPUT);

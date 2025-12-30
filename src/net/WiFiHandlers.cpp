@@ -17,7 +17,7 @@ esp_err_t ESPWiFi::registerWiFiHandlers() {
 
   // Event when STA starts / disconnects / etc.
   err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                            &ESPWiFi::wifi_event_handler_static,
+                                            &ESPWiFi::wifiEventHandlerStatic,
                                             this, &wifi_event_instance);
   if (err != ESP_OK) {
     wifi_event_instance = nullptr;
@@ -26,7 +26,7 @@ esp_err_t ESPWiFi::registerWiFiHandlers() {
 
   // Event when STA gets an IP
   err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                            &ESPWiFi::ip_event_handler_static,
+                                            &ESPWiFi::ipEventHandlerStatic,
                                             this, &ip_event_instance);
   if (err != ESP_OK) {
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
@@ -58,25 +58,25 @@ void ESPWiFi::unregisterWiFiHandlers() {
 }
 
 // Static wrappers -> forward to instance methods
-void ESPWiFi::wifi_event_handler_static(void *arg, esp_event_base_t event_base,
-                                        int32_t event_id, void *event_data) {
+void ESPWiFi::wifiEventHandlerStatic(void *arg, esp_event_base_t event_base,
+                                     int32_t event_id, void *event_data) {
   ESPWiFi *self = static_cast<ESPWiFi *>(arg);
   if (self) {
-    self->wifi_event_handler(event_base, event_id, event_data);
+    self->wifiEventHandler(event_base, event_id, event_data);
   }
 }
 
-void ESPWiFi::ip_event_handler_static(void *arg, esp_event_base_t event_base,
-                                      int32_t event_id, void *event_data) {
+void ESPWiFi::ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
+                                   int32_t event_id, void *event_data) {
   ESPWiFi *self = static_cast<ESPWiFi *>(arg);
   if (self) {
-    self->ip_event_handler(event_base, event_id, event_data);
+    self->ipEventHandler(event_base, event_id, event_data);
   }
 }
 
 // Core WiFi event handler (member function)
-void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
-                                 void *event_data) {
+void ESPWiFi::wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
+                               void *event_data) {
   if (event_base != WIFI_EVENT)
     return;
 
@@ -84,7 +84,7 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
   case WIFI_EVENT_STA_START:
     // Station started; we usually call esp_wifi_connect() explicitly in
     // startClient()
-    log(INFO, "📶 WiFi Started");
+    log(INFO, "📶🟢 WiFi Started");
     break;
 
   case WIFI_EVENT_STA_DISCONNECTED: {
@@ -92,7 +92,7 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
         static_cast<wifi_event_sta_disconnected_t *>(event_data);
 
     wifi_connection_success = false;
-    log(WARNING, "🛜 WiFi Disconnected: %d ⛓️‍💥", disc->reason);
+    log(WARNING, "🛜⛓️‍💥 WiFi Disconnected: %d", disc->reason);
 
     // Wake up any waiters
     if (wifi_connect_semaphore) {
@@ -101,7 +101,7 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
 
     // Auto-reconnect logic
     if (wifi_auto_reconnect) {
-      log(INFO, "🔄 🛜 WiFi Auto Reconnect");
+      log(INFO, "🛜🔄 WiFi Auto Reconnect");
       esp_err_t err = esp_wifi_connect();
       if (err != ESP_OK) {
         log(ERROR, "esp_wifi_connect auto-reconnect failed: %s",
@@ -118,8 +118,8 @@ void ESPWiFi::wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
 }
 
 // IP event handler (member function)
-void ESPWiFi::ip_event_handler(esp_event_base_t event_base, int32_t event_id,
-                               void *event_data) {
+void ESPWiFi::ipEventHandler(esp_event_base_t event_base, int32_t event_id,
+                             void *event_data) {
   if (event_base != IP_EVENT)
     return;
 

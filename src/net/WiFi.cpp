@@ -166,7 +166,7 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  log(INFO, "📶✅ WiFi Connected");
+  log(INFO, "📶🔗 WiFi Connected");
 
   std::string hostname = getHostname();
   log(DEBUG, "\tHostname: %s", hostname.c_str());

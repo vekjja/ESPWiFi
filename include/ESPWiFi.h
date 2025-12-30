@@ -262,7 +262,8 @@ public:
   void startBluetooth();
   void stopBluetooth();
   void scanBluetooth();
-  bool bluetoothStarted = false;
+  bool btStarted = false;
+  bool btConnected = false;
 
 private:
   // ---- Version
@@ -334,15 +335,15 @@ private:
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();
   bool waitForWiFiConnection(int timeout_ms, int check_interval_ms = 100);
-  void wifi_event_handler(esp_event_base_t event_base, int32_t event_id,
-                          void *event_data);
-  void ip_event_handler(esp_event_base_t event_base, int32_t event_id,
+  void wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
                         void *event_data);
+  void ipEventHandler(esp_event_base_t event_base, int32_t event_id,
+                      void *event_data);
 
-  static void wifi_event_handler_static(void *arg, esp_event_base_t event_base,
-                                        int32_t event_id, void *event_data);
-  static void ip_event_handler_static(void *arg, esp_event_base_t event_base,
-                                      int32_t event_id, void *event_data);
+  static void wifiEventHandlerStatic(void *arg, esp_event_base_t event_base,
+                                     int32_t event_id, void *event_data);
+  static void ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
+                                   int32_t event_id, void *event_data);
 };
 
 // -----------------------------------------------------------------------------

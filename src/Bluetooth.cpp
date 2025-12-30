@@ -25,22 +25,26 @@ void button_handler(uint8_t key, bool isReleased) {
 }
 
 void ESPWiFi::startBluetooth() {
-  if (bluetoothStarted) {
+  if (btStarted) {
     return;
   }
   a2dp_source.set_data_callback(get_data);
   a2dp_source.set_avrc_passthru_command_callback(button_handler);
   a2dp_source.start("My vision");
-  bluetoothStarted = true;
-  log(INFO, "🛜✅ Bluetooth Started");
+  btStarted = true;
+  log(INFO, "🛜🟢 Bluetooth Started");
 }
 
+bool btStarted = false;
+bool btConnected = false;
+
 void ESPWiFi::stopBluetooth() {
-  if (!bluetoothStarted) {
+  if (!btStarted) {
     return;
   }
   a2dp_source.end();
-  bluetoothStarted = false;
+  btStarted = false;
+  btConnected = false;
   log(INFO, "🛜🛑 Bluetooth Stopped");
 }
 

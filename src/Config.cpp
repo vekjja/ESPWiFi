@@ -2,104 +2,61 @@
 #define ESPWiFi_CONFIG
 
 #include "ESPWiFi.h"
-#include <cerrno>
-#include <sys/stat.h>
 
 void ESPWiFi::readConfig() {
-  static bool readingConfig = false;
-  if (readingConfig) {
-    return; // Prevent recursive calls
-  }
-  readingConfig = true;
-
   initLittleFS();
   bool usedDefaultConfig = false;
 
   if (!littleFsInitialized) {
     config = defaultConfig();
     usedDefaultConfig = true;
-    log(WARNING, "⚙️ No filesystem: Using default config");
-    log(INFO, "⚙️ Using Config:\n%s", prettyConfig().c_str());
-    readingConfig = false;
-    return;
-  }
-
-  size_t fileSize = 0;
-  char *buffer = readFile(configFile, &fileSize);
-
-  if (!buffer || fileSize == 0 || fileSize >= 10240) { // Limit to 10KB
-    if (buffer)
-      free(buffer);
-    config = defaultConfig();
-    usedDefaultConfig = true;
-    log(WARNING, "⚙️ Failed to read config file: Using default config");
+    log(ERROR, "⚙️ Could not access filesystem: Using default config");
   } else {
-    // Parse JSON (be robust to UTF-8 BOM / leading whitespace).
-    JsonDocument loadedConfig;
 
-    const char *json = buffer;
-    size_t jsonLen = fileSize;
+    size_t fileSize = 0;
+    char *buffer = readFile(configFile, &fileSize);
 
-    // Strip UTF-8 BOM if present (0xEF 0xBB 0xBF)
-    if (jsonLen >= 3 && (uint8_t)json[0] == 0xEF && (uint8_t)json[1] == 0xBB &&
-        (uint8_t)json[2] == 0xBF) {
-      json += 3;
-      jsonLen -= 3;
-    }
-    // Strip leading whitespace
-    while (jsonLen > 0 && isspace((unsigned char)*json)) {
-      json++;
-      jsonLen--;
-    }
-
-    DeserializationError error = deserializeJson(loadedConfig, json, jsonLen);
-    free(buffer);
-
-    if (error) {
+    if (!buffer || fileSize == 0 || fileSize >= 10240) { // Limit to 10KB
+      if (buffer)
+        free(buffer);
       config = defaultConfig();
       usedDefaultConfig = true;
-      log(WARNING,
-          "⚙️ Failed to parse config file (%s, %u bytes): %s: Using default "
-          "config",
-          configFile.c_str(), (unsigned)fileSize, error.c_str());
-
-      // Self-heal: quarantine the invalid config so we don't retry the same
-      // malformed JSON every boot, then write defaults back to configFile.
-      const std::string fullConfigPath = lfsMountPoint + configFile;
-
-      auto pathExists = [](const std::string &p) -> bool {
-        struct stat st;
-        return ::stat(p.c_str(), &st) == 0;
-      };
-
-      std::string badRel = configFile + ".bad";
-      std::string fullBadPath = lfsMountPoint + badRel;
-      if (pathExists(fullBadPath)) {
-        for (int i = 1; i <= 9; i++) {
-          badRel = configFile + ".bad" + std::to_string(i);
-          fullBadPath = lfsMountPoint + badRel;
-          if (!pathExists(fullBadPath)) {
-            break;
-          }
-        }
-      }
-
-      if (!pathExists(fullBadPath)) {
-        if (::rename(fullConfigPath.c_str(), fullBadPath.c_str()) == 0) {
-          log(WARNING, "⚙️ Quarantined invalid config to: %s", badRel.c_str());
-        } else {
-          log(WARNING, "⚙️ Failed to quarantine invalid config (%s): %s",
-              badRel.c_str(), strerror(errno));
-        }
-      } else {
-        log(WARNING,
-            "⚙️ Not quarantining invalid config: too many .bad files already");
-      }
-
-      // Best-effort persist defaults so the next boot is clean.
-      saveConfig(config);
+      log(WARNING, "⚙️ Failed to read config file: Using default config");
     } else {
-      config = mergeJson(config, loadedConfig);
+      // Parse JSON (be robust to UTF-8 BOM / leading whitespace).
+      JsonDocument loadedConfig;
+
+      const char *json = buffer;
+      size_t jsonLen = fileSize;
+
+      // Strip UTF-8 BOM if present (0xEF 0xBB 0xBF)
+      if (jsonLen >= 3 && (uint8_t)json[0] == 0xEF &&
+          (uint8_t)json[1] == 0xBB && (uint8_t)json[2] == 0xBF) {
+        json += 3;
+        jsonLen -= 3;
+      }
+      // Strip leading whitespace
+      while (jsonLen > 0 && isspace((unsigned char)*json)) {
+        json++;
+        jsonLen--;
+      }
+
+      DeserializationError error = deserializeJson(loadedConfig, json, jsonLen);
+      free(buffer);
+
+      if (error) {
+        config = defaultConfig();
+        usedDefaultConfig = true;
+        log(WARNING,
+            "⚙️ Failed to parse config file (%s, %u bytes): %s: Using default "
+            "config",
+            configFile.c_str(), (unsigned)fileSize, error.c_str());
+
+        // Best-effort persist defaults so the next boot is clean.
+        saveConfig(config);
+      } else {
+        config = mergeJson(config, loadedConfig);
+      }
     }
   }
 
@@ -108,9 +65,6 @@ void ESPWiFi::readConfig() {
   } else {
     log(INFO, "⚙️ Using Config:\n%s", prettyConfig());
   }
-  configNeedsUpdate = true;
-
-  readingConfig = false;
 }
 
 std::string ESPWiFi::prettyConfig() {
@@ -127,8 +81,6 @@ std::string ESPWiFi::prettyConfig() {
   }
 
   // Recursively mask any fields with keys matching sensitive field names
-  // ArduinoJson doesn't have a built-in recursive search, so we implement our
-  // own
   const char *sensitiveKeys[] = {"password", "passwd",  "key",   "token",
                                  "apiKey",   "api_key", "secret"};
   const size_t numSensitiveKeys =
@@ -185,11 +137,9 @@ std::string ESPWiFi::prettyConfig() {
       };
 
   maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
-  yield(); // Yield after masking
 
   std::string prettyConfig;
   serializeJsonPretty(logConfig, prettyConfig);
-  yield(); // Yield after pretty serialization
   return prettyConfig;
 }
 
@@ -240,7 +190,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   yield(); // Yield after file write
 
   if (configToSave["log"]["enabled"].as<bool>()) {
-    log(INFO, "⚙️ Config Saved: %s", configFile.c_str());
+    log(INFO, "⚙️ Config Saved: %s", configFile);
     // prettyConfig();
   }
 }
@@ -273,7 +223,7 @@ void ESPWiFi::saveConfig() {
   }
 
   if (config["log"]["enabled"].as<bool>()) {
-    log(INFO, "⚙️ Config Saved: %s", configFile.c_str());
+    log(INFO, "⚙️ Config Saved: %s", configFile);
   }
 }
 

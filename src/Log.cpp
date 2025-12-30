@@ -144,41 +144,40 @@ void ESPWiFi::writeLog(std::string message) {
   }
 }
 
-void ESPWiFi::log(LogLevel level, const char *format, ...) {
+void ESPWiFi::logImpl(LogLevel level, const std::string &message) {
   if (!shouldLog(level)) {
     return;
   }
   if (!serialStarted) {
     startSerial();
   }
-  // Use lightweight printf directly to avoid stack/heap issues in HTTP handlers
-  // Skip string formatting to prevent crashes from stack overflow or heap
-  // issues
-  va_list args;
-  va_start(args, format);
 
   std::string ts = timestamp();
   std::string levelStr = logLevelToString(level);
 
   // Direct printf with format - avoids string allocations
-  printf("%s %s ", ts.c_str(), levelStr.c_str());
-  vprintf(format, args);
-  printf("\n");
+  printf("%s %s %s\n", ts.c_str(), levelStr.c_str(), message.c_str());
 
-  // Restart va_list since it was consumed by vprintf above
-  va_list args2;
-  va_copy(args2, args); // Copy args before va_end
-
-  // Use smaller buffer to reduce stack usage in HTTP handlers
-  char buffer[512]; // Reduced from 2048 to prevent stack overflow
-  vsnprintf(buffer, sizeof(buffer), format, args2);
-  va_end(args2); // Clean up va_list 2nd copy
-
-  std::string logLine = ts + levelStr + " " + std::string(buffer) + "\n";
-
-  va_end(args); // Clean up va_list 1st copy
-
+  std::string logLine = ts + levelStr + " " + message + "\n";
   writeLog(logLine);
+}
+
+void ESPWiFi::log(LogLevel level, const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+
+  // Format the message
+  char buffer[1536];
+  vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+
+  logImpl(level, std::string(buffer));
+}
+
+void ESPWiFi::log(LogLevel level, const char *format, const std::string &arg) {
+  char buffer[1536];
+  snprintf(buffer, sizeof(buffer), format, arg.c_str());
+  logImpl(level, std::string(buffer));
 }
 
 // Function to check filesystem space and delete log if needed

@@ -116,10 +116,12 @@ public:
   bool shouldLog(LogLevel level);
   void writeLog(std::string message);
 
+  // Core logging implementation - formats and writes the log message
+  void logImpl(LogLevel level, const std::string &message);
+
   void log(LogLevel level, const char *format, ...);
-  void log(LogLevel level, std::string message) {
-    log(level, "%s", message.c_str());
-  }
+  void log(LogLevel level, std::string message) { logImpl(level, message); }
+  void log(LogLevel level, const char *format, const std::string &arg);
   template <typename T> void log(T value) {
     log(INFO, "%s", std::to_string(value).c_str());
   }
@@ -254,8 +256,9 @@ private:
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
-  // ---- Deferred config update (avoid heavy work in HTTP handlers)
+  // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsUpdate = false;
+  bool configNeedsSave = false;
 
   // ---- CORS cache (minimize per-request work/allocations)
   void refreshCorsCache();

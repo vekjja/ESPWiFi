@@ -211,22 +211,8 @@ public:
   void srvGPIO();
   void srvAuth();
   void srvConfig();
+  void srvBluetooth();
   void srvWildcard();
-#ifdef ESPWiFi_CAMERA
-  void srvCamera();
-#endif
-
-  // ---- Camera (stubs; ESP-IDF port TBD) -------------------------------------
-#ifdef ESPWiFi_CAMERA
-  bool initCamera();
-  void startCamera();
-  void deinitCamera();
-  void streamCamera();
-  void clearCameraBuffer();
-  void cameraConfigHandler();
-  void updateCameraSettings();
-  esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
-#endif
 
   // ---- RSSI (stub)
   // -----------------------------------------------------------
@@ -271,10 +257,12 @@ public:
   std::string otaErrorString;
   std::string otaMD5Hash;
 
-  // ---- Bluetooth Classic Audio (A2DP source; WAV-first)
+  // ---- Bluetooth Classic Audio
   // ------------------------------------------------------
-  // Config handler is called from `handleConfig()` (main task).
-  void bluetoothAudioConfigHandler();
+  void startBluetooth();
+  void stopBluetooth();
+  void scanBluetooth();
+  bool bluetoothStarted = false;
 
 private:
   // ---- Version

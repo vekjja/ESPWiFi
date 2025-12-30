@@ -319,12 +319,6 @@ void ESPWiFi::handleConfig() {
   // Storage config (mount/unmount)
   // can be slow; keep out of HTTP handlers.
   sdCardConfigHandler();
-
-  // Bluetooth Classic audio stack
-  bluetoothAudioConfigHandler();
-#ifdef ESPWiFi_CAMERA
-  cameraConfigHandler();
-#endif
 }
 
 JsonDocument ESPWiFi::defaultConfig() {
@@ -344,43 +338,19 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["wifi"]["client"]["ssid"] = "";
   doc["wifi"]["client"]["password"] = "";
 
-// Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
-#if defined(CONFIG_BT_ENABLED)
-  doc["bluetooth"]["installed"] = true;
-#else
-  doc["bluetooth"]["installed"] = false;
-#endif
-  doc["bluetooth"]["enabled"] = false;
+  // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
+  doc["bt"]["enabled"] = false;
 
-  // Camera
-#ifdef ESPWiFi_CAMERA
-  doc["camera"]["installed"] = true;
-  doc["camera"]["enabled"] = false;
-  doc["camera"]["frameRate"] = 10;
-  doc["camera"]["rotation"] = 0;
-  doc["camera"]["brightness"] = 1;
-  doc["camera"]["contrast"] = 1;
-  doc["camera"]["saturation"] = 1;
-  doc["camera"]["exposure_level"] = 1;
-  doc["camera"]["exposure_value"] = 400;
-  doc["camera"]["agc_gain"] = 2;
-  doc["camera"]["gain_ceiling"] = 2;
-  doc["camera"]["white_balance"] = 1;
-  doc["camera"]["awb_gain"] = 1;
-  doc["camera"]["wb_mode"] = 0;
-#else
-  doc["camera"]["installed"] = false;
-#endif
-
-  // OTA - based on LittleFS partition
-  doc["ota"]["enabled"] = isOTAEnabled();
-
-  // SD card (optional; disabled by default)
-  doc["sd"]["enabled"] = false;
-  // Runtime mount state (persisted so UI can reason about availability)
+  // SD Card
+  doc["sd"]["enabled"] = true;
   doc["sd"]["initialized"] = false;
-  // type is informational today (mounting is config-gated and target-specific)
   doc["sd"]["type"] = "auto";
+
+  // Logging: verbose, access, debug, info, warning, error
+  doc["log"]["file"] = "/log";
+  doc["log"]["enabled"] = true;
+  doc["log"]["level"] = "debug";
+  doc["log"]["preferSD"] = true;
 
   // Auth
   doc["auth"]["enabled"] = false;
@@ -415,11 +385,28 @@ JsonDocument ESPWiFi::defaultConfig() {
   protectFiles.add("/config.json");
   protectFiles.add("/asset-manifest.json");
 
-  // Logging: verbose, access, debug, info, warning, error
-  doc["log"]["file"] = "/log";
-  doc["log"]["enabled"] = true;
-  doc["log"]["level"] = "debug";
-  doc["log"]["preferSD"] = true;
+  // Camera
+  // #ifdef ESPWiFi_CAMERA
+  //   doc["camera"]["installed"] = true;
+  //   doc["camera"]["enabled"] = false;
+  //   doc["camera"]["frameRate"] = 10;
+  //   doc["camera"]["rotation"] = 0;
+  //   doc["camera"]["brightness"] = 1;
+  //   doc["camera"]["contrast"] = 1;
+  //   doc["camera"]["saturation"] = 1;
+  //   doc["camera"]["exposure_level"] = 1;
+  //   doc["camera"]["exposure_value"] = 400;
+  //   doc["camera"]["agc_gain"] = 2;
+  //   doc["camera"]["gain_ceiling"] = 2;
+  //   doc["camera"]["white_balance"] = 1;
+  //   doc["camera"]["awb_gain"] = 1;
+  //   doc["camera"]["wb_mode"] = 0;
+  // #else
+  //   doc["camera"]["installed"] = false;
+  // #endif
+
+  // OTA - based on LittleFS partition
+  doc["ota"]["enabled"] = isOTAEnabled();
 
   return doc;
 }

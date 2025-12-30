@@ -5,21 +5,21 @@
 
 void ESPWiFi::start() {
   startSerial();
+  startLogging();
   initLittleFS();
   readConfig();
-  startLogging();
   // setMaxPower();
   startWiFi();
   // startMDNS();
   startWebServer();
   startRSSIWebSocket();
-  srvAll();
-  // startBluetooth();
+  startBluetooth();
   handleConfig();
+  srvAll();
 }
 
 void ESPWiFi::runSystem() {
-  taskYIELD();
+  yield();
 
   // Apply + save config changes in the main task
   // (keeps HTTP handlers fast/safe)
@@ -33,7 +33,6 @@ void ESPWiFi::runSystem() {
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 
   streamRSSI();
-  // checkBluetoothConnectionStatus();
 #ifdef ESPWiFi_CAMERA
   streamCamera();
 #endif

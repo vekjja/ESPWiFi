@@ -14,10 +14,100 @@
 CONFIG_SECURE_INSECURE_ALLOW_DL_MODE=y
 CONFIG_SECURE_ROM_DL_MODE_ENABLED=y
 
-# Bluetooth (Classic / Bluedroid - A2DP Source)
+# WiFi
+CONFIG_ESP32_WIFI_ENABLED=y
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# mDNS
+CONFIG_MDNS_MAX_SERVICES=10
+CONFIG_MDNS_TASK_PRIORITY=1
+CONFIG_MDNS_TASK_STACK_SIZE=4096
+CONFIG_MDNS_TASK_AFFINITY_CPU0=y
+CONFIG_MDNS_SERVICE_ADD_TIMEOUT_MS=2000
+
+# LittleFS
+CONFIG_LITTLEFS_MAX_PARTITIONS=3
+CONFIG_LITTLEFS_OBJ_NAME_LEN=64
+CONFIG_LITTLEFS_PAGE_SIZE=256
+CONFIG_LITTLEFS_USE_MTIME=y
+
+# Camera (esp32-camera component)
+# Needed when building with esp32-camera; harmless otherwise.
+CONFIG_SCCB_CLK_FREQ=100000
+
+# WebSocket
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# -----------------------------------------------------------------------------
+# System event task (ESP-IDF)
+# -----------------------------------------------------------------------------
 #
-# Kept here (shared defaults) so PlatformIO's `board_build.sdkconfig_defaults`
-# consistently enables Classic BT across clean builds.
+# ESP-IDF runs the "sys_evt" task for system/event loop callbacks (WiFi/BT/etc).
+# The default stack is too small for this project on ESP32-WROOM-32 class boards
+# and results in a reboot loop:
+#   "***ERROR*** A stack overflow in task sys_evt has been detected."
+#
+# Keep this reasonably sized; 4096 has been sufficient in practice.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+# Back-compat name seen in some configs/IDF versions.
+CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+
+# -----------------------------------------------------------------------------
+# Flash size (ESP-IDF / esptoolpy)
+# -----------------------------------------------------------------------------
+# CONFIG_ESPTOOLPY_FLASHSIZE_2MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Logging
+# Changed from DEBUG to INFO to reduce binary size
+# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
+
+# Optimization
+# CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
+
+
+#
+# Select 4MB flash size (avoids "Expected 4MB, found 2MB!" warning at build).
+# CONFIG_ESPTOOLPY_FLASHSIZE_2MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# ESP32-C3 Specific Configuration
+
+# Explicitly disable RSA (ESP32-C3 only supports ECDSA for secure boot)
+# CONFIG_SECURE_BOOT_V2_RSA_ENABLED is not set
+# CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME is not set
+
+# Flash Configuration
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Partition Table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/espwifi_4MB.csv"
+
+# CPU Configuration
+CONFIG_ESP32_DEFAULT_CPU_FREQ_160=y
+CONFIG_ESP32_REV_MIN_3=y
+# CONFIG_FREERTOS_UNICORE=y
+
+# Performance Optimizations
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_PERF=y
+# CONFIG_FREERTOS_HZ=1000
+# CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=y
+
+
+# Bluetooth (Classic / Bluedroid - A2DP Source)
+# ==========================================================
 CONFIG_BT_ENABLED=y
 CONFIG_BT_BLUEDROID_ENABLED=y
 # CONFIG_BT_NIMBLE_ENABLED is not set
@@ -25,7 +115,6 @@ CONFIG_BT_BLUEDROID_ENABLED=y
 CONFIG_BT_CONTROLLER_ENABLED=y
 # CONFIG_BT_CONTROLLER_DISABLED is not set
 
-# Bluedroid Options (mirrors `sdkconfig.esp32` defaults we rely on)
 CONFIG_BT_BTC_TASK_STACK_SIZE=3072
 CONFIG_BT_BLUEDROID_PINNED_TO_CORE_0=y
 # CONFIG_BT_BLUEDROID_PINNED_TO_CORE_1 is not set
@@ -70,63 +159,3 @@ CONFIG_BT_BLE_BLUFI_ENABLE=n
 # CONFIG_BTDM_CTRL_MODE_BLE_ONLY is not set
 CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
 # CONFIG_BTDM_CTRL_MODE_BTDM is not set
-
-# WiFi
-CONFIG_ESP32_WIFI_ENABLED=y
-CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=10
-CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=32
-
-# mDNS
-CONFIG_MDNS_MAX_SERVICES=10
-CONFIG_MDNS_TASK_PRIORITY=1
-CONFIG_MDNS_TASK_STACK_SIZE=4096
-CONFIG_MDNS_TASK_AFFINITY_CPU0=y
-CONFIG_MDNS_SERVICE_ADD_TIMEOUT_MS=2000
-
-# LittleFS
-CONFIG_LITTLEFS_MAX_PARTITIONS=3
-CONFIG_LITTLEFS_OBJ_NAME_LEN=64
-CONFIG_LITTLEFS_PAGE_SIZE=256
-CONFIG_LITTLEFS_USE_MTIME=y
-
-# Camera (esp32-camera component)
-# Needed when building with esp32-camera; harmless otherwise.
-CONFIG_SCCB_CLK_FREQ=100000
-
-# WebSocket
-CONFIG_HTTPD_WS_SUPPORT=y
-
-# -----------------------------------------------------------------------------
-# System event task (ESP-IDF)
-# -----------------------------------------------------------------------------
-#
-# ESP-IDF runs the "sys_evt" task for system/event loop callbacks (WiFi/BT/etc).
-# The default stack is too small for this project on ESP32-WROOM-32 class boards
-# and results in a reboot loop:
-#   "***ERROR*** A stack overflow in task sys_evt has been detected."
-#
-# Keep this reasonably sized; 4096 has been sufficient in practice.
-CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
-# Back-compat name seen in some configs/IDF versions.
-CONFIG_SYSTEM_EVENT_TASK_STACK_SIZE=4096
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
-
-# -----------------------------------------------------------------------------
-# Flash size (ESP-IDF / esptoolpy)
-# -----------------------------------------------------------------------------
-# Many ESP32 / ESP32-C3 dev boards ship with 4MB (32Mbit) flash. PlatformIO’s
-# board definition expects 4MB for esp32dev, so align the sdkconfig to avoid:
-#   "Expected 4MB, found 2MB!"
-#
-# CONFIG_ESPTOOLPY_FLASHSIZE_2MB is not set
-CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
-CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
-
-# Logging
-# Changed from DEBUG to INFO to reduce binary size
-# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
-
-# Optimization
-# CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
-CONFIG_COMPILER_OPTIMIZATION_SIZE=y
-CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y

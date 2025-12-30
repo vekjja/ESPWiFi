@@ -9,11 +9,9 @@ void ESPWiFi::srvAll() {
   srvConfig();
   srvInfo();
   srvLog();
+  srvBluetooth();
   srvFiles();
   srvGPIO();
-#ifdef ESPWiFi_CAMERA
-  srvCamera();
-#endif
   srvWildcard();
 }
 

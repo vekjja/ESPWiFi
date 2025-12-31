@@ -297,18 +297,14 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 
   // Resolve which filesystem this path maps to.
   // - "/sd/..." is served from the SD mount (FATFS)
-  // - "/lfs/..." is served directly from the LittleFS mount
-  // - everything else is served from LittleFS root (prefixed by lfsMountPoint)
+  // - everything else is served from LittleFS (prefixed by lfsMountPoint)
   std::string fullPath;
   bool fsAvailable = false;
   if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
-    fsAvailable = sdCardInitialized;
-    fullPath = filePath; // already includes mountpoint
-  } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
-    fsAvailable = littleFsInitialized;
+    fsAvailable = (sdCard != nullptr);
     fullPath = filePath; // already includes mountpoint
   } else {
-    fsAvailable = littleFsInitialized;
+    fsAvailable = (lfs != nullptr);
     fullPath = lfsMountPoint + filePath;
   }
 
@@ -343,14 +339,23 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   // Open file from LFS
   FILE *file = fopen(fullPath.c_str(), "rb");
   if (!file) {
-    printf("fopen failed for %s, errno: %d\n", fullPath.c_str(), errno);
+    // Check if this is an SD card error
+    if (fsAvailable && filePath.rfind("/sd/", 0) == 0) {
+      handleSDCardError();
+    }
     return sendJsonResponse(req, 500, "{\"error\":\"Failed to open file\"}",
                             &clientInfoRef);
   }
 
   // Get file size
   if (fseek(file, 0, SEEK_END) != 0) {
-    printf("fseek SEEK_END failed, errno: %d\n", errno);
+    // Check if this is an SD card error (errno 5 = EIO)
+    if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
+      fclose(file);
+      handleSDCardError();
+      return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
+                              &clientInfoRef);
+    }
     fclose(file);
     return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
                             &clientInfoRef);
@@ -365,6 +370,13 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   }
 
   if (fseek(file, 0, SEEK_SET) != 0) {
+    // Check if this is an SD card error (errno 5 = EIO)
+    if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
+      fclose(file);
+      handleSDCardError();
+      return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
+                              &clientInfoRef);
+    }
     printf("fseek SEEK_SET failed, errno: %d\n", errno);
     fclose(file);
     return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
@@ -404,6 +416,13 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 
     size_t bytesRead = fread(buffer, 1, toRead, file);
     if (bytesRead == 0) {
+      // Check if this is an SD card error (errno 5 = EIO)
+      if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
+        fclose(file);
+        handleSDCardError();
+        return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
+                                &clientInfoRef);
+      }
       printf("fread returned 0, expected %zu bytes\n", toRead);
       ret = ESP_FAIL;
       break;

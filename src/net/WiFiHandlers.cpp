@@ -125,12 +125,8 @@ void ESPWiFi::ipEventHandler(esp_event_base_t event_base, int32_t event_id,
 
   switch (event_id) {
   case IP_EVENT_STA_GOT_IP: {
-    ip_event_got_ip_t *ip_event = static_cast<ip_event_got_ip_t *>(event_data);
     wifi_connection_success = true;
-
-    char ip[16];
-    snprintf(ip, sizeof(ip), IPSTR, IP2STR(&ip_event->ip_info.ip));
-    log(INFO, std::string("📶 WiFi Got IP: ") + ip);
+    log(INFO, "📶 WiFi Connected: %s 🔗", ipAddress().c_str());
 
     // Notify waiters
     if (wifi_connect_semaphore) {

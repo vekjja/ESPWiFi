@@ -22,8 +22,6 @@ static bool netif_initialized = false;
 static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
-// ===================== Public WiFi entrypoint =====================
-
 void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "📶 WiFi Disabled");
@@ -38,12 +36,11 @@ void ESPWiFi::startWiFi() {
     startAP();
   } else {
     log(WARNING, "Invalid Mode: %s", mode.c_str());
-    config["wifi"]["mode"] = "accessPoint"; // Ensure mode is set to accesspoint
+    config["wifi"]["mode"] = "accessPoint";
     startAP();
   }
 }
 
-// ===================== Station (client) mode =====================
 void ESPWiFi::startClient() {
 
   std::string ssid = config["wifi"]["client"]["ssid"].as<std::string>();
@@ -56,11 +53,9 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  log(INFO, "📶 Connecting to WiFi Network");
+  log(INFO, "📶 WiFi Connecting to Network");
   log(DEBUG, "📶\tSSID: %s", ssid.c_str());
   log(DEBUG, "📶\tPassword: **********");
-
-  // --- 1. One-time event-loop / netif init per boot ---
 
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
@@ -75,11 +70,8 @@ void ESPWiFi::startClient() {
     netif_initialized = true;
   }
 
-  // Register WiFi/IP handlers and enable auto-reconnect for STA
   ESP_ERROR_CHECK(registerWiFiHandlers());
   setWiFiAutoReconnect(true);
-
-  // --- 2. Clean up any previous netif / WiFi driver ---
 
   if (current_netif != nullptr) {
     esp_netif_destroy(current_netif);
@@ -93,8 +85,6 @@ void ESPWiFi::startClient() {
     wifi_initialized = false;
     vTaskDelay(pdMS_TO_TICKS(100));
   }
-
-  // --- 3. Fresh STA netif + WiFi init ---
 
   esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
   assert(sta_netif);
@@ -120,17 +110,13 @@ void ESPWiFi::startClient() {
   wifi_config.sta.pmf_cfg.required = false;
 
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-
-  // --- 4. Start WiFi and connect ---
-
   ESP_ERROR_CHECK(esp_wifi_start());
-  vTaskDelay(pdMS_TO_TICKS(100)); // let driver settle a bit
+  vTaskDelay(pdMS_TO_TICKS(100)); // Let driver settle
 
-  ESP_ERROR_CHECK(esp_wifi_disconnect()); // clear any stale connection state
+  ESP_ERROR_CHECK(esp_wifi_disconnect()); // Clear any stale connection state
   vTaskDelay(pdMS_TO_TICKS(50));
   ESP_ERROR_CHECK(esp_wifi_connect());
 
-  // --- 5. Wait for connection ---
   bool connected = false;
   int64_t start_time_ms = esp_timer_get_time() / 1000;
   while ((esp_timer_get_time() / 1000) - start_time_ms < connectTimeout) {
@@ -160,26 +146,19 @@ void ESPWiFi::startClient() {
 
   if (!connected) {
     log(ERROR, "📶 Failed to connect to WiFi, falling back to AP");
-    setWiFiAutoReconnect(false); // no reconnect when we switch to AP
+    setWiFiAutoReconnect(false); // Disable reconnect when switching to AP
     config["wifi"]["mode"] = "accessPoint";
     startAP();
     return;
   }
 
-  log(INFO, "📶 WiFi Connected");
-
   std::string hostname = getHostname();
   log(DEBUG, "📶\tHostname: %s", hostname.c_str());
-
-  // --- 6. Log IP/network info ---
 
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(current_netif, &ip_info));
 
   char ip_str[16];
-  snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-  log(DEBUG, "📶\tIP Address: %s", ip_str);
-
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.netmask));
   log(DEBUG, "📶\tSubnet: %s", ip_str);
 
@@ -200,10 +179,8 @@ void ESPWiFi::startClient() {
   }
 }
 
-// ===================== AP mode =====================
-
 int ESPWiFi::selectBestChannel() {
-  // client count for each channel, 14 for 2.4 GHz band
+  // Count clients per channel (14 channels in 2.4 GHz band)
   int channels[14] = {0};
 
   wifi_scan_config_t scan_config = {};
@@ -240,7 +217,7 @@ int ESPWiFi::selectBestChannel() {
     }
   }
 
-  int leastCongestedChannel = 1; // Default to channel 1
+  int leastCongestedChannel = 1;
   for (int i = 1; i <= 13; i++) {
     if (channels[i] < channels[leastCongestedChannel]) {
       leastCongestedChannel = i;
@@ -258,10 +235,7 @@ void ESPWiFi::startAP() {
   log(DEBUG, "📶\tSSID: %s", ssid.c_str());
   log(DEBUG, "📶\tPassword: %s", password.c_str());
 
-  // No STA auto-reconnect in AP mode
-  setWiFiAutoReconnect(false);
-
-  // --- 1. Event loop / netif init if needed ---
+  setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
 
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
@@ -291,11 +265,9 @@ void ESPWiFi::startAP() {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 
-  // Pick best channel (may fall back to 1 if scan fails)
-  int bestChannel = selectBestChannel();
+  int bestChannel =
+      selectBestChannel(); // Falls back to channel 1 if scan fails
   log(DEBUG, "📶\tChannel: %d", bestChannel);
-
-  // --- 2. Create AP netif + init WiFi ---
 
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
   assert(ap_netif);
@@ -325,8 +297,6 @@ void ESPWiFi::startAP() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  // --- 3. Report AP IP ---
-
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(ap_netif, &ip_info));
 
@@ -344,8 +314,6 @@ void ESPWiFi::startAP() {
   gpio_set_level((gpio_num_t)LED_BUILTIN, 0); // Turn on LED to indicate AP mode
 #endif
 }
-
-// ===================== Helper methods =====================
 
 std::string ESPWiFi::ipAddress() {
   if (current_netif == nullptr) {

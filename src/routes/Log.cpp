@@ -15,9 +15,9 @@ void ESPWiFi::srvLog() {
       "/logs", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
-        // Check active log filesystem is available
-        if ((espwifi->logToSD && !espwifi->sdCardInitialized) ||
-            (!espwifi->logToSD && !espwifi->littleFsInitialized)) {
+        // Determine which filesystem to use for logs
+        bool useSD, useLFS;
+        if (!espwifi->getLogFilesystem(useSD, useLFS)) {
           return espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"Filesystem not available\"}",
               &clientInfo);
@@ -25,7 +25,7 @@ void ESPWiFi::srvLog() {
 
         // Construct full path to log file
         const std::string &base =
-            espwifi->logToSD ? espwifi->sdMountPoint : espwifi->lfsMountPoint;
+            useSD ? espwifi->sdMountPoint : espwifi->lfsMountPoint;
         std::string fullPath = base + espwifi->logFilePath;
 
         // Check if log file exists

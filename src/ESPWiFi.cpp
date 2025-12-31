@@ -4,16 +4,17 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::start() {
-  startSerial();
-  startLogging();
-  initLittleFS();
-  readConfig();
+  startSerial();  // Start serial
+  initLittleFS(); // Initialize filesystem lfs and sd card
+  startLogging(); // Start logging (will use default config values)
+  readConfig(); // Load config (logging already started, will use config on next
+                // log)
   // setMaxPower();
   startWiFi();
   // startMDNS();
   startWebServer();
   startRSSIWebSocket();
-  handleConfig();
+  handleConfig(); // Apply config changes
   srvAll();
 }
 
@@ -29,6 +30,16 @@ void ESPWiFi::runSystem() {
   if (configNeedsSave) {
     saveConfig();
     configNeedsSave = false;
+  }
+
+  if (sdCardCheck.shouldRun()) {
+    if (sdCard == nullptr && !sdNoTarget) {
+      // Card was removed - try to reinitialize if it's been reinserted
+      initSDCard();
+      if (sdCard != nullptr) {
+        log(INFO, "💾 SD card reinserted and remounted");
+      }
+    }
   }
 
   // static unsigned long lastHeartbeat = 0;

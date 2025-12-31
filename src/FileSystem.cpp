@@ -18,11 +18,12 @@
 #include <ArduinoJson.h>
 #include <cstring>
 #include <dirent.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <time.h>
 
 void ESPWiFi::initLittleFS() {
-  if (littleFsInitialized) {
+  if (lfs != nullptr) {
     return;
   }
 
@@ -46,246 +47,254 @@ void ESPWiFi::initLittleFS() {
     } else {
       printf("Failed to initialize LittleFS (%s)\n", esp_err_to_name(ret));
     }
+    lfs = nullptr;
     return;
   }
 
-  littleFsInitialized = true;
+  // Set lfs to non-null to indicate LittleFS is initialized
+  // esp_vfs_littlefs_register doesn't return a handle, so we use a sentinel
+  // value
+  lfs = (void *)0x1;
   log(INFO, "💾 LittleFS Initialized");
 }
 
+#if defined(CONFIG_IDF_TARGET_ESP32)
+// Helper: Get default SPI pin configuration from SDCardPins.h
+static void getSpiPinConfig(int &mosi, int &miso, int &sclk, int &cs,
+                            int &hostId) {
+  // Use hardware-defined default pins from SDCardPins.h
+  mosi = SDCARD_SPI_MOSI_GPIO_NUM;
+  miso = SDCARD_SPI_MISO_GPIO_NUM;
+  sclk = SDCARD_SPI_SCK_GPIO_NUM;
+  cs = SDCARD_SPI_CS_GPIO_NUM;
+  hostId = SDCARD_SPI_HOST; // Use default SPI host from SDCardPins.h
+}
+
+// Helper: Initialize SPI bus for SD card
+static esp_err_t initSpiBus(spi_host_device_t hostId, int mosi, int miso,
+                            int sclk, bool &busOwned) {
+  busOwned = false;
+
+  spi_bus_config_t bus_cfg = {};
+  bus_cfg.mosi_io_num = mosi;
+  bus_cfg.miso_io_num = miso;
+  bus_cfg.sclk_io_num = sclk;
+  bus_cfg.quadwp_io_num = -1;
+  bus_cfg.quadhd_io_num = -1;
+
+  esp_err_t ret = spi_bus_initialize(hostId, &bus_cfg, SPI_DMA_CH_AUTO);
+  if (ret == ESP_OK) {
+    busOwned = true;
+    return ESP_OK;
+  } else if (ret == ESP_ERR_INVALID_STATE) {
+    // Bus already initialized elsewhere (e.g., by LCD driver)
+    busOwned = false;
+    return ESP_OK;
+  }
+  return ret;
+}
+
+// Helper: Cleanup SPI bus if we own it
+static void cleanupSpiBus(spi_host_device_t hostId, bool busOwned) {
+  if (busOwned && hostId >= 0) {
+    (void)spi_bus_free(hostId);
+  }
+}
+#endif
+
 void ESPWiFi::initSDCard() {
-  if (sdCardInitialized) {
-    // Keep config in sync (in case config was loaded without this field).
-    config["sd"]["initialized"] = true;
+  // Early return if already initialized
+  if (sdCard != nullptr) {
     return;
   }
 
-  sdInitAttempted = true;
-  sdInitLastErr = ESP_OK;
-  sdInitNotConfiguredForTarget = false;
+  // Initialize SPI state (needed for cleanup)
   sdSpiBusOwned = false;
   sdSpiHost = -1;
 
-  // Config-gated: keep boot fast / deterministic unless explicitly enabled.
-  bool enabled = false;
-  std::string type = "auto";
-  if (config["sd"].is<JsonObject>()) {
-    enabled = config["sd"]["enabled"] | false;
-    if (!config["sd"]["type"].isNull()) {
-      type = config["sd"]["type"].as<std::string>();
-    } else if (!config["sd"]["mode"].isNull()) {
-      type = config["sd"]["mode"].as<std::string>();
-    }
-  }
-  if (!enabled) {
-    sdCardInitialized = false;
-    config["sd"]["initialized"] = false;
-    // Not an error; SD just disabled.
-    sdInitAttempted = false;
-    return;
-  }
+  // Initialize logging state
+  sdInitAttempted = true;
+  sdInitLastErr = ESP_OK;
+  sdNoTarget = false;
 
-  log(INFO, "💾 SD enabled: attempting mount at %s", sdMountPoint.c_str());
+  log(INFO, "💾 Auto-detecting SD card at %s", sdMountPoint.c_str());
+  yield(); // Yield before heavy operations to reduce stack pressure
 
-  // Mount FATFS on SD. This is target/board specific; we implement a safe
-  // default for SDMMC-capable targets. If this fails, APIs will report SD as
-  // unavailable.
 #if defined(CONFIG_IDF_TARGET_ESP32)
-  // Normalize type
-  toLowerCase(type);
-
+  // Auto-detect: try SPI first, then SDMMC
+  // Configure mount parameters
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
   mount_config.format_if_mount_failed = false;
   mount_config.max_files = 5;
   mount_config.allocation_unit_size = 16 * 1024;
 
-  auto try_sdmmc = [&]() -> esp_err_t {
+  esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
+  sdmmc_card_t *card = nullptr;
+
+  // Try SPI interface first
+  {
+    // Get default pin configuration
+    int mosi, miso, sclk, cs, hostId;
+    getSpiPinConfig(mosi, miso, sclk, cs, hostId);
+
+    // Validate pins
+    if (cs < 0 || sclk < 0 || mosi < 0 || miso < 0) {
+      sdNoTarget = true;
+      sdInitLastErr = ESP_ERR_INVALID_ARG;
+      log(WARNING, "💾 SD SPI: invalid pin configuration");
+      return;
+    }
+
+    // Use SPI host from SDCardPins.h
+    spi_host_device_t spiHost = (spi_host_device_t)hostId;
+    sdSpiHost = spiHost;
+
+    log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
+        spiHost, mosi, miso, sclk, cs);
+    yield(); // Yield before SPI bus init
+
+    // Initialize SPI bus
+    ret = initSpiBus(spiHost, mosi, miso, sclk, sdSpiBusOwned);
+    if (ret != ESP_OK) {
+      sdSpiHost = -1;
+      sdInitLastErr = ret;
+      log(WARNING, "💾 SD SPI bus init failed: %s", esp_err_to_name(ret));
+      return;
+    }
+    yield(); // Yield after SPI bus init, before mount
+
+    // Configure SD card device
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = spiHost;
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = (gpio_num_t)cs;
+    slot_config.host_id = spiHost;
+
+    // Mount SD card (this can use significant stack)
+    ret = esp_vfs_fat_sdspi_mount(sdMountPoint.c_str(), &host, &slot_config,
+                                  &mount_config, &card);
+    if (ret != ESP_OK) {
+      // Cleanup SPI bus on mount failure
+      cleanupSpiBus(spiHost, sdSpiBusOwned);
+      sdSpiBusOwned = false;
+      sdSpiHost = -1;
+      sdInitLastErr = ret;
+      // SPI failed, will try SDMMC below
+      log(DEBUG, "💾 SD SPI mount failed, trying SDMMC: %s",
+          esp_err_to_name(ret));
+    } else {
+      // Success
+      sdCard = (void *)card;
+      log(INFO, "💾 SD mounted via SPI: %s", sdMountPoint.c_str());
+      config["sd"]["initialized"] = true;
+    }
+    yield(); // Yield after SPI mount attempt
+  }
+
+  // Try SDMMC (native interface) if SPI failed
+  if (ret != ESP_OK) {
+    yield(); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;
 
-    sdmmc_card_t *card = nullptr;
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host,
-                                            &slot_config, &mount_config, &card);
+    ret = esp_vfs_fat_sdmmc_mount(sdMountPoint.c_str(), &host, &slot_config,
+                                  &mount_config, &card);
     if (ret == ESP_OK) {
       sdCard = (void *)card;
-      sdCardInitialized = true;
+      log(INFO, "💾 SD mounted via SDMMC: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
-    }
-    return ret;
-  };
-
-  auto try_sdspi = [&]() -> esp_err_t {
-    // Default pins commonly used on ESP32 display boards (VSPI):
-    // SCLK=18, MISO=19, MOSI=23, CS=5
-    int mosi = SDCARD_SPI_MOSI_GPIO_NUM;
-    int miso = SDCARD_SPI_MISO_GPIO_NUM;
-    int sclk = SDCARD_SPI_SCK_GPIO_NUM;
-    int cs = SDCARD_SPI_CS_GPIO_NUM;
-    int hostId = -1;
-
-    JsonVariant sd = config["sd"];
-    JsonVariant spi = sd["spi"];
-    if (spi.is<JsonObject>()) {
-      if (!spi["mosi"].isNull())
-        mosi = spi["mosi"].as<int>();
-      if (!spi["miso"].isNull())
-        miso = spi["miso"].as<int>();
-      if (!spi["sclk"].isNull())
-        sclk = spi["sclk"].as<int>();
-      if (!spi["cs"].isNull())
-        cs = spi["cs"].as<int>();
-      if (!spi["host"].isNull())
-        hostId = spi["host"].as<int>();
     } else {
-      // Allow flat keys: sd.mosi, sd.miso, sd.sclk, sd.cs
-      if (!sd["mosi"].isNull())
-        mosi = sd["mosi"].as<int>();
-      if (!sd["miso"].isNull())
-        miso = sd["miso"].as<int>();
-      if (!sd["sclk"].isNull())
-        sclk = sd["sclk"].as<int>();
-      if (!sd["cs"].isNull())
-        cs = sd["cs"].as<int>();
-      if (!sd["host"].isNull())
-        hostId = sd["host"].as<int>();
-    }
-
-    // If user explicitly provided invalid pins, bail out (avoid conflicts).
-    if (cs < 0 || sclk < 0 || mosi < 0 || miso < 0) {
-      sdInitNotConfiguredForTarget = true;
-      return ESP_ERR_INVALID_ARG;
-    }
-
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    // Choose a default host bus if not provided
-    if (hostId == 2 || hostId == 3) {
-      host.slot = hostId;
-    } else {
-      host.slot = SDCARD_SPI_HOST;
-    }
-    sdSpiHost = host.slot;
-
-    log(DEBUG, "\tSD(SPI) host: %d", host.slot);
-    log(DEBUG, "\tSD(SPI) sclk: %d", sclk);
-    log(DEBUG, "\tSD(SPI) miso: %d", miso);
-    log(DEBUG, "\tSD(SPI) mosi: %d", mosi);
-    log(DEBUG, "\tSD(SPI) cs: %d", cs);
-
-    spi_bus_config_t bus_cfg = {};
-    bus_cfg.mosi_io_num = mosi;
-    bus_cfg.miso_io_num = miso;
-    bus_cfg.sclk_io_num = sclk;
-    bus_cfg.quadwp_io_num = -1;
-    bus_cfg.quadhd_io_num = -1;
-
-    // Best-effort bus init: if already initialized by another driver (e.g.
-    // LCD), proceed without owning/freeing it.
-    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg,
-                                       SPI_DMA_CH_AUTO);
-    if (ret == ESP_OK) {
-      sdSpiBusOwned = true;
-    } else if (ret == ESP_ERR_INVALID_STATE) {
-      // Bus already initialized elsewhere.
-      sdSpiBusOwned = false;
-      ret = ESP_OK;
-    }
-    if (ret != ESP_OK) {
-      return ret;
-    }
-
-    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = (gpio_num_t)cs;
-    slot_config.host_id = (spi_host_device_t)host.slot;
-
-    sdmmc_card_t *card = nullptr;
-    ret = esp_vfs_fat_sdspi_mount(sdMountPoint.c_str(), &host, &slot_config,
-                                  &mount_config, &card);
-    if (ret != ESP_OK) {
-      if (sdSpiBusOwned) {
-        (void)spi_bus_free((spi_host_device_t)host.slot);
-        sdSpiBusOwned = false;
-      }
-      sdSpiHost = -1;
-      return ret;
-    }
-
-    sdCard = (void *)card;
-    sdCardInitialized = true;
-    config["sd"]["initialized"] = true;
-    return ESP_OK;
-  };
-
-  esp_err_t ret = ESP_ERR_NOT_SUPPORTED;
-  if (type == "sdspi" || type == "spi") {
-    ret = try_sdspi();
-  } else if (type == "sdmmc") {
-    ret = try_sdmmc();
-  } else {
-    // auto: try SDMMC first, then SPI
-    ret = try_sdmmc();
-    if (ret != ESP_OK) {
-      ret = try_sdspi();
+      // Both SPI and SDMMC failed
+      log(DEBUG, "💾 SDMMC mount failed: %s", esp_err_to_name(ret));
     }
   }
 
+  // Handle final error state
   if (ret != ESP_OK) {
-    sdCardInitialized = false;
     sdCard = nullptr;
     sdInitLastErr = ret;
+    sdNoTarget = false;
+    // Final cleanup of any remaining SPI state
+    if (sdSpiHost >= 0 && sdSpiBusOwned) {
+      cleanupSpiBus((spi_host_device_t)sdSpiHost, sdSpiBusOwned);
+    }
+    sdSpiBusOwned = false;
+    sdSpiHost = -1;
+    log(WARNING, "💾 SD mount failed: %s", esp_err_to_name(ret));
     config["sd"]["initialized"] = false;
-    log(WARNING, "💾 SD mount failed (%s): %s", type.c_str(),
-        esp_err_to_name(ret));
-    return;
   }
-
-  log(INFO, "💾 SD mounted: %s", sdMountPoint.c_str());
 #else
-  // For non-ESP32 targets, SD wiring varies widely (SDSPI vs SDMMC, pin mux,
-  // etc). Keep this explicit to avoid accidental pin conflicts.
-  sdCardInitialized = false;
+  // For non-ESP32 targets, SD wiring varies widely
   sdCard = nullptr;
-  sdInitNotConfiguredForTarget = true;
+  sdNoTarget = true;
   sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
+  log(DEBUG, "💾 SD card not supported on this target");
   config["sd"]["initialized"] = false;
-  log(WARNING, "💾 SD enabled but not supported on this target");
 #endif
 }
 
-void ESPWiFi::sdCardConfigHandler() {
-  // Config-gated SD mount/unmount. Keep this out of HTTP handlers.
-  const bool enabled = config["sd"]["enabled"].isNull()
-                           ? false
-                           : config["sd"]["enabled"].as<bool>();
-
-  if (!enabled && sdCardInitialized) {
-    deinitSDCard();
-  } else if (enabled && !sdCardInitialized) {
-    initSDCard();
-  }
-}
-
 void ESPWiFi::deinitSDCard() {
-  if (!sdCardInitialized) {
-    // Still ensure config reflects current state.
-    config["sd"]["initialized"] = false;
+  if (sdCard == nullptr) {
     return;
   }
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
   // Best-effort unmount. This can fail if card was never mounted correctly.
+  // Clear sdCard pointer first to prevent other code from trying to use it
   sdmmc_card_t *card = (sdmmc_card_t *)sdCard;
-  esp_vfs_fat_sdcard_unmount(sdMountPoint.c_str(), card);
+  sdCard = nullptr; // Clear before unmount to prevent use-after-free
+
+  // Unmount may fail if card is already gone - ignore errors
+  (void)esp_vfs_fat_sdcard_unmount(sdMountPoint.c_str(), card);
+
   if (sdSpiBusOwned && sdSpiHost >= 0) {
     (void)spi_bus_free((spi_host_device_t)sdSpiHost);
   }
 #endif
 
-  sdCardInitialized = false;
-  sdCard = nullptr;
+  config["sd"]["initialized"] = false;
   sdSpiBusOwned = false;
   sdSpiHost = -1;
-  config["sd"]["initialized"] = false;
+}
+
+bool ESPWiFi::checkSDCardPresent() {
+  if (sdCard == nullptr) {
+    return false;
+  }
+
+  // Use lightweight filesystem check - stat() will fail fast if card is removed
+  // Wrap in try-catch equivalent: use errno checking and be defensive
+  errno = 0;
+  struct stat st;
+  if (stat(sdMountPoint.c_str(), &st) != 0) {
+    // Check if it's an I/O error (card removed) vs other error
+    if (errno == 5) { // EIO - Input/output error
+      return false;
+    }
+    // Other errors (ENOENT, etc.) might be transient - assume present
+    // But if errno is still 0, something weird happened - assume not present
+    if (errno == 0) {
+      return false;
+    }
+    return true;
+  }
+
+  // Mount point accessible - verify it's actually a directory
+  if (!S_ISDIR(st.st_mode)) {
+    return false;
+  }
+
+  return true;
+}
+
+void ESPWiFi::handleSDCardError() {
+  // Called when SD card operations fail - mark as unavailable
+  // The card will be automatically re-detected in runSystem() if reinserted
+  if (sdCard != nullptr) {
+    log(WARNING, "💾 SD card removed or error detected, unmounting");
+    deinitSDCard();
+  }
 }
 
 std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
@@ -323,7 +332,7 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
   usedBytes = 0;
   freeBytes = 0;
 
-  if (fsParam == "lfs" && littleFsInitialized) {
+  if (fsParam == "lfs" && lfs != nullptr) {
     size_t total = 0, used = 0;
     esp_err_t ret = esp_littlefs_info("littlefsp", &total, &used);
     if (ret == ESP_OK) {
@@ -334,7 +343,7 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
     return;
   }
 
-  if (fsParam == "sd" && sdCardInitialized) {
+  if (fsParam == "sd" && sdCard != nullptr) {
     // FATFS free/total calculation (best-effort).
     FATFS *fs = nullptr;
     DWORD fre_clust = 0;
@@ -361,43 +370,36 @@ void ESPWiFi::logFilesystemInfo(const std::string &fsName, size_t totalBytes,
 }
 
 void ESPWiFi::printFilesystemInfo() {
-  if (littleFsInitialized) {
+
+  if (lfs != nullptr) {
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("LittleFS", totalBytes, usedBytes);
   }
 
-  if (!config["sd"]["enabled"]) {
-    return;
-  }
-
-  if (sdCardInitialized) {
+  if (sdCard != nullptr) {
     size_t totalBytes, usedBytes, freeBytes;
     getStorageInfo("sd", totalBytes, usedBytes, freeBytes);
     logFilesystemInfo("SD", totalBytes, usedBytes);
     return;
   }
 
+  // SD card not available - log status if we attempted detection
   if (sdInitAttempted) {
-    if (sdInitNotConfiguredForTarget) {
-      log(WARNING,
-          "💾 SD enabled in config (mountpoint %s)\n"
-          "ESPWiFi does not currently support SD mounting for this device\n"
-          "Disable (sd.enabled=false) in the config to avoid this message.",
-          sdMountPoint.c_str());
+    if (sdNoTarget) {
+      log(DEBUG, "💾 SD card not available: not configured for this target\n"
+                 "Configure SPI pins in config (SDCardPins.h) to enable SD "
+                 "card support");
     } else if (sdInitLastErr != ESP_OK) {
-      log(WARNING, "💾 SD Card init failed: %s",
-          esp_err_to_name(sdInitLastErr));
+      log(DEBUG, "💾 SD card not detected: %s", esp_err_to_name(sdInitLastErr));
     } else {
-      log(WARNING, "💾 SD Card enabled but not initialized");
+      log(DEBUG, "💾 SD card not detected");
     }
-  } else {
-    log(WARNING, "💾 SD Card enabled but init was not attempted");
   }
 }
 
 bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
-  if (!littleFsInitialized)
+  if (lfs == nullptr)
     return false;
 
   std::string full_path = lfsMountPoint + dirPath;
@@ -437,7 +439,7 @@ bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
 
 bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
                         size_t len) {
-  if (!littleFsInitialized)
+  if (lfs == nullptr)
     return false;
 
   // Use atomic write: write to temp file first, then rename
@@ -480,7 +482,7 @@ bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
 }
 
 char *ESPWiFi::readFile(const std::string &filePath, size_t *outSize) {
-  if (!littleFsInitialized) {
+  if (lfs == nullptr) {
     if (outSize)
       *outSize = 0;
     return nullptr;

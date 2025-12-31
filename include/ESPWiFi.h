@@ -66,17 +66,18 @@ public:
   void initSDCard();
   void deinitSDCard();
   void initLittleFS();
-  void sdCardConfigHandler();
-  bool sdCardInitialized = false;
-  bool littleFsInitialized = false;
+  bool checkSDCardPresent();
+  void handleSDCardError();
+  bool sdNoTarget = false;
+  esp_err_t sdInitLastErr = ESP_OK;
+  bool sdInitAttempted = false;
+  void *sdCard = nullptr;
+  void *lfs = nullptr;
   std::string lfsMountPoint = "/lfs";
   std::string sdMountPoint = "/sd";
-  void *sdCard = nullptr;
-  bool sdInitAttempted = false;
-  esp_err_t sdInitLastErr = ESP_OK;
-  bool sdInitNotConfiguredForTarget = false;
   bool sdSpiBusOwned = false;
   int sdSpiHost = -1;
+  IntervalTimer sdCardCheck = IntervalTimer(5000);
 
   bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,
@@ -101,12 +102,15 @@ public:
 
   // ---- Logging
   void cleanLogFile();
-  bool logToSD = false;
   int baudRate = 115200;
   int maxLogFileSize = 0;
   bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
+
+  // Helper to determine which filesystem to use for logging
+  // Sets useSD and useLFS variables, returns true if a filesystem is available
+  bool getLogFilesystem(bool &useSD, bool &useLFS);
 
   void startLogging(std::string filePath = "/log");
   void startSerial(int baudRate = 115200);
@@ -128,14 +132,12 @@ public:
 
   // ---- Config
   void saveConfig();
-  void saveConfig(JsonDocument &configToSave);
   void readConfig();
   void handleConfig();
+  void requestConfigUpdate();
   std::string prettyConfig();
   JsonDocument defaultConfig();
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
-  void
-  requestConfigUpdate(); // Request deferred config apply+save from main task
 
   // ---- WiFi
   void startAP();

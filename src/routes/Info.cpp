@@ -100,7 +100,7 @@ void ESPWiFi::srvInfo() {
         vTaskDelay(pdMS_TO_TICKS(10));
 
         // LittleFS storage information
-        if (espwifi->littleFsInitialized) {
+        if (espwifi->lfs != nullptr) {
           size_t totalBytes, usedBytes, freeBytes;
           espwifi->getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
           jsonDoc["littlefs_free"] = freeBytes;
@@ -116,7 +116,7 @@ void ESPWiFi::srvInfo() {
         vTaskDelay(pdMS_TO_TICKS(10));
 
         // SD card storage information if available
-        if (espwifi->sdCardInitialized) {
+        if (espwifi->sdCard != nullptr) {
           size_t sdTotalBytes, sdUsedBytes, sdFreeBytes;
           espwifi->getStorageInfo("sd", sdTotalBytes, sdUsedBytes, sdFreeBytes);
           jsonDoc["sd_free"] = sdFreeBytes;

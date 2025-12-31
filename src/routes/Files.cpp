@@ -126,14 +126,14 @@ esp_err_t sendChunk(ESPWiFi *espwifi, httpd_req_t *req, const char *data,
 bool pickMountPoint(ESPWiFi *espwifi, const std::string &fsParam,
                     std::string &outMountPoint) {
   if (fsParam == "lfs") {
-    if (!espwifi->littleFsInitialized) {
+    if (espwifi->lfs == nullptr) {
       return false;
     }
     outMountPoint = espwifi->lfsMountPoint;
     return true;
   }
   if (fsParam == "sd") {
-    if (!espwifi->sdCardInitialized) {
+    if (espwifi->sdCard == nullptr) {
       return false;
     }
     outMountPoint = "/sd";
@@ -654,7 +654,7 @@ void ESPWiFi::srvFiles() {
 
         // Determine filesystem. Default to SD if mounted, else LFS.
         if (fsParam.empty()) {
-          fsParam = espwifi->sdCardInitialized ? "sd" : "lfs";
+          fsParam = (espwifi->sdCard != nullptr) ? "sd" : "lfs";
         }
 
         std::string mountPoint;

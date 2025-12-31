@@ -7,7 +7,7 @@ void ESPWiFi::readConfig() {
   initLittleFS();
   bool usedDefaultConfig = false;
 
-  if (!littleFsInitialized) {
+  if (lfs == nullptr) {
     config = defaultConfig();
     usedDefaultConfig = true;
     log(ERROR, "⚙️ Could not access filesystem: Using default config");
@@ -53,62 +53,81 @@ void ESPWiFi::readConfig() {
             configFile.c_str(), (unsigned)fileSize, error.c_str());
 
         // Best-effort persist defaults so the next boot is clean.
-        saveConfig(config);
+        saveConfig();
       } else {
         config = mergeJson(config, loadedConfig);
       }
     }
   }
 
+  // Print config summary instead of full pretty-printed config to reduce stack
+  // usage Full config is available via /api/config endpoint
   if (usedDefaultConfig) {
-    log(WARNING, "⚙️ Using Default Config:\n%s", prettyConfig());
+    log(WARNING, "⚙️ Using Default Config");
   } else {
-    log(INFO, "⚙️ Using Config:\n%s", prettyConfig());
+    log(INFO, "⚙️ Using Config (size: %zu bytes)", measureJson(config));
   }
 }
 
 std::string ESPWiFi::prettyConfig() {
-  // Create a copy of config with masked passwords for logging
-  JsonDocument logConfig;
-  std::string configJson;
-  serializeJson(config, configJson);
+  // Optimized: work directly on config copy to avoid multiple large string
+  // allocations Use heap-allocated buffer for serialization to reduce stack
+  // pressure
+  size_t size = measureJson(config);
+  if (size == 0) {
+    return "";
+  }
+
+  // Allocate buffer on heap instead of stack
+  char *buffer = (char *)malloc(size + 32);
+  if (!buffer) {
+    return "";
+  }
+
+  size_t written = serializeJson(config, buffer, size + 32);
+  if (written == 0) {
+    free(buffer);
+    return "";
+  }
+
   yield(); // Yield after serialization
-  DeserializationError error = deserializeJson(logConfig, configJson);
+
+  // Parse into temporary document for masking
+  JsonDocument logConfig;
+  DeserializationError error = deserializeJson(logConfig, buffer, written);
+  free(buffer); // Free immediately after parsing
+
   if (error) {
     log(WARNING, "⚙️ Failed to deserialize config for printing: %s",
         error.c_str());
     return "";
   }
 
-  // Recursively mask any fields with keys matching sensitive field names
+  // Recursively mask sensitive fields with depth limit to prevent stack
+  // overflow
   const char *sensitiveKeys[] = {"password", "passwd",  "key",   "token",
                                  "apiKey",   "api_key", "secret"};
   const size_t numSensitiveKeys =
       sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
+  const int MAX_DEPTH = 20; // Limit recursion depth
 
-  // const int MAX_DEPTH = 10; // Limit recursion depth to prevent stack
-  // overflow
   std::function<void(JsonVariant, int)> maskSensitiveFields =
       [&](JsonVariant variant, int depth) {
-        // if (depth > MAX_DEPTH) {
-        //   return; // Too deep, skip masking
-        // }
+        if (depth > MAX_DEPTH) {
+          return; // Too deep, skip masking
+        }
 
         if (variant.is<JsonObject>()) {
           JsonObject obj = variant.as<JsonObject>();
           for (JsonPair kvp : obj) {
-            std::string key = kvp.key().c_str();
+            const char *key = kvp.key().c_str();
             JsonVariant value = obj[key]; // Get mutable reference
 
-            // Case-insensitive check for sensitive fields
-            std::string lowerKey = key;
-            for (char &c : lowerKey) {
-              c = tolower(c);
-            }
-
+            // Case-insensitive check for sensitive fields (avoid string
+            // allocation)
             bool shouldMask = false;
             for (size_t i = 0; i < numSensitiveKeys; i++) {
-              if (lowerKey == sensitiveKeys[i]) {
+              if (strcasecmp(key, sensitiveKeys[i]) == 0) {
                 shouldMask = true;
                 break;
               }
@@ -122,7 +141,7 @@ std::string ESPWiFi::prettyConfig() {
             }
 
             // Yield periodically to prevent stack overflow
-            if (depth % 3 == 0) {
+            if (depth % 5 == 0) {
               yield();
             }
           }
@@ -138,15 +157,17 @@ std::string ESPWiFi::prettyConfig() {
 
   maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
 
+  // Serialize to string (this is the only large string we create)
   std::string prettyConfig;
+  prettyConfig.reserve(size + 100); // Pre-allocate to reduce reallocations
   serializeJsonPretty(logConfig, prettyConfig);
   return prettyConfig;
 }
 
-void ESPWiFi::saveConfig(JsonDocument &configToSave) {
+void ESPWiFi::saveConfig() {
   initLittleFS();
 
-  if (!littleFsInitialized) {
+  if (lfs == nullptr) {
     log(ERROR, "⚙️ No filesystem available for saving config");
     return;
   }
@@ -154,7 +175,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
   yield(); // Yield before JSON operations
 
   // Serialize to buffer - add extra padding for safety
-  size_t size = measureJson(configToSave);
+  size_t size = measureJson(config);
   if (size == 0) {
     log(ERROR, "⚙️ Failed to measure config JSON size");
     return;
@@ -169,7 +190,7 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
 
   yield(); // Yield after allocation
 
-  size_t written = serializeJson(configToSave, buffer, size + 32);
+  size_t written = serializeJson(config, buffer, size + 32);
   if (written == 0) {
     log(ERROR, "⚙️ Failed to serialize config JSON");
     free(buffer);
@@ -189,39 +210,6 @@ void ESPWiFi::saveConfig(JsonDocument &configToSave) {
 
   yield(); // Yield after file write
 
-  if (configToSave["log"]["enabled"].as<bool>()) {
-    log(INFO, "⚙️ Config Saved: %s", configFile);
-    // prettyConfig();
-  }
-}
-
-void ESPWiFi::saveConfig() {
-  initLittleFS();
-
-  if (!littleFsInitialized) {
-    log(ERROR, "⚙️ No filesystem available for saving config");
-    return;
-  }
-
-  // Serialize to buffer
-  size_t size = measureJson(config);
-  char *buffer = (char *)malloc(size + 1);
-  if (!buffer) {
-    log(ERROR, "⚙️ Failed to allocate memory for config");
-    return;
-  }
-
-  size_t written = serializeJson(config, buffer, size + 1);
-
-  // Use atomic write to prevent corruption
-  bool success = writeFile(configFile, (const uint8_t *)buffer, written);
-  free(buffer);
-
-  if (!success) {
-    log(ERROR, "⚙️ Failed to write config file");
-    return;
-  }
-
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);
   }
@@ -233,9 +221,30 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
   JsonDocument result;
 
   // Copy base into result by serializing and deserializing
-  std::string baseJson;
-  serializeJson(base, baseJson);
-  DeserializationError error = deserializeJson(result, baseJson);
+  // Use heap buffer to avoid large stack allocation
+  size_t size = measureJson(base);
+  if (size == 0) {
+    log(ERROR, "⚙️ Failed to measure base JSON size in mergeJson");
+    return result;
+  }
+
+  // Allocate buffer on heap instead of stack to prevent overflow
+  char *buffer = (char *)malloc(size + 32); // +32 is extra padding for safety
+  if (!buffer) {
+    log(ERROR, "⚙️ Failed to allocate memory for mergeJson (size: %zu)", size);
+    return result;
+  }
+
+  size_t written = serializeJson(base, buffer, size + 32);
+  if (written == 0) {
+    free(buffer);
+    log(ERROR, "⚙️ Failed to serialize base JSON in mergeJson");
+    return result;
+  }
+
+  DeserializationError error = deserializeJson(result, buffer, written);
+  free(buffer);
+
   if (error) {
     // If copy fails, return empty document
     log(ERROR, "⚙️ Failed to copy base JSON in mergeJson: %s", error.c_str());
@@ -250,105 +259,15 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
 }
 
 void ESPWiFi::requestConfigUpdate() {
-  // Single “commit” flag: apply config + save config in main task.
+  // Apply config + save config in main task.
   configNeedsUpdate = true;
+  configNeedsSave = true;
 }
 
 void ESPWiFi::handleConfig() {
   refreshCorsCache();
   logConfigHandler();
-  sdCardConfigHandler();
   bluetoothConfigHandler();
-}
-
-JsonDocument ESPWiFi::defaultConfig() {
-  JsonDocument doc;
-
-  doc["deviceName"] = "ESPWiFi";
-  doc["hostname"] = getHostname();
-
-  doc["wifi"]["enabled"] = true;
-  doc["wifi"]["mode"] = "accessPoint";
-
-  // Access Point
-  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"].as<std::string>();
-  doc["wifi"]["accessPoint"]["password"] = "espwifi!";
-
-  // WiFi Client
-  doc["wifi"]["client"]["ssid"] = "";
-  doc["wifi"]["client"]["password"] = "";
-
-  // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
-  doc["bluetooth"]["enabled"] = false;
-
-  // SD Card
-  doc["sd"]["enabled"] = true;
-  doc["sd"]["initialized"] = false;
-  doc["sd"]["type"] = "auto";
-
-  // Logging: verbose, access, debug, info, warning, error
-  doc["log"]["file"] = "/log";
-  doc["log"]["enabled"] = true;
-  doc["log"]["level"] = "debug";
-  doc["log"]["preferSD"] = true;
-
-  // Auth
-  doc["auth"]["enabled"] = false;
-  doc["auth"]["password"] = "admin";
-  doc["auth"]["username"] = "admin";
-  // CORS (auth.cors)
-  // - enabled: controls whether CORS headers are emitted
-  // - origins: allowed Origin patterns (supports '*' and '?')
-  // - methods: allowed methods for preflight
-  // - paths: optional URI path patterns to apply CORS to (supports '*' and '?')
-  doc["auth"]["cors"]["enabled"] = true;
-  JsonArray corsOrigins = doc["auth"]["cors"]["origins"].to<JsonArray>();
-  corsOrigins.add("*");
-  JsonArray corsMethods = doc["auth"]["cors"]["methods"].to<JsonArray>();
-  corsMethods.add("GET");
-  corsMethods.add("POST");
-  corsMethods.add("PUT");
-  corsMethods.add("DELETE");
-  JsonArray excludePaths = doc["auth"]["excludePaths"].to<JsonArray>();
-  excludePaths.add("/");
-  excludePaths.add("/static/*");
-  excludePaths.add("/favicon.ico");
-  excludePaths.add("/api/auth/login");
-  excludePaths.add("/asset-manifest.json");
-
-  // Paths that are always protected from HTTP file APIs (even when authorized).
-  // Patterns support '*' and '?' (same matcher as excludePaths).
-  JsonArray protectFiles = doc["auth"]["protectFiles"].to<JsonArray>();
-  protectFiles.add("/log");
-  protectFiles.add("/static/*");
-  protectFiles.add("/index.html");
-  protectFiles.add("/config.json");
-  protectFiles.add("/asset-manifest.json");
-
-  // Camera
-  // #ifdef ESPWiFi_CAMERA
-  //   doc["camera"]["installed"] = true;
-  //   doc["camera"]["enabled"] = false;
-  //   doc["camera"]["frameRate"] = 10;
-  //   doc["camera"]["rotation"] = 0;
-  //   doc["camera"]["brightness"] = 1;
-  //   doc["camera"]["contrast"] = 1;
-  //   doc["camera"]["saturation"] = 1;
-  //   doc["camera"]["exposure_level"] = 1;
-  //   doc["camera"]["exposure_value"] = 400;
-  //   doc["camera"]["agc_gain"] = 2;
-  //   doc["camera"]["gain_ceiling"] = 2;
-  //   doc["camera"]["white_balance"] = 1;
-  //   doc["camera"]["awb_gain"] = 1;
-  //   doc["camera"]["wb_mode"] = 0;
-  // #else
-  //   doc["camera"]["installed"] = false;
-  // #endif
-
-  // OTA - based on LittleFS partition
-  doc["ota"]["enabled"] = isOTAEnabled();
-
-  return doc;
 }
 
 #endif // ESPWiFi_CONFIG

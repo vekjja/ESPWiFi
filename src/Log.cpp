@@ -45,10 +45,6 @@ void ESPWiFi::startLogging(std::string filePath) {
   }
   loggingStarted = true;
 
-  if (!serialStarted) {
-    startSerial();
-  }
-
   // Ensure filesystems are ready. SD is config-gated in initSDCard().
   initLittleFS();
   initSDCard();
@@ -60,22 +56,9 @@ void ESPWiFi::startLogging(std::string filePath) {
   // Config-driven logging:
   // - log.enabled
   // - log.level
-  // - log.preferSD
+  // - log.useSD
   // - log.file (string path, e.g. "/log")
-  //
-  // Backward-compat: also accept log.filePath.
-  const bool enabled = config["log"]["enabled"].isNull()
-                           ? true
-                           : config["log"]["enabled"].as<bool>();
-  const bool preferSD = config["log"]["preferSD"].isNull()
-                            ? false
-                            : config["log"]["preferSD"].as<bool>();
-  std::string cfgFile;
-  if (!config["log"]["file"].isNull()) {
-    cfgFile = config["log"]["file"].as<std::string>();
-  } else if (!config["log"]["filePath"].isNull()) {
-    cfgFile = config["log"]["filePath"].as<std::string>();
-  }
+  std::string cfgFile = config["log"]["file"].as<std::string>();
 
   // Pick file path (config overrides default param).
   if (!cfgFile.empty()) {
@@ -89,38 +72,37 @@ void ESPWiFi::startLogging(std::string filePath) {
   }
   this->logFilePath = filePath;
 
-  // Cache runtime log sink decision (keeps writeLog() cheap).
-  // "preferSD" means: if SD is mounted, write logs there; otherwise fall back.
-  logToSD = enabled && preferSD && sdCardInitialized;
-
   cleanLogFile();
 
   writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
   if (serialStarted) {
     log(INFO, "📺 Serial Output Enabled");
-    log(DEBUG, "\tBaud: %d", getSerialBaudRate());
+    log(DEBUG, "📺\tBaud: %d", getSerialBaudRate());
   }
 
   printFilesystemInfo();
 }
 
+bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {
+  // Check useSD config: if true, use SD card if available; otherwise use
+  // LittleFS
+  bool preferSD = config["log"]["useSD"].isNull()
+                      ? true
+                      : config["log"]["useSD"].as<bool>();
+  useSD = preferSD && (sdCard != nullptr);
+  useLFS = !useSD && (lfs != nullptr);
+  return useSD || useLFS; // Returns true if a filesystem is available
+}
+
 void ESPWiFi::writeLog(std::string message) {
-  if (logToSD) {
-    if (!sdCardInitialized) {
-      return;
-    }
-  } else {
-    if (!littleFsInitialized) {
-      return;
-    }
+  bool useSD, useLFS;
+  if (!getLogFilesystem(useSD, useLFS)) {
+    return;
   }
 
-  const std::string &base = logToSD ? sdMountPoint : lfsMountPoint;
-  std::string full_path = base + logFilePath;
-
   // Best-effort mutex: wait briefly to reduce dropped *file* log lines, but
-  // keep the wait bounded so logging can’t noticeably stall request handling.
+  // keep the wait bounded so logging can't noticeably stall request handling.
   // (Serial output still prints even if we return early.)
   if (logFileMutex != nullptr) {
     if (xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(18)) != pdTRUE) {
@@ -128,15 +110,50 @@ void ESPWiFi::writeLog(std::string message) {
     }
   }
 
-  FILE *f = fopen(full_path.c_str(), "a");
-  if (f) {
-    size_t len = message.length();
-    size_t written = fwrite(message.c_str(), 1, len, f);
-    if (written != len) {
-      printf("Warning: Failed to write complete message to log file\n");
+  // Try SD first if preferred, fallback to LFS on failure
+  bool triedSD = false;
+  bool success = false;
+
+  if (useSD) {
+    triedSD = true;
+    std::string full_path = sdMountPoint + logFilePath;
+    FILE *f = fopen(full_path.c_str(), "a");
+    if (f) {
+      size_t len = message.length();
+      size_t written = fwrite(message.c_str(), 1, len, f);
+      if (written == len && fflush(f) == 0) {
+        success = true;
+      } else {
+        // Write or flush failed - card may have been removed
+        // Directly deinit to avoid recursion (handleSDCardError calls log())
+        if (sdCard != nullptr) {
+          deinitSDCard();
+        }
+      }
+      fclose(f);
+    } else {
+      // Open failed on SD card - may have been removed
+      // Directly deinit to avoid recursion (handleSDCardError calls log())
+      if (sdCard != nullptr) {
+        deinitSDCard();
+      }
     }
-    fflush(f);
-    fclose(f);
+  }
+
+  // If SD failed or wasn't preferred, try LFS
+  if (!success && useLFS) {
+    std::string full_path = lfsMountPoint + logFilePath;
+    FILE *f = fopen(full_path.c_str(), "a");
+    if (f) {
+      size_t len = message.length();
+      size_t written = fwrite(message.c_str(), 1, len, f);
+      if (written == len && fflush(f) == 0) {
+        success = true;
+        // Note: Don't log the switch here to avoid any potential recursion
+        // The switch will be logged on the next log message via normal logging
+      }
+      fclose(f);
+    }
   }
 
   if (logFileMutex != nullptr) {
@@ -182,27 +199,31 @@ void ESPWiFi::log(LogLevel level, const char *format, const std::string &arg) {
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::cleanLogFile() {
-  const bool fsReady = logToSD ? sdCardInitialized : littleFsInitialized;
-  if (maxLogFileSize > -1 && fsReady) {
-    const std::string &base = logToSD ? sdMountPoint : lfsMountPoint;
-    std::string full_path = base + logFilePath;
+  bool useSD, useLFS;
+  if (!getLogFilesystem(useSD, useLFS) || maxLogFileSize < 0) {
+    return;
+  }
 
-    if (logFileMutex != nullptr) {
-      (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
-    }
-    struct stat st;
-    if (stat(full_path.c_str(), &st) == 0) {
-      if ((size_t)st.st_size > (size_t)maxLogFileSize) {
-        log(INFO, "🗑️  Log file deleted");
-        bool deleted = ::remove(full_path.c_str()) == 0;
-        if (!deleted) {
-          log(ERROR, "Failed to delete log file");
-        }
+  const std::string &base = useSD ? sdMountPoint : lfsMountPoint;
+  std::string full_path = base + logFilePath;
+
+  if (logFileMutex != nullptr) {
+    (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
+  }
+  struct stat st;
+  if (stat(full_path.c_str(), &st) == 0) {
+    if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+      // Use printf instead of log() to avoid recursion during cleanup
+      printf("%s  [INFO] 🗑️  Log file deleted\n", timestamp().c_str());
+      bool deleted = ::remove(full_path.c_str()) == 0;
+      if (!deleted) {
+        printf("%s [ERROR] 💔 Failed to delete log file\n",
+               timestamp().c_str());
       }
     }
-    if (logFileMutex != nullptr) {
-      xSemaphoreGive(logFileMutex);
-    }
+  }
+  if (logFileMutex != nullptr) {
+    xSemaphoreGive(logFileMutex);
   }
 }
 
@@ -277,12 +298,11 @@ std::string ESPWiFi::timestamp() {
 }
 
 void ESPWiFi::logConfigHandler() {
-  static bool initialized = false;
+  // Default values (used for comparison on first run and as fallback)
   static bool lastEnabled = true;
-  static bool lastPreferSD = false;
+  static bool lastuseSD = true;
   static std::string lastLevel = "debug";
   static std::string lastFile = "/log";
-  static bool lastLogToSD = false;
 
   const bool currentEnabled = config["log"]["enabled"].isNull()
                                   ? true
@@ -290,9 +310,9 @@ void ESPWiFi::logConfigHandler() {
   std::string currentLevel = config["log"]["level"].isNull()
                                  ? "debug"
                                  : config["log"]["level"].as<std::string>();
-  const bool currentPreferSD = config["log"]["preferSD"].isNull()
-                                   ? true
-                                   : config["log"]["preferSD"].as<bool>();
+  const bool currentuseSD = config["log"]["useSD"].isNull()
+                                ? true
+                                : config["log"]["useSD"].as<bool>();
 
   std::string currentFile;
   if (!config["log"]["file"].isNull()) {
@@ -309,52 +329,21 @@ void ESPWiFi::logConfigHandler() {
     currentFile.insert(currentFile.begin(), '/');
   }
 
-  // Compute desired sink each time (SD mount state can change dynamically)
-  const bool desiredLogToSD =
-      currentEnabled && currentPreferSD && sdCardInitialized;
-
-  // First run: establish baseline without emitting “changed” messages.
-  // This prevents noisy logs at boot when defaults differ from the persisted
-  // config (e.g. debug->access, false->true).
-  if (!initialized) {
-    if (logFileMutex != nullptr) {
-      (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
-    }
-    logFilePath = currentFile;
-    logToSD = desiredLogToSD;
-    if (logFileMutex != nullptr) {
-      xSemaphoreGive(logFileMutex);
-    }
-
-    lastEnabled = currentEnabled;
-    lastPreferSD = currentPreferSD;
-    lastLevel = currentLevel;
-    lastFile = currentFile;
-    lastLogToSD = desiredLogToSD;
-    initialized = true;
-    return;
-  }
-
-  // Apply runtime changes (do not hold mutex while calling log()).
+  // Check for changes and apply them
   bool needLogEnabledMsg = (currentEnabled != lastEnabled);
   bool needLevelMsg = (currentLevel != lastLevel);
   bool needFileMsg = (currentFile != lastFile);
-  bool needPreferMsg = (currentPreferSD != lastPreferSD);
-  bool needSinkMsg = (desiredLogToSD != lastLogToSD);
+  bool needPreferMsg = (currentuseSD != lastuseSD);
 
-  if (needFileMsg || needSinkMsg) {
+  if (needFileMsg) {
     // Best-effort: synchronize with file writes.
     if (logFileMutex != nullptr) {
       (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
     }
     logFilePath = currentFile;
-    logToSD = desiredLogToSD;
     if (logFileMutex != nullptr) {
       xSemaphoreGive(logFileMutex);
     }
-  } else {
-    // Still update cached sink decision if it changed only due to SD state.
-    logToSD = desiredLogToSD;
   }
 
   if (needLogEnabledMsg) {
@@ -367,17 +356,13 @@ void ESPWiFi::logConfigHandler() {
     lastLevel = currentLevel;
   }
   if (needPreferMsg) {
-    log(INFO, "📝 Log preferSD: %s -> %s", lastPreferSD ? "true" : "false",
-        currentPreferSD ? "true" : "false");
-    lastPreferSD = currentPreferSD;
+    log(INFO, "📝 Log useSD: %s -> %s", lastuseSD ? "true" : "false",
+        currentuseSD ? "true" : "false");
+    lastuseSD = currentuseSD;
   }
   if (needFileMsg) {
     log(INFO, "📝 Log file: %s -> %s", lastFile.c_str(), currentFile.c_str());
     lastFile = currentFile;
-  }
-  if (needSinkMsg) {
-    log(INFO, "📝 Log sink: %s", desiredLogToSD ? "sd" : "lfs");
-    lastLogToSD = desiredLogToSD;
   }
 }
 

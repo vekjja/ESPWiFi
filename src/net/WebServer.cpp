@@ -297,11 +297,15 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 
   // Resolve which filesystem this path maps to.
   // - "/sd/..." is served from the SD mount (FATFS)
+  // - "/lfs/..." is served from the LittleFS mount
   // - everything else is served from LittleFS (prefixed by lfsMountPoint)
   std::string fullPath;
   bool fsAvailable = false;
   if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
     fsAvailable = (sdCard != nullptr);
+    fullPath = filePath; // already includes mountpoint
+  } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
+    fsAvailable = (lfs != nullptr);
     fullPath = filePath; // already includes mountpoint
   } else {
     fsAvailable = (lfs != nullptr);

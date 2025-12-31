@@ -463,7 +463,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     });
 
     // Handle successful upload
-    xhr.addEventListener("load", () => {
+    xhr.addEventListener("load", async () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         setUploadProgress(100);
         setIsUploading(false);
@@ -517,7 +517,27 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           setInfo(`Filename sanitized: "${originalName}" → "${sanitizedName}"`);
         }
       } else {
-        setError(`Upload failed: HTTP ${xhr.status} - ${xhr.statusText}`);
+        // Try to read error message from response
+        let errorMsg = `Upload failed: HTTP ${xhr.status} - ${xhr.statusText}`;
+        try {
+          const responseText = xhr.responseText;
+          if (responseText) {
+            try {
+              const errorJson = JSON.parse(responseText);
+              if (errorJson.error) {
+                errorMsg = `Upload failed: ${errorJson.error}`;
+              }
+            } catch (e) {
+              // Not JSON, use response text as-is if it's short
+              if (responseText.length < 200) {
+                errorMsg = `Upload failed: ${responseText}`;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore errors reading response
+        }
+        setError(errorMsg);
         setIsUploading(false);
         setUploadProgress(0);
       }

@@ -107,6 +107,7 @@ public:
   bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
+  FILE *openLogFile(bool useSD);
 
   // Helper to determine which filesystem to use for logging
   // Sets useSD and useLFS variables, returns true if a filesystem is available

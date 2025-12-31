@@ -84,14 +84,19 @@ void ESPWiFi::startLogging(std::string filePath) {
   printFilesystemInfo();
 }
 
+FILE *ESPWiFi::openLogFile(bool useSD) {
+  std::string full_path =
+      useSD ? sdMountPoint + logFilePath : lfsMountPoint + logFilePath;
+  return fopen(full_path.c_str(), "a");
+}
+
 bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {
-  // Check useSD config: if true, use SD card if available; otherwise use
+  checkSDCardPresent();
   // LittleFS
-  bool preferSD = config["log"]["useSD"].isNull()
-                      ? true
-                      : config["log"]["useSD"].as<bool>();
+  bool preferSD = config["log"]["useSD"].as<bool>();
   useSD = preferSD && (sdCard != nullptr);
-  useLFS = !useSD && (lfs != nullptr);
+  // LFS is always available as a fallback (even if SD is preferred)
+  useLFS = (lfs != nullptr);
   return useSD || useLFS; // Returns true if a filesystem is available
 }
 
@@ -111,7 +116,6 @@ void ESPWiFi::writeLog(std::string message) {
   }
 
   // Try SD first if preferred, fallback to LFS on failure
-  bool triedSD = false;
   bool success = false;
 
   if (useSD) {
@@ -134,6 +138,7 @@ void ESPWiFi::writeLog(std::string message) {
     } else {
       // Open failed on SD card - may have been removed
       // Directly deinit to avoid recursion (handleSDCardError calls log())
+      success = false;
       if (sdCard != nullptr) {
         deinitSDCard();
       }

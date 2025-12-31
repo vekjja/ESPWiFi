@@ -384,10 +384,17 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   }
 
   if (fileSize == 0) {
-    printf("File size is 0\n");
+    // Empty file - return empty response instead of 404
+    // This allows empty log files to be served (they'll get content as logs are
+    // written)
     fclose(file);
-    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
-                            &clientInfoRef);
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_set_status(req, "200 OK");
+    esp_err_t ret = httpd_resp_send(req, "", 0);
+    if (ret == ESP_OK) {
+      logAccess(200, clientInfoRef, 0);
+    }
+    return ret;
   }
 
   // Determine content type based on file extension (ignore query string)

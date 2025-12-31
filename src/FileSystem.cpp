@@ -270,11 +270,13 @@ bool ESPWiFi::checkSDCardPresent() {
   if (stat(sdMountPoint.c_str(), &st) != 0) {
     // Check if it's an I/O error (card removed) vs other error
     if (errno == 5) { // EIO - Input/output error
+      deinitSDCard();
       return false;
     }
     // Other errors (ENOENT, etc.) might be transient - assume present
     // But if errno is still 0, something weird happened - assume not present
     if (errno == 0) {
+      deinitSDCard();
       return false;
     }
     return true;
@@ -282,6 +284,7 @@ bool ESPWiFi::checkSDCardPresent() {
 
   // Mount point accessible - verify it's actually a directory
   if (!S_ISDIR(st.st_mode)) {
+    deinitSDCard();
     return false;
   }
 

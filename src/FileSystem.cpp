@@ -180,8 +180,7 @@ void ESPWiFi::initSDCard() {
       sdSpiHost = -1;
       sdInitLastErr = ret;
       // SPI failed, will try SDMMC below
-      log(WARNING, "💾 SD(SPI) Mount Failed, trying SDMMC: %s",
-          esp_err_to_name(ret));
+      log(WARNING, "💾 SD(SPI) Mount Failed: %s", esp_err_to_name(ret));
     } else {
       // Success
       sdCard = (void *)card;
@@ -221,7 +220,7 @@ void ESPWiFi::initSDCard() {
     }
     sdSpiBusOwned = false;
     sdSpiHost = -1;
-    log(ERROR, "💾 SD Mount Failed: %s", esp_err_to_name(ret));
+    log(ERROR, "💾 SD Card Mount Failed: %s", esp_err_to_name(ret));
     config["sd"]["initialized"] = false;
   }
 #else

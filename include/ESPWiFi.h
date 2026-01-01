@@ -68,7 +68,7 @@ public:
   void initLittleFS();
   bool checkSDCardPresent();
   void handleSDCardError();
-  bool sdNoTarget = false;
+  bool sdNotSupported = false;
   esp_err_t sdInitLastErr = ESP_OK;
   bool sdInitAttempted = false;
   void *sdCard = nullptr;

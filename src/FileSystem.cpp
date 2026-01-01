@@ -115,9 +115,9 @@ void ESPWiFi::initSDCard() {
   // Initialize logging state
   sdInitAttempted = true;
   sdInitLastErr = ESP_OK;
-  sdNoTarget = false;
+  sdNotSupported = false;
 
-  log(INFO, "💾 Auto-detecting SD card at %s", sdMountPoint.c_str());
+  log(INFO, "💾 SD Card Initializing, Mount Point: %s", sdMountPoint.c_str());
   yield(); // Yield before heavy operations to reduce stack pressure
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
@@ -139,9 +139,9 @@ void ESPWiFi::initSDCard() {
 
     // Validate pins
     if (cs < 0 || sclk < 0 || mosi < 0 || miso < 0) {
-      sdNoTarget = true;
+      sdNotSupported = true;
       sdInitLastErr = ESP_ERR_INVALID_ARG;
-      log(WARNING, "💾 SD SPI: invalid pin configuration");
+      log(WARNING, "💾 SD(SPI) invalid pin configuration");
       return;
     }
 
@@ -158,7 +158,7 @@ void ESPWiFi::initSDCard() {
     if (ret != ESP_OK) {
       sdSpiHost = -1;
       sdInitLastErr = ret;
-      log(WARNING, "💾 SD SPI bus init failed: %s", esp_err_to_name(ret));
+      log(WARNING, "💾 SD(SPI) bus init failed: %s", esp_err_to_name(ret));
       return;
     }
     yield(); // Yield after SPI bus init, before mount
@@ -180,12 +180,12 @@ void ESPWiFi::initSDCard() {
       sdSpiHost = -1;
       sdInitLastErr = ret;
       // SPI failed, will try SDMMC below
-      log(DEBUG, "💾 SD SPI mount failed, trying SDMMC: %s",
+      log(WARNING, "💾 SD(SPI) Mount Failed, trying SDMMC: %s",
           esp_err_to_name(ret));
     } else {
       // Success
       sdCard = (void *)card;
-      log(INFO, "💾 SD mounted via SPI: %s", sdMountPoint.c_str());
+      log(INFO, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
     }
     yield(); // Yield after SPI mount attempt
@@ -202,11 +202,11 @@ void ESPWiFi::initSDCard() {
                                   &mount_config, &card);
     if (ret == ESP_OK) {
       sdCard = (void *)card;
-      log(INFO, "💾 SD mounted via SDMMC: %s", sdMountPoint.c_str());
+      log(INFO, "💾 SD(SDMMC) Mounted: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
     } else {
       // Both SPI and SDMMC failed
-      log(DEBUG, "💾 SDMMC mount failed: %s", esp_err_to_name(ret));
+      log(WARNING, "💾 SD(SDMMC) Mount Failed: %s", esp_err_to_name(ret));
     }
   }
 
@@ -214,23 +214,23 @@ void ESPWiFi::initSDCard() {
   if (ret != ESP_OK) {
     sdCard = nullptr;
     sdInitLastErr = ret;
-    sdNoTarget = false;
+    sdNotSupported = false;
     // Final cleanup of any remaining SPI state
     if (sdSpiHost >= 0 && sdSpiBusOwned) {
       cleanupSpiBus((spi_host_device_t)sdSpiHost, sdSpiBusOwned);
     }
     sdSpiBusOwned = false;
     sdSpiHost = -1;
-    log(WARNING, "💾 SD mount failed: %s", esp_err_to_name(ret));
+    log(ERROR, "💾 SD Mount Failed: %s", esp_err_to_name(ret));
     config["sd"]["initialized"] = false;
   }
 #else
   // For non-ESP32 targets, SD wiring varies widely
   sdCard = nullptr;
-  sdNoTarget = true;
-  sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
-  log(DEBUG, "💾 SD card not supported on this target");
+  sdNotSupported = true;
   config["sd"]["initialized"] = false;
+  sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
+  log(ERROR, "💾 SD Not Supported for this Device: %s", esp_err_to_name(ret));
 #endif
 }
 
@@ -255,6 +255,7 @@ void ESPWiFi::deinitSDCard() {
 
   config["sd"]["initialized"] = false;
   sdSpiBusOwned = false;
+  sdCard = nullptr;
   sdSpiHost = -1;
 }
 
@@ -295,7 +296,7 @@ void ESPWiFi::handleSDCardError() {
   // Called when SD card operations fail - mark as unavailable
   // The card will be automatically re-detected in runSystem() if reinserted
   if (sdCard != nullptr) {
-    log(WARNING, "💾 SD card removed or error detected, unmounting");
+    log(WARNING, "💾 SD Card Error Detected, Unmounting");
     deinitSDCard();
   }
 }
@@ -389,7 +390,7 @@ void ESPWiFi::printFilesystemInfo() {
 
   // SD card not available - log status if we attempted detection
   if (sdInitAttempted) {
-    if (sdNoTarget) {
+    if (sdNotSupported) {
       log(DEBUG, "💾 SD card not available: not configured for this target\n"
                  "Configure SPI pins in config (SDCardPins.h) to enable SD "
                  "card support");

@@ -101,7 +101,7 @@ void ESPWiFi::wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
 
     // Auto-reconnect logic
     if (wifiAutoReconnect) {
-      log(INFO, "📶 🔄 WiFi Auto Reconnect");
+      log(INFO, "🔄 📶 WiFi Auto Reconnect");
       esp_err_t err = esp_wifi_connect();
       if (err != ESP_OK) {
         log(ERROR, "esp_wifi_connect auto-reconnect failed: %s",

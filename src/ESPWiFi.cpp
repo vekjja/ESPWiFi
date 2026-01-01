@@ -33,11 +33,11 @@ void ESPWiFi::runSystem() {
   }
 
   if (sdCardCheck.shouldRun()) {
-    if (sdCard == nullptr && !sdNoTarget) {
+    if (sdCard == nullptr && !sdNotSupported) {
       // Card was removed - try to reinitialize if it's been reinserted
       initSDCard();
       if (sdCard != nullptr) {
-        log(INFO, "💾 SD card reinserted and remounted");
+        log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
       }
     }
   }

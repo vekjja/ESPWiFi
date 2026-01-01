@@ -626,9 +626,11 @@ bool ESPWiFi::isProtectedFile(const std::string &fsParam,
 std::string ESPWiFi::getFileExtension(const std::string &filename) {
   size_t pos = filename.find_last_of('.');
   if (pos != std::string::npos) {
+    // Return extension after the dot
     return filename.substr(pos + 1);
   }
-  return "";
+  // If no dot found, return the filename itself
+  return filename;
 }
 
 // File upload handler - used for chunked uploads if needed

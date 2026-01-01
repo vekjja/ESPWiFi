@@ -340,7 +340,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
                             &clientInfoRef);
   }
 
-  // Open file from LFS
+  // Open file
   FILE *file = fopen(fullPath.c_str(), "rb");
   if (!file) {
     // Check if this is an SD card error

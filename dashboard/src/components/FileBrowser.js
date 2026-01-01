@@ -86,19 +86,54 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
   const apiURL = config?.apiURL || "";
 
+  // Helper function to infer content type from file extension
+  const getContentTypeFromExtension = (fileName) => {
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    const contentTypes = {
+      // Images
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+      bmp: "image/bmp",
+      ico: "image/x-icon",
+      // Videos
+      mp4: "video/mp4",
+      webm: "video/webm",
+      ogg: "video/ogg",
+      avi: "video/x-msvideo",
+      mov: "video/quicktime",
+      mkv: "video/x-matroska",
+      // Audio
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      oga: "audio/ogg",
+      flac: "audio/flac",
+      // Documents
+      pdf: "application/pdf",
+      // Text files
+      txt: "text/plain",
+      log: "text/plain",
+      json: "application/json",
+      xml: "application/xml",
+      html: "text/html",
+      htm: "text/html",
+      css: "text/css",
+      js: "text/javascript",
+      md: "text/markdown",
+      ini: "text/plain",
+      conf: "text/plain",
+      cfg: "text/plain",
+      yml: "text/yaml",
+      yaml: "text/yaml",
+    };
+    return contentTypes[ext] || null;
+  };
+
   const openFileWithAuth = useCallback(
     async (file) => {
-      // window.open can't attach headers; fetch with auth then open a blob URL
-      const newTab = window.open("", "_blank");
-      if (newTab) {
-        newTab.document.title = file?.name || "File";
-        newTab.document.body.style.background = "#111";
-        newTab.document.body.style.color = "#fff";
-        newTab.document.body.style.fontFamily = "system-ui, sans-serif";
-        newTab.document.body.style.padding = "16px";
-        newTab.document.body.textContent = "Loading…";
-      }
-
       const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -115,18 +150,25 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const contentType =
-          response.headers.get("content-type") || "application/octet-stream";
+        // Get content type from response or infer from extension
+        let contentType =
+          response.headers.get("content-type") ||
+          getContentTypeFromExtension(file.name);
+
+        // Fallback to octet-stream if still unknown
+        if (!contentType) {
+          contentType = "application/octet-stream";
+        }
+
+        // For all files, use blob URL - browser will display them based on content-type
+        // This works for images, videos, PDFs, text files, and other viewable content
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(
           new Blob([blob], { type: contentType })
         );
 
-        if (newTab) {
-          newTab.location.href = blobUrl;
-        } else {
-          window.open(blobUrl, "_blank");
-        }
+        // Open blob URL directly - browser will display it natively based on content-type
+        window.open(blobUrl, "_blank");
 
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
       } catch (err) {
@@ -136,8 +178,10 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             ? "Request timed out - device may be offline"
             : `Failed to open file: ${err.message || err}`;
         setError(msg);
-        if (newTab) {
-          newTab.document.body.textContent = msg;
+        // Open error in new tab if we can
+        const errorTab = window.open("", "_blank");
+        if (errorTab) {
+          errorTab.document.body.textContent = msg;
         }
       }
     },

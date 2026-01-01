@@ -24,10 +24,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["bluetooth"]["enabled"] = false;
 
   // Logging: verbose, access, debug, info, warning, error
-  doc["log"]["useSD"] = true;
-  doc["log"]["file"] = "/log";
-  doc["log"]["enabled"] = true;
+  doc["log"]["file"] = "/espwifi.log";
   doc["log"]["level"] = "debug";
+  doc["log"]["enabled"] = true;
+  doc["log"]["useSD"] = true;
   doc["log"]["maskedKeys"] = JsonArray();
   doc["log"]["maskedKeys"].add("password");
   doc["log"]["maskedKeys"].add("token");

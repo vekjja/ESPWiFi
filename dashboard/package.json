@@ -17,7 +17,7 @@
     "@testing-library/user-event": "^14.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-scripts": "^0.0.0",
+    "react-scripts": "5.0.1",
     "web-vitals": "^4.2.4"
   },
   "scripts": {
@@ -28,10 +28,10 @@
     "monitor": "cd .. && pio device monitor",
     "menuconfig": "cd .. && pio run -t menuconfig",
     "upload": "npm run cleanSDK && cd .. && pio run -t upload",
-    "upload:monitor": "npm run upload && npm run monitor",
+    "upload:monitor": "clear && npm run upload && npm run monitor",
     "uploadfs": "cd .. && pio run --target uploadfs",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
-    "deploy:monitor": "npm run deploy && npm run monitor",
+    "deploy:monitor": "clear && npm run deploy && npm run monitor",
     "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",
     "clean:upload": "npm run clean && npm run upload",
     "flash": "cd .. && pio run -e esp32-c3",

@@ -259,33 +259,46 @@ void ESPWiFi::deinitSDCard() {
 }
 
 bool ESPWiFi::checkSDCardPresent() {
-  if (sdCard == nullptr) {
+  if (sdCard == nullptr || sdNotSupported) {
     return false;
   }
 
-  // Use lightweight filesystem check - stat() will fail fast if card is removed
-  // Wrap in try-catch equivalent: use errno checking and be defensive
-  errno = 0;
-  struct stat st;
-  if (stat(sdMountPoint.c_str(), &st) != 0) {
-    // Check if it's an I/O error (card removed) vs other error
-    if (errno == 5) { // EIO - Input/output error
-      deinitSDCard();
-      return false;
-    }
-    // Other errors (ENOENT, etc.) might be transient - assume present
-    // But if errno is still 0, something weird happened - assume not present
-    if (errno == 0) {
-      deinitSDCard();
-      return false;
-    }
-    return true;
-  }
+  if (sdCardCheck.shouldRun()) {
+    if (sdCard != nullptr) {
+      // Card is mounted - verify it's still present
+      // Use lightweight filesystem check - stat() will fail fast if card is
+      // removed
+      errno = 0;
+      struct stat st;
+      if (stat(sdMountPoint.c_str(), &st) != 0) {
+        // Check if it's an I/O error (card removed) vs other error
+        if (errno == 5) { // EIO - Input/output error
+          deinitSDCard();
+          return false;
+        }
+        // Other errors (ENOENT, etc.) might be transient - assume present
+        // But if errno is still 0, something weird happened - assume not
+        // present
+        if (errno == 0) {
+          deinitSDCard();
+          return false;
+        }
+        return true;
+      }
 
-  // Mount point accessible - verify it's actually a directory
-  if (!S_ISDIR(st.st_mode)) {
-    deinitSDCard();
-    return false;
+      // Mount point accessible - verify it's actually a directory
+      if (!S_ISDIR(st.st_mode)) {
+        deinitSDCard();
+        return false;
+      }
+      return true;
+    } else if (!sdNotSupported) {
+      // Card was removed - try to reinitialize if it's been reinserted
+      initSDCard();
+      if (sdCard != nullptr) {
+        log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
+      }
+    }
   }
 
   return true;

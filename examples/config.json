@@ -4,54 +4,52 @@
         "enabled": true,
         "mode": "client",
         "client": {
-            "ssid": "YOUR_SSID",
-            "password": "YOUR_PASSWORD"
-        },
-        "ap": {
-            "ssid": "ESPWiFi",
-            "password": "espwifi!"
+            "ssid": "YOUR_WIFI_SSID",
+            "password": "YOUR_WIFI_PASSWORD"
         }
     },
-    "auth": {
+    "bluetooth": {
+        "enabled": false
+    },
+    "log": {
         "enabled": true,
+        "useSD": true,
+        "file": "/log",
+        "level": "debug",
+        "maskedKeys": [
+            "password",
+            "token",
+            "secret"
+        ]
+    },
+    "auth": {
+        "enabled": false,
         "username": "admin",
         "password": "admin",
+        "excludePaths": [
+            "/",
+            "/static/*",
+            "/favicon.ico",
+            "/api/auth/login",
+            "/asset-manifest.json"
+        ],
+        "protectFiles": [
+            "static/*",
+            "index.html",
+            "config.json",
+            "asset-manifest.json"
+        ],
         "cors": {
             "enabled": true,
             "origins": [
-                "http://localhost:3000",
-                "http://espwifi",
-                "http://*.local"
+                "https://espwifi.io",
+                "*"
             ],
             "methods": [
                 "GET",
                 "POST",
-                "PUT",
-                "DELETE"
+                "PUT"
             ]
         }
-    },
-    "bluetooth": {
-        "enabled": false,
-        "installed": true
-    },
-    "camera": {
-        "enabled": true,
-        "frameRate": 10,
-        "rotation": 0,
-        "brightness": 1,
-        "contrast": 1,
-        "saturation": 1,
-        "exposure_level": 1,
-        "exposure_value": 400,
-        "agc_gain": 2,
-        "gain_ceiling": 2,
-        "white_balance": 1,
-        "awb_gain": 1,
-        "wb_mode": 0
-    },
-    "log": {
-        "enabled": true,
-        "level": "info"
     }
 }

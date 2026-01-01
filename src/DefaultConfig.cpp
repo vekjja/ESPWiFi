@@ -13,54 +13,53 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"].as<std::string>();
+  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"];
   doc["wifi"]["accessPoint"]["password"] = "espwifi!";
 
   // WiFi Client
   doc["wifi"]["client"]["ssid"] = "";
   doc["wifi"]["client"]["password"] = "";
 
-  // Bluetooth (BLE - works on ESP32-S3 and ESP32-C3)
+  // Bluetooth Audio
   doc["bluetooth"]["enabled"] = false;
 
   // Logging: verbose, access, debug, info, warning, error
+  doc["log"]["useSD"] = true;
   doc["log"]["file"] = "/log";
   doc["log"]["enabled"] = true;
   doc["log"]["level"] = "debug";
-  doc["log"]["useSD"] = true;
+  doc["log"]["maskedKeys"] = JsonArray();
+  doc["log"]["maskedKeys"].add("password");
+  doc["log"]["maskedKeys"].add("token");
 
   // Auth
+  // - enabled: controls whether authentication is enabled
   doc["auth"]["enabled"] = false;
+  // - password: password for authentication
   doc["auth"]["password"] = "admin";
+  // - username: username for authentication
   doc["auth"]["username"] = "admin";
+
   // CORS (auth.cors)
   // - enabled: controls whether CORS headers are emitted
-  // - origins: allowed Origin patterns (supports '*' and '?')
-  // - methods: allowed methods for preflight
-  // - paths: optional URI path patterns to apply CORS to (supports '*' and '?')
   doc["auth"]["cors"]["enabled"] = true;
-  JsonArray corsOrigins = doc["auth"]["cors"]["origins"].to<JsonArray>();
-  corsOrigins.add("*");
-  JsonArray corsMethods = doc["auth"]["cors"]["methods"].to<JsonArray>();
-  corsMethods.add("GET");
-  corsMethods.add("POST");
-  corsMethods.add("PUT");
-  corsMethods.add("DELETE");
-  JsonArray excludePaths = doc["auth"]["excludePaths"].to<JsonArray>();
-  excludePaths.add("/");
-  excludePaths.add("/static/*");
-  excludePaths.add("/favicon.ico");
-  excludePaths.add("/api/auth/login");
-  excludePaths.add("/asset-manifest.json");
-
-  // Paths that are always protected from HTTP file APIs (even when authorized).
-  // Patterns support '*' and '?' (same matcher as excludePaths).
-  JsonArray protectFiles = doc["auth"]["protectFiles"].to<JsonArray>();
-  protectFiles.add("/log");
-  protectFiles.add("/static/*");
-  protectFiles.add("/index.html");
-  protectFiles.add("/config.json");
-  protectFiles.add("/asset-manifest.json");
+  // - origins: allowed Origin patterns (supports '*' and '?')
+  doc["auth"]["cors"]["origins"].add("*");
+  // - methods: allowed methods for preflight
+  doc["auth"]["cors"]["methods"].add("GET");
+  doc["auth"]["cors"]["methods"].add("POST");
+  doc["auth"]["cors"]["methods"].add("PUT");
+  // Paths that are excluded from authentication (supports '*' and '?')
+  doc["auth"]["excludePaths"].add("/");
+  doc["auth"]["excludePaths"].add("/static/*");
+  doc["auth"]["excludePaths"].add("/favicon.ico");
+  doc["auth"]["excludePaths"].add("/api/auth/login");
+  doc["auth"]["excludePaths"].add("/asset-manifest.json");
+  // Paths that are always protected (supports '*' and '?')
+  doc["auth"]["protectFiles"].add("/static/*");
+  doc["auth"]["protectFiles"].add("/index.html");
+  doc["auth"]["protectFiles"].add("/config.json");
+  doc["auth"]["protectFiles"].add("/asset-manifest.json");
 
   // Camera
   // #ifdef ESPWiFi_CAMERA
@@ -81,9 +80,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   // #else
   //   doc["camera"]["installed"] = false;
   // #endif
-
-  // OTA - based on LittleFS partition
-  doc["ota"]["enabled"] = isOTAEnabled();
 
   return doc;
 }

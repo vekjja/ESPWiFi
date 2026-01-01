@@ -20,6 +20,7 @@ void ESPWiFi::start() {
 
 void ESPWiFi::runSystem() {
   yield();
+  checkSDCardPresent();
 
   // Apply + save config changes in the main task
   // (keeps HTTP handlers fast/safe)
@@ -32,15 +33,17 @@ void ESPWiFi::runSystem() {
     configNeedsSave = false;
   }
 
-  if (sdCardCheck.shouldRun()) {
-    if (sdCard == nullptr && !sdNotSupported) {
-      // Card was removed - try to reinitialize if it's been reinserted
-      initSDCard();
-      if (sdCard != nullptr) {
-        log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
-      }
-    }
-  }
+  // if (sdCardCheck.shouldRun()) {
+  //   if (sdCard != nullptr) {
+  //     // Card is mounted - verify it's still present
+  //   } else if (!sdNotSupported) {
+  //     // Card was removed - try to reinitialize if it's been reinserted
+  //     initSDCard();
+  //     if (sdCard != nullptr) {
+  //       log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
+  //     }
+  //   }
+  // }
 
   // static unsigned long lastHeartbeat = 0;
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });

@@ -113,7 +113,7 @@ void ESPWiFi::initSDCard() {
   sdInitLastErr = ESP_OK;
   sdNotSupported = false;
 
-  log(INFO, "💾 SD Card Initializing, Mount Point: %s", sdMountPoint.c_str());
+  log(INFO, "💾 SD Card Mount Point: %s", sdMountPoint.c_str());
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
   // Auto-detect: try SPI first, then SDMMC
@@ -144,8 +144,9 @@ void ESPWiFi::initSDCard() {
     spi_host_device_t spiHost = (spi_host_device_t)hostId;
     sdSpiHost = spiHost;
 
-    log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
-        spiHost, mosi, miso, sclk, cs);
+    // log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d,
+    // cs=%d",
+    //     spiHost, mosi, miso, sclk, cs);
     feedWatchDog(1); // Yield before SPI bus init
 
     // Initialize SPI bus

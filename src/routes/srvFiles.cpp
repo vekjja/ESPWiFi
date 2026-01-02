@@ -284,7 +284,7 @@ void ESPWiFi::srvFiles() {
           espwifi->log(DEBUG, "📁 List: Success, sent %d files (%zu bytes)",
                        fileCount, bytesSent);
         } else {
-          espwifi->log(ERROR, "💔 📁 List: Failed during streaming");
+          espwifi->log(ERROR, " 📁 List: Failed during streaming");
         }
 
         espwifi->logAccess((ret == ESP_OK) ? 200 : 500, clientInfo, bytesSent);
@@ -397,7 +397,7 @@ void ESPWiFi::srvFiles() {
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
-          espwifi->log(ERROR, "💔 📂 MkDir: Failed: %s", fullDirPath.c_str());
+          espwifi->log(ERROR, " 📂 MkDir: Failed: %s", fullDirPath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to create directory\"}",
               &clientInfo);
@@ -489,7 +489,7 @@ void ESPWiFi::srvFiles() {
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
-          espwifi->log(ERROR, "💔 ✏️ Rename: Failed: %s -> %s", oldPath.c_str(),
+          espwifi->log(ERROR, " ✏️ Rename: Failed: %s -> %s", oldPath.c_str(),
                        fullNewPath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to rename file\"}", &clientInfo);
@@ -680,7 +680,7 @@ void ESPWiFi::srvFiles() {
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
-          espwifi->log(ERROR, "💔 🗑️ Delete: Failed: %s", filePath.c_str());
+          espwifi->log(ERROR, " 🗑️ Delete: Failed: %s", filePath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to delete file\"}", &clientInfo);
         }

@@ -20,7 +20,7 @@ std::string logLevelToString(LogLevel level) {
   case WARNING:
     return " [WARN] ⚠️";
   case ERROR:
-    return "[ERROR] 💔";
+    return "[ERROR] ❗️";
   default:
     return "[LOG]";
   }
@@ -196,7 +196,7 @@ void ESPWiFi::cleanLogFile() {
         if (deleted) {
           deletedAny = true;
         } else {
-          printf("%s [ERROR] 💔 Failed to delete log file from SD\n",
+          printf("%s [ERROR] ❗️ Failed to delete log file from SD\n",
                  timestamp().c_str());
         }
       }
@@ -212,7 +212,7 @@ void ESPWiFi::cleanLogFile() {
         if (deleted) {
           deletedAny = true;
         } else {
-          printf("%s [ERROR] 💔 Failed to delete log file from LFS\n",
+          printf("%s [ERROR] ❗️ Failed to delete log file from LFS\n",
                  timestamp().c_str());
         }
       }

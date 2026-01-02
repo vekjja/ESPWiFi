@@ -12,10 +12,24 @@
 #pragma once
 
 // -----------------------------------------------------------------------------
+// Seeed XIAO ESP32-S3 Sense microSD card slot (SPI)
+// CS=21, SCK=7 (D8), MISO=8 (D9), MOSI=9 (D10)
+// -----------------------------------------------------------------------------
+#if defined(SDCARD_MODEL_SEEED_XIAO_ESP32S3)
+
+#define SDCARD_SPI_MISO_GPIO_NUM 8
+#define SDCARD_SPI_MOSI_GPIO_NUM 9
+#define SDCARD_SPI_SCK_GPIO_NUM 7
+#define SDCARD_SPI_CS_GPIO_NUM 21
+
+// ESP32-S3 uses SPI2_HOST
+#define SDCARD_SPI_HOST SPI2_HOST
+
+// -----------------------------------------------------------------------------
 // ESP32-2432S028R / "2.8 inch 240x320 smart display" microSD (SPI / VSPI)
 // MISO=19, MOSI=23, SCK=18, CS=5
 // -----------------------------------------------------------------------------
-#if defined(SDCARD_MODEL_ESP32_2432S028R)
+#elif defined(SDCARD_MODEL_ESP32_2432S028R)
 
 #define SDCARD_SPI_MISO_GPIO_NUM 19
 #define SDCARD_SPI_MOSI_GPIO_NUM 23

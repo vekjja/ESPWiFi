@@ -9,11 +9,15 @@
 #include "ff.h"
 #include "sdkconfig.h"
 #include "sdmmc_cmd.h"
-#if defined(CONFIG_IDF_TARGET_ESP32)
-#include "driver/sdmmc_host.h"
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
+    defined(CONFIG_IDF_TARGET_ESP32C3)
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
 #include "driver/spi_master.h"
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
+// SDMMC is only available on ESP32 and ESP32-S3
+#include "driver/sdmmc_host.h"
+#endif
 #endif
 #include <ArduinoJson.h>
 #include <cstring>
@@ -41,11 +45,11 @@ void ESPWiFi::initLittleFS() {
 
   if (ret != ESP_OK) {
     if (ret == ESP_FAIL) {
-      printf(" 💔 Failed to mount or format filesystem\n");
+      printf(" ❗️ Failed to mount or format filesystem\n");
     } else if (ret == ESP_ERR_NOT_FOUND) {
-      printf("💔 Failed to find LittleFS partition\n");
+      printf("❗️ Failed to find LittleFS partition\n");
     } else {
-      printf("💔 Failed to initialize LittleFS (%s)\n", esp_err_to_name(ret));
+      printf("❗️ Failed to initialize LittleFS (%s)\n", esp_err_to_name(ret));
     }
     lfs = nullptr;
     return;
@@ -54,7 +58,8 @@ void ESPWiFi::initLittleFS() {
   lfs = (void *)0x1;
 }
 
-#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
+    defined(CONFIG_IDF_TARGET_ESP32C3)
 // Helper: Get default SPI pin configuration from SDCardPins.h
 static void getSpiPinConfig(int &mosi, int &miso, int &sclk, int &cs,
                             int &hostId) {
@@ -115,8 +120,9 @@ void ESPWiFi::initSDCard() {
 
   log(INFO, "💾 SD Card Mount Point: %s", sdMountPoint.c_str());
 
-#if defined(CONFIG_IDF_TARGET_ESP32)
-  // Auto-detect: try SPI first, then SDMMC
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
+    defined(CONFIG_IDF_TARGET_ESP32C3)
+  // Auto-detect: try SPI first, then SDMMC (if available on target)
   // Configure mount parameters
   esp_vfs_fat_sdmmc_mount_config_t mount_config = {};
   mount_config.format_if_mount_failed = false;
@@ -189,7 +195,9 @@ void ESPWiFi::initSDCard() {
     feedWatchDog(1); // Yield after SPI mount attempt
   }
 
-  // Try SDMMC (native interface) if SPI failed
+// Try SDMMC (native interface) if SPI failed
+// Note: Only ESP32 and ESP32-S3 support SDMMC, ESP32-C3 does not
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
   if (ret != ESP_OK) {
     feedWatchDog(1); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -207,6 +215,7 @@ void ESPWiFi::initSDCard() {
       log(WARNING, "💾 SD(SDMMC) Mount Failed: %s", esp_err_to_name(ret));
     }
   }
+#endif
 
   // Handle final error state
   if (ret != ESP_OK) {

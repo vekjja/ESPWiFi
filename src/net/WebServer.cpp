@@ -90,6 +90,9 @@ void ESPWiFi::startWebServer() {
   log(INFO, "🗄️ HTTP Web Server started");
   log(DEBUG, "🗄️\thttp://%s:%d", getHostname().c_str(), 80);
   log(DEBUG, "🗄️\thttp://%s:%d", ipAddress().c_str(), 80);
+  if (config["wifi"]["mdns"].as<bool>()) {
+    log(DEBUG, "🗄️\thttp://%s.local:%d", getHostname().c_str(), 80);
+  }
 }
 
 esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {

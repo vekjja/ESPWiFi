@@ -19,6 +19,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   // WiFi Client
   doc["wifi"]["client"]["ssid"] = "";
   doc["wifi"]["client"]["password"] = "";
+  // mDNS (Multicast DNS) - network service discovery
+  doc["wifi"]["mdns"] = true;
 
   // Bluetooth Audio
   doc["bluetooth"]["enabled"] = false;

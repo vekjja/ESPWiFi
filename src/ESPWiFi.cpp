@@ -10,7 +10,7 @@ void ESPWiFi::start() {
   readConfig();             // Load config
   // setMaxPower();
   startWiFi();
-  // startMDNS();
+  startMDNS();
   startWebServer();
   startRSSIWebSocket();
   srvAll();

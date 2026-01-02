@@ -5,6 +5,7 @@ get_filename_component(configName "${CMAKE_BINARY_DIR}" NAME)
 list(APPEND EXTRA_COMPONENT_DIRS 
     "${CMAKE_SOURCE_DIR}/.pio/libdeps/${configName}/esp_littlefs"
     "${CMAKE_SOURCE_DIR}/components"
+    "${CMAKE_SOURCE_DIR}/components/esp-protocols/components/mdns"
 )
 
 project(ESPWiFi)

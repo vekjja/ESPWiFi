@@ -148,6 +148,7 @@ public:
   void initNVS();
   void startAP();
   void startWiFi();
+  void startMDNS();
   void startClient();
   int selectBestChannel();
   std::string getHostname();

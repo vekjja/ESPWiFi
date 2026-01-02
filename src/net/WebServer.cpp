@@ -405,6 +405,11 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
 
+  // Set Content-Length header for progress tracking
+  char contentLengthStr[32];
+  snprintf(contentLengthStr, sizeof(contentLengthStr), "%ld", fileSize);
+  httpd_resp_set_hdr(req, "Content-Length", contentLengthStr);
+
   // Use chunked encoding for all files to allow yields between chunks.
   // IMPORTANT: Avoid dynamic allocations here (BT + TLS can make heap tight).
   // Keep the buffer small and on-stack.

@@ -112,7 +112,8 @@ function App() {
       try {
         // Create an AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
+        // Increased timeout to 15 seconds to handle device being busy with file operations
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch(
           buildApiUrl("/api/config"),
@@ -175,7 +176,9 @@ function App() {
         // Only log errors if we're not already offline to avoid spam
         if (deviceOnline) {
           if (error.name === "AbortError") {
-            console.warn("Device offline: Request timeout (6 seconds)");
+            console.warn(
+              "Device may be busy or offline: Request timeout (15 seconds)"
+            );
           } else if (
             error.name === "TypeError" &&
             error.message.includes("Failed to fetch")
@@ -247,34 +250,39 @@ function App() {
       return;
     }
 
-    // Set up intelligent polling
+    // Set up intelligent polling with better resilience for busy devices
     let pollInterval;
-    let retryCount = 0;
-    const maxRetries = 3;
+    let consecutiveFailures = 0;
+    const maxConsecutiveFailures = 3; // Only mark offline after 3 consecutive failures
 
     const startPolling = () => {
       pollInterval = setInterval(
         () => {
           fetchConfig().then((result) => {
             if (result) {
-              retryCount = 0; // Reset retry count on successful fetch
-            } else if (deviceOnline) {
-              retryCount++;
-              if (retryCount >= maxRetries) {
+              consecutiveFailures = 0; // Reset failure count on successful fetch
+            } else {
+              consecutiveFailures++;
+
+              // Only change offline status after multiple consecutive failures
+              if (
+                consecutiveFailures >= maxConsecutiveFailures &&
+                deviceOnline
+              ) {
                 console.warn(
-                  "Device appears to be offline - reducing polling frequency"
+                  `Device appears to be offline after ${maxConsecutiveFailures} consecutive failures`
                 );
-                clearInterval(pollInterval);
-                // Poll less frequently when offline
-                pollInterval = setInterval(() => {
-                  fetchConfig();
-                }, 15000); // 15 seconds when offline
+                // The fetchConfig already sets deviceOnline to false
+              } else if (consecutiveFailures === 1) {
+                console.log(
+                  "Device didn't respond (may be busy with file operation), will retry..."
+                );
               }
             }
           });
         },
-        deviceOnline ? 5000 : 15000
-      ); // 5 seconds when online, 15 seconds when offline
+        10000 // Poll every 10 seconds (increased from 5 to reduce load)
+      );
     };
 
     startPolling();

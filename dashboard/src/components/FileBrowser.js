@@ -114,6 +114,10 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const [fileSystem, setFileSystem] = useState("lfs");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingFileName, setDownloadingFileName] = useState("");
+  const [downloadIndeterminate, setDownloadIndeterminate] = useState(false);
   const [storageInfo, setStorageInfo] = useState({
     total: 0,
     used: 0,
@@ -135,6 +139,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   // Refs for cleanup and request management
   const abortControllerRef = useRef(null);
   const uploadXhrRef = useRef(null);
+  const downloadXhrRef = useRef(null);
 
   const apiURL = config?.apiURL || "";
 
@@ -146,6 +151,9 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       }
       if (uploadXhrRef.current) {
         uploadXhrRef.current.abort();
+      }
+      if (downloadXhrRef.current) {
+        downloadXhrRef.current.abort();
       }
     };
   }, []);
@@ -183,70 +191,348 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     []
   );
 
-  // Open file with authentication
+  // Open file with authentication and progress tracking
   const openFileWithAuth = useCallback(
     async (file) => {
       const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
 
+      setIsDownloading(true);
+      setDownloadProgress(0);
+      setDownloadingFileName(file.name);
+      setDownloadIndeterminate(false);
+      setError(null);
+
+      // Open a blank window immediately (within user action context to avoid popup blocker)
+      let newWindow = null;
       try {
-        const response = await fetchWithRetry(fileUrl, { method: "GET" });
-
-        // Get content type from response or infer from extension
-        let contentType =
-          response.headers.get("content-type") ||
-          getContentTypeFromExtension(file.name) ||
-          "application/octet-stream";
-
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(
-          new Blob([blob], { type: contentType })
-        );
-
-        window.open(blobUrl, "_blank");
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        newWindow = window.open("", "_blank");
+        if (newWindow) {
+          newWindow.document.write(`
+            <html>
+              <head>
+                <title>Loading ${file.name}...</title>
+                <style>
+                  body {
+                    margin: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    background: #1a1a1a;
+                    color: #fff;
+                  }
+                  .container {
+                    text-align: center;
+                    max-width: 400px;
+                    padding: 20px;
+                  }
+                  .filename {
+                    font-size: 18px;
+                    margin-bottom: 24px;
+                    word-break: break-word;
+                  }
+                  .progress-bar {
+                    width: 100%;
+                    height: 6px;
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 3px;
+                    overflow: hidden;
+                    margin-bottom: 12px;
+                  }
+                  .progress-fill {
+                    height: 100%;
+                    background: #17EB9D;
+                    width: 0%;
+                    transition: width 0.3s ease;
+                  }
+                  .progress-text {
+                    font-size: 14px;
+                    color: #888;
+                  }
+                  .spinner {
+                    border: 3px solid rgba(255,255,255,0.1);
+                    border-top: 3px solid #17EB9D;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin: 20px auto;
+                  }
+                  @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="spinner"></div>
+                  <div class="filename" id="filename">${file.name}</div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress"></div>
+                  </div>
+                  <div class="progress-text" id="status">Starting download...</div>
+                </div>
+              </body>
+            </html>
+          `);
+          newWindow.document.close(); // Important: close document to finish writing
+        }
       } catch (err) {
-        const msg =
-          err.message === "Request timed out"
-            ? "Request timed out - device may be busy"
-            : `Failed to open file: ${err.message}`;
-        setError(msg);
+        console.warn("Could not open new window (popup blocked?):", err);
       }
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        downloadXhrRef.current = xhr;
+
+        xhr.open("GET", fileUrl, true);
+        xhr.responseType = "blob";
+
+        // Track download progress and update the new window
+        xhr.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round(
+              (event.loaded / event.total) * 100
+            );
+            setDownloadProgress(percentComplete);
+            setDownloadIndeterminate(false);
+
+            // Update progress in the new window
+            if (newWindow && !newWindow.closed && newWindow.document) {
+              try {
+                const progressEl =
+                  newWindow.document.getElementById("progress");
+                const statusEl = newWindow.document.getElementById("status");
+                if (progressEl) progressEl.style.width = percentComplete + "%";
+                if (statusEl)
+                  statusEl.textContent = `Loading... ${percentComplete}%`;
+              } catch (e) {
+                // Ignore cross-origin or access errors
+              }
+            }
+          } else {
+            // No Content-Length header, show indeterminate progress
+            setDownloadIndeterminate(true);
+            if (newWindow && !newWindow.closed && newWindow.document) {
+              try {
+                const statusEl = newWindow.document.getElementById("status");
+                if (statusEl) statusEl.textContent = "Loading...";
+              } catch (e) {
+                // Ignore cross-origin or access errors
+              }
+            }
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              // Get content type from response or infer from extension
+              let contentType =
+                xhr.getResponseHeader("content-type") ||
+                getContentTypeFromExtension(file.name) ||
+                "application/octet-stream";
+
+              const blob = xhr.response;
+              const blobUrl = URL.createObjectURL(
+                new Blob([blob], { type: contentType })
+              );
+
+              // If we opened a window earlier, update it with the blob
+              if (newWindow && !newWindow.closed) {
+                newWindow.location.replace(blobUrl); // Use replace instead of href
+              } else {
+                // Try to open a new window (may be blocked)
+                const fallbackWindow = window.open(blobUrl, "_blank");
+                if (!fallbackWindow) {
+                  // Popup was blocked, create a download link instead
+                  const a = document.createElement("a");
+                  a.href = blobUrl;
+                  a.target = "_blank";
+                  a.rel = "noopener noreferrer";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  setInfo(
+                    `Opened ${file.name} (if popup was blocked, check downloads)`
+                  );
+                } else {
+                  setInfo(`Opened ${file.name}`);
+                }
+              }
+
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+              resolve();
+            } catch (err) {
+              if (newWindow && !newWindow.closed) {
+                newWindow.close();
+              }
+              setError(`Failed to open file: ${err.message}`);
+              reject(err);
+            } finally {
+              setIsDownloading(false);
+              setDownloadProgress(0);
+              setDownloadingFileName("");
+              setDownloadIndeterminate(false);
+              downloadXhrRef.current = null;
+            }
+          } else {
+            if (newWindow && !newWindow.closed) {
+              newWindow.close();
+            }
+            const errorMsg =
+              xhr.status === 408
+                ? "Request timed out - device may be busy"
+                : `Failed to open file: HTTP ${xhr.status}`;
+            setError(errorMsg);
+            setIsDownloading(false);
+            setDownloadProgress(0);
+            setDownloadingFileName("");
+            setDownloadIndeterminate(false);
+            downloadXhrRef.current = null;
+            reject(new Error(errorMsg));
+          }
+        });
+
+        xhr.addEventListener("error", () => {
+          if (newWindow && !newWindow.closed) {
+            newWindow.close();
+          }
+          setError("Failed to open file: Network error");
+          setIsDownloading(false);
+          setDownloadProgress(0);
+          setDownloadingFileName("");
+          setDownloadIndeterminate(false);
+          downloadXhrRef.current = null;
+          reject(new Error("Network error"));
+        });
+
+        xhr.addEventListener("timeout", () => {
+          if (newWindow && !newWindow.closed) {
+            newWindow.close();
+          }
+          setError("Request timed out - device may be busy");
+          setIsDownloading(false);
+          setDownloadProgress(0);
+          setDownloadingFileName("");
+          setDownloadIndeterminate(false);
+          downloadXhrRef.current = null;
+          reject(new Error("Timeout"));
+        });
+
+        xhr.timeout = 60000; // 60 second timeout for large files
+        xhr.send();
+      });
     },
-    [apiURL, fileSystem, fetchWithRetry]
+    [apiURL, fileSystem]
   );
 
-  // Download file with authentication
+  // Download file with authentication and progress tracking
   const downloadFileWithAuth = useCallback(
     async (file) => {
       const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
 
-      try {
-        const response = await fetchWithRetry(fileUrl, { method: "GET" });
+      setIsDownloading(true);
+      setDownloadProgress(0);
+      setDownloadingFileName(file.name);
+      setDownloadIndeterminate(false);
+      setError(null);
 
-        const contentType =
-          response.headers.get("content-type") || "application/octet-stream";
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(
-          new Blob([blob], { type: contentType })
-        );
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        downloadXhrRef.current = xhr;
 
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = file?.name || "download";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        xhr.open("GET", fileUrl, true);
+        xhr.responseType = "blob";
 
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-      } catch (err) {
-        const msg =
-          err.message === "Request timed out"
-            ? "Request timed out - device may be busy"
-            : `Failed to download file: ${err.message}`;
-        setError(msg);
-      }
+        // Track download progress
+        xhr.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round(
+              (event.loaded / event.total) * 100
+            );
+            setDownloadProgress(percentComplete);
+            setDownloadIndeterminate(false);
+          } else {
+            // No Content-Length header, show indeterminate progress
+            setDownloadIndeterminate(true);
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const contentType =
+                xhr.getResponseHeader("content-type") ||
+                "application/octet-stream";
+              const blob = xhr.response;
+              const blobUrl = URL.createObjectURL(
+                new Blob([blob], { type: contentType })
+              );
+
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = file?.name || "download";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+              setInfo(`Downloaded ${file.name}`);
+              resolve();
+            } catch (err) {
+              setError(`Failed to download file: ${err.message}`);
+              reject(err);
+            } finally {
+              setIsDownloading(false);
+              setDownloadProgress(0);
+              setDownloadingFileName("");
+              setDownloadIndeterminate(false);
+              downloadXhrRef.current = null;
+            }
+          } else {
+            const errorMsg =
+              xhr.status === 408
+                ? "Request timed out - device may be busy"
+                : `Failed to download file: HTTP ${xhr.status}`;
+            setError(errorMsg);
+            setIsDownloading(false);
+            setDownloadProgress(0);
+            setDownloadingFileName("");
+            setDownloadIndeterminate(false);
+            downloadXhrRef.current = null;
+            reject(new Error(errorMsg));
+          }
+        });
+
+        xhr.addEventListener("error", () => {
+          setError("Failed to download file: Network error");
+          setIsDownloading(false);
+          setDownloadProgress(0);
+          setDownloadingFileName("");
+          setDownloadIndeterminate(false);
+          downloadXhrRef.current = null;
+          reject(new Error("Network error"));
+        });
+
+        xhr.addEventListener("timeout", () => {
+          setError("Request timed out - device may be busy");
+          setIsDownloading(false);
+          setDownloadProgress(0);
+          setDownloadingFileName("");
+          setDownloadIndeterminate(false);
+          downloadXhrRef.current = null;
+          reject(new Error("Timeout"));
+        });
+
+        xhr.timeout = 60000; // 60 second timeout for large files
+        xhr.send();
+      });
     },
-    [apiURL, fileSystem, fetchWithRetry]
+    [apiURL, fileSystem]
   );
 
   // Fetch storage information
@@ -598,7 +884,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       const initialFs = config?.sd?.initialized === true ? "sd" : "lfs";
       fetchFiles("/", initialFs);
     }
-  }, [config, deviceOnline, fetchFiles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, deviceOnline]);
 
   // Show offline message but don't block the component
   const showOfflineWarning = !deviceOnline && files.length === 0;
@@ -638,7 +925,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             exclusive
             onChange={handleFileSystemChange}
             size="small"
-            disabled={loading || isUploading}
+            disabled={loading || isUploading || isDownloading}
             sx={{
               width: { xs: "100%", sm: "auto" },
               "& .MuiToggleButton-root": {
@@ -668,7 +955,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             variant="contained"
             component="label"
             startIcon={<Upload />}
-            disabled={loading || isUploading}
+            disabled={loading || isUploading || isDownloading}
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
@@ -690,7 +977,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             variant="outlined"
             startIcon={<Folder />}
             onClick={() => setNewFolderDialog({ open: true, folderName: "" })}
-            disabled={loading || isUploading}
+            disabled={loading || isUploading || isDownloading}
             size="small"
             sx={{
               width: { xs: "100%", sm: "auto" },
@@ -705,7 +992,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
           <IconButton
             onClick={() => fetchFiles(currentPath, fileSystem)}
-            disabled={loading || isUploading}
+            disabled={loading || isUploading || isDownloading}
             size="small"
             sx={{ height: "32px", width: "32px" }}
           >
@@ -738,6 +1025,40 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               }}
             >
               Uploading... {uploadProgress}%
+            </Typography>
+          </Box>
+        )}
+
+        {/* Download Progress */}
+        {isDownloading && (
+          <Box sx={{ width: "100%", mt: 1 }}>
+            <LinearProgress
+              variant={downloadIndeterminate ? "indeterminate" : "determinate"}
+              value={downloadIndeterminate ? undefined : downloadProgress}
+              sx={{
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: "rgba(0, 0, 0, 0.1)",
+                "& .MuiLinearProgress-bar": {
+                  borderRadius: 3,
+                  backgroundColor: theme.palette.success.main,
+                },
+              }}
+            />
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                textAlign: "center",
+                mt: 0.5,
+                color: "text.secondary",
+              }}
+            >
+              {downloadIndeterminate
+                ? `Loading ${downloadingFileName}...`
+                : downloadProgress < 100
+                ? `Loading ${downloadingFileName}... ${downloadProgress}%`
+                : `Opening ${downloadingFileName}...`}
             </Typography>
           </Box>
         )}

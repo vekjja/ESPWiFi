@@ -158,7 +158,12 @@ void ESPWiFi::srvFiles() {
 
         std::string path = espwifi->getQueryParam(req, "path");
         path = normalizePath(path);
+
+        espwifi->log(DEBUG, "📁 List: fs=%s, path=%s", fsParam.c_str(),
+                     path.c_str());
+
         if (!isSafePath(path)) {
+          espwifi->log(WARNING, "📁 List: Invalid path: %s", path.c_str());
           (void)espwifi->sendJsonResponse(req, 400, "{\"error\":\"Bad path\"}",
                                           &clientInfo);
           return ESP_OK;
@@ -166,6 +171,8 @@ void ESPWiFi::srvFiles() {
 
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
+          espwifi->log(WARNING, "📁 List: Filesystem not available: %s",
+                       fsParam.c_str());
           (void)espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
@@ -175,6 +182,8 @@ void ESPWiFi::srvFiles() {
         std::string fullPath = mountPoint + path;
         DIR *dir = opendir(fullPath.c_str());
         if (!dir) {
+          espwifi->log(WARNING, "📁 List: Directory not found: %s",
+                       fullPath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 404, "{\"error\":\"Directory not found\"}", &clientInfo);
           return ESP_OK;
@@ -309,9 +318,8 @@ void ESPWiFi::srvFiles() {
         // Read small JSON body into a stack buffer to minimize heap.
         const size_t content_len = req->content_len;
         if (content_len == 0 || content_len > 512) {
-          (void)espwifi->sendJsonResponse(
+          return espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Bad request\"}", &clientInfo);
-          return ESP_OK;
         }
 
         char body[513];
@@ -327,35 +335,39 @@ void ESPWiFi::srvFiles() {
         JsonDocument jsonDoc;
         DeserializationError error = deserializeJson(jsonDoc, body);
         if (error) {
-          (void)espwifi->sendJsonResponse(
+          return espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Invalid JSON\"}", &clientInfo);
-          return ESP_OK;
         }
 
         std::string fsParam = jsonDoc["fs"] | "lfs";
         std::string path = jsonDoc["path"] | "/";
         std::string name = jsonDoc["name"] | "";
         path = normalizePath(path);
+
+        espwifi->log(DEBUG, "📂 MkDir: fs=%s, path=%s, name=%s",
+                     fsParam.c_str(), path.c_str(), name.c_str());
+
         if (!isSafePath(path) || name.empty()) {
-          (void)espwifi->sendJsonResponse(
+          espwifi->log(WARNING, "📂 MkDir: Invalid request");
+          return espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Bad request\"}", &clientInfo);
-          return ESP_OK;
         }
 
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
-          (void)espwifi->sendJsonResponse(
+          espwifi->log(WARNING, "📂 MkDir: Filesystem not available: %s",
+                       fsParam.c_str());
+          return espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
-          return ESP_OK;
         }
 
         const std::string sanitizedName = espwifi->sanitizeFilename(name);
         if (sanitizedName.empty() || sanitizedName == "." ||
             sanitizedName == "..") {
-          (void)espwifi->sendJsonResponse(
+          espwifi->log(WARNING, "📂 MkDir: Bad folder name: %s", name.c_str());
+          return espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Bad folder name\"}", &clientInfo);
-          return ESP_OK;
         }
 
         std::string dirPath = path;
@@ -366,15 +378,19 @@ void ESPWiFi::srvFiles() {
 
         // Prevent creation of protected paths
         if (espwifi->isProtectedFile(fsParam, dirPath)) {
+          espwifi->log(WARNING, "📂 MkDir: Protected path: %s",
+                       dirPath.c_str());
           return espwifi->sendJsonResponse(
               req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
         }
 
         std::string fullDirPath = mountPoint + dirPath;
         if (espwifi->mkDir(fullDirPath)) {
+          espwifi->log(INFO, "📂 MkDir: Created: %s", dirPath.c_str());
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
+          espwifi->log(ERROR, "💔 📂 MkDir: Failed: %s", fullDirPath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to create directory\"}",
               &clientInfo);
@@ -391,7 +407,11 @@ void ESPWiFi::srvFiles() {
         std::string oldPath = espwifi->getQueryParam(req, "oldPath");
         std::string newName = espwifi->getQueryParam(req, "newName");
 
+        espwifi->log(DEBUG, "✏️ Rename: fs=%s, oldPath=%s, newName=%s",
+                     fsParam.c_str(), oldPath.c_str(), newName.c_str());
+
         if (fsParam.empty() || oldPath.empty() || newName.empty()) {
+          espwifi->log(WARNING, "✏️ Rename: Missing parameters");
           (void)espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Missing parameters\"}", &clientInfo);
           return ESP_OK;
@@ -399,6 +419,7 @@ void ESPWiFi::srvFiles() {
 
         oldPath = normalizePath(oldPath);
         if (!isSafePath(oldPath)) {
+          espwifi->log(WARNING, "✏️ Rename: Invalid path: %s", oldPath.c_str());
           (void)espwifi->sendJsonResponse(req, 400, "{\"error\":\"Bad path\"}",
                                           &clientInfo);
           return ESP_OK;
@@ -406,6 +427,8 @@ void ESPWiFi::srvFiles() {
 
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
+          espwifi->log(WARNING, "✏️ Rename: Filesystem not available: %s",
+                       fsParam.c_str());
           (void)espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
@@ -414,6 +437,8 @@ void ESPWiFi::srvFiles() {
 
         // Prevent renaming of protected paths
         if (espwifi->isProtectedFile(fsParam, oldPath)) {
+          espwifi->log(WARNING, "✏️ Rename: Protected path: %s",
+                       oldPath.c_str());
           return espwifi->sendJsonResponse(
               req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
         }
@@ -422,6 +447,7 @@ void ESPWiFi::srvFiles() {
         std::string sanitizedNewName = espwifi->sanitizeFilename(newName);
         if (sanitizedNewName.empty() || sanitizedNewName == "." ||
             sanitizedNewName == "..") {
+          espwifi->log(WARNING, "✏️ Rename: Bad name: %s", newName.c_str());
           (void)espwifi->sendJsonResponse(req, 400, "{\"error\":\"Bad name\"}",
                                           &clientInfo);
           return ESP_OK;
@@ -440,6 +466,8 @@ void ESPWiFi::srvFiles() {
 
         // Prevent renaming INTO a protected path as well.
         if (espwifi->isProtectedFile(fsParam, newPath)) {
+          espwifi->log(WARNING, "✏️ Rename: Target path is protected: %s",
+                       newPath.c_str());
           return espwifi->sendJsonResponse(
               req, 403, "{\"error\":\"Target path is protected\"}",
               &clientInfo);
@@ -449,9 +477,13 @@ void ESPWiFi::srvFiles() {
         std::string fullNewPath = mountPoint + newPath;
 
         if (rename(fullOldPath.c_str(), fullNewPath.c_str()) == 0) {
+          espwifi->log(INFO, "✏️ Rename: %s -> %s", oldPath.c_str(),
+                       newPath.c_str());
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
+          espwifi->log(ERROR, "💔 ✏️ Rename: Failed: %s -> %s", oldPath.c_str(),
+                       fullNewPath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to rename file\"}", &clientInfo);
         }
@@ -467,7 +499,11 @@ void ESPWiFi::srvFiles() {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
         std::string filePath = espwifi->getQueryParam(req, "path");
 
+        espwifi->log(DEBUG, "🗑️ Delete: fs=%s, path=%s", fsParam.c_str(),
+                     filePath.c_str());
+
         if (fsParam.empty() || filePath.empty()) {
+          espwifi->log(WARNING, "🗑️ Delete: Missing parameters");
           (void)espwifi->sendJsonResponse(
               req, 400, "{\"error\":\"Missing parameters\"}", &clientInfo);
           return ESP_OK;
@@ -475,6 +511,8 @@ void ESPWiFi::srvFiles() {
 
         filePath = normalizePath(filePath);
         if (!isSafePath(filePath)) {
+          espwifi->log(WARNING, "🗑️ Delete: Invalid path: %s",
+                       filePath.c_str());
           (void)espwifi->sendJsonResponse(req, 400, "{\"error\":\"Bad path\"}",
                                           &clientInfo);
           return ESP_OK;
@@ -482,6 +520,8 @@ void ESPWiFi::srvFiles() {
 
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
+          espwifi->log(WARNING, "🗑️ Delete: Filesystem not available: %s",
+                       fsParam.c_str());
           (void)espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
@@ -492,6 +532,7 @@ void ESPWiFi::srvFiles() {
 
         // Check if file exists
         if (!espwifi->fileExists(fullPath) && !espwifi->dirExists(fullPath)) {
+          espwifi->log(WARNING, "🗑️ Delete: Not found: %s", filePath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 404, "{\"error\":\"File not found\"}", &clientInfo);
           return ESP_OK;
@@ -499,6 +540,8 @@ void ESPWiFi::srvFiles() {
 
         // Prevent deletion of protected paths
         if (espwifi->isProtectedFile(fsParam, filePath)) {
+          espwifi->log(WARNING, "🗑️ Delete: Protected path: %s",
+                       filePath.c_str());
           return espwifi->sendJsonResponse(
               req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
         }
@@ -626,9 +669,11 @@ void ESPWiFi::srvFiles() {
         }
 
         if (deleteSuccess) {
+          espwifi->log(INFO, "🗑️ Delete: Removed: %s", filePath.c_str());
           (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
                                           &clientInfo);
         } else {
+          espwifi->log(ERROR, "💔 🗑️ Delete: Failed: %s", filePath.c_str());
           (void)espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to delete file\"}", &clientInfo);
         }
@@ -637,162 +682,301 @@ void ESPWiFi::srvFiles() {
       });
 
   // API endpoint for file upload - POST /api/files/upload
-  // Note: ESP-IDF httpd doesn't have built-in multipart support, so we stream
-  // parse multipart/form-data (single file) without buffering the whole body.
+  // Industry-standard streaming multipart/form-data parser
+  // Simplified and standardized for maintainability and reliability
   registerRoute(
       "/api/files/upload", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
+        // ===== PHASE 1: VALIDATION =====
         std::string fsParam = espwifi->getQueryParam(req, "fs");
         std::string path = espwifi->getQueryParam(req, "path");
         path = normalizePath(path);
+
+        espwifi->log(DEBUG, "📤 Upload: fs=%s, path=%s, len=%zu",
+                     fsParam.c_str(), path.c_str(), req->content_len);
+
         if (!isSafePath(path)) {
-          (void)espwifi->sendJsonResponse(req, 400, "{\"error\":\"Bad path\"}",
-                                          &clientInfo);
-          return ESP_OK;
+          espwifi->log(WARNING, "📤 Upload: Invalid path: %s", path.c_str());
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Invalid path\"}", &clientInfo);
         }
 
-        // Determine filesystem. Default to SD if mounted, else LFS.
+        // Determine filesystem with fallback
         if (fsParam.empty()) {
           fsParam = (espwifi->sdCard != nullptr) ? "sd" : "lfs";
         }
 
         std::string mountPoint;
         if (!pickMountPoint(espwifi, fsParam, mountPoint)) {
-          (void)espwifi->sendJsonResponse(
+          return espwifi->sendJsonResponse(
               req, 503, "{\"error\":\"File system not available\"}",
               &clientInfo);
-          return ESP_OK;
         }
 
-        // Content-Type boundary.
+        // Validate Content-Type header
         size_t ctypeLen = httpd_req_get_hdr_value_len(req, "Content-Type");
         if (ctypeLen == 0 || ctypeLen > 192) {
-          (void)espwifi->sendJsonResponse(
-              req, 400, "{\"error\":\"Missing Content-Type\"}", &clientInfo);
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing or invalid Content-Type\"}",
+              &clientInfo);
         }
         char ctype[193];
         if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype,
                                         sizeof(ctype)) != ESP_OK) {
-          (void)espwifi->sendJsonResponse(
-              req, 400, "{\"error\":\"Missing Content-Type\"}", &clientInfo);
-          return ESP_OK;
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Invalid Content-Type header\"}",
+              &clientInfo);
         }
+
+        // Parse boundary from Content-Type
         std::string contentType(ctype);
-        size_t bpos = contentType.find("boundary=");
-        if (contentType.find("multipart/form-data") == std::string::npos ||
-            bpos == std::string::npos) {
-          (void)espwifi->sendJsonResponse(
-              req, 400, "{\"error\":\"Invalid Content-Type\"}", &clientInfo);
-          return ESP_OK;
+        if (contentType.find("multipart/form-data") == std::string::npos) {
+          return espwifi->sendJsonResponse(
+              req, 400,
+              "{\"error\":\"Content-Type must be multipart/form-data\"}",
+              &clientInfo);
         }
-        std::string boundary = "--" + contentType.substr(bpos + 9);
-        // Trim any trailing parameters (rare).
+
+        size_t bpos = contentType.find("boundary=");
+        if (bpos == std::string::npos) {
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Missing boundary in Content-Type\"}",
+              &clientInfo);
+        }
+
+        // Extract and normalize boundary
+        std::string boundary = contentType.substr(bpos + 9);
         size_t semi = boundary.find(';');
         if (semi != std::string::npos) {
           boundary = boundary.substr(0, semi);
         }
+        // Trim whitespace and quotes
+        while (!boundary.empty() &&
+               (boundary.back() == ' ' || boundary.back() == '\t' ||
+                boundary.back() == '"' || boundary.back() == '\'')) {
+          boundary.pop_back();
+        }
+        while (!boundary.empty() &&
+               (boundary.front() == ' ' || boundary.front() == '\t' ||
+                boundary.front() == '"' || boundary.front() == '\'')) {
+          boundary = boundary.substr(1);
+        }
 
-        // Ensure target directory exists (mkdir -p).
+        if (boundary.empty()) {
+          espwifi->log(WARNING, "📤 Upload: Empty boundary after parsing");
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Empty boundary\"}", &clientInfo);
+        }
+
+        // Add leading -- for boundary marker (RFC 2046)
+        boundary = "--" + boundary;
+        if (boundary.size() < 4) {
+          espwifi->log(WARNING, "📤 Upload: Invalid boundary size: %zu",
+                       boundary.size());
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Invalid boundary\"}", &clientInfo);
+        }
+
+        espwifi->log(DEBUG, "📤 Upload: boundary=%s", boundary.c_str());
+
+        // Validate content length
+        if (req->content_len == 0) {
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Empty request body\"}", &clientInfo);
+        }
+
+        // Ensure target directory exists
         std::string fullDir = mountPoint + path;
         if (!espwifi->mkDir(fullDir)) {
-          (void)espwifi->sendJsonResponse(
+          return espwifi->sendJsonResponse(
               req, 500, "{\"error\":\"Failed to create directory\"}",
               &clientInfo);
-          return ESP_OK;
         }
 
-        // Streaming multipart parser (single file).
-        const size_t RX_CHUNK = 2048;
-        char *rx = (char *)malloc(RX_CHUNK);
-        if (!rx) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
+        // ===== PHASE 2: STREAMING PARSER SETUP =====
+        const size_t RX_CHUNK = 4096;
+        const size_t MAX_HEADER_SIZE = 4096;
+        const size_t MAX_CARRY_SIZE = 256;
+
+        char *rxBuffer = (char *)malloc(RX_CHUNK);
+        if (!rxBuffer) {
+          return espwifi->sendJsonResponse(
+              req, 500, "{\"error\":\"Memory allocation failed\"}",
+              &clientInfo);
         }
 
-        std::string carry;
-        carry.reserve(boundary.size() + 16);
+        char carryBuffer[MAX_CARRY_SIZE];
+        size_t carrySize = 0;
 
-        FILE *out = nullptr;
+        FILE *outFile = nullptr;
         std::string relFilePath;
         std::string fullFilePath;
         bool headersParsed = false;
-        bool fileOpen = false;
         size_t totalWritten = 0;
+        size_t bytesReceived = 0;
+        bool cleanupDone = false;
 
-        auto closeAndCleanup = [&]() {
-          if (out) {
-            fclose(out);
-            out = nullptr;
+        // Boundary markers (RFC 2046 compliant)
+        std::string dataMarker = "\r\n" + boundary;
+        std::string finalMarker = "\r\n" + boundary + "--";
+        const size_t maxMarkerLen = finalMarker.size();
+
+        // Idempotent cleanup function
+        auto cleanup = [&]() {
+          if (cleanupDone)
+            return;
+          cleanupDone = true;
+
+          if (outFile) {
+            fclose(outFile);
+            outFile = nullptr;
+            // Only remove file on error (closeFileStream would do this)
+            if (!fullFilePath.empty()) {
+              ::remove(fullFilePath.c_str());
+            }
           }
-          free(rx);
+          if (rxBuffer) {
+            free(rxBuffer);
+            rxBuffer = nullptr;
+          }
         };
 
+        // ===== PHASE 3: STREAMING PROCESSING =====
         size_t remaining = req->content_len;
         unsigned long startTime = millis();
-        const unsigned long timeout = 15000; // allow larger uploads
+        // Dynamic timeout: 30s base + 1s per 20KB, max 2 minutes
+        unsigned long timeout = 30000 + ((req->content_len / 20480) * 1000);
+        if (timeout > 120000)
+          timeout = 120000;
 
         while (remaining > 0 && (millis() - startTime) < timeout) {
           size_t toRead = (remaining > RX_CHUNK) ? RX_CHUNK : remaining;
-          int r = httpd_req_recv(req, rx, toRead);
-          if (r <= 0) {
-            closeAndCleanup();
-            if (r == HTTPD_SOCK_ERR_TIMEOUT) {
+          int bytesRead = httpd_req_recv(req, rxBuffer, toRead);
+          if (bytesRead <= 0) {
+            cleanup();
+            if (bytesRead == HTTPD_SOCK_ERR_TIMEOUT) {
               httpd_resp_send_408(req);
+              return ESP_FAIL;
+            } else {
+              return espwifi->sendJsonResponse(
+                  req, 500, "{\"error\":\"Network error during upload\"}",
+                  &clientInfo);
             }
-            return ESP_FAIL;
           }
-          remaining -= (size_t)r;
+          remaining -= (size_t)bytesRead;
+          bytesReceived += (size_t)bytesRead;
 
-          // Append into a small working buffer.
-          std::string chunk(rx, rx + r);
-          std::string data = carry + chunk;
-          carry.clear();
+          // Feed watchdog periodically
+          if (bytesReceived >= 32768) {
+            espwifi->feedWatchDog(1);
+            bytesReceived = 0;
+          }
 
-          // Step 1: parse headers once.
+          // Combine carry buffer with new data
+          size_t totalSize = carrySize + (size_t)bytesRead;
+          if (totalSize == 0) {
+            // No data to process, skip this iteration
+            continue;
+          }
+
+          char *combined = (char *)malloc(totalSize);
+          if (!combined) {
+            cleanup();
+            return espwifi->sendJsonResponse(
+                req, 500, "{\"error\":\"Memory allocation failed\"}",
+                &clientInfo);
+          }
+          memcpy(combined, carryBuffer, carrySize);
+          if (bytesRead > 0) {
+            memcpy(combined + carrySize, rxBuffer, bytesRead);
+          }
+
+          // Parse headers if not yet parsed
           if (!headersParsed) {
-            // Expect boundary then headers. Find the header terminator.
-            size_t hdrEnd = data.find("\r\n\r\n");
-            if (hdrEnd == std::string::npos) {
-              // Need more data; keep bounded tail.
-              if (data.size() > 4096) {
-                closeAndCleanup();
-                (void)espwifi->sendJsonResponse(
-                    req, 400, "{\"error\":\"Bad multipart\"}", &clientInfo);
-                return ESP_OK;
+            if (totalSize > MAX_HEADER_SIZE) {
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
+                  req, 400, "{\"error\":\"Headers too large\"}", &clientInfo);
+            }
+
+            // Find header terminator \r\n\r\n
+            size_t headerEnd = 0;
+            bool foundHeaders = false;
+            for (size_t i = 0; i <= totalSize - 4; ++i) {
+              if (combined[i] == '\r' && combined[i + 1] == '\n' &&
+                  combined[i + 2] == '\r' && combined[i + 3] == '\n') {
+                headerEnd = i + 4;
+                foundHeaders = true;
+                break;
               }
-              carry = data;
-              espwifi->feedWatchDog();
+            }
+
+            if (!foundHeaders) {
+              // Keep tail in carry buffer
+              size_t keepSize =
+                  (totalSize < maxMarkerLen) ? totalSize : maxMarkerLen;
+              if (keepSize > MAX_CARRY_SIZE)
+                keepSize = MAX_CARRY_SIZE;
+              memcpy(carryBuffer, combined + (totalSize - keepSize), keepSize);
+              carrySize = keepSize;
+              free(combined);
               continue;
             }
 
-            std::string headers = data.substr(0, hdrEnd);
-            // Extract filename="...".
+            // Parse headers
+            std::string headers(combined, headerEnd);
             size_t fnPos = headers.find("filename=\"");
             if (fnPos == std::string::npos) {
-              closeAndCleanup();
-              (void)espwifi->sendJsonResponse(
-                  req, 400, "{\"error\":\"No filename\"}", &clientInfo);
-              return ESP_OK;
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
+                  req, 400, "{\"error\":\"No filename in upload\"}",
+                  &clientInfo);
             }
+
             fnPos += 10;
             size_t fnEnd = headers.find("\"", fnPos);
             if (fnEnd == std::string::npos) {
-              closeAndCleanup();
-              (void)espwifi->sendJsonResponse(
-                  req, 400, "{\"error\":\"Bad filename\"}", &clientInfo);
-              return ESP_OK;
-            }
-            std::string filename = headers.substr(fnPos, fnEnd - fnPos);
-            std::string sanitized = espwifi->sanitizeFilename(filename);
-            if (sanitized.empty()) {
-              closeAndCleanup();
-              (void)espwifi->sendJsonResponse(
-                  req, 400, "{\"error\":\"Bad filename\"}", &clientInfo);
-              return ESP_OK;
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
+                  req, 400, "{\"error\":\"Malformed filename field\"}",
+                  &clientInfo);
             }
 
+            std::string filename = headers.substr(fnPos, fnEnd - fnPos);
+            std::string sanitized = espwifi->sanitizeFilename(filename);
+
+            if (filename != sanitized) {
+              espwifi->log(DEBUG, "📤 Upload: Sanitized '%s' -> '%s'",
+                           filename.c_str(), sanitized.c_str());
+            }
+
+            if (sanitized.empty()) {
+              espwifi->log(WARNING, "📤 Upload: Invalid filename: %s",
+                           filename.c_str());
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
+                  req, 400, "{\"error\":\"Invalid filename\"}", &clientInfo);
+            }
+
+            // Check filename length (FAT32 limit is 255 characters)
+            if (sanitized.length() > 100) {
+              espwifi->log(WARNING,
+                           "📤 Upload: Filename too long: %s (%zu characters)",
+                           sanitized.c_str(), sanitized.length());
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
+                  req, 400,
+                  "{\"error\":\"Filename too long (max 100 characters)\"}",
+                  &clientInfo);
+            }
+
+            // Build file path
             relFilePath = path;
             if (relFilePath.back() != '/') {
               relFilePath += "/";
@@ -800,102 +984,280 @@ void ESPWiFi::srvFiles() {
             relFilePath += sanitized;
             fullFilePath = mountPoint + relFilePath;
 
-            // Prevent uploads that would create/overwrite protected paths.
+            espwifi->log(INFO, "📤 Upload: Starting file: %s (%zu bytes)",
+                         sanitized.c_str(), req->content_len);
+            espwifi->log(DEBUG, "📤 Upload: Full path: %s",
+                         fullFilePath.c_str());
+
             if (espwifi->isProtectedFile(fsParam, relFilePath)) {
-              closeAndCleanup();
+              free(combined);
+              cleanup();
               return espwifi->sendJsonResponse(
                   req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
             }
 
-            out = fopen(fullFilePath.c_str(), "wb");
-            if (!out) {
-              closeAndCleanup();
-              (void)espwifi->sendJsonResponse(
+            // Open file using member function
+            outFile = espwifi->openFileForWrite(fullFilePath);
+            if (!outFile) {
+              // Get more specific error information
+              int err = errno;
+              espwifi->log(
+                  ERROR, "📤 Upload: Failed to create file: %s (errno=%d: %s)",
+                  fullFilePath.c_str(), err, strerror(err));
+
+              // Check if it's a disk full error
+              if (err == ENOSPC || err == 28) {
+                free(combined);
+                cleanup();
+                return espwifi->sendJsonResponse(
+                    req, 507, "{\"error\":\"Disk full\"}", &clientInfo);
+              }
+
+              free(combined);
+              cleanup();
+              return espwifi->sendJsonResponse(
                   req, 500, "{\"error\":\"Failed to create file\"}",
                   &clientInfo);
-              return ESP_OK;
             }
-            fileOpen = true;
             headersParsed = true;
+            espwifi->log(DEBUG, "📤 Upload: Headers parsed, file opened");
 
-            // Continue with the remaining payload after headers.
-            data = data.substr(hdrEnd + 4);
-          }
-
-          if (!fileOpen) {
-            // Shouldn't happen, but be safe.
-            closeAndCleanup();
-            (void)espwifi->sendJsonResponse(req, 500, "{\"error\":\"Upload\"}",
-                                            &clientInfo);
-            return ESP_OK;
-          }
-
-          // Step 2: stream file data until boundary delimiter is found.
-          // The delimiter appears as "\r\n--boundary" in the stream.
-          std::string marker = "\r\n" + boundary;
-          size_t mpos = data.find(marker);
-          if (mpos == std::string::npos) {
-            // No boundary: write all but keep a tail to catch split marker.
-            const size_t keep = marker.size() + 8;
-            if (data.size() > keep) {
-              size_t writeLen = data.size() - keep;
-              size_t written = fwrite(data.data(), 1, writeLen, out);
-              totalWritten += written;
-              if (written != writeLen) {
-                fclose(out);
-                out = nullptr;
-                (void)::remove(fullFilePath.c_str());
-                closeAndCleanup();
-                (void)espwifi->sendJsonResponse(
-                    req, 500, "{\"error\":\"File write failed\"}", &clientInfo);
-                return ESP_OK;
+            // Process remaining data after headers
+            size_t dataStart = headerEnd;
+            size_t dataSize = totalSize - dataStart;
+            if (dataSize > 0) {
+              // Move data after headers to carry buffer for processing
+              if (dataSize <= MAX_CARRY_SIZE) {
+                memcpy(carryBuffer, combined + dataStart, dataSize);
+                carrySize = dataSize;
+              } else {
+                // Write what we can, keep tail
+                size_t writeSize = dataSize - maxMarkerLen;
+                if (!espwifi->writeFileChunk(outFile, combined + dataStart,
+                                             writeSize)) {
+                  free(combined);
+                  cleanup();
+                  return espwifi->sendJsonResponse(
+                      req, 500, "{\"error\":\"File write failed\"}",
+                      &clientInfo);
+                }
+                totalWritten += writeSize;
+                memcpy(carryBuffer, combined + dataStart + writeSize,
+                       maxMarkerLen);
+                carrySize = maxMarkerLen;
               }
-              carry.assign(data.data() + writeLen, keep);
             } else {
-              carry = data;
+              carrySize = 0;
             }
-          } else {
-            // Write up to marker (excluding the preceding "\r\n").
-            if (mpos > 0) {
-              size_t writeLen = mpos;
-              size_t written = fwrite(data.data(), 1, writeLen, out);
-              totalWritten += written;
-              if (written != writeLen) {
-                fclose(out);
-                out = nullptr;
-                (void)::remove(fullFilePath.c_str());
-                closeAndCleanup();
-                (void)espwifi->sendJsonResponse(
+            free(combined);
+            continue;
+          }
+
+          // Process file data - find boundaries
+          // Guard against buffer overflow
+          if (totalSize < finalMarker.size() && totalSize < dataMarker.size()) {
+            // Data too small to contain any boundary marker, keep in carry
+            if (totalSize <= MAX_CARRY_SIZE) {
+              memcpy(carryBuffer, combined, totalSize);
+              carrySize = totalSize;
+            } else {
+              // Write most of it, keep tail
+              size_t writeSize = totalSize - maxMarkerLen;
+              if (!espwifi->writeFileChunk(outFile, combined, writeSize)) {
+                free(combined);
+                cleanup();
+                return espwifi->sendJsonResponse(
                     req, 500, "{\"error\":\"File write failed\"}", &clientInfo);
-                return ESP_OK;
+              }
+              totalWritten += writeSize;
+              memcpy(carryBuffer, combined + writeSize, totalSize - writeSize);
+              carrySize = totalSize - writeSize;
+            }
+            free(combined);
+            continue;
+          }
+
+          size_t finalPos = std::string::npos;
+          size_t dataPos = std::string::npos;
+
+          // Search for final marker first (more specific) - with bounds check
+          if (totalSize >= finalMarker.size()) {
+            for (size_t i = 0; i <= totalSize - finalMarker.size(); ++i) {
+              if (memcmp(combined + i, finalMarker.c_str(),
+                         finalMarker.size()) == 0) {
+                finalPos = i;
+                break;
               }
             }
-
-            // Done.
-            fclose(out);
-            out = nullptr;
-
-            closeAndCleanup();
-            (void)espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
-                                            &clientInfo);
-            return ESP_OK;
           }
 
-          if ((totalWritten % 8192) == 0) {
-            espwifi->feedWatchDog();
+          // Search for data marker if final not found - with bounds check
+          if (finalPos == std::string::npos && totalSize >= dataMarker.size()) {
+            for (size_t i = 0; i <= totalSize - dataMarker.size(); ++i) {
+              if (memcmp(combined + i, dataMarker.c_str(), dataMarker.size()) ==
+                  0) {
+                dataPos = i;
+                break;
+              }
+            }
+          }
+
+          if (finalPos != std::string::npos) {
+            // Found final boundary - write up to it and close
+            if (finalPos > 0) {
+              if (!espwifi->writeFileChunk(outFile, combined, finalPos)) {
+                free(combined);
+                cleanup();
+                return espwifi->sendJsonResponse(
+                    req, 500, "{\"error\":\"File write failed\"}", &clientInfo);
+              }
+              totalWritten += finalPos;
+            }
+
+            // Close file successfully using member function
+            bool closeSuccess = espwifi->closeFileStream(outFile, fullFilePath);
+            outFile = nullptr;
+            free(combined);
+            free(rxBuffer);
+            rxBuffer = nullptr;
+            cleanupDone = true;
+
+            if (!closeSuccess) {
+              espwifi->log(ERROR,
+                           "📤 Upload: File close failed (final boundary): %s",
+                           fullFilePath.c_str());
+              return espwifi->sendJsonResponse(
+                  req, 500, "{\"error\":\"File close failed\"}", &clientInfo);
+            }
+
+            espwifi->log(INFO,
+                         "📤 Upload: Complete (final boundary): %s (%zu bytes)",
+                         relFilePath.c_str(), totalWritten);
+            return espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
+                                             &clientInfo);
+          } else if (dataPos != std::string::npos) {
+            // Found data boundary - write up to it and close
+            if (dataPos > 0) {
+              if (!espwifi->writeFileChunk(outFile, combined, dataPos)) {
+                free(combined);
+                cleanup();
+                return espwifi->sendJsonResponse(
+                    req, 500, "{\"error\":\"File write failed\"}", &clientInfo);
+              }
+              totalWritten += dataPos;
+            }
+
+            // Close file successfully using member function
+            bool closeSuccess = espwifi->closeFileStream(outFile, fullFilePath);
+            outFile = nullptr;
+            free(combined);
+            free(rxBuffer);
+            rxBuffer = nullptr;
+            cleanupDone = true;
+
+            if (!closeSuccess) {
+              espwifi->log(ERROR,
+                           "📤 Upload: File close failed (data boundary): %s",
+                           fullFilePath.c_str());
+              return espwifi->sendJsonResponse(
+                  req, 500, "{\"error\":\"File close failed\"}", &clientInfo);
+            }
+
+            espwifi->log(INFO,
+                         "📤 Upload: Complete (data boundary): %s (%zu bytes)",
+                         relFilePath.c_str(), totalWritten);
+            return espwifi->sendJsonResponse(req, 200, "{\"success\":true}",
+                                             &clientInfo);
+          } else {
+            // No boundary found - write all but keep tail for next iteration
+            size_t keepSize = maxMarkerLen;
+            size_t writeSize =
+                (totalSize > keepSize) ? totalSize - keepSize : 0;
+
+            if (writeSize > 0) {
+              if (!espwifi->writeFileChunk(outFile, combined, writeSize)) {
+                free(combined);
+                cleanup();
+                return espwifi->sendJsonResponse(
+                    req, 500, "{\"error\":\"File write failed\"}", &clientInfo);
+              }
+              totalWritten += writeSize;
+            }
+
+            // Keep tail in carry buffer
+            if (totalSize > 0) {
+              size_t tailKeepSize =
+                  (totalSize > maxMarkerLen) ? maxMarkerLen : totalSize;
+              memcpy(carryBuffer, combined + (totalSize - tailKeepSize),
+                     tailKeepSize);
+              carrySize = tailKeepSize;
+            } else {
+              carrySize = 0;
+            }
+
+            free(combined);
+
+            if ((totalWritten % 65536) == 0) {
+              espwifi->feedWatchDog(1);
+            }
           }
         }
 
-        // Timeout or incomplete.
-        if (out) {
-          fclose(out);
-          out = nullptr;
-          (void)::remove(fullFilePath.c_str());
+        // ===== PHASE 4: FINALIZATION =====
+        // Process carry buffer if upload completed without finding final
+        // boundary
+        if (headersParsed && outFile && carrySize > 0 && remaining == 0) {
+          // Bounds check before processing carry buffer
+          if (carrySize >= finalMarker.size()) {
+            char *combined = (char *)malloc(carrySize);
+            if (combined) {
+              memcpy(combined, carryBuffer, carrySize);
+              size_t finalPos = std::string::npos;
+
+              for (size_t i = 0; i <= carrySize - finalMarker.size(); ++i) {
+                if (memcmp(combined + i, finalMarker.c_str(),
+                           finalMarker.size()) == 0) {
+                  finalPos = i;
+                  break;
+                }
+              }
+
+              if (finalPos != std::string::npos) {
+                if (finalPos > 0) {
+                  espwifi->writeFileChunk(outFile, combined, finalPos);
+                  totalWritten += finalPos;
+                }
+
+                bool closeSuccess =
+                    espwifi->closeFileStream(outFile, fullFilePath);
+                outFile = nullptr;
+                free(combined);
+                free(rxBuffer);
+                rxBuffer = nullptr;
+                cleanupDone = true;
+
+                if (closeSuccess) {
+                  return espwifi->sendJsonResponse(
+                      req, 200, "{\"success\":true}", &clientInfo);
+                }
+              }
+              free(combined);
+            }
+          }
         }
-        closeAndCleanup();
-        (void)espwifi->sendJsonResponse(
-            req, 408, "{\"error\":\"Upload timeout\"}", &clientInfo);
-        return ESP_OK;
+
+        // Cleanup and send error response
+        cleanup();
+        espwifi->log(WARNING, "📤 Upload: Failed - remaining=%zu, timeout=%s",
+                     remaining, (remaining > 0) ? "yes" : "no");
+        if (remaining > 0) {
+          return espwifi->sendJsonResponse(
+              req, 408, "{\"error\":\"Upload timeout\"}", &clientInfo);
+        } else {
+          return espwifi->sendJsonResponse(
+              req, 400, "{\"error\":\"Incomplete multipart data\"}",
+              &clientInfo);
+        }
       });
 }
 #endif // ESPWiFi_SRV_FILES

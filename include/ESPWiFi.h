@@ -99,6 +99,11 @@ public:
   char *readFile(const std::string &filePath, size_t *outSize = nullptr);
   bool isProtectedFile(const std::string &fsParam, const std::string &filePath);
 
+  // Streaming file I/O operations (for large file uploads)
+  FILE *openFileForWrite(const std::string &fullPath);
+  bool writeFileChunk(FILE *f, const void *data, size_t len);
+  bool closeFileStream(FILE *f, const std::string &fullPath);
+
   // Small helpers used by filesystem HTTP routes (implemented in Utils.cpp)
   bool fileExists(const std::string &fullPath);
   bool dirExists(const std::string &fullPath);

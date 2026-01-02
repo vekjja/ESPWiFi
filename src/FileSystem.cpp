@@ -144,9 +144,8 @@ void ESPWiFi::initSDCard() {
     spi_host_device_t spiHost = (spi_host_device_t)hostId;
     sdSpiHost = spiHost;
 
-    // log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d,
-    // cs=%d",
-    //     spiHost, mosi, miso, sclk, cs);
+    log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
+        spiHost, mosi, miso, sclk, cs);
     feedWatchDog(1); // Yield before SPI bus init
 
     // Initialize SPI bus
@@ -311,29 +310,67 @@ void ESPWiFi::handleSDCardError() {
 std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
   std::string sanitized = filename;
 
-  // Replace spaces with underscores
-  for (char &c : sanitized) {
+  // FAT32 only allows ONE period (for file extension)
+  // Find the last period (extension separator)
+  size_t lastDot = sanitized.find_last_of('.');
+  std::string extension;
+  std::string basename;
+
+  if (lastDot != std::string::npos) {
+    extension = sanitized.substr(lastDot); // includes the dot
+    basename = sanitized.substr(0, lastDot);
+  } else {
+    basename = sanitized;
+  }
+
+  // Replace all periods in basename with underscores
+  for (char &c : basename) {
+    if (c == '.') {
+      c = '_';
+    }
+  }
+
+  // Replace spaces and invalid characters with underscores
+  for (char &c : basename) {
     if (c == ' ')
       c = '_';
-    else if (!isalnum(c) && c != '.' && c != '-' && c != '_' && c != '/') {
+    else if (!isalnum(c) && c != '-' && c != '_' && c != '/') {
       c = '_';
     }
   }
 
   // Remove duplicate underscores
   size_t pos;
-  while ((pos = sanitized.find("__")) != std::string::npos) {
-    sanitized.replace(pos, 2, "_");
+  while ((pos = basename.find("__")) != std::string::npos) {
+    basename.replace(pos, 2, "_");
   }
 
   // Trim leading/trailing underscores
-  if (!sanitized.empty() && sanitized[0] == '_') {
-    sanitized = sanitized.substr(1);
+  if (!basename.empty() && basename[0] == '_') {
+    basename = basename.substr(1);
   }
-  if (!sanitized.empty() && sanitized[sanitized.length() - 1] == '_') {
-    sanitized = sanitized.substr(0, sanitized.length() - 1);
+  if (!basename.empty() && basename.back() == '_') {
+    basename = basename.substr(0, basename.length() - 1);
   }
 
+  // Limit basename length for FAT32 compatibility
+  // Many SD cards have broken/disabled Long File Name support
+  // Use strict 8.3 format for maximum compatibility: 8 chars max + extension
+  const size_t MAX_BASENAME_LEN = 8;
+  if (basename.length() > MAX_BASENAME_LEN) {
+    basename = basename.substr(0, MAX_BASENAME_LEN);
+    // Remove trailing underscore if truncation created one
+    if (basename.back() == '_') {
+      basename = basename.substr(0, basename.length() - 1);
+    }
+  }
+
+  // Ensure extension is also limited (3 chars max for 8.3 format)
+  if (!extension.empty() && extension.length() > 4) { // .xxx = 4 chars
+    extension = extension.substr(0, 4);
+  }
+
+  sanitized = basename + extension;
   return sanitized;
 }
 
@@ -626,6 +663,75 @@ std::string ESPWiFi::getFileExtension(const std::string &filename) {
   }
   // If no dot found, return the filename itself
   return filename;
+}
+
+FILE *ESPWiFi::openFileForWrite(const std::string &fullPath) {
+  // Open file for writing - works with both SD card and LittleFS
+  FILE *f = fopen(fullPath.c_str(), "wb");
+  if (!f) {
+    return nullptr;
+  }
+  return f;
+}
+
+bool ESPWiFi::writeFileChunk(FILE *f, const void *data, size_t len) {
+  if (!f || !data || len == 0) {
+    return false;
+  }
+
+  size_t written = fwrite(data, 1, len, f);
+  if (written != len) {
+    return false;
+  }
+
+  // For large chunks (>= 16KB), flush immediately to ensure data is written
+  // This is critical for SD cards and prevents data loss on large uploads
+  // Note: closeFileStream() always flushes, so smaller chunks will be flushed
+  // on close
+  if (len >= 16384) {
+    if (fflush(f) != 0) {
+      return false;
+    }
+    feedWatchDog(1); // Yield after flush
+  }
+
+  return true;
+}
+
+bool ESPWiFi::closeFileStream(FILE *f, const std::string &fullPath) {
+  if (!f) {
+    return false;
+  }
+
+  // Always flush before closing to ensure all data is written
+  // This is critical for large files to ensure all data is persisted
+  errno = 0;
+  if (fflush(f) != 0) {
+    int flushErrno = errno;
+    fclose(f);
+    // Clean up incomplete file on flush failure
+    ::remove(fullPath.c_str());
+    // Check for SD card errors (errno 5 = EIO)
+    if (fullPath.rfind(sdMountPoint, 0) == 0 && flushErrno == 5) {
+      handleSDCardError();
+    }
+    return false;
+  }
+
+  // Close the file
+  errno = 0;
+  if (fclose(f) != 0) {
+    int closeErrno = errno;
+    // Clean up on close failure
+    ::remove(fullPath.c_str());
+    // Check for SD card errors (errno 5 = EIO)
+    if (fullPath.rfind(sdMountPoint, 0) == 0 && closeErrno == 5) {
+      handleSDCardError();
+    }
+    return false;
+  }
+
+  return true;
 }
 
 // File upload handler - used for chunked uploads if needed

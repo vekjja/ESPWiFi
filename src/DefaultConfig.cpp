@@ -61,6 +61,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectFiles"].add("/config.json");
   doc["auth"]["protectFiles"].add("/asset-manifest.json");
 
+  doc["ota"]["enabled"] = isOTAEnabled();
+
   // Camera
   // #ifdef ESPWiFi_CAMERA
   //   doc["camera"]["installed"] = true;

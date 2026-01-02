@@ -74,8 +74,8 @@ void ESPWiFi::connectBluetooth(const std::string &address) {
 }
 
 void ESPWiFi::bluetoothConfigHandler() {
-  static bool lastEnabled = false;
-  static bool currentEnabled = false;
+  static bool lastEnabled = config["bluetooth"]["enabled"].as<bool>();
+  static bool currentEnabled = config["bluetooth"]["enabled"].as<bool>();
 
   currentEnabled = config["bluetooth"]["enabled"].as<bool>();
   if (currentEnabled != lastEnabled) {

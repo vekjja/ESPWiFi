@@ -66,7 +66,7 @@ public:
   void initSDCard();
   void deinitSDCard();
   void initLittleFS();
-  bool checkSDCardPresent();
+  bool checkSDCard();
   void handleSDCardError();
   bool sdNotSupported = false;
   esp_err_t sdInitLastErr = ESP_OK;
@@ -134,8 +134,8 @@ public:
   // ---- Config
   void saveConfig();
   void readConfig();
-  void handleConfig();
-  void requestConfigUpdate();
+  void handleConfigUpdate();
+  void requestConfigSave();
   std::string prettyConfig();
   JsonDocument defaultConfig();
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
@@ -260,8 +260,9 @@ private:
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
-  bool configNeedsUpdate = false;
   bool configNeedsSave = false;
+  JsonDocument configUpdate; // Temporary storage for config updates
+                             // from HTTP handler
 
   // ---- CORS cache (minimize per-request work/allocations)
   void refreshCorsCache();

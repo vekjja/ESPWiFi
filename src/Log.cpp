@@ -91,7 +91,7 @@ FILE *ESPWiFi::openLogFile(bool useSD) {
 }
 
 bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {
-  checkSDCardPresent();
+  checkSDCard();
   // LittleFS
   bool preferSD = config["log"]["useSD"].as<bool>();
   useSD = preferSD && (sdCard != nullptr);
@@ -306,8 +306,10 @@ void ESPWiFi::logConfigHandler() {
   static bool lastEnabled = true;
   static bool lastuseSD = true;
   static std::string lastLevel = "debug";
-  static std::string lastFile = "/log";
+  static std::string lastFile = "/espwifi.log";
 
+  // Config is now replaced atomically in handleConfigUpdate() before this is
+  // called, so we can safely read it here. Extract values for comparison.
   const bool currentEnabled = config["log"]["enabled"].isNull()
                                   ? true
                                   : config["log"]["enabled"].as<bool>();

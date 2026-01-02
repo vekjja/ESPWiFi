@@ -4,28 +4,18 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::readConfig() {
+
+  // Try to read config file and override defaults
   initLittleFS();
-  bool usedDefaultConfig = false;
+  bool configLoaded = false;
 
-  if (lfs == nullptr) {
-    config = defaultConfig();
-    usedDefaultConfig = true;
-    log(ERROR, "⚙️ Could not access filesystem: Using default config");
-  } else {
-
+  if (lfs != nullptr) {
     size_t fileSize = 0;
     char *buffer = readFile(configFile, &fileSize);
 
-    if (!buffer || fileSize == 0 || fileSize >= 10240) { // Limit to 10KB
-      if (buffer)
-        free(buffer);
-      config = defaultConfig();
-      usedDefaultConfig = true;
-      log(WARNING, "⚙️ Failed to read config file: Using default config");
-    } else {
+    if (buffer && fileSize > 0 && fileSize < 10240) { // Limit to 10KB
       // Parse JSON (be robust to UTF-8 BOM / leading whitespace).
       JsonDocument loadedConfig;
-
       const char *json = buffer;
       size_t jsonLen = fileSize;
 
@@ -44,28 +34,35 @@ void ESPWiFi::readConfig() {
       DeserializationError error = deserializeJson(loadedConfig, json, jsonLen);
       free(buffer);
 
-      if (error) {
-        config = defaultConfig();
-        usedDefaultConfig = true;
+      if (!error) {
+        config = mergeJson(config, loadedConfig);
+        configLoaded = true;
+      } else {
         log(WARNING,
             "⚙️ Failed to parse config file (%s, %u bytes): %s: Using default "
             "config",
             configFile.c_str(), (unsigned)fileSize, error.c_str());
-
         // Best-effort persist defaults so the next boot is clean.
         saveConfig();
-      } else {
-        config = mergeJson(config, loadedConfig);
+      }
+    } else {
+      if (buffer)
+        free(buffer);
+      if (fileSize > 0) {
+        log(WARNING, "⚙️ Failed to read config file: Using default config");
       }
     }
+  } else {
+    log(ERROR, "⚙️ Could not access filesystem: Using default config");
   }
 
+  refreshCorsCache();
   // Print config summary instead of full pretty-printed config to reduce stack
   // usage Full config is available via /api/config endpoint
-  if (usedDefaultConfig) {
-    log(WARNING, "⚙️ Using Default Config");
-  } else {
+  if (configLoaded) {
     log(INFO, "⚙️ Using Config (size: %zu bytes)", measureJson(config));
+  } else {
+    log(WARNING, "⚙️ Using Default Config");
   }
 }
 
@@ -213,6 +210,8 @@ void ESPWiFi::saveConfig() {
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);
   }
+
+  configNeedsSave = false;
 }
 
 JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
@@ -258,16 +257,18 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
   return result;
 }
 
-void ESPWiFi::requestConfigUpdate() {
-  // Apply config + save config in main task.
-  configNeedsUpdate = true;
-  configNeedsSave = true;
-}
+void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 
-void ESPWiFi::handleConfig() {
-  refreshCorsCache();
-  logConfigHandler();
-  bluetoothConfigHandler();
+void ESPWiFi::handleConfigUpdate() {
+  if (configUpdate.size() > 0) {
+    config = configUpdate;
+    configUpdate.clear();
+    refreshCorsCache();
+    bluetoothConfigHandler();
+  }
+  if (configNeedsSave) {
+    saveConfig();
+  }
 }
 
 #endif // ESPWiFi_CONFIG

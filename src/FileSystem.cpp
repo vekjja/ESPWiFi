@@ -258,11 +258,7 @@ void ESPWiFi::deinitSDCard() {
   sdSpiHost = -1;
 }
 
-bool ESPWiFi::checkSDCardPresent() {
-  if (sdCard == nullptr || sdNotSupported) {
-    return false;
-  }
-
+bool ESPWiFi::checkSDCard() {
   if (sdCardCheck.shouldRun()) {
     if (sdCard != nullptr) {
       // Card is mounted - verify it's still present
@@ -300,7 +296,7 @@ bool ESPWiFi::checkSDCardPresent() {
       }
     }
   }
-
+  log(ACCESS, "🔄 💾 SD Card Check: Present");
   return true;
 }
 

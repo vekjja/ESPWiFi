@@ -27,17 +27,18 @@ void ESPWiFi::srvConfig() {
                         req, 400, "{\"error\":\"EmptyInput\"}", &clientInfo);
                   }
 
+                  // Merge config but don't replace yet - do that in main loop
                   JsonDocument mergedConfig =
                       espwifi->mergeJson(espwifi->config, reqJson);
 
-                  espwifi->config = mergedConfig;
+                  // Store merged config for atomic replacement in main loop
+                  espwifi->configUpdate = mergedConfig;
 
                   std::string responseJson;
-                  serializeJson(espwifi->config, responseJson);
+                  serializeJson(mergedConfig, responseJson);
 
-                  // Request deferred config save (will happen in runSystem()
-                  // main task)
-                  espwifi->requestConfigUpdate();
+                  // Request deferred config save to main task
+                  espwifi->requestConfigSave();
 
                   // Return the updated config (using the already serialized
                   // string)

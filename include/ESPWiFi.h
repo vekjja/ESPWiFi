@@ -204,18 +204,20 @@ public:
   void startRSSIWebSocket();
   void streamRSSI();
 
-  // ---- Utilities
-  void setMaxPower();
+  // ---- Power Management
+  void powerConfigHandler();
+  void applyWiFiPowerSettings();
+  JsonDocument getWiFiPowerInfo();
   std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);
   std::string bytesToHumanReadable(size_t bytes);
   std::string getFileExtension(const std::string &filename);
-  void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
-                     std::function<void()> functionToRun);
   bool matchPattern(std::string_view uri, std::string_view pattern);
 
   // ---- JSON helpers (implemented in Utils.cpp)
   void deepMerge(JsonVariant dst, JsonVariantConst src, int depth = 0);
+  void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
+                     std::function<void()> functionToRun);
 
   // ---- I2C
   void scanI2CDevices();

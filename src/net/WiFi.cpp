@@ -125,6 +125,10 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_start());
   vTaskDelay(pdMS_TO_TICKS(100)); // Let driver settle
 
+  // Apply power management settings after WiFi start
+  // Note: esp_wifi_set_max_tx_power() requires WiFi to be started
+  applyWiFiPowerSettings();
+
   ESP_ERROR_CHECK(esp_wifi_disconnect()); // Clear any stale connection state
   vTaskDelay(pdMS_TO_TICKS(50));
   ESP_ERROR_CHECK(esp_wifi_connect());
@@ -290,6 +294,7 @@ void ESPWiFi::startAP() {
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
   wifi_initialized = true;
+
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
 
@@ -308,6 +313,10 @@ void ESPWiFi::startAP() {
 
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
+
+  // Apply power management settings after WiFi start
+  // Note: esp_wifi_set_max_tx_power() requires WiFi to be started
+  applyWiFiPowerSettings();
 
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(ap_netif, &ip_info));

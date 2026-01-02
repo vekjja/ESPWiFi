@@ -19,6 +19,19 @@ JsonDocument ESPWiFi::defaultConfig() {
   // WiFi Client
   doc["wifi"]["client"]["ssid"] = "";
   doc["wifi"]["client"]["password"] = "";
+
+  // WiFi Power Management
+  // - txPower: WiFi transmit power in dBm (range: 2-20, default: 19.5)
+  //   Common values: 13, 15, 17, 18, 19.5, 20
+  //   Lower values reduce power consumption and interference
+  doc["wifi"]["power"]["txPower"] = 19.5;
+  // - powerSave: WiFi power save mode (none, min, max)
+  //   - "none": No power saving (best performance, highest power consumption)
+  //   - "min": Minimum modem power saving (balanced)
+  //   - "max": Maximum modem power saving (lowest power, may affect
+  //   performance)
+  doc["wifi"]["power"]["powerSave"] = "none";
+
   // mDNS (Multicast DNS) - network service discovery
   doc["wifi"]["mdns"] = true;
 

@@ -96,6 +96,12 @@ void ESPWiFi::srvInfo() {
           jsonDoc["rssi"] = ap_info.rssi;
         }
 
+        // WiFi power settings and actual applied values
+        JsonDocument powerInfo = espwifi->getWiFiPowerInfo();
+        if (!powerInfo.isNull() && powerInfo.size() > 0) {
+          jsonDoc["wifi_power"] = powerInfo;
+        }
+
         // Yield to prevent watchdog timeout
         vTaskDelay(pdMS_TO_TICKS(10));
 

@@ -6,6 +6,10 @@
         "client": {
             "ssid": "YOUR_WIFI_SSID",
             "password": "YOUR_WIFI_PASSWORD"
+        },
+        "power": {
+            "txPower": 19.5,
+            "powerSave": "none"
         }
     },
     "bluetooth": {

@@ -8,12 +8,17 @@ import {
   Grid,
   Chip,
   Skeleton,
+  Tooltip,
+  Link,
 } from "@mui/material";
 import DeveloperBoardIcon from "@mui/icons-material/DeveloperBoard";
 import WifiIcon from "@mui/icons-material/Wifi";
 import StorageIcon from "@mui/icons-material/Storage";
 import SdCardIcon from "@mui/icons-material/SdCard";
 import MemoryIcon from "@mui/icons-material/Memory";
+import BoltIcon from "@mui/icons-material/Bolt";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningIcon from "@mui/icons-material/Warning";
 import { bytesToHumanReadable, formatUptime } from "../../utils/formatUtils";
 import { getRSSIChipColor, isValidRssi } from "../../utils/rssiUtils";
 
@@ -158,6 +163,214 @@ export default function DeviceSettingsInfoTab({
           </CardContent>
         </Card>
       </Grid>
+
+      {/* WiFi Power Settings */}
+      {deviceInfo.wifi_power && (
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: "100%", minHeight: 200 }}>
+            <CardContent>
+              <Typography
+                variant="h6"
+                gutterBottom
+                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <BoltIcon color="primary" />
+                WiFi Power Settings
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {/* TX Power */}
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Configured TX Power:
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    sx={{ fontWeight: 500, fontFamily: "monospace" }}
+                  >
+                    {deviceInfo.wifi_power.configured?.txPower?.toFixed(1) ||
+                      "N/A"}{" "}
+                    dBm
+                  </Typography>
+                </Box>
+
+                {deviceInfo.wifi_power.actual?.txPower && (
+                  <Box
+                    sx={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Actual TX Power:
+                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          fontWeight: 600,
+                          color: "primary.main",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {deviceInfo.wifi_power.actual.txPower.toFixed(1)} dBm
+                      </Typography>
+                      {deviceInfo.wifi_power.actual.note ? (
+                        <Tooltip title={deviceInfo.wifi_power.actual.note}>
+                          <WarningIcon
+                            sx={{ fontSize: 18, color: "warning.main" }}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <CheckCircleIcon
+                          sx={{ fontSize: 18, color: "success.main" }}
+                        />
+                      )}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Power Save Mode */}
+                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Power Save Mode:
+                  </Typography>
+                  <Chip
+                    label={
+                      deviceInfo.wifi_power.configured?.powerSave || "none"
+                    }
+                    size="small"
+                    color={
+                      deviceInfo.wifi_power.configured?.powerSave === "none"
+                        ? "primary"
+                        : deviceInfo.wifi_power.configured?.powerSave === "min"
+                        ? "default"
+                        : "secondary"
+                    }
+                    sx={{ fontWeight: 600 }}
+                  />
+                </Box>
+
+                {/* Power Save Description */}
+                {deviceInfo.wifi_power.info?.powerSaveModes?.[
+                  deviceInfo.wifi_power.configured?.powerSave || "none"
+                ] && (
+                  <Box
+                    sx={{
+                      mt: 1,
+                      p: 1,
+                      bgcolor: "action.hover",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {
+                        deviceInfo.wifi_power.info.powerSaveModes[
+                          deviceInfo.wifi_power.configured.powerSave || "none"
+                        ]
+                      }
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Range Info */}
+                {deviceInfo.wifi_power.info?.txPowerRange && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Range: {deviceInfo.wifi_power.info.txPowerRange}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: "block" }}
+                    >
+                      Precision: {deviceInfo.wifi_power.info.txPowerPrecision}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Ultra Mode Warning */}
+                {deviceInfo.wifi_power.configured?.txPower >= 20.5 && (
+                  <Alert
+                    severity="error"
+                    sx={{
+                      mt: 2,
+                      "& .MuiAlert-message": {
+                        width: "100%",
+                      },
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: "bold", mb: 1 }}
+                    >
+                      ⚠️ ULTRA MODE ACTIVE
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{ display: "block", mb: 1 }}
+                    >
+                      {deviceInfo.wifi_power.configured.txPower.toFixed(1)} dBm
+                      exceeds standard regulatory limits. Use only in shielded
+                      lab environment.
+                    </Typography>
+                    <Box
+                      sx={{
+                        mt: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.5,
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ fontWeight: "bold" }}>
+                        📚 Technical References:
+                      </Typography>
+                      <Link
+                        href="https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: "0.75rem" }}
+                      >
+                        ESP32 Datasheet (PA Capabilities)
+                      </Link>
+                      <Link
+                        href="https://www.fcc.gov/engineering-technology/laboratory-division/general/equipment-authorization"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: "0.75rem" }}
+                      >
+                        FCC Regulations (USA)
+                      </Link>
+                      <Link
+                        href="https://www.etsi.org/technologies/radio-equipment"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: "0.75rem" }}
+                      >
+                        ETSI/CE Regulations (Europe)
+                      </Link>
+                      <Link
+                        href="https://en.wikipedia.org/wiki/Equivalent_isotropically_radiated_power"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontSize: "0.75rem" }}
+                      >
+                        About EIRP (Effective Isotropic Radiated Power)
+                      </Link>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      sx={{ display: "block", mt: 1, fontStyle: "italic" }}
+                    >
+                      💡 EIRP = TX Power + Antenna Gain - Cable Loss
+                    </Typography>
+                  </Alert>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      )}
 
       {/* Memory Information */}
       <Grid item xs={12} md={6}>

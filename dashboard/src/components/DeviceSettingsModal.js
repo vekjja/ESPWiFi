@@ -37,6 +37,8 @@ export default function DeviceSettingsModal({
   const [apSsid, setApSsid] = useState("");
   const [apPassword, setApPassword] = useState("");
   const [mode, setMode] = useState("client");
+  const [txPower, setTxPower] = useState(19.5);
+  const [powerSave, setPowerSave] = useState("none");
 
   // Password visibility state
   const [showPassword, setShowPassword] = useState(false);
@@ -72,6 +74,8 @@ export default function DeviceSettingsModal({
       setAuthEnabled(config.auth?.enabled ?? false);
       setAuthUsername(config.auth?.username || "");
       setAuthPassword(config.auth?.password || "");
+      setTxPower(config.wifi?.power?.txPower ?? 19.5);
+      setPowerSave(config.wifi?.power?.powerSave || "none");
     }
   }, [config]);
 
@@ -91,6 +95,10 @@ export default function DeviceSettingsModal({
         accessPoint: {
           ssid: apSsid,
           password: apPassword,
+        },
+        power: {
+          txPower: txPower,
+          powerSave: powerSave,
         },
       },
       auth: {
@@ -121,6 +129,8 @@ export default function DeviceSettingsModal({
     authEnabled,
     authUsername,
     authPassword,
+    txPower,
+    powerSave,
     config,
   ]);
 
@@ -253,8 +263,18 @@ export default function DeviceSettingsModal({
           ssid: apSsid,
           password: apPassword,
         },
+        power: {
+          txPower: txPower,
+          powerSave: powerSave,
+        },
       },
     };
+
+    console.log("Saving network config with power settings:", {
+      txPower: txPower,
+      powerSave: powerSave,
+      mode: mode,
+    });
 
     // Save to device (not just local config)
     saveConfigToDevice(configToSave);
@@ -492,6 +512,10 @@ export default function DeviceSettingsModal({
             setShowPassword={setShowPassword}
             showApPassword={showApPassword}
             setShowApPassword={setShowApPassword}
+            txPower={txPower}
+            setTxPower={setTxPower}
+            powerSave={powerSave}
+            setPowerSave={setPowerSave}
           />
         </TabPanel>
 

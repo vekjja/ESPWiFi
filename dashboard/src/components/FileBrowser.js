@@ -143,6 +143,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
   const apiURL = config?.apiURL || "";
 
+  // Helper function to reset download state
+  const resetDownloadState = useCallback(() => {
+    setIsDownloading(false);
+    setDownloadProgress(0);
+    setDownloadingFileName("");
+    setDownloadIndeterminate(false);
+    downloadXhrRef.current = null;
+  }, []);
+
   // Cleanup function for aborting requests
   useEffect(() => {
     return () => {
@@ -235,14 +244,14 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                   .progress-bar {
                     width: 100%;
                     height: 6px;
-                    background: rgba(255,255,255,0.1);
+                    background: rgba(71, 255, 240, 0.1);
                     border-radius: 3px;
                     overflow: hidden;
                     margin-bottom: 12px;
                   }
                   .progress-fill {
                     height: 100%;
-                    background: #17EB9D;
+                    background: #47FFF0;
                     width: 0%;
                     transition: width 0.3s ease;
                   }
@@ -251,8 +260,8 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                     color: #888;
                   }
                   .spinner {
-                    border: 3px solid rgba(255,255,255,0.1);
-                    border-top: 3px solid #17EB9D;
+                    border: 3px solid rgba(71, 255, 240, 0.1);
+                    border-top: 3px solid #47FFF0;
                     border-radius: 50%;
                     width: 40px;
                     height: 40px;
@@ -277,7 +286,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               </body>
             </html>
           `);
-          newWindow.document.close(); // Important: close document to finish writing
+          newWindow.document.close();
         }
       } catch (err) {
         console.warn("Could not open new window (popup blocked?):", err);
@@ -366,59 +375,35 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
               resolve();
             } catch (err) {
-              if (newWindow && !newWindow.closed) {
-                newWindow.close();
-              }
+              if (newWindow && !newWindow.closed) newWindow.close();
               setError(`Failed to open file: ${err.message}`);
               reject(err);
             } finally {
-              setIsDownloading(false);
-              setDownloadProgress(0);
-              setDownloadingFileName("");
-              setDownloadIndeterminate(false);
-              downloadXhrRef.current = null;
+              resetDownloadState();
             }
           } else {
-            if (newWindow && !newWindow.closed) {
-              newWindow.close();
-            }
+            if (newWindow && !newWindow.closed) newWindow.close();
             const errorMsg =
               xhr.status === 408
                 ? "Request timed out - device may be busy"
                 : `Failed to open file: HTTP ${xhr.status}`;
             setError(errorMsg);
-            setIsDownloading(false);
-            setDownloadProgress(0);
-            setDownloadingFileName("");
-            setDownloadIndeterminate(false);
-            downloadXhrRef.current = null;
+            resetDownloadState();
             reject(new Error(errorMsg));
           }
         });
 
         xhr.addEventListener("error", () => {
-          if (newWindow && !newWindow.closed) {
-            newWindow.close();
-          }
+          if (newWindow && !newWindow.closed) newWindow.close();
           setError("Failed to open file: Network error");
-          setIsDownloading(false);
-          setDownloadProgress(0);
-          setDownloadingFileName("");
-          setDownloadIndeterminate(false);
-          downloadXhrRef.current = null;
+          resetDownloadState();
           reject(new Error("Network error"));
         });
 
         xhr.addEventListener("timeout", () => {
-          if (newWindow && !newWindow.closed) {
-            newWindow.close();
-          }
+          if (newWindow && !newWindow.closed) newWindow.close();
           setError("Request timed out - device may be busy");
-          setIsDownloading(false);
-          setDownloadProgress(0);
-          setDownloadingFileName("");
-          setDownloadIndeterminate(false);
-          downloadXhrRef.current = null;
+          resetDownloadState();
           reject(new Error("Timeout"));
         });
 
@@ -426,7 +411,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         xhr.send();
       });
     },
-    [apiURL, fileSystem]
+    [apiURL, fileSystem, resetDownloadState]
   );
 
   // Download file with authentication and progress tracking
@@ -487,11 +472,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               setError(`Failed to download file: ${err.message}`);
               reject(err);
             } finally {
-              setIsDownloading(false);
-              setDownloadProgress(0);
-              setDownloadingFileName("");
-              setDownloadIndeterminate(false);
-              downloadXhrRef.current = null;
+              resetDownloadState();
             }
           } else {
             const errorMsg =
@@ -499,32 +480,20 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                 ? "Request timed out - device may be busy"
                 : `Failed to download file: HTTP ${xhr.status}`;
             setError(errorMsg);
-            setIsDownloading(false);
-            setDownloadProgress(0);
-            setDownloadingFileName("");
-            setDownloadIndeterminate(false);
-            downloadXhrRef.current = null;
+            resetDownloadState();
             reject(new Error(errorMsg));
           }
         });
 
         xhr.addEventListener("error", () => {
           setError("Failed to download file: Network error");
-          setIsDownloading(false);
-          setDownloadProgress(0);
-          setDownloadingFileName("");
-          setDownloadIndeterminate(false);
-          downloadXhrRef.current = null;
+          resetDownloadState();
           reject(new Error("Network error"));
         });
 
         xhr.addEventListener("timeout", () => {
           setError("Request timed out - device may be busy");
-          setIsDownloading(false);
-          setDownloadProgress(0);
-          setDownloadingFileName("");
-          setDownloadIndeterminate(false);
-          downloadXhrRef.current = null;
+          resetDownloadState();
           reject(new Error("Timeout"));
         });
 
@@ -532,7 +501,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         xhr.send();
       });
     },
-    [apiURL, fileSystem]
+    [apiURL, fileSystem, resetDownloadState]
   );
 
   // Fetch storage information
@@ -1041,7 +1010,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                 backgroundColor: "rgba(0, 0, 0, 0.1)",
                 "& .MuiLinearProgress-bar": {
                   borderRadius: 3,
-                  backgroundColor: theme.palette.success.main,
+                  backgroundColor: theme.palette.primary.main,
                 },
               }}
             />

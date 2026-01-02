@@ -786,14 +786,6 @@ void ESPWiFi::srvFiles() {
               req, 400, "{\"error\":\"Empty request body\"}", &clientInfo);
         }
 
-        // Ensure target directory exists
-        std::string fullDir = mountPoint + path;
-        if (!espwifi->mkDir(fullDir)) {
-          return espwifi->sendJsonResponse(
-              req, 500, "{\"error\":\"Failed to create directory\"}",
-              &clientInfo);
-        }
-
         // ===== PHASE 2: STREAMING PARSER SETUP =====
         const size_t RX_CHUNK = 4096;
         const size_t MAX_HEADER_SIZE = 4096;
@@ -875,11 +867,6 @@ void ESPWiFi::srvFiles() {
 
           // Combine carry buffer with new data
           size_t totalSize = carrySize + (size_t)bytesRead;
-          if (totalSize == 0) {
-            // No data to process, skip this iteration
-            continue;
-          }
-
           char *combined = (char *)malloc(totalSize);
           if (!combined) {
             cleanup();
@@ -949,32 +936,8 @@ void ESPWiFi::srvFiles() {
             std::string filename = headers.substr(fnPos, fnEnd - fnPos);
             std::string sanitized = espwifi->sanitizeFilename(filename);
 
-            if (filename != sanitized) {
-              espwifi->log(DEBUG, "📤 Upload: Sanitized '%s' -> '%s'",
-                           filename.c_str(), sanitized.c_str());
-            }
-
-            if (sanitized.empty()) {
-              espwifi->log(WARNING, "📤 Upload: Invalid filename: %s",
-                           filename.c_str());
-              free(combined);
-              cleanup();
-              return espwifi->sendJsonResponse(
-                  req, 400, "{\"error\":\"Invalid filename\"}", &clientInfo);
-            }
-
-            // Check filename length (FAT32 limit is 255 characters)
-            if (sanitized.length() > 100) {
-              espwifi->log(WARNING,
-                           "📤 Upload: Filename too long: %s (%zu characters)",
-                           sanitized.c_str(), sanitized.length());
-              free(combined);
-              cleanup();
-              return espwifi->sendJsonResponse(
-                  req, 400,
-                  "{\"error\":\"Filename too long (max 100 characters)\"}",
-                  &clientInfo);
-            }
+            espwifi->log(DEBUG, "📤 Upload: Sanitized '%s' -> '%s'",
+                         filename.c_str(), sanitized.c_str());
 
             // Build file path
             relFilePath = path;
@@ -988,13 +951,6 @@ void ESPWiFi::srvFiles() {
                          sanitized.c_str(), req->content_len);
             espwifi->log(DEBUG, "📤 Upload: Full path: %s",
                          fullFilePath.c_str());
-
-            if (espwifi->isProtectedFile(fsParam, relFilePath)) {
-              free(combined);
-              cleanup();
-              return espwifi->sendJsonResponse(
-                  req, 403, "{\"error\":\"Path is protected\"}", &clientInfo);
-            }
 
             // Open file using member function
             outFile = espwifi->openFileForWrite(fullFilePath);

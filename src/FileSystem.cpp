@@ -353,17 +353,22 @@ std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
     basename = basename.substr(0, basename.length() - 1);
   }
 
-  // Limit basename length for FAT32 compatibility
-  // Many SD cards have broken/disabled Long File Name support
-  // Use strict 8.3 format for maximum compatibility: 8 chars max + extension
-  const size_t MAX_BASENAME_LEN = 8;
-  if (basename.length() > MAX_BASENAME_LEN) {
-    basename = basename.substr(0, MAX_BASENAME_LEN);
-    // Remove trailing underscore if truncation created one
+  // Limit basename length for strict 8.3 FAT format compatibility
+  // Leave room for uniqueness suffix: 5 chars for name + 3 for timestamp = 8
+  // total
+  const size_t MAX_BASE_FOR_UNIQUE = 5;
+  if (basename.length() > MAX_BASE_FOR_UNIQUE) {
+    basename = basename.substr(0, MAX_BASE_FOR_UNIQUE);
     if (basename.back() == '_') {
       basename = basename.substr(0, basename.length() - 1);
     }
   }
+
+  // Add 3-digit uniqueness suffix based on current milliseconds
+  unsigned long timestamp = millis();
+  char suffix[4];
+  snprintf(suffix, sizeof(suffix), "%03lu", (timestamp % 1000));
+  basename += suffix;
 
   // Ensure extension is also limited (3 chars max for 8.3 format)
   if (!extension.empty() && extension.length() > 4) { // .xxx = 4 chars

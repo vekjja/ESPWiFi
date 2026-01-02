@@ -107,17 +107,13 @@ public:
 
   // ---- Logging
   void cleanLogFile();
-  int baudRate = 115200;
   int maxLogFileSize = 0;
   bool loggingStarted = false;
-  std::string logFilePath = "/log";
-  FILE *openLogFile(bool useSD);
-
+  std::string logFilePath = "/espwifi.log";
   // Helper to determine which filesystem to use for logging
   // Sets useSD and useLFS variables, returns true if a filesystem is available
   bool getLogFilesystem(bool &useSD, bool &useLFS);
-
-  void startLogging(std::string filePath = "/log");
+  void startLogging();
   std::string timestamp();
   void logConfigHandler();
   bool shouldLog(LogLevel level);

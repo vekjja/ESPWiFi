@@ -108,13 +108,12 @@ void ESPWiFi::initSDCard() {
   sdSpiBusOwned = false;
   sdSpiHost = -1;
 
-  // Initialize logging state
+  // Mark initialization as attempted
   sdInitAttempted = true;
   sdInitLastErr = ESP_OK;
   sdNotSupported = false;
 
   log(INFO, "💾 SD Card Initializing, Mount Point: %s", sdMountPoint.c_str());
-  feedWatchDog(); // Yield before heavy operations to reduce stack pressure
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
   // Auto-detect: try SPI first, then SDMMC
@@ -147,7 +146,7 @@ void ESPWiFi::initSDCard() {
 
     log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
         spiHost, mosi, miso, sclk, cs);
-    feedWatchDog(); // Yield before SPI bus init
+    feedWatchDog(1); // Yield before SPI bus init
 
     // Initialize SPI bus
     ret = initSpiBus(spiHost, mosi, miso, sclk, sdSpiBusOwned);
@@ -157,9 +156,13 @@ void ESPWiFi::initSDCard() {
       log(WARNING, "💾 SD(SPI) bus init failed: %s", esp_err_to_name(ret));
       return;
     }
-    feedWatchDog(); // Yield after SPI bus init, before mount
 
-    // Configure SD card device
+    // Allow SD card to stabilize after SPI bus initialization
+    // SD cards need time after SPI bus is initialized to be ready for commands
+    // This delay is critical for first-attempt success
+    feedWatchDog(300); // 300ms stabilization delay after SPI bus init
+
+    // Configure SD card device - SDSPI driver will handle CS pin configuration
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = spiHost;
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
@@ -180,15 +183,15 @@ void ESPWiFi::initSDCard() {
     } else {
       // Success
       sdCard = (void *)card;
-      log(INFO, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
+      log(DEBUG, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
     }
-    feedWatchDog(); // Yield after SPI mount attempt
+    feedWatchDog(1); // Yield after SPI mount attempt
   }
 
   // Try SDMMC (native interface) if SPI failed
   if (ret != ESP_OK) {
-    feedWatchDog(); // Yield before SDMMC attempt
+    feedWatchDog(1); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;
@@ -225,7 +228,7 @@ void ESPWiFi::initSDCard() {
   sdNotSupported = true;
   config["sd"]["initialized"] = false;
   sdInitLastErr = ESP_ERR_NOT_SUPPORTED;
-  log(ERROR, "💾 SD Not Supported for this Device: %s", esp_err_to_name(ret));
+  log(ERROR, "💾 SD Not Supported for this Device");
 #endif
 }
 
@@ -288,7 +291,7 @@ bool ESPWiFi::checkSDCard() {
       // Card was removed - try to reinitialize if it's been reinserted
       initSDCard();
       if (sdCard != nullptr) {
-        log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
+        log(WARNING, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
       }
     }
   }
@@ -435,7 +438,7 @@ bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
 
     // Yield periodically to prevent watchdog timeout
     if (++entryCount % 10 == 0) {
-      feedWatchDog();
+      feedWatchDog(1);
     }
   }
   closedir(dir);

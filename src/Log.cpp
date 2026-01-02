@@ -26,15 +26,11 @@ std::string logLevelToString(LogLevel level) {
   }
 }
 
-void ESPWiFi::startLogging(std::string filePath) {
+void ESPWiFi::startLogging() {
   if (loggingStarted) {
     return;
   }
   loggingStarted = true;
-
-  // Ensure filesystems are ready. SD is config-gated in initSDCard().
-  // initLittleFS();
-  // initSDCard();
 
   if (logFileMutex == nullptr) {
     logFileMutex = xSemaphoreCreateMutex();
@@ -44,8 +40,9 @@ void ESPWiFi::startLogging(std::string filePath) {
   // - log.enabled
   // - log.level
   // - log.useSD
-  // - log.file (string path, e.g. "/log")
+  // - log.file (string path, e.g. "/espwifi.log")
   std::string cfgLogFile = config["log"]["file"].as<std::string>();
+  std::string filePath = logFilePath;
 
   // Pick file path (config overrides default param).
   if (!cfgLogFile.empty()) {
@@ -69,14 +66,7 @@ void ESPWiFi::startLogging(std::string filePath) {
   printFilesystemInfo();
 }
 
-FILE *ESPWiFi::openLogFile(bool useSD) {
-  std::string full_path =
-      useSD ? sdMountPoint + logFilePath : lfsMountPoint + logFilePath;
-  return fopen(full_path.c_str(), "a");
-}
-
 bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {
-  checkSDCard();
   // LittleFS
   bool preferSD = config["log"]["useSD"].as<bool>();
   useSD = preferSD && (sdCard != nullptr);
@@ -334,10 +324,10 @@ void ESPWiFi::logConfigHandler() {
   } else if (!config["log"]["filePath"].isNull()) {
     currentFile = config["log"]["filePath"].as<std::string>();
   } else {
-    currentFile = "/log";
+    currentFile = "/espwifi.log";
   }
   if (currentFile.empty()) {
-    currentFile = "/log";
+    currentFile = "/espwifi.log";
   }
   if (currentFile.front() != '/') {
     currentFile.insert(currentFile.begin(), '/');

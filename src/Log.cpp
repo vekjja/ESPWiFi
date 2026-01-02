@@ -26,19 +26,6 @@ std::string logLevelToString(LogLevel level) {
   }
 }
 
-void ESPWiFi::startSerial(int baudRate) {
-  if (serialStarted) {
-    return;
-  }
-  // ESP-IDF: Serial is already initialized by default via UART
-  // Just mark it as started
-  this->baudRate = baudRate;
-  serialStarted = true;
-  vTaskDelay(pdMS_TO_TICKS(300)); // Small delay for serial to stabilize
-  printf("%s  [INFO] 📺 Serial Started\n", timestamp().c_str());
-  printf("%s  [INFO]\tBaud: %d\n", timestamp().c_str(), getSerialBaudRate());
-}
-
 void ESPWiFi::startLogging(std::string filePath) {
   if (loggingStarted) {
     return;
@@ -46,8 +33,8 @@ void ESPWiFi::startLogging(std::string filePath) {
   loggingStarted = true;
 
   // Ensure filesystems are ready. SD is config-gated in initSDCard().
-  initLittleFS();
-  initSDCard();
+  // initLittleFS();
+  // initSDCard();
 
   if (logFileMutex == nullptr) {
     logFileMutex = xSemaphoreCreateMutex();
@@ -58,14 +45,14 @@ void ESPWiFi::startLogging(std::string filePath) {
   // - log.level
   // - log.useSD
   // - log.file (string path, e.g. "/log")
-  std::string cfgFile = config["log"]["file"].as<std::string>();
+  std::string cfgLogFile = config["log"]["file"].as<std::string>();
 
   // Pick file path (config overrides default param).
-  if (!cfgFile.empty()) {
-    filePath = cfgFile;
+  if (!cfgLogFile.empty()) {
+    filePath = cfgLogFile;
   }
   if (filePath.empty()) {
-    filePath = "/log";
+    filePath = "/espwifi.log";
   }
   if (filePath.front() != '/') {
     filePath.insert(filePath.begin(), '/');
@@ -76,10 +63,8 @@ void ESPWiFi::startLogging(std::string filePath) {
 
   writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
-  if (serialStarted) {
-    log(INFO, "📺 Serial Output Enabled");
-    log(DEBUG, "📺\tBaud: %d", getSerialBaudRate());
-  }
+  log(INFO, "📺 Serial Output Enabled");
+  log(DEBUG, "📺\tBaud: 115200");
 
   printFilesystemInfo();
 }
@@ -169,9 +154,6 @@ void ESPWiFi::logImpl(LogLevel level, const std::string &message) {
   if (!shouldLog(level)) {
     return;
   }
-  if (!serialStarted) {
-    startSerial();
-  }
 
   std::string ts = timestamp();
   std::string levelStr = logLevelToString(level);
@@ -208,24 +190,50 @@ void ESPWiFi::cleanLogFile() {
     return;
   }
 
-  const std::string &base = useSD ? sdMountPoint : lfsMountPoint;
-  std::string full_path = base + logFilePath;
-
   if (logFileMutex != nullptr) {
     (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
   }
+
   struct stat st;
-  if (stat(full_path.c_str(), &st) == 0) {
-    if ((size_t)st.st_size > (size_t)maxLogFileSize) {
-      // Use printf instead of log() to avoid recursion during cleanup
-      printf("%s  [INFO] 🗑️  Log file deleted\n", timestamp().c_str());
-      bool deleted = ::remove(full_path.c_str()) == 0;
-      if (!deleted) {
-        printf("%s [ERROR] 💔 Failed to delete log file\n",
-               timestamp().c_str());
+  bool deletedAny = false;
+
+  // Check and delete from SD card if available
+  if (useSD) {
+    std::string sd_path = sdMountPoint + logFilePath;
+    if (stat(sd_path.c_str(), &st) == 0) {
+      if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+        bool deleted = ::remove(sd_path.c_str()) == 0;
+        if (deleted) {
+          deletedAny = true;
+        } else {
+          printf("%s [ERROR] 💔 Failed to delete log file from SD\n",
+                 timestamp().c_str());
+        }
       }
     }
   }
+
+  // Check and delete from LFS if available
+  if (useLFS) {
+    std::string lfs_path = lfsMountPoint + logFilePath;
+    if (stat(lfs_path.c_str(), &st) == 0) {
+      if ((size_t)st.st_size > (size_t)maxLogFileSize) {
+        bool deleted = ::remove(lfs_path.c_str()) == 0;
+        if (deleted) {
+          deletedAny = true;
+        } else {
+          printf("%s [ERROR] 💔 Failed to delete log file from LFS\n",
+                 timestamp().c_str());
+        }
+      }
+    }
+  }
+
+  if (deletedAny) {
+    // Use printf instead of log() to avoid recursion during cleanup
+    printf("%s  [INFO] 🗑️  Log file deleted\n", timestamp().c_str());
+  }
+
   if (logFileMutex != nullptr) {
     xSemaphoreGive(logFileMutex);
   }

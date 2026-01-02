@@ -65,9 +65,13 @@ public:
 
   // ---- Filesystem
   void initSDCard();
-  void deinitSDCard();
   void initLittleFS();
+  void initFilesystem() {
+    initSDCard();
+    initLittleFS();
+  }
   bool checkSDCard();
+  void deinitSDCard();
   void handleSDCardError();
   bool sdNotSupported = false;
   esp_err_t sdInitLastErr = ESP_OK;
@@ -105,7 +109,6 @@ public:
   void cleanLogFile();
   int baudRate = 115200;
   int maxLogFileSize = 0;
-  bool serialStarted = false;
   bool loggingStarted = false;
   std::string logFilePath = "/log";
   FILE *openLogFile(bool useSD);
@@ -115,8 +118,6 @@ public:
   bool getLogFilesystem(bool &useSD, bool &useLFS);
 
   void startLogging(std::string filePath = "/log");
-  void startSerial(int baudRate = 115200);
-  int getSerialBaudRate();
   std::string timestamp();
   void logConfigHandler();
   bool shouldLog(LogLevel level);
@@ -139,6 +140,7 @@ public:
   void requestConfigSave();
   std::string prettyConfig();
   JsonDocument defaultConfig();
+  void maskSensitiveFields(JsonVariant variant);
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
 
   // ---- WiFi

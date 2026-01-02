@@ -5,8 +5,7 @@
 
 void ESPWiFi::start() {
   config = defaultConfig(); // Start with default config
-  startSerial();            // Start serial
-  initLittleFS();           // Initialize filesystem lfs and sd card
+  initFilesystem();         // Initialize filesystem lfs and sd card
   startLogging();           // Start logging (will use default config values)
   readConfig();             // Load config
   // setMaxPower();

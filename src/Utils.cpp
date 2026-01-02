@@ -345,30 +345,3 @@ JsonDocument ESPWiFi::readRequestBody(httpd_req_t *req) {
 
   return doc;
 }
-
-int ESPWiFi::getSerialBaudRate() {
-  // Start with our last-known value, then prefer sdkconfig (authoritative for
-  // ESP-IDF console), and finally try querying the UART driver if available.
-  int baud = this->baudRate;
-
-#if defined(CONFIG_ESP_CONSOLE_UART_BAUDRATE)
-  baud = CONFIG_ESP_CONSOLE_UART_BAUDRATE;
-#elif defined(CONFIG_CONSOLE_UART_BAUDRATE)
-  baud = CONFIG_CONSOLE_UART_BAUDRATE;
-#endif
-
-  int uart_num = UART_NUM_0;
-#if defined(CONFIG_ESP_CONSOLE_UART_NUM)
-  uart_num = CONFIG_ESP_CONSOLE_UART_NUM;
-#elif defined(CONFIG_CONSOLE_UART_NUM)
-  uart_num = CONFIG_CONSOLE_UART_NUM;
-#endif
-
-  uint32_t driverBaud = 0;
-  esp_err_t err = uart_get_baudrate((uart_port_t)uart_num, &driverBaud);
-  if (err == ESP_OK && driverBaud > 0) {
-    baud = (int)driverBaud;
-  }
-
-  return baud;
-}

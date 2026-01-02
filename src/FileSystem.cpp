@@ -41,21 +41,17 @@ void ESPWiFi::initLittleFS() {
 
   if (ret != ESP_OK) {
     if (ret == ESP_FAIL) {
-      printf("Failed to mount or format filesystem\n");
+      printf(" 💔 Failed to mount or format filesystem\n");
     } else if (ret == ESP_ERR_NOT_FOUND) {
-      printf("Failed to find LittleFS partition\n");
+      printf("💔 Failed to find LittleFS partition\n");
     } else {
-      printf("Failed to initialize LittleFS (%s)\n", esp_err_to_name(ret));
+      printf("💔 Failed to initialize LittleFS (%s)\n", esp_err_to_name(ret));
     }
     lfs = nullptr;
     return;
   }
-
-  // Set lfs to non-null to indicate LittleFS is initialized
-  // esp_vfs_littlefs_register doesn't return a handle, so we use a sentinel
-  // value
+  // Set lfs to non-null sentinel value to indicate LittleFS is initialized
   lfs = (void *)0x1;
-  log(INFO, "💾 LittleFS Initialized");
 }
 
 #if defined(CONFIG_IDF_TARGET_ESP32)

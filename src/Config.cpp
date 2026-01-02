@@ -66,6 +66,40 @@ void ESPWiFi::readConfig() {
   }
 }
 
+void ESPWiFi::maskSensitiveFields(JsonVariant variant) {
+  if (variant.is<JsonObject>()) {
+    JsonArray sensitiveKeys = config["log"]["maskedKeys"].as<JsonArray>();
+    JsonObject obj = variant.as<JsonObject>();
+    for (JsonPair kvp : obj) {
+      const char *key = kvp.key().c_str();
+      JsonVariant value = obj[key];
+
+      // Check if this key should be masked
+      bool shouldMask = false;
+      for (JsonVariant maskedKey : sensitiveKeys) {
+        if (strcmp(key, maskedKey.as<const char *>()) == 0) {
+          shouldMask = true;
+          break;
+        }
+      }
+
+      if (shouldMask) {
+        value.set("********");
+      } else if (value.is<JsonObject>() || value.is<JsonArray>()) {
+        // Recursively process nested objects and arrays
+        maskSensitiveFields(value);
+      }
+    }
+  } else if (variant.is<JsonArray>()) {
+    JsonArray arr = variant.as<JsonArray>();
+    for (JsonVariant item : arr) {
+      if (item.is<JsonObject>() || item.is<JsonArray>()) {
+        maskSensitiveFields(item);
+      }
+    }
+  }
+}
+
 std::string ESPWiFi::prettyConfig() {
   // Optimized: work directly on config copy to avoid multiple large string
   // allocations Use heap-allocated buffer for serialization to reduce stack
@@ -100,59 +134,8 @@ std::string ESPWiFi::prettyConfig() {
     return "";
   }
 
-  // Recursively mask sensitive fields with depth limit to prevent stack
-  // overflow
-  const char *sensitiveKeys[] = {"password", "passwd",  "key",   "token",
-                                 "apiKey",   "api_key", "secret"};
-  const size_t numSensitiveKeys =
-      sizeof(sensitiveKeys) / sizeof(sensitiveKeys[0]);
-  const int MAX_DEPTH = 20; // Limit recursion depth
-
-  std::function<void(JsonVariant, int)> maskSensitiveFields =
-      [&](JsonVariant variant, int depth) {
-        if (depth > MAX_DEPTH) {
-          return; // Too deep, skip masking
-        }
-
-        if (variant.is<JsonObject>()) {
-          JsonObject obj = variant.as<JsonObject>();
-          for (JsonPair kvp : obj) {
-            const char *key = kvp.key().c_str();
-            JsonVariant value = obj[key]; // Get mutable reference
-
-            // Case-insensitive check for sensitive fields (avoid string
-            // allocation)
-            bool shouldMask = false;
-            for (size_t i = 0; i < numSensitiveKeys; i++) {
-              if (strcasecmp(key, sensitiveKeys[i]) == 0) {
-                shouldMask = true;
-                break;
-              }
-            }
-
-            if (shouldMask) {
-              value.set("********");
-            } else if (value.is<JsonObject>() || value.is<JsonArray>()) {
-              // Recursively process nested objects and arrays
-              maskSensitiveFields(value, depth + 1);
-            }
-
-            // Yield periodically to prevent stack overflow
-            if (depth % 5 == 0) {
-              feedWatchDog();
-            }
-          }
-        } else if (variant.is<JsonArray>()) {
-          JsonArray arr = variant.as<JsonArray>();
-          for (JsonVariant item : arr) {
-            if (item.is<JsonObject>() || item.is<JsonArray>()) {
-              maskSensitiveFields(item, depth + 1);
-            }
-          }
-        }
-      };
-
-  maskSensitiveFields(logConfig.as<JsonVariant>(), 0);
+  // Recursively mask sensitive fields at all depths
+  maskSensitiveFields(logConfig.as<JsonVariant>());
 
   // Serialize to string (this is the only large string we create)
   std::string prettyConfig;

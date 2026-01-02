@@ -118,7 +118,7 @@ void ESPWiFi::initSDCard() {
   sdNotSupported = false;
 
   log(INFO, "💾 SD Card Initializing, Mount Point: %s", sdMountPoint.c_str());
-  yield(); // Yield before heavy operations to reduce stack pressure
+  feedWatchDog(); // Yield before heavy operations to reduce stack pressure
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
   // Auto-detect: try SPI first, then SDMMC
@@ -151,7 +151,7 @@ void ESPWiFi::initSDCard() {
 
     log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
         spiHost, mosi, miso, sclk, cs);
-    yield(); // Yield before SPI bus init
+    feedWatchDog(); // Yield before SPI bus init
 
     // Initialize SPI bus
     ret = initSpiBus(spiHost, mosi, miso, sclk, sdSpiBusOwned);
@@ -161,7 +161,7 @@ void ESPWiFi::initSDCard() {
       log(WARNING, "💾 SD(SPI) bus init failed: %s", esp_err_to_name(ret));
       return;
     }
-    yield(); // Yield after SPI bus init, before mount
+    feedWatchDog(); // Yield after SPI bus init, before mount
 
     // Configure SD card device
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
@@ -187,12 +187,12 @@ void ESPWiFi::initSDCard() {
       log(INFO, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
     }
-    yield(); // Yield after SPI mount attempt
+    feedWatchDog(); // Yield after SPI mount attempt
   }
 
   // Try SDMMC (native interface) if SPI failed
   if (ret != ESP_OK) {
-    yield(); // Yield before SDMMC attempt
+    feedWatchDog(); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;
@@ -296,7 +296,6 @@ bool ESPWiFi::checkSDCard() {
       }
     }
   }
-  log(ACCESS, "🔄 💾 SD Card Check: Present");
   return true;
 }
 
@@ -440,7 +439,7 @@ bool ESPWiFi::deleteDirectoryRecursive(const std::string &dirPath) {
 
     // Yield periodically to prevent watchdog timeout
     if (++entryCount % 10 == 0) {
-      yield();
+      feedWatchDog();
     }
   }
   closedir(dir);
@@ -468,7 +467,7 @@ bool ESPWiFi::writeFile(const std::string &filePath, const uint8_t *data,
   }
 
   size_t bytesWritten = fwrite(data, 1, len, f);
-  yield(); // Yield after file write
+  feedWatchDog(); // Yield after file write
 
   // Flush the file to ensure data is written to filesystem
   if (fflush(f) != 0) {

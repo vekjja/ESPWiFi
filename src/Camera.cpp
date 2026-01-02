@@ -186,7 +186,7 @@ void ESPWiFi::clearCameraBuffer() {
     } else {
       break;
     }
-    yield();
+    feedWatchDog();
   }
 }
 
@@ -334,7 +334,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
       break;
     }
     sent += toSend;
-    yield();
+    feedWatchDog();
   }
   // Finalize chunked transfer
   if (ret == ESP_OK) {

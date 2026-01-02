@@ -150,7 +150,7 @@ void setup() {
 }
 
 void loop() {
-  yield();                 // Allow other tasks to run
+  feedWatchDog();                 // Allow other tasks to run
   // Custom main loop logic here
 }
 ```

@@ -126,7 +126,7 @@ void ESPWiFi::srvLog() {
         size_t totalRead = 0;
 
         while ((ret == ESP_OK) && !feof(file)) {
-          espwifi->yield(); // Yield before file I/O
+          espwifi->feedWatchDog(); // Yield before file I/O
           size_t bytesRead = fread(readBuffer, 1, readChunkSize, file);
           if (bytesRead == 0) {
             break;
@@ -144,7 +144,7 @@ void ESPWiFi::srvLog() {
                 if (ret != ESP_OK)
                   break;
                 escapePos = 0;
-                espwifi->yield(); // Yield after network I/O
+                espwifi->feedWatchDog(); // Yield after network I/O
               }
               memcpy(escapeBuffer + escapePos, escaped, escapedLen);
               escapePos += escapedLen;
@@ -157,7 +157,7 @@ void ESPWiFi::srvLog() {
                 if (ret != ESP_OK)
                   break;
                 escapePos = 0;
-                espwifi->yield(); // Yield after network I/O
+                espwifi->feedWatchDog(); // Yield after network I/O
               }
               memcpy(escapeBuffer + escapePos, escaped, escapedLen);
               escapePos += escapedLen;
@@ -170,7 +170,7 @@ void ESPWiFi::srvLog() {
                 if (ret != ESP_OK)
                   break;
                 escapePos = 0;
-                espwifi->yield(); // Yield after network I/O
+                espwifi->feedWatchDog(); // Yield after network I/O
               }
               memcpy(escapeBuffer + escapePos, escaped, escapedLen);
               escapePos += escapedLen;
@@ -181,7 +181,7 @@ void ESPWiFi::srvLog() {
                 if (ret != ESP_OK)
                   break;
                 escapePos = 0;
-                espwifi->yield(); // Yield after network I/O
+                espwifi->feedWatchDog(); // Yield after network I/O
               }
               escapeBuffer[escapePos++] = readBuffer[i];
             }
@@ -193,14 +193,14 @@ void ESPWiFi::srvLog() {
             if (ret != ESP_OK)
               break;
             escapePos = 0;
-            espwifi->yield(); // Yield after network I/O
+            espwifi->feedWatchDog(); // Yield after network I/O
           }
         }
 
         // Send any remaining escaped content
         if (ret == ESP_OK && escapePos > 0) {
           ret = httpd_resp_send_chunk(req, escapeBuffer, escapePos);
-          espwifi->yield(); // Yield after network I/O
+          espwifi->feedWatchDog(); // Yield after network I/O
         }
 
         // Free allocated buffers
@@ -213,13 +213,13 @@ void ESPWiFi::srvLog() {
         if (ret == ESP_OK) {
           const char *htmlFooter = "</pre></body></html>";
           ret = httpd_resp_send_chunk(req, htmlFooter, strlen(htmlFooter));
-          espwifi->yield(); // Yield after network I/O
+          espwifi->feedWatchDog(); // Yield after network I/O
         }
 
         // Finalize chunked transfer
         if (ret == ESP_OK) {
           ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
-          espwifi->yield(); // Yield after network I/O
+          espwifi->feedWatchDog(); // Yield after network I/O
         }
 
         espwifi->logAccess(200, clientInfo, totalRead);

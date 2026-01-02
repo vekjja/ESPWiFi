@@ -118,7 +118,7 @@ esp_err_t sendChunk(ESPWiFi *espwifi, httpd_req_t *req, const char *data,
   esp_err_t ret = httpd_resp_send_chunk(req, data, len);
   if (ret == ESP_OK) {
     ioBytes += len;
-    espwifi->yield();
+    espwifi->feedWatchDog();
   }
   return ret;
 }
@@ -258,7 +258,7 @@ void ESPWiFi::srvFiles() {
           // Yield periodically (in addition to sendChunk yields) so directory
           // scans don't hog the httpd task.
           if ((fileCount % 16) == 0) {
-            espwifi->yield();
+            espwifi->feedWatchDog();
           }
         }
 
@@ -269,7 +269,7 @@ void ESPWiFi::srvFiles() {
         }
         // Finalize chunked response.
         (void)httpd_resp_send_chunk(req, nullptr, 0);
-        espwifi->yield();
+        espwifi->feedWatchDog();
 
         espwifi->logAccess((ret == ESP_OK) ? 200 : 500, clientInfo, bytesSent);
         return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
@@ -551,12 +551,12 @@ void ESPWiFi::srvFiles() {
               }
 
               if ((++ops % 16) == 0) {
-                espwifi->yield();
+                espwifi->feedWatchDog();
               }
             }
             closedir(dir);
             if ((++ops % 16) == 0) {
-              espwifi->yield();
+              espwifi->feedWatchDog();
             }
           }
 
@@ -609,14 +609,14 @@ void ESPWiFi::srvFiles() {
                 }
               }
               if ((++ops % 16) == 0) {
-                espwifi->yield();
+                espwifi->feedWatchDog();
               }
             }
             if (removed == 0) {
               // Nothing else removable; we're done (or stuck).
               break;
             }
-            espwifi->yield();
+            espwifi->feedWatchDog();
           }
 
           deleteSuccess =
@@ -763,7 +763,7 @@ void ESPWiFi::srvFiles() {
                 return ESP_OK;
               }
               carry = data;
-              espwifi->yield();
+              espwifi->feedWatchDog();
               continue;
             }
 
@@ -882,7 +882,7 @@ void ESPWiFi::srvFiles() {
           }
 
           if ((totalWritten % 8192) == 0) {
-            espwifi->yield();
+            espwifi->feedWatchDog();
           }
         }
 

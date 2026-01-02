@@ -271,7 +271,7 @@ esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
       }
       sent += toSend;
       remaining -= toSend;
-      yield();
+      feedWatchDog();
     }
     // Finalize chunked transfer (even on error; best-effort)
     esp_err_t end_ret = httpd_resp_send_chunk(req, nullptr, 0);
@@ -421,7 +421,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
 
   // Stream file in chunks with frequent yields to prevent watchdog timeout
   while (totalSent < (size_t)fileSize && ret == ESP_OK) {
-    yield(); // Yield before each chunk
+    feedWatchDog(); // Yield before each chunk
     size_t toRead = (fileSize - totalSent < CHUNK_SIZE) ? (fileSize - totalSent)
                                                         : CHUNK_SIZE;
 
@@ -438,7 +438,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
       ret = ESP_FAIL;
       break;
     }
-    yield(); // Yield after file I/O
+    feedWatchDog(); // Yield after file I/O
 
     // Send chunk
     ret = httpd_resp_send_chunk(req, buffer, bytesRead);
@@ -447,19 +447,19 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
              totalSent, esp_err_to_name(ret));
       break;
     }
-    yield(); // Yield after network I/O
+    feedWatchDog(); // Yield after network I/O
 
     totalSent += bytesRead;
   }
 
   // Finalize chunked transfer
   if (ret == ESP_OK) {
-    yield();                                      // Yield before finalizing
+    feedWatchDog();                               // Yield before finalizing
     ret = httpd_resp_send_chunk(req, nullptr, 0); // End chunked transfer
     if (ret != ESP_OK) {
       printf("Failed to finalize chunked transfer: %s\n", esp_err_to_name(ret));
     }
-    yield(); // Yield after finalizing
+    feedWatchDog(); // Yield after finalizing
   }
 
   fclose(file);

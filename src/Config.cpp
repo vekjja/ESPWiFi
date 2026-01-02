@@ -87,7 +87,7 @@ std::string ESPWiFi::prettyConfig() {
     return "";
   }
 
-  yield(); // Yield after serialization
+  feedWatchDog(); // Yield after serialization
 
   // Parse into temporary document for masking
   JsonDocument logConfig;
@@ -139,7 +139,7 @@ std::string ESPWiFi::prettyConfig() {
 
             // Yield periodically to prevent stack overflow
             if (depth % 5 == 0) {
-              yield();
+              feedWatchDog();
             }
           }
         } else if (variant.is<JsonArray>()) {
@@ -169,7 +169,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
 
-  yield(); // Yield before JSON operations
+  feedWatchDog(); // Yield before JSON operations
 
   // Serialize to buffer - add extra padding for safety
   size_t size = measureJson(config);
@@ -185,7 +185,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
 
-  yield(); // Yield after allocation
+  feedWatchDog(); // Yield after allocation
 
   size_t written = serializeJson(config, buffer, size + 32);
   if (written == 0) {
@@ -194,7 +194,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
 
-  yield(); // Yield after serialization
+  feedWatchDog(); // Yield after serialization
 
   // Use atomic write to prevent corruption
   bool success = writeFile(configFile, (const uint8_t *)buffer, written);
@@ -205,7 +205,7 @@ void ESPWiFi::saveConfig() {
     return;
   }
 
-  yield(); // Yield after file write
+  feedWatchDog(); // Yield after file write
 
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);

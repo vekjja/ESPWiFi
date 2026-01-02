@@ -18,10 +18,10 @@ void ESPWiFi::start() {
 }
 
 void ESPWiFi::runSystem() {
-  yield();
-  checkSDCard();
   handleConfigUpdate();
+  checkSDCard();
   streamRSSI();
+  feedWatchDog();
   // static unsigned long lastHeartbeat = 0;
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 }

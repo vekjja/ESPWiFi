@@ -28,6 +28,7 @@
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -46,7 +47,7 @@ public:
 
   // ---- Basic helpers/state
   std::string version() { return _version; }
-  void yield(int ms = 1) { vTaskDelay(pdMS_TO_TICKS(ms)); }
+  void feedWatchDog(int ms = 10) { vTaskDelay(pdMS_TO_TICKS(ms)); }
 
   int connectTimeout = 27000;
   JsonDocument config = defaultConfig();

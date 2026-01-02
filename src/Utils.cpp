@@ -76,7 +76,7 @@ void ESPWiFi::deepMerge(JsonVariant dst, JsonVariantConst src, int depth) {
       }
     }
     if ((depth % 3) == 0) {
-      yield();
+      feedWatchDog();
     }
     return;
   }

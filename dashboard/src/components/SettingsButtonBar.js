@@ -24,10 +24,14 @@ import FileBrowserButton from "./FileBrowserButton";
 import BluetoothButton from "./BluetoothButton";
 import AddModuleButton from "./AddModuleButton";
 
+// Storage keys for persisting button configuration
 const STORAGE_KEY = "settingsButtonOrder.v1";
 const ENABLED_KEY = "settingsButtonEnabled.v1";
 
+// Button IDs that cannot be removed from the bar
 const NON_REMOVABLE_IDS = new Set(["deviceSettings", "addModule"]);
+
+// Default button order priority for initial setup
 const DEFAULT_ORDER_PRIORITY = [
   "rssi",
   "deviceSettings",
@@ -36,6 +40,22 @@ const DEFAULT_ORDER_PRIORITY = [
   "logs",
 ];
 
+// Button label mapping for display
+const BUTTON_LABELS = {
+  deviceSettings: "Device Settings",
+  rssi: "RSSI",
+  bluetooth: "Bluetooth",
+  camera: "Camera",
+  logs: "Logs",
+  files: "File Browser",
+  addModule: "Add Module",
+};
+
+/**
+ * Compute default button order based on priority list
+ * @param {string[]} ids - Available button IDs
+ * @returns {string[]} Ordered button IDs
+ */
 function computeDefaultOrder(ids) {
   const remaining = new Set(ids);
   const out = [];
@@ -55,6 +75,13 @@ function computeDefaultOrder(ids) {
   return out;
 }
 
+/**
+ * Insert button ID after another ID in the list
+ * @param {string[]} list - Current button list
+ * @param {string} id - ID to insert
+ * @param {string} afterId - ID to insert after
+ * @returns {string[]} Updated list
+ */
 function insertAfter(list, id, afterId) {
   if (list.includes(id)) return list;
   const idx = list.indexOf(afterId);
@@ -62,6 +89,11 @@ function insertAfter(list, id, afterId) {
   return [...list.slice(0, idx + 1), id, ...list.slice(idx + 1)];
 }
 
+/**
+ * Ensure non-removable buttons are in preferred positions
+ * @param {string[]} list - Current button list
+ * @returns {string[]} List with non-removables positioned correctly
+ */
 function ensureNonRemovablesInPreferredPositions(list) {
   let next = Array.isArray(list) ? [...list] : [];
   // Settings after RSSI when possible
@@ -79,16 +111,12 @@ function ensureNonRemovablesInPreferredPositions(list) {
   return next;
 }
 
-const BUTTON_LABELS = {
-  deviceSettings: "Device Settings",
-  rssi: "RSSI",
-  bluetooth: "Bluetooth",
-  camera: "Camera",
-  logs: "Logs",
-  files: "File Browser",
-  addModule: "Add Module",
-};
-
+/**
+ * Drop zone component for removing buttons
+ * Appears when dragging a removable button
+ * @param {Object} props - Component props
+ * @param {string|null} props.activeId - Currently dragged button ID
+ */
 function RemoveDropZone({ activeId }) {
   const { isOver, setNodeRef } = useDroppable({ id: "trash" });
   const canRemove = Boolean(activeId) && !NON_REMOVABLE_IDS.has(activeId);
@@ -121,6 +149,13 @@ function RemoveDropZone({ activeId }) {
   );
 }
 
+/**
+ * Sortable wrapper for button bar items
+ * Provides drag-and-drop functionality
+ * @param {Object} props - Component props
+ * @param {string} props.id - Button ID
+ * @param {React.ReactNode} props.children - Button component
+ */
 function SortableBarItem({ id, children }) {
   const {
     attributes,
@@ -154,23 +189,38 @@ function SortableBarItem({ id, children }) {
   );
 }
 
+/**
+ * Settings button bar component with drag-and-drop reordering
+ * Features:
+ * - Drag-and-drop button reordering
+ * - Show/hide buttons (except non-removable ones)
+ * - Persistent storage of button order and visibility
+ * - Conditional button rendering based on device capabilities
+ *
+ * @param {Object} props - Component props
+ * @param {Object} props.config - Global configuration object
+ * @param {boolean} props.deviceOnline - Device connectivity status
+ * @param {Function} props.saveConfig - Function to update local config
+ * @param {Function} props.saveConfigToDevice - Function to save config to device
+ * @param {Function} props.getRSSIColor - Function to get RSSI color
+ * @param {Function} props.getRSSIIcon - Function to get RSSI icon name
+ * @param {boolean} props.cameraEnabled - Camera enabled status
+ * @param {Function} props.getCameraColor - Function to get camera button color
+ */
 export default function SettingsButtonBar({
   config,
   deviceOnline,
-  onNetworkSettings,
-  onCameraSettings,
-  onRSSISettings,
-  onFileBrowser,
-  onAddModule,
   saveConfig,
   saveConfigToDevice,
-  onRSSIDataChange,
   getRSSIColor,
   getRSSIIcon,
-  // Camera specific props
   cameraEnabled,
   getCameraColor,
 }) {
+  /**
+   * Build list of available buttons based on device capabilities
+   * Some buttons (camera, bluetooth) only appear if device supports them
+   */
   const availableButtons = useMemo(() => {
     const items = [];
 
@@ -191,10 +241,8 @@ export default function SettingsButtonBar({
         <RSSIButton
           config={config}
           deviceOnline={deviceOnline}
-          onRSSISettings={onRSSISettings}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
-          onRSSIDataChange={onRSSIDataChange}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
         />
@@ -244,11 +292,7 @@ export default function SettingsButtonBar({
     items.push({
       id: "files",
       render: () => (
-        <FileBrowserButton
-          config={config}
-          deviceOnline={deviceOnline}
-          onFileBrowser={onFileBrowser}
-        />
+        <FileBrowserButton config={config} deviceOnline={deviceOnline} />
       ),
     });
 
@@ -258,10 +302,9 @@ export default function SettingsButtonBar({
         <AddModuleButton
           config={config}
           deviceOnline={deviceOnline}
-          onAddModule={onAddModule}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
-          missingSettingsButtons={[]} // replaced below after enabledIds exists
+          missingSettingsButtons={[]}
           onAddSettingsButton={() => {}}
         />
       ),
@@ -271,16 +314,12 @@ export default function SettingsButtonBar({
   }, [
     config,
     deviceOnline,
-    onRSSISettings,
     saveConfig,
     saveConfigToDevice,
-    onRSSIDataChange,
     getRSSIColor,
     getRSSIIcon,
     cameraEnabled,
     getCameraColor,
-    onFileBrowser,
-    onAddModule,
   ]);
 
   const visibleIds = useMemo(
@@ -288,6 +327,10 @@ export default function SettingsButtonBar({
     [availableButtons]
   );
 
+  /**
+   * Load enabled button IDs from localStorage
+   * Defaults to all visible buttons
+   */
   const [enabledIds, setEnabledIds] = useState(() => {
     try {
       const raw = window.localStorage.getItem(ENABLED_KEY);
@@ -298,6 +341,10 @@ export default function SettingsButtonBar({
     }
   });
 
+  /**
+   * Load button order from localStorage
+   * Defaults to computed default order
+   */
   const [order, setOrder] = useState(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -307,9 +354,14 @@ export default function SettingsButtonBar({
       return computeDefaultOrder(visibleIds);
     }
   });
+
+  // Currently dragged button ID
   const [activeId, setActiveId] = useState(null);
 
-  // Reconcile when visible buttons change (e.g. camera/bluetooth appears/disappears)
+  /**
+   * Reconcile enabled buttons when available buttons change
+   * (e.g., camera/bluetooth appears/disappears based on device capabilities)
+   */
   useEffect(() => {
     // Enabled buttons are a subset of what's available; always keep required buttons.
     setEnabledIds((prev) => {
@@ -324,7 +376,9 @@ export default function SettingsButtonBar({
     });
   }, [visibleIds]);
 
-  // Keep order in sync with enabled + available.
+  /**
+   * Keep button order in sync with enabled and available buttons
+   */
   useEffect(() => {
     setOrder((prev) => {
       const prevList = Array.isArray(prev) ? prev : [];
@@ -340,7 +394,9 @@ export default function SettingsButtonBar({
     });
   }, [enabledIds, visibleIds]);
 
-  // Persist order
+  /**
+   * Persist button order to localStorage
+   */
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
@@ -349,7 +405,9 @@ export default function SettingsButtonBar({
     }
   }, [order]);
 
-  // Persist enabled
+  /**
+   * Persist enabled button list to localStorage
+   */
   useEffect(() => {
     try {
       window.localStorage.setItem(ENABLED_KEY, JSON.stringify(enabledIds));
@@ -358,18 +416,28 @@ export default function SettingsButtonBar({
     }
   }, [enabledIds]);
 
+  /**
+   * Configure drag sensors
+   * Long-press prevents accidental drags while allowing button clicks
+   */
   const sensors = useSensors(
-    // Long-press (or click-and-hold) to drag; taps/clicks still activate the buttons
     useSensor(PointerSensor, {
+      // 250ms delay prevents accidental drags, 6px tolerance allows small movements
       activationConstraint: { delay: 250, tolerance: 6 },
     })
   );
 
+  /**
+   * Get buttons in current order
+   */
   const orderedButtons = useMemo(() => {
     const map = new Map(availableButtons.map((b) => [b.id, b]));
     return order.map((id) => map.get(id)).filter(Boolean);
   }, [availableButtons, order]);
 
+  /**
+   * Get list of buttons that can be added back
+   */
   const missingSettingsButtons = useMemo(() => {
     const enabledSet = new Set(enabledIds);
     return visibleIds
@@ -377,6 +445,10 @@ export default function SettingsButtonBar({
       .map((id) => ({ id, label: BUTTON_LABELS[id] || id }));
   }, [enabledIds, visibleIds]);
 
+  /**
+   * Add a button back to the bar
+   * @param {string} id - Button ID to add
+   */
   const handleAddSettingsButton = (id) => {
     if (!id) return;
     if (NON_REMOVABLE_IDS.has(id)) return;
@@ -393,7 +465,10 @@ export default function SettingsButtonBar({
     });
   };
 
-  // Both mobile and desktop use the same layout: horizontal row below header
+  /**
+   * Render the button bar
+   * Same layout for mobile and desktop - horizontal row below header
+   */
   return (
     <Paper
       elevation={2}
@@ -457,7 +532,6 @@ export default function SettingsButtonBar({
                       <AddModuleButton
                         config={config}
                         deviceOnline={deviceOnline}
-                        onAddModule={onAddModule}
                         saveConfig={saveConfig}
                         saveConfigToDevice={saveConfigToDevice}
                         missingSettingsButtons={missingSettingsButtons}

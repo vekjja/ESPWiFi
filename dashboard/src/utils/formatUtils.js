@@ -1,7 +1,11 @@
 /**
- * Convert bytes to human-readable format
+ * Convert bytes to human-readable format with appropriate unit
+ * Automatically scales to B, KB, MB, or GB
  * @param {number} bytes - Number of bytes to convert
  * @returns {string} Human-readable string (e.g., "1.5 MB", "512 KB")
+ * @example
+ * bytesToHumanReadable(1536) // Returns "1.5 KB"
+ * bytesToHumanReadable(0) // Returns "0 B"
  */
 export const bytesToHumanReadable = (bytes) => {
   if (!bytes || bytes === 0) return "0 B";
@@ -24,8 +28,12 @@ export const bytesToHumanReadable = (bytes) => {
 
 /**
  * Format uptime in seconds to human-readable format
+ * Shows days, hours, and minutes as appropriate
  * @param {number} uptimeSeconds - Uptime in seconds
- * @returns {string} Formatted uptime (e.g., "2h 30m", "45m", "1d 5h")
+ * @returns {string} Formatted uptime (e.g., "2h 30m", "45m", "1d 5h") or "N/A" if invalid
+ * @example
+ * formatUptime(3665) // Returns "1h 1m"
+ * formatUptime(90000) // Returns "1d 1h"
  */
 export const formatUptime = (uptimeSeconds) => {
   if (!uptimeSeconds) return "N/A";

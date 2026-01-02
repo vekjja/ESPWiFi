@@ -44,8 +44,6 @@ export default function DeviceSettingsOTATab({ config }) {
   // Fetch OTA status information
   const fetchOTAStatus = async () => {
     const fetchUrl = buildApiUrl("/api/ota/status", config?.deviceName);
-    console.log("Fetching OTA status from:", fetchUrl);
-
     setOtaLoading(true);
     setOtaError("");
 
@@ -66,7 +64,6 @@ export default function DeviceSettingsOTATab({ config }) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const data = await response.json();
-      console.log("Fetched OTA status:", data);
       setOtaStatus(data);
     } catch (error) {
       clearTimeout(timeoutId);
@@ -179,11 +176,6 @@ export default function DeviceSettingsOTATab({ config }) {
         startUrl,
         getFetchOptions({ method: "POST" })
       );
-      console.log(
-        "OTA start response:",
-        startResponse.status,
-        startResponse.statusText
-      );
 
       if (!startResponse.ok) {
         let errorMessage = "Failed to start OTA";
@@ -193,7 +185,6 @@ export default function DeviceSettingsOTATab({ config }) {
         } catch (e) {
           errorMessage = `HTTP ${startResponse.status}: ${startResponse.statusText}`;
         }
-        console.error("OTA start failed:", errorMessage);
         throw new Error(errorMessage);
       }
 
@@ -315,10 +306,6 @@ export default function DeviceSettingsOTATab({ config }) {
           );
 
           if (response.ok) {
-            const result = await response.json();
-            if (result.skipped) {
-              console.log(`Skipped large file: ${file.name}`);
-            }
             successCount++;
           } else {
             failCount++;

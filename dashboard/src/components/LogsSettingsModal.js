@@ -195,10 +195,11 @@ export default function LogsSettingsModal({
       // - LFS: /lfs/<logFilePath>
       //
       // The log file path can be configured in firmware via config.log.file or
-      // config.log.filePath; default is "/log".
-      let logFilePath = config?.log?.file || config?.log?.filePath || "/log";
+      // config.log.filePath; default is "/espwifi.log".
+      let logFilePath =
+        config?.log?.file || config?.log?.filePath || "/espwifi.log";
       if (typeof logFilePath !== "string" || logFilePath.trim() === "") {
-        logFilePath = "/log";
+        logFilePath = "/espwifi.log";
       }
       if (!logFilePath.startsWith("/")) {
         logFilePath = `/${logFilePath}`;
@@ -207,10 +208,20 @@ export default function LogsSettingsModal({
       // Avoid fetching huge log files (can exceed UI timeout and cause the device
       // to see ECONNRESET mid-stream). Ask for the last ~64KB.
       const tailBytes = 256 * 1024;
-      const candidates = [
-        `/sd${logFilePath}?tail=${tailBytes}`,
-        `/lfs${logFilePath}?tail=${tailBytes}`,
-      ];
+
+      // Determine filesystem preference from config
+      const useSD = config?.log?.useSD !== false; // Default to SD if not specified
+
+      // Build candidates list based on filesystem preference
+      const candidates = useSD
+        ? [
+            `/sd${logFilePath}?tail=${tailBytes}`,
+            `/lfs${logFilePath}?tail=${tailBytes}`, // Fallback to LFS
+          ]
+        : [
+            `/lfs${logFilePath}?tail=${tailBytes}`,
+            `/sd${logFilePath}?tail=${tailBytes}`, // Fallback to SD
+          ];
       let lastResponse = null;
 
       for (const path of candidates) {
@@ -375,7 +386,6 @@ export default function LogsSettingsModal({
 
       // Use saveConfigToDevice which handles PUT /config
       await saveConfigToDevice(partialConfig);
-      console.log("Log settings updated");
     } catch (error) {
       console.error("Failed to update log settings:", error);
       setLogError(`Failed to update log settings: ${error.message}`);

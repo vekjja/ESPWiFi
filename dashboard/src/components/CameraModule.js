@@ -373,8 +373,6 @@ export default function CameraModule({
   };
 
   const handleOpenSettings = () => {
-    // console.log("Opening settings - globalConfig.camera:", globalConfig?.camera);
-
     // Set settings data
     setSettingsData({
       name: config?.name || "",

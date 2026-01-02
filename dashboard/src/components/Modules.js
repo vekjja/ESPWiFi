@@ -303,7 +303,6 @@ export default function Modules({
   };
 
   const deleteModule = (moduleKey) => {
-    console.log("Deleting module:", moduleKey);
     const updatedModules = modules.filter((module) => module.key !== moduleKey);
 
     setModules(updatedModules);

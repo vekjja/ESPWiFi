@@ -1,12 +1,11 @@
 #ifndef ESPWiFi_BLUETOOTH_HANDLERS
 #define ESPWiFi_BLUETOOTH_HANDLERS
 
-#ifdef CONFIG_BT_CLASSIC_ENABLED
-
 #include "BluetoothA2DPSource.h"
 #include "ESPWiFi.h"
 #include "esp_a2dp_api.h"
 #include "esp_log.h"
+#include "sdkconfig.h"
 
 #define ESPWiFi_OBJ_CAST(obj)                                                  \
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(obj);                              \
@@ -126,7 +125,5 @@ void ESPWiFi::btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj) {
   ESPWiFi_OBJ_CAST(obj);
   espwifi->btAudioStateChange(state, obj);
 }
-
-#endif // CONFIG_BT_CLASSIC_ENABLED
 
 #endif // ESPWiFi_BLUETOOTH_HANDLERS

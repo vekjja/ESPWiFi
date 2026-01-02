@@ -172,7 +172,7 @@ std::string ESPWiFi::getContentType(std::string filename) {
   // Binary types
   if (ext == "png")
     return "image/png";
-  if (ext == "jpg" || ext == "jpeg")
+  if (ext == "jpg" || ext == "jpeg" || ext == "jpe")
     return "image/jpeg";
   if (ext == "gif")
     return "image/gif";

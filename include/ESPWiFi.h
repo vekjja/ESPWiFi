@@ -141,6 +141,7 @@ public:
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
 
   // ---- WiFi
+  void initNVS();
   void startAP();
   void startWiFi();
   void startClient();

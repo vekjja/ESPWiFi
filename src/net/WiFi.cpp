@@ -22,11 +22,23 @@ static bool netif_initialized = false;
 static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
+void ESPWiFi::initNVS() {
+  // Initialize NVS
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
+      ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    ret = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(ret);
+}
+
 void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "📶 WiFi Disabled");
     return;
   }
+  initNVS();
 
   std::string mode = config["wifi"]["mode"].as<std::string>();
   toLowerCase(mode);

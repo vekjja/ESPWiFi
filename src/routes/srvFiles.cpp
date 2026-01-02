@@ -280,6 +280,13 @@ void ESPWiFi::srvFiles() {
         (void)httpd_resp_send_chunk(req, nullptr, 0);
         espwifi->feedWatchDog();
 
+        if (ret == ESP_OK) {
+          espwifi->log(DEBUG, "📁 List: Success, sent %d files (%zu bytes)",
+                       fileCount, bytesSent);
+        } else {
+          espwifi->log(ERROR, "💔 📁 List: Failed during streaming");
+        }
+
         espwifi->logAccess((ret == ESP_OK) ? 200 : 500, clientInfo, bytesSent);
         return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
       });

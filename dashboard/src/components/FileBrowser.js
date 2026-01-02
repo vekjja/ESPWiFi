@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Box,
   Paper,
@@ -36,6 +36,7 @@ import {
   InsertDriveFile,
   MoreVert,
   Home,
+  Refresh,
 } from "@mui/icons-material";
 import { useTheme } from "@mui/material";
 import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
@@ -49,11 +50,58 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
+// Helper function to infer content type from file extension
+const getContentTypeFromExtension = (fileName) => {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const contentTypes = {
+    // Images
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    bmp: "image/bmp",
+    ico: "image/x-icon",
+    // Videos
+    mp4: "video/mp4",
+    webm: "video/webm",
+    ogg: "video/ogg",
+    avi: "video/x-msvideo",
+    mov: "video/quicktime",
+    mkv: "video/x-matroska",
+    // Audio
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    oga: "audio/ogg",
+    flac: "audio/flac",
+    // Documents
+    pdf: "application/pdf",
+    // Text files
+    txt: "text/plain",
+    log: "text/plain",
+    json: "application/json",
+    xml: "application/xml",
+    html: "text/html",
+    htm: "text/html",
+    css: "text/css",
+    js: "text/javascript",
+    md: "text/markdown",
+    ini: "text/plain",
+    conf: "text/plain",
+    cfg: "text/plain",
+    yml: "text/yaml",
+    yaml: "text/yaml",
+  };
+  return contentTypes[ext] || null;
+};
+
 const FileBrowserComponent = ({ config, deviceOnline }) => {
   const theme = useTheme();
   const DeleteIcon = getDeleteIcon(theme);
   const EditIcon = getEditIcon(theme);
 
+  // State management
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -63,7 +111,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     folderName: "",
   });
   const [currentPath, setCurrentPath] = useState("/");
-  const [fileSystem, setFileSystem] = useState("lfs"); // 'sd' or 'lfs'
+  const [fileSystem, setFileSystem] = useState("lfs");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [storageInfo, setStorageInfo] = useState({
@@ -84,127 +132,96 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     file: null,
   });
 
+  // Refs for cleanup and request management
+  const abortControllerRef = useRef(null);
+  const uploadXhrRef = useRef(null);
+
   const apiURL = config?.apiURL || "";
 
-  // Helper function to infer content type from file extension
-  const getContentTypeFromExtension = (fileName) => {
-    const ext = fileName.split(".").pop()?.toLowerCase() || "";
-    const contentTypes = {
-      // Images
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      gif: "image/gif",
-      webp: "image/webp",
-      svg: "image/svg+xml",
-      bmp: "image/bmp",
-      ico: "image/x-icon",
-      // Videos
-      mp4: "video/mp4",
-      webm: "video/webm",
-      ogg: "video/ogg",
-      avi: "video/x-msvideo",
-      mov: "video/quicktime",
-      mkv: "video/x-matroska",
-      // Audio
-      mp3: "audio/mpeg",
-      wav: "audio/wav",
-      oga: "audio/ogg",
-      flac: "audio/flac",
-      // Documents
-      pdf: "application/pdf",
-      // Text files
-      txt: "text/plain",
-      log: "text/plain",
-      json: "application/json",
-      xml: "application/xml",
-      html: "text/html",
-      htm: "text/html",
-      css: "text/css",
-      js: "text/javascript",
-      md: "text/markdown",
-      ini: "text/plain",
-      conf: "text/plain",
-      cfg: "text/plain",
-      yml: "text/yaml",
-      yaml: "text/yaml",
+  // Cleanup function for aborting requests
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      if (uploadXhrRef.current) {
+        uploadXhrRef.current.abort();
+      }
     };
-    return contentTypes[ext] || null;
-  };
+  }, []);
 
+  // Generic fetch with retry logic
+  const fetchWithRetry = useCallback(
+    async (url, options = {}, retries = 2, timeout = 10000) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+          const response = await fetch(
+            url,
+            getFetchOptions({ ...options, signal: controller.signal })
+          );
+
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+
+          return response;
+        } catch (err) {
+          if (i === retries) throw err;
+          if (err.name === "AbortError") {
+            throw new Error("Request timed out");
+          }
+          // Wait before retry (exponential backoff)
+          await new Promise((resolve) => setTimeout(resolve, 500 * (i + 1)));
+        }
+      }
+    },
+    []
+  );
+
+  // Open file with authentication
   const openFileWithAuth = useCallback(
     async (file) => {
       const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const response = await fetch(
-          fileUrl,
-          getFetchOptions({ method: "GET", signal: controller.signal })
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        const response = await fetchWithRetry(fileUrl, { method: "GET" });
 
         // Get content type from response or infer from extension
         let contentType =
           response.headers.get("content-type") ||
-          getContentTypeFromExtension(file.name);
+          getContentTypeFromExtension(file.name) ||
+          "application/octet-stream";
 
-        // Fallback to octet-stream if still unknown
-        if (!contentType) {
-          contentType = "application/octet-stream";
-        }
-
-        // For all files, use blob URL - browser will display them based on content-type
-        // This works for images, videos, PDFs, text files, and other viewable content
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(
           new Blob([blob], { type: contentType })
         );
 
-        // Open blob URL directly - browser will display it natively based on content-type
         window.open(blobUrl, "_blank");
-
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       } catch (err) {
-        clearTimeout(timeoutId);
         const msg =
-          err?.name === "AbortError"
-            ? "Request timed out - device may be offline"
-            : `Failed to open file: ${err.message || err}`;
+          err.message === "Request timed out"
+            ? "Request timed out - device may be busy"
+            : `Failed to open file: ${err.message}`;
         setError(msg);
-        // Open error in new tab if we can
-        const errorTab = window.open("", "_blank");
-        if (errorTab) {
-          errorTab.document.body.textContent = msg;
-        }
       }
     },
-    [apiURL, fileSystem]
+    [apiURL, fileSystem, fetchWithRetry]
   );
 
+  // Download file with authentication
   const downloadFileWithAuth = useCallback(
     async (file) => {
       const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
-        const response = await fetch(
-          fileUrl,
-          getFetchOptions({ method: "GET", signal: controller.signal })
-        );
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        const response = await fetchWithRetry(fileUrl, { method: "GET" });
 
         const contentType =
           response.headers.get("content-type") || "application/octet-stream";
@@ -220,34 +237,27 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         a.click();
         a.remove();
 
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       } catch (err) {
-        clearTimeout(timeoutId);
         const msg =
-          err?.name === "AbortError"
-            ? "Request timed out - device may be offline"
-            : `Failed to download file: ${err.message || err}`;
+          err.message === "Request timed out"
+            ? "Request timed out - device may be busy"
+            : `Failed to download file: ${err.message}`;
         setError(msg);
       }
     },
-    [apiURL, fileSystem]
+    [apiURL, fileSystem, fetchWithRetry]
   );
 
-  // Fetch files from ESP32
   // Fetch storage information
   const fetchStorageInfo = useCallback(
     async (fs = fileSystem) => {
       setStorageInfo((prev) => ({ ...prev, loading: true }));
 
       try {
-        const response = await fetch(
-          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`,
-          getFetchOptions()
+        const response = await fetchWithRetry(
+          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
         );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
         const data = await response.json();
         setStorageInfo({
           total: data.total || 0,
@@ -260,43 +270,44 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         setStorageInfo((prev) => ({ ...prev, loading: false }));
       }
     },
-    [fileSystem, apiURL]
+    [fileSystem, apiURL, fetchWithRetry]
   );
 
+  // Fetch files with retry and better error handling
   const fetchFiles = useCallback(
     async (path = currentPath, fs = fileSystem) => {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(
-          `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`,
-          getFetchOptions()
+        const response = await fetchWithRetry(
+          `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`
         );
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
 
         const data = await response.json();
         setFiles(data.files || []);
         setCurrentPath(path);
         setFileSystem(fs);
-        // Fetch storage info when filesystem changes
         fetchStorageInfo(fs);
       } catch (err) {
-        if (err.name === "TypeError" && err.message.includes("fetch")) {
-          setError(
-            "Device is offline. Please check your connection and try again."
-          );
+        let errorMsg = "Failed to load files";
+        if (err.message === "Request timed out") {
+          errorMsg = "Device is busy. Please wait a moment and try again.";
+        } else if (
+          err.message.includes("NetworkError") ||
+          err.message.includes("fetch")
+        ) {
+          errorMsg = "Cannot connect to device. Check your connection.";
         } else {
-          setError(`Failed to load files: ${err.message}`);
+          errorMsg = `Failed to load files: ${err.message}`;
         }
+        setError(errorMsg);
         console.error("Error fetching files:", err);
       } finally {
         setLoading(false);
       }
     },
-    [apiURL, fetchStorageInfo]
+    [apiURL, fetchStorageInfo, fetchWithRetry]
   );
 
   // Handle file system change
@@ -331,23 +342,15 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     setError(null);
 
     try {
-      const response = await fetch(
-        `${apiURL}/api/files/mkdir`,
-        getFetchOptions({
-          method: "POST",
-          body: JSON.stringify({
-            fs: fileSystem,
-            path: currentPath,
-            name: newFolderDialog.folderName.trim(),
-          }),
-        })
-      );
+      await fetchWithRetry(`${apiURL}/api/files/mkdir`, {
+        method: "POST",
+        body: JSON.stringify({
+          fs: fileSystem,
+          path: currentPath,
+          name: newFolderDialog.folderName.trim(),
+        }),
+      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // Close dialog and refresh files
       setNewFolderDialog({ open: false, folderName: "" });
       fetchFiles(currentPath, fileSystem);
       setInfo(`Folder "${newFolderDialog.folderName}" created successfully`);
@@ -358,7 +361,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     }
   };
 
-  // Handle context menu
+  // Context menu handlers
   const handleContextMenu = (event, file) => {
     event.preventDefault();
     setContextMenu({
@@ -376,7 +379,6 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     });
   };
 
-  // Handle file actions
   const handleRename = () => {
     if (contextMenu.file) {
       setRenameDialog({
@@ -400,68 +402,45 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     if (!renameDialog.file || !renameDialog.newName.trim()) return;
 
     try {
-      const response = await fetch(
+      await fetchWithRetry(
         `${apiURL}/api/files/rename?fs=${encodeURIComponent(
           fileSystem
         )}&oldPath=${encodeURIComponent(
           renameDialog.file.path
         )}&newName=${encodeURIComponent(renameDialog.newName.trim())}`,
-        getFetchOptions({ method: "POST" })
+        { method: "POST" }
       );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
 
       setRenameDialog({ open: false, file: null, newName: "" });
       fetchFiles(currentPath, fileSystem);
+      setInfo("File renamed successfully");
     } catch (err) {
-      if (err.name === "TypeError" && err.message.includes("fetch")) {
-        setError("Device is offline. Cannot rename file.");
-      } else {
-        setError(`Failed to rename file: ${err.message}`);
-      }
+      setError(`Failed to rename file: ${err.message}`);
     }
   };
 
   // Delete files
   const handleDeleteSubmit = async () => {
     try {
-      // Delete files one by one
       for (const file of deleteDialog.files) {
-        const response = await fetch(
+        await fetchWithRetry(
           `${apiURL}/api/files/delete?fs=${encodeURIComponent(
             fileSystem
           )}&path=${encodeURIComponent(file.path)}`,
-          getFetchOptions({ method: "POST" })
+          { method: "POST" }
         );
-
-        if (!response.ok) {
-          // Close dialog if 403 (Forbidden)
-          if (response.status === 403) {
-            // Close dialog immediately
-            setDeleteDialog((prev) => ({ ...prev, open: false, files: [] }));
-            setError(
-              `Failed to delete files: HTTP ${response.status} - ${response.statusText}`
-            );
-            return;
-          }
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
       }
 
       setDeleteDialog({ open: false, files: [] });
       fetchFiles(currentPath, fileSystem);
+      setInfo(
+        `${deleteDialog.files.length} ${
+          deleteDialog.files.length === 1 ? "file" : "files"
+        } deleted successfully`
+      );
     } catch (err) {
-      // Check if error is related to 403 Forbidden
-      if (err.message && err.message.includes("403")) {
-        setDeleteDialog((prev) => ({ ...prev, open: false, files: [] }));
-        setError(`Failed to delete files: ${err.message}`);
-      } else if (err.name === "TypeError" && err.message.includes("fetch")) {
-        setError("Device is offline. Cannot delete files.");
-      } else {
-        setError(`Failed to delete files: ${err.message}`);
-      }
+      setDeleteDialog({ open: false, files: [] });
+      setError(`Failed to delete files: ${err.message}`);
     }
   };
 
@@ -477,7 +456,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           storageInfo.free
         )} available.`
       );
-      event.target.value = ""; // Reset file input
+      event.target.value = "";
       return;
     }
 
@@ -486,17 +465,18 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     setIsUploading(true);
     setError(null);
 
-    // Create FormData with file and URL parameters for fs and path
+    // Create FormData with file
     const formData = new FormData();
     formData.append("file", file);
 
-    // Add fs and path as URL parameters like OTA does
+    // Add fs and path as URL parameters
     const url = `${apiURL}/api/files/upload?fs=${encodeURIComponent(
       fileSystem
     )}&path=${encodeURIComponent(currentPath)}`;
 
     // Use XMLHttpRequest for progress tracking
     const xhr = new XMLHttpRequest();
+    uploadXhrRef.current = xhr;
 
     // Track upload progress
     xhr.upload.addEventListener("progress", (event) => {
@@ -507,84 +487,36 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     });
 
     // Handle successful upload
-    xhr.addEventListener("load", async () => {
+    xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         setUploadProgress(100);
-        setIsUploading(false);
-        fetchFiles(currentPath, fileSystem);
-        // Reset file input
-        event.target.value = "";
+        setInfo("File uploaded successfully");
 
-        // Log filename sanitization if needed
-        const originalName = file.name;
-        let sanitizedName = originalName
-          .replace(/ /g, "_")
-          .replace(/[^a-zA-Z0-9._-]/g, "_")
-          .replace(/_+/g, "_")
-          .replace(/^_|_$/g, "");
-
-        // Check filename length limit (LittleFS typically has 31 char limit)
-        const maxFilenameLength = 31;
-        if (sanitizedName.length > maxFilenameLength) {
-          // Try to preserve file extension
-          const lastDot = sanitizedName.lastIndexOf(".");
-          let extension = "";
-          let baseName = sanitizedName;
-
-          if (lastDot > 0 && lastDot > sanitizedName.length - 6) {
-            // Extension is reasonable length
-            extension = sanitizedName.substring(lastDot);
-            baseName = sanitizedName.substring(0, lastDot);
-          }
-
-          // Truncate base name to fit extension and add unique suffix
-          const maxBaseLength = maxFilenameLength - extension.length - 4; // Reserve 4 chars for unique suffix
-          if (maxBaseLength > 0) {
-            const uniqueSuffix = Math.random().toString(36).substring(2, 6); // 4-char random suffix
-            sanitizedName =
-              baseName.substring(0, maxBaseLength) +
-              "_" +
-              uniqueSuffix +
-              extension;
-          } else {
-            // If no room for extension, just truncate and add suffix
-            const uniqueSuffix = Math.random().toString(36).substring(2, 6);
-            sanitizedName =
-              sanitizedName.substring(0, maxFilenameLength - 5) +
-              "_" +
-              uniqueSuffix;
-          }
-        }
-
-        if (originalName !== sanitizedName) {
-          // Show info message about filename sanitization
-          setInfo(`Filename sanitized: "${originalName}" → "${sanitizedName}"`);
-        }
+        // Small delay before refreshing to let device finish processing
+        setTimeout(() => {
+          setIsUploading(false);
+          fetchFiles(currentPath, fileSystem);
+        }, 500);
       } else {
-        // Try to read error message from response
-        let errorMsg = `Upload failed: HTTP ${xhr.status} - ${xhr.statusText}`;
+        // Parse error message
+        let errorMsg = `Upload failed: HTTP ${xhr.status}`;
         try {
           const responseText = xhr.responseText;
           if (responseText) {
-            try {
-              const errorJson = JSON.parse(responseText);
-              if (errorJson.error) {
-                errorMsg = `Upload failed: ${errorJson.error}`;
-              }
-            } catch (e) {
-              // Not JSON, use response text as-is if it's short
-              if (responseText.length < 200) {
-                errorMsg = `Upload failed: ${responseText}`;
-              }
+            const errorJson = JSON.parse(responseText);
+            if (errorJson.error) {
+              errorMsg = `Upload failed: ${errorJson.error}`;
             }
           }
         } catch (e) {
-          // Ignore errors reading response
+          // Use default error
         }
         setError(errorMsg);
         setIsUploading(false);
         setUploadProgress(0);
       }
+      event.target.value = "";
+      uploadXhrRef.current = null;
     });
 
     // Handle upload errors
@@ -592,12 +524,16 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       setError("Upload failed: Network error");
       setIsUploading(false);
       setUploadProgress(0);
+      event.target.value = "";
+      uploadXhrRef.current = null;
     });
 
     // Handle upload abort
     xhr.addEventListener("abort", () => {
       setIsUploading(false);
       setUploadProgress(0);
+      event.target.value = "";
+      uploadXhrRef.current = null;
     });
 
     // Start the upload
@@ -640,11 +576,12 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     let currentBreadcrumbPath = "";
     pathParts.forEach((part, index) => {
       currentBreadcrumbPath += "/" + part;
+      const pathToNavigate = currentBreadcrumbPath;
       breadcrumbs.push(
         <Link
           key={index}
           component="button"
-          onClick={() => fetchFiles(currentBreadcrumbPath, fileSystem)}
+          onClick={() => fetchFiles(pathToNavigate, fileSystem)}
           underline="none"
         >
           {part}
@@ -655,23 +592,16 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     return breadcrumbs;
   };
 
-  // Initialize
+  // Initialize - only load on mount if device is online
   useEffect(() => {
     if (config && deviceOnline) {
       const initialFs = config?.sd?.initialized === true ? "sd" : "lfs";
       fetchFiles("/", initialFs);
     }
-  }, [config, deviceOnline]);
+  }, [config, deviceOnline, fetchFiles]);
 
-  if (!deviceOnline) {
-    return (
-      <Paper sx={{ p: 3, textAlign: "center" }}>
-        <Alert severity="error">
-          Device is offline. Cannot access file system.
-        </Alert>
-      </Paper>
-    );
-  }
+  // Show offline message but don't block the component
+  const showOfflineWarning = !deviceOnline && files.length === 0;
 
   return (
     <Box
@@ -708,6 +638,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             exclusive
             onChange={handleFileSystemChange}
             size="small"
+            disabled={loading || isUploading}
             sx={{
               width: { xs: "100%", sm: "auto" },
               "& .MuiToggleButton-root": {
@@ -732,6 +663,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
             </ToggleButton>
           </ToggleButtonGroup>
+
           <Button
             variant="contained"
             component="label"
@@ -742,7 +674,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               width: { xs: "100%", sm: "auto" },
               minWidth: { xs: 0, sm: "80px" },
               px: 1,
-              height: "32px", // Match toggle button height
+              height: "32px",
             }}
           >
             <Box sx={{ display: { xs: "none", sm: "inline" } }}>
@@ -753,6 +685,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             </Box>
             <input type="file" hidden onChange={handleUpload} />
           </Button>
+
           <Button
             variant="outlined"
             startIcon={<Folder />}
@@ -763,12 +696,21 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               width: { xs: "100%", sm: "auto" },
               minWidth: { xs: 0, sm: "100px" },
               px: 1,
-              height: "32px", // Match toggle button height
+              height: "32px",
             }}
           >
             <Box sx={{ display: { xs: "none", sm: "inline" } }}>New Folder</Box>
             <Box sx={{ display: { xs: "inline", sm: "none" } }}>Folder</Box>
           </Button>
+
+          <IconButton
+            onClick={() => fetchFiles(currentPath, fileSystem)}
+            disabled={loading || isUploading}
+            size="small"
+            sx={{ height: "32px", width: "32px" }}
+          >
+            <Refresh />
+          </IconButton>
         </Box>
 
         {/* Upload Progress Bar */}
@@ -897,15 +839,22 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           {generateBreadcrumbs()}
         </Breadcrumbs>
 
+        {/* Offline Warning */}
+        {showOfflineWarning && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Device appears offline. Some features may not work.
+          </Alert>
+        )}
+
         {/* Info Display */}
         {info && (
           <Alert
             severity="info"
             sx={{
               mb: 2,
-              backgroundColor: theme.palette.primary.main + "15", // 15% opacity
+              backgroundColor: theme.palette.primary.main + "15",
               color: theme.palette.primary.main,
-              border: `1px solid ${theme.palette.primary.main}30`, // 30% opacity
+              border: `1px solid ${theme.palette.primary.main}30`,
               "& .MuiAlert-icon": {
                 color: theme.palette.primary.main,
               },
@@ -1078,6 +1027,9 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             onChange={(e) =>
               setRenameDialog({ ...renameDialog, newName: e.target.value })
             }
+            onKeyPress={(e) => {
+              if (e.key === "Enter") handleRenameSubmit();
+            }}
           />
         </DialogContent>
         <DialogActions>

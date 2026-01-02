@@ -4,6 +4,7 @@
 #include "ESPWiFi.h"
 
 void ESPWiFi::srvBluetooth() {
+#ifdef CONFIG_BT_CLASSIC_ENABLED
   registerRoute("/api/bt/start", HTTP_POST,
                 [](ESPWiFi *espwifi, httpd_req_t *req,
                    const std::string &clientInfo) -> esp_err_t {
@@ -27,6 +28,7 @@ void ESPWiFi::srvBluetooth() {
                   return espwifi->sendJsonResponse(
                       req, 200, "{\"status\":\"Success\"}", &clientInfo);
                 });
+#endif // CONFIG_BT_CLASSIC_ENABLED
 }
 
 #endif // ESPWiFi_SRV_BLUETOOTH

@@ -48,19 +48,20 @@ void ESPWiFi::startWebServer() {
   }
 
   // Configure HTTP server
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.max_uri_len = 512;
-  config.max_open_sockets = 7;
-  config.max_uri_handlers = 32;
-  config.lru_purge_enable = true;
-  config.uri_match_fn = &uri_match_no_query; // wildcard matching (path-only)
-  // HTTP server runs in its own task; stack is a common “heap killer” if set
+  httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
+  httpd_config.max_uri_len = 512;
+  httpd_config.max_open_sockets = 7;
+  httpd_config.max_uri_handlers = 32;
+  httpd_config.lru_purge_enable = true;
+  httpd_config.uri_match_fn =
+      &uri_match_no_query; // wildcard matching (path-only)
+  // HTTP server runs in its own task; stack is a common "heap killer" if set
   // too big. 4096 is default in IDF; bump only if you see stack overflows
   // during handlers.
-  config.stack_size = 8192;
+  httpd_config.stack_size = 8192;
 
   // Start the HTTP server
-  esp_err_t ret = httpd_start(&webServer, &config);
+  esp_err_t ret = httpd_start(&webServer, &httpd_config);
   if (ret != ESP_OK) {
     log(ERROR, "❌ Failed to start HTTP server: %s", esp_err_to_name(ret));
     webServerStarted = false;

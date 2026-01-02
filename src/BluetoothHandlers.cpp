@@ -1,6 +1,8 @@
 #ifndef ESPWiFi_BLUETOOTH_HANDLERS
 #define ESPWiFi_BLUETOOTH_HANDLERS
 
+#ifdef CONFIG_BT_CLASSIC_ENABLED
+
 #include "BluetoothA2DPSource.h"
 #include "ESPWiFi.h"
 #include "esp_a2dp_api.h"
@@ -29,22 +31,22 @@ void ESPWiFi::bluetoothConnectionSC(esp_a2d_connection_state_t state,
   case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
     stateStr = "DISCONNECTED";
     espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜🔌 Bluetooth Disconnected");
+    espwifi->log(INFO, "🛜 Bluetooth Disconnected ⛓️‍💥");
     break;
   case ESP_A2D_CONNECTION_STATE_CONNECTING:
     stateStr = "CONNECTING";
     espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜🔄 Bluetooth Connecting...");
+    espwifi->log(INFO, "🛜 Bluetooth Connecting... 🔄");
     break;
   case ESP_A2D_CONNECTION_STATE_CONNECTED:
     stateStr = "CONNECTED";
     espwifi->connectBluetoothed = true;
-    espwifi->log(INFO, "🛜✅ Bluetooth Connected");
+    espwifi->log(INFO, "🛜 Bluetooth Connected 🔗");
     break;
   case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
     stateStr = "DISCONNECTING";
     espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜⏳ Bluetooth Disconnecting...");
+    espwifi->log(INFO, "🛜 Bluetooth Disconnecting... ⏳");
     break;
   default:
     break;
@@ -124,5 +126,7 @@ void ESPWiFi::btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj) {
   ESPWiFi_OBJ_CAST(obj);
   espwifi->btAudioStateChange(state, obj);
 }
+
+#endif // CONFIG_BT_CLASSIC_ENABLED
 
 #endif // ESPWiFi_BLUETOOTH_HANDLERS

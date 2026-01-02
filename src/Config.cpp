@@ -247,7 +247,9 @@ void ESPWiFi::handleConfigUpdate() {
     config = configUpdate;
     configUpdate.clear();
     refreshCorsCache();
+#ifdef CONFIG_BT_CLASSIC_ENABLED
     bluetoothConfigHandler();
+#endif
   }
   if (configNeedsSave) {
     saveConfig();

@@ -3,8 +3,15 @@ dependencies:
     source:
       type: idf
     version: 5.5.0
+  mdns:
+    dependencies: []
+    source:
+      path: /Users/kevin.jayne/git/vekjja/ESPWiFi/components/esp-protocols/components/mdns
+      type: local
+    version: 1.9.1
 direct_dependencies:
+- espressif/mdns
 - idf
-manifest_hash: fad5d47f5a528c7e389e8494dd59e9168f5b712cebf7701bae3b7e406b7c1161
-target: esp32
+manifest_hash: b49951740f8e8664764248116494250a7addf1396367097b90a42d0e6eb47435
+target: esp32c3
 version: 2.0.0

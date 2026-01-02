@@ -20,7 +20,9 @@
 #include <unistd.h>
 
 // ESP-IDF
+#ifdef CONFIG_BT_CLASSIC_ENABLED
 #include "esp_a2dp_api.h"
+#endif
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -237,6 +239,7 @@ public:
   std::string otaMD5Hash;
 
   // ---- Bluetooth Audio
+#ifdef CONFIG_BT_CLASSIC_ENABLED
   bool connectBluetoothed = false;
   bool btStarted = false;
   void startBluetooth();
@@ -246,6 +249,7 @@ public:
   void connectBluetooth(const std::string &address);
   esp_err_t RegisterBluetoothHandlers();
   void UnregisterBluetoothHandlers();
+#endif
 
 private:
   std::string _version = "v0.1.0";
@@ -297,11 +301,13 @@ private:
                                    int32_t event_id, void *event_data);
 
   // Bluetooth event handlers
+#ifdef CONFIG_BT_CLASSIC_ENABLED
   void bluetoothConnectionSC(esp_a2d_connection_state_t state, void *obj);
   void btAudioStateChange(esp_a2d_audio_state_t state, void *obj);
   static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
                                           void *obj);
   static void btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj);
+#endif
 };
 
 // String helper

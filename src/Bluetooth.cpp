@@ -1,6 +1,8 @@
 #ifndef ESPWiFi_BLUETOOTH_H
 #define ESPWiFi_BLUETOOTH_H
 
+#ifdef CONFIG_BT_CLASSIC_ENABLED
+
 #include "BluetoothA2DPSource.h"
 #include "ESPWiFi.h"
 #include "esp_log.h"
@@ -87,4 +89,5 @@ void ESPWiFi::bluetoothConfigHandler() {
   }
 }
 
+#endif // CONFIG_BT_CLASSIC_ENABLED
 #endif // ESPWiFi_BLUETOOTH_H

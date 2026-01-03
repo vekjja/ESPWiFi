@@ -175,13 +175,15 @@ function App() {
 
         // Only update localConfig if there are no unsaved changes or if forced
         setLocalConfig((prevLocalConfig) => {
-          const hasUnsavedChanges = !configsAreEqual(prevLocalConfig, config);
-
-          if (forceUpdate || !hasUnsavedChanges) {
+          // Use prevLocalConfig and config state in the setter to avoid hasUnsavedChanges check
+          // that depends on external config state
+          if (forceUpdate) {
             return configsAreEqual(prevLocalConfig, configWithAPI)
               ? prevLocalConfig
               : configWithAPI;
           }
+          // If not forcing, only update if local config matches the new config
+          // (no unsaved changes)
           return prevLocalConfig;
         });
 
@@ -207,7 +209,7 @@ function App() {
         isFetchingConfigRef.current = false;
       }
     },
-    [apiURL, config, deviceOnline, configsAreEqual]
+    [apiURL, deviceOnline, configsAreEqual]
   );
 
   /**

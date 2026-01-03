@@ -103,9 +103,8 @@ void ESPWiFi::applyWiFiPowerSettings() {
       log(INFO, "🔋 WiFi Power: TX power set to %.1f dBm (requested: %.1f dBm)",
           actualPowerDbm, txPowerDbm);
       if (std::abs(actualPowerDbm - txPowerDbm) > 0.5) {
-        log(WARNING,
-            "🔋 WiFi Power: Applied power differs from requested (hardware "
-            "limitation or regulatory constraint)");
+        log(WARNING, "🔋 WiFi Power: Applied power differs from requested "
+                     "(hardware limitation)");
       }
     } else {
       // Fallback if read fails

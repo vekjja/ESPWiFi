@@ -42,7 +42,7 @@ export default function InfoCard({
   onEdit,
   children,
   editContent,
-  gridSize = { xs: 12, md: 6 },
+  gridSize = { xs: 12 },
   minHeight = 200,
 }) {
   return (

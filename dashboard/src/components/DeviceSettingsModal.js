@@ -194,17 +194,18 @@ export default function DeviceSettingsModal({
       maxWidth={false}
       paperSx={{
         // Better desktop use of space; keep mobile behavior intact
-        width: { xs: "90%", sm: "63vw" },
-        maxWidth: { xs: "90%", sm: "63vw" },
+        width: { xs: "90%", sm: "800px" },
+        maxWidth: { xs: "90%", sm: "800px" },
         height: { xs: "90%", sm: "88vh" },
         maxHeight: { xs: "90%", sm: "88vh" },
       }}
       contentSx={{
         // Tighter padding so more fits on screen
-        p: { xs: 2, sm: 1.5 },
+        p: { xs: 2, sm: 2 },
         pt: { xs: 1.5, sm: 1.25 },
         pb: { xs: 3, sm: 2.5 }, // More bottom padding to prevent cutoff
         overflowY: "auto", // Enable scrolling for the content area
+        overflowX: "hidden", // Prevent horizontal scroll
       }}
       actions={getActions()}
     >

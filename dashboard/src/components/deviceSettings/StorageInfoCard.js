@@ -86,7 +86,7 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {/* LittleFS Storage */}
             {hasLfsInfo && (
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <Box
                   sx={{
                     display: "flex",
@@ -99,25 +99,33 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                 >
                   <Typography
                     variant="subtitle2"
-                    sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
                   >
                     <StorageIcon fontSize="small" />
                     LittleFS
                   </Typography>
-                  <InfoRow
-                    label="Total:"
-                    value={bytesToHumanReadable(deviceInfo.lfs_total)}
-                  />
-                  <InfoRow
-                    label="Used:"
-                    value={bytesToHumanReadable(deviceInfo.lfs_used)}
-                  />
-                  <InfoRow
-                    label="Free:"
-                    value={bytesToHumanReadable(
-                      deviceInfo.lfs_total - deviceInfo.lfs_used
-                    )}
-                  />
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Total:"
+                        value={bytesToHumanReadable(deviceInfo.lfs_total)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Used:"
+                        value={bytesToHumanReadable(deviceInfo.lfs_used)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Free:"
+                        value={bytesToHumanReadable(
+                          deviceInfo.lfs_total - deviceInfo.lfs_used
+                        )}
+                      />
+                    </Grid>
+                  </Grid>
                   <Box sx={{ mt: 1 }}>
                     <Box
                       sx={{
@@ -153,7 +161,7 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
 
             {/* SD Card Storage */}
             {hasSdInfo && (
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <Box
                   sx={{
                     display: "flex",
@@ -166,25 +174,33 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                 >
                   <Typography
                     variant="subtitle2"
-                    sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
                   >
                     <SdCardIcon fontSize="small" />
                     SD Card
                   </Typography>
-                  <InfoRow
-                    label="Total:"
-                    value={bytesToHumanReadable(deviceInfo.sd_total)}
-                  />
-                  <InfoRow
-                    label="Used:"
-                    value={bytesToHumanReadable(deviceInfo.sd_used)}
-                  />
-                  <InfoRow
-                    label="Free:"
-                    value={bytesToHumanReadable(
-                      deviceInfo.sd_total - deviceInfo.sd_used
-                    )}
-                  />
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Total:"
+                        value={bytesToHumanReadable(deviceInfo.sd_total)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Used:"
+                        value={bytesToHumanReadable(deviceInfo.sd_used)}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <InfoRow
+                        label="Free:"
+                        value={bytesToHumanReadable(
+                          deviceInfo.sd_total - deviceInfo.sd_used
+                        )}
+                      />
+                    </Grid>
+                  </Grid>
                   <Box sx={{ mt: 1 }}>
                     <Box
                       sx={{

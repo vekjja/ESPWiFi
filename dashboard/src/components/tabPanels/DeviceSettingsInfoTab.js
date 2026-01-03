@@ -76,10 +76,10 @@ export default function DeviceSettingsInfoTab({
 
   // ====== Render Config Loading State ======
   if (!config) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
+  return (
+                  <Box
+                    sx={{
+                      display: "flex",
           justifyContent: "center",
           alignItems: "center",
           minHeight: "200px",
@@ -87,14 +87,14 @@ export default function DeviceSettingsInfoTab({
       >
         <Typography variant="body1" color="text.secondary">
           Loading configuration...
-        </Typography>
-      </Box>
+                    </Typography>
+                  </Box>
     );
   }
 
   // ====== Main Render ======
   return (
-    <Grid container spacing={2} sx={{ pb: 4 }}>
+    <Grid container spacing={2} sx={{ pb: 4, width: "100%", m: 0 }}>
       {/* Network Information */}
       <NetworkInfoCard deviceInfo={deviceInfo} />
 

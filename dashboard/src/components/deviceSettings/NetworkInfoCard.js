@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { Box, Typography, Grid } from "@mui/material";
+import { Grid } from "@mui/material";
 import WifiIcon from "@mui/icons-material/Wifi";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";

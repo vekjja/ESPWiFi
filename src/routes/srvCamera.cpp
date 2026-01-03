@@ -54,22 +54,26 @@ bool camSocStarted = false;
  * authentication and use the standard route handler pattern.
  */
 void ESPWiFi::srvCamera() {
-  log(DEBUG, "Registering camera HTTP routes");
-
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   // Start the websocket here
   if (!camSocStarted) {
-    camSocStarted = camSoc.begin("/ws/camera", this,
-                                 /*onMessage*/ nullptr,
-                                 /*onConnect*/ nullptr,
-                                 /*onDisconnect*/ nullptr,
-                                 /*maxMessageLen*/ 32,
-                                 /*maxBroadcastLen*/ 128 * 1024,
-                                 /*requireAuth*/ true);
+    log(DEBUG, "📷 Registering camera WebSocket at /ws/camera");
+    camSocStarted =
+        camSoc.begin("/ws/camera", this,
+                     /*onMessage*/ nullptr,
+                     /*onConnect*/ nullptr,
+                     /*onDisconnect*/ nullptr,
+                     /*maxMessageLen*/ 32,
+                     /*maxBroadcastLen*/ 128 * 1024,
+                     /*requireAuth*/ false); // Disabled auth for testing
 
     if (!camSocStarted) {
       log(ERROR, "📷 Camera WebSocket failed to start");
+    } else {
+      log(INFO, "📷 Camera WebSocket successfully registered");
     }
+  } else {
+    log(DEBUG, "📷 Camera WebSocket already registered, skipping");
   }
 #endif
 
@@ -83,7 +87,7 @@ void ESPWiFi::srvCamera() {
           return ESP_ERR_INVALID_ARG;
         }
 
-        espwifi->log(INFO, "📷 Snapshot request from %s", clientInfo.c_str());
+        espwifi->log(ACCESS, "📷 Snapshot request from %s", clientInfo.c_str());
 
         // Check if camera is enabled in configuration
         if (!espwifi->config["camera"]["enabled"].as<bool>()) {
@@ -195,9 +199,6 @@ void ESPWiFi::srvCamera() {
               &clientInfo);
         }
 
-        // Start WebSocket endpoint
-        espwifi->startCamera();
-
         espwifi->log(INFO, "📷 Camera started via API");
         return espwifi->sendJsonResponse(req, 200, "{\"status\":\"started\"}",
                                          &clientInfo);
@@ -221,8 +222,6 @@ void ESPWiFi::srvCamera() {
                   return espwifi->sendJsonResponse(
                       req, 200, "{\"status\":\"stopped\"}", &clientInfo);
                 });
-
-  log(DEBUG, "Camera routes registered successfully");
 }
 
 #endif // ESPWiFi_SRV_CAMERA

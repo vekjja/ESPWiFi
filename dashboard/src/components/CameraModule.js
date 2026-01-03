@@ -152,7 +152,21 @@ export default function CameraModule({
       }
     }
 
-    setStreamUrl(wsUrl);
+    // If URL changed and we're currently streaming, reconnect
+    const urlChanged = streamUrl !== "" && streamUrl !== wsUrl;
+    if (urlChanged && isStreaming) {
+      console.log(
+        `📷 Camera URL changed from ${streamUrl} to ${wsUrl}, reconnecting...`
+      );
+      handleStopStream();
+      setStreamUrl(wsUrl);
+      // Give it a moment to close the old connection before starting new one
+      setTimeout(() => {
+        setStreamUrl(wsUrl);
+      }, 100);
+    } else {
+      setStreamUrl(wsUrl);
+    }
   }, [config?.url, globalConfig?.deviceName]); // Re-run if URL or device name changes
 
   // Update camera status when global config or device online status changes
@@ -342,7 +356,8 @@ export default function CameraModule({
 
   const handleSnapshot = async () => {
     const mdnsHostname = globalConfig?.deviceName;
-    const snapshotUrl = buildApiUrl("/api/camera/snapshot", mdnsHostname);
+    const baseUrl = buildApiUrl("/api/camera/snapshot", mdnsHostname);
+    const snapshotUrl = `${baseUrl}?save=true`; // Always save to SD
 
     try {
       const response = await fetch(
@@ -362,7 +377,10 @@ export default function CameraModule({
 
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
+
+      console.log("📷 Snapshot saved to SD card: /snap");
       window.open(objectUrl, "_blank");
+
       // Best-effort cleanup after a bit (the new tab will have loaded it by then).
       setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
     } catch (err) {
@@ -389,6 +407,9 @@ export default function CameraModule({
   const handleSaveSettings = () => {
     // Update the module config with the new name and URL
     if (onUpdate && moduleKey) {
+      console.log(
+        `📷 Saving camera settings - URL: ${settingsData.url}, Name: ${settingsData.name}`
+      );
       onUpdate(moduleKey, {
         name: settingsData.name,
         url: settingsData.url,

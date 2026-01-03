@@ -259,7 +259,6 @@ public:
 #ifdef ESPWiFi_CAMERA_ENABLED
   void srvCamera();
   bool initCamera();
-  void startCamera();
   void deinitCamera();
   void clearCameraBuffer();
   void updateCameraSettings();

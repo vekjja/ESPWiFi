@@ -362,26 +362,17 @@ std::string ESPWiFi::sanitizeFilename(const std::string &filename) {
     basename = basename.substr(0, basename.length() - 1);
   }
 
-  // Limit basename length for strict 8.3 FAT format compatibility
-  // Leave room for uniqueness suffix: 5 chars for name + 3 for timestamp = 8
-  // total
-  const size_t MAX_BASE_FOR_UNIQUE = 5;
-  if (basename.length() > MAX_BASE_FOR_UNIQUE) {
-    basename = basename.substr(0, MAX_BASE_FOR_UNIQUE);
-    if (basename.back() == '_') {
+  // Limit basename length for long filename support (255 total, leave room for
+  // extension) With LFN enabled, we can use much longer filenames
+  const size_t MAX_FILENAME_LENGTH = 255;
+  size_t maxBasename = MAX_FILENAME_LENGTH - extension.length();
+
+  if (basename.length() > maxBasename) {
+    basename = basename.substr(0, maxBasename);
+    // Trim trailing underscore if any
+    if (!basename.empty() && basename.back() == '_') {
       basename = basename.substr(0, basename.length() - 1);
     }
-  }
-
-  // Add 3-digit uniqueness suffix based on current milliseconds
-  unsigned long timestamp = millis();
-  char suffix[4];
-  snprintf(suffix, sizeof(suffix), "%03lu", (timestamp % 1000));
-  basename += suffix;
-
-  // Ensure extension is also limited (3 chars max for 8.3 format)
-  if (!extension.empty() && extension.length() > 4) { // .xxx = 4 chars
-    extension = extension.substr(0, 4);
   }
 
   sanitized = basename + extension;

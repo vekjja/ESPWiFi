@@ -193,6 +193,7 @@ void ESPWiFi::saveConfig() {
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);
   }
+  // log(DEBUG, "⚙️\n%s", prettyConfig());
 
   configNeedsSave = false;
 }

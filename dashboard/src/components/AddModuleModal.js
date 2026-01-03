@@ -53,7 +53,7 @@ export default function AddModuleModal({
 
   const [cameraData, setCameraData] = useState({
     name: "",
-    url: "/camera",
+    url: "/ws/camera",
     frameRate: 10,
   });
 
@@ -84,7 +84,7 @@ export default function AddModuleModal({
   const handleOpenCameraModal = () => {
     setCameraData({
       name: "",
-      url: "/camera",
+      url: "/ws/camera",
       frameRate: 10,
     });
     setCameraModalOpen(true);

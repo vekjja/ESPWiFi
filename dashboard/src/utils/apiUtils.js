@@ -1,4 +1,4 @@
-import { getAuthHeader } from "./authUtils";
+import { getAuthHeader, getAuthToken } from "./authUtils";
 
 /**
  * Get the API base URL for HTTP requests
@@ -55,7 +55,7 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
 
 /**
  * Build a full WebSocket URL
- * @param {string} path - The WebSocket endpoint path (e.g., "/camera", "/ws/rssi")
+ * @param {string} path - The WebSocket endpoint path (e.g., "/ws/camera", "/ws/rssi")
  * @param {string} mdnsHostname - Optional mDNS hostname
  * @returns {string} The full WebSocket URL
  */
@@ -65,13 +65,17 @@ export const buildWebSocketUrl = (path, mdnsHostname = null) => {
 
   // WebSocket API doesn't allow setting custom headers.
   // Pass auth token via query param so firmware can validate connections.
-  const authHeader = getAuthHeader();
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice("Bearer ".length);
-    if (token) {
-      const sep = url.includes("?") ? "&" : "?";
-      url = `${url}${sep}token=${encodeURIComponent(token)}`;
-    }
+  const token = getAuthToken();
+
+  // Only add token parameter if we have a valid token
+  if (
+    token &&
+    token !== "null" &&
+    token !== "undefined" &&
+    token.trim() !== ""
+  ) {
+    const sep = url.includes("?") ? "&" : "?";
+    url = `${url}${sep}token=${encodeURIComponent(token)}`;
   }
 
   return url;

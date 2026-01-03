@@ -90,6 +90,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["brightness"] = 1;
   doc["camera"]["contrast"] = 1;
   doc["camera"]["saturation"] = 1;
+  doc["camera"]["sharpness"] = 0;
+  doc["camera"]["denoise"] = 0;
+  doc["camera"]["quality"] = 12;
   doc["camera"]["exposure_level"] = 1;
   doc["camera"]["exposure_value"] = 400;
   doc["camera"]["agc_gain"] = 2;

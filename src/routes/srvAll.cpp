@@ -12,11 +12,11 @@ void ESPWiFi::srvAll() {
   srvLog();
   srvFiles();
   srvGPIO();
-#ifdef CONFIG_BT_A2DP_ENABLE
-  srvBluetooth();
-#endif
 #ifdef ESPWiFi_CAMERA_ENABLED
   srvCamera();
+#endif
+#ifdef CONFIG_BT_A2DP_ENABLE
+  srvBluetooth();
 #endif
   srvWildcard();
 }

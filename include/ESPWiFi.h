@@ -197,7 +197,9 @@ public:
   void srvGPIO();
   void srvAuth();
   void srvConfig();
+#ifdef CONFIG_BT_CLASSIC_ENABLED
   void srvBluetooth();
+#endif
   void srvWildcard();
 
   // ---- RSSI (stub)

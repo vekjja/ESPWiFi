@@ -2,6 +2,7 @@
 #define ESPWiFi_SRV_ALL
 
 #include "ESPWiFi.h"
+#include "sdkconfig.h"
 
 void ESPWiFi::srvAll() {
   srvRoot();
@@ -9,7 +10,9 @@ void ESPWiFi::srvAll() {
   srvConfig();
   srvInfo();
   srvLog();
+#ifdef CONFIG_BT_CLASSIC_ENABLED
   srvBluetooth();
+#endif
   srvFiles();
   srvGPIO();
   srvWildcard();

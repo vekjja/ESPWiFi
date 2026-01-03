@@ -105,7 +105,7 @@ static void cleanupSpiBus(spi_host_device_t hostId, bool busOwned) {
 
 void ESPWiFi::initSDCard() {
   // Early return if already initialized
-  if (sdCard != nullptr) {
+  if (sdCard != nullptr || !config["sdcard"]["enabled"].as<bool>()) {
     return;
   }
 
@@ -620,7 +620,7 @@ bool ESPWiFi::isProtectedFile(const std::string &fsParam,
   (void)fsParam; // Protection is config-driven and applies to all filesystems.
 
   // Hard-coded protection: the active config file must never be modifiable via
-  // HTTP file APIs, even if not listed in auth.protectFiles.
+  // HTTP file APIs, even if not listed in auth.protectedFiles.
   std::string normalizedPath = filePath;
   if (!normalizedPath.empty() && normalizedPath.front() != '/') {
     normalizedPath.insert(normalizedPath.begin(), '/');
@@ -632,7 +632,7 @@ bool ESPWiFi::isProtectedFile(const std::string &fsParam,
   // First: config-driven protection (applies to BOTH LFS and SD if configured).
   // These paths are "protected": no filesystem operation should be allowed via
   // the HTTP API, even if the request is authenticated.
-  JsonVariant protectedFiles = config["auth"]["protectFiles"];
+  JsonVariant protectedFiles = config["auth"]["protectedFiles"];
   if (protectedFiles.is<JsonArray>()) {
     // filePath is expected to be normalized (leading '/', no trailing '/'
     // unless it's root). Be defensive anyway: normalize minimally so config

@@ -71,12 +71,14 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["excludePaths"].add("/api/auth/login");
   doc["auth"]["excludePaths"].add("/asset-manifest.json");
   // Paths that are always protected (supports '*' and '?')
-  doc["auth"]["protectFiles"].add("/static/*");
-  doc["auth"]["protectFiles"].add("/index.html");
-  doc["auth"]["protectFiles"].add("/config.json");
-  doc["auth"]["protectFiles"].add("/asset-manifest.json");
+  doc["auth"]["protectedFiles"].add("/static/*");
+  doc["auth"]["protectedFiles"].add("/index.html");
+  doc["auth"]["protectedFiles"].add("/config.json");
+  doc["auth"]["protectedFiles"].add("/asset-manifest.json");
 
   doc["ota"]["enabled"] = isOTAEnabled();
+
+  doc["sdcard"]["enabled"] = false;
 
   // Camera
   // #ifdef ESPWiFi_CAMERA

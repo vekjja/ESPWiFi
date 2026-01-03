@@ -3,6 +3,11 @@
     "wifi": {
         "enabled": true,
         "mode": "client",
+        "mdns": true,
+        "accessPoint": {
+            "ssid": "ESPWiFi",
+            "password": "espw!!f!!"
+        },
         "client": {
             "ssid": "YOUR_WIFI_SSID",
             "password": "YOUR_WIFI_PASSWORD"
@@ -16,14 +21,13 @@
         "enabled": false
     },
     "log": {
+        "file": "/espwifi.log",
+        "level": "debug",
         "enabled": true,
         "useSD": true,
-        "file": "/log",
-        "level": "debug",
         "maskedKeys": [
             "password",
-            "token",
-            "secret"
+            "token"
         ]
     },
     "auth": {
@@ -37,7 +41,7 @@
             "/api/auth/login",
             "/asset-manifest.json"
         ],
-        "protectFiles": [
+        "protectedFiles": [
             "static/*",
             "index.html",
             "config.json",

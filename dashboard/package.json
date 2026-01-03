@@ -22,7 +22,7 @@
   },
   "scripts": {
     "start": "BROWSER=none react-scripts start",
-    "clean": "cd .. && pio run --target clean",
+    "clean": " npm run cleanSDK && cd .. && pio run -t clean",
     "cleanSDK": "find .. -maxdepth 1 -name 'sdkconfig*' ! -name '*.defaults' -type f -delete || true",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
     "monitor": "cd .. && pio device monitor",

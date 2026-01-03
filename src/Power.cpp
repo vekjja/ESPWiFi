@@ -102,14 +102,27 @@ void ESPWiFi::applyWiFiPowerSettings() {
       double actualPowerDbm = appliedPower / 4.0;
       log(INFO, "🔋 WiFi Power: TX power set to %.1f dBm (requested: %.1f dBm)",
           actualPowerDbm, txPowerDbm);
-      if (std::abs(actualPowerDbm - txPowerDbm) > 0.5) {
-        log(WARNING, "🔋 WiFi Power: Applied power differs from requested "
-                     "(hardware limitation)");
+      log(DEBUG, "🔋\tRaw driver value: %d quarter-dBm units", appliedPower);
+
+      double difference = std::abs(actualPowerDbm - txPowerDbm);
+      if (difference > 0.5) {
+        log(WARNING,
+            "🔋 WiFi Power: Applied power differs from requested by %.1f dBm "
+            "(hardware/regulatory/chip limitation)",
+            difference);
+      }
+
+      // Additional diagnostic info
+      if (actualPowerDbm < 19.0) {
+        log(INFO, "🔋\tNote: ESP32-C3 typical max is 18.5-21 dBm depending on "
+                  "modulation (MCS rate)");
       }
     } else {
       // Fallback if read fails
       double requestedPower = txPowerQuarters / 4.0;
       log(INFO, "🔋 WiFi Power: Current TX: %.1f dBm", requestedPower);
+      log(WARNING, "🔋\tFailed to read back power from driver: %s",
+          esp_err_to_name(readErr));
     }
     anySettingApplied = true;
   }
@@ -283,6 +296,8 @@ void ESPWiFi::powerConfigHandler() {
  * The function returns a JSON document with:
  * - configured: Settings from config (what was requested)
  * - actual: Settings from WiFi driver (what's actually applied)
+ * - chip: Chip-specific power capabilities and limitations
+ * - diagnostics: Additional diagnostic information
  * - units and descriptions for user understanding
  *
  * @return JsonDocument containing power configuration and actual values
@@ -326,9 +341,15 @@ JsonDocument ESPWiFi::getWiFiPowerInfo() {
 
     // Check if there's a discrepancy
     double difference = std::abs(actualTxPowerDbm - configuredTxPower);
+    doc["diagnostics"]["powerDifference"] = difference;
+    doc["diagnostics"]["powerDifferenceUnit"] = "dBm";
+
     if (difference > 0.5) {
-      doc["actual"]["note"] =
-          "Applied power differs from configured (hardware/regulatory limit)";
+      doc["diagnostics"]["powerDiscrepancy"] = true;
+      doc["diagnostics"]["note"] = "Applied power differs from configured "
+                                   "(hardware/regulatory/chip limit)";
+    } else {
+      doc["diagnostics"]["powerDiscrepancy"] = false;
     }
   } else {
     doc["actual"]["error"] = "Failed to read TX power";
@@ -340,12 +361,73 @@ JsonDocument ESPWiFi::getWiFiPowerInfo() {
   doc["actual"]["powerSaveNote"] =
       "Power save mode cannot be read back from driver";
 
+  // Get chip-specific information
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+  doc["chip"]["model"] = "ESP32-C3";
+  doc["chip"]["typical_max_power"] = "21.0 dBm @ 802.11b 1Mbps";
+  doc["chip"]["typical_power_ht20_mcs7"] = "18.5 dBm @ 802.11n HT20 MCS7";
+  doc["chip"]["note"] = "TX power varies by modulation rate (MCS)";
+  doc["chip"]["power_variation"] = "18.5-21.0 dBm depending on data rate";
+#elif CONFIG_IDF_TARGET_ESP32S3
+  doc["chip"]["model"] = "ESP32-S3";
+  doc["chip"]["typical_max_power"] = "20.5 dBm @ 802.11b 1Mbps";
+  doc["chip"]["typical_power_ht20_mcs7"] = "19.5 dBm @ 802.11n HT20 MCS7";
+#elif CONFIG_IDF_TARGET_ESP32S2
+  doc["chip"]["model"] = "ESP32-S2";
+  doc["chip"]["typical_max_power"] = "20.5 dBm @ 802.11b 1Mbps";
+  doc["chip"]["typical_power_ht20_mcs7"] = "19.5 dBm @ 802.11n HT20 MCS7";
+#else
+  doc["chip"]["model"] = "ESP32";
+  doc["chip"]["typical_max_power"] = "20.5 dBm @ 802.11b 1Mbps";
+  doc["chip"]["typical_power_ht20_mcs7"] = "19.5 dBm @ 802.11n HT20 MCS7";
+#endif
+
+  // Get current WiFi connection info for diagnostics
+  wifi_ap_record_t ap_info;
+  if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+    doc["diagnostics"]["connected"] = true;
+    doc["diagnostics"]["rssi"] = ap_info.rssi;
+    doc["diagnostics"]["channel"] = ap_info.primary;
+
+    char ssid_str[33];
+    memcpy(ssid_str, ap_info.ssid, 32);
+    ssid_str[32] = '\0';
+    doc["diagnostics"]["ssid"] = std::string(ssid_str);
+
+    // Estimate expected output based on protocol
+    if (ap_info.phy_11n) {
+      doc["diagnostics"]["protocol"] = "802.11n";
+      doc["diagnostics"]["expected_power_note"] =
+          "HT20/HT40 typically ~18.5-19.5 dBm on ESP32-C3";
+    } else if (ap_info.phy_11g) {
+      doc["diagnostics"]["protocol"] = "802.11g";
+      doc["diagnostics"]["expected_power_note"] =
+          "54Mbps typically ~19.5-20 dBm";
+    } else {
+      doc["diagnostics"]["protocol"] = "802.11b";
+      doc["diagnostics"]["expected_power_note"] =
+          "1-11Mbps typically ~20-21 dBm";
+    }
+  } else {
+    doc["diagnostics"]["connected"] = false;
+    doc["diagnostics"]["note"] = "Not connected to AP - power info limited";
+  }
+
   // Add helpful descriptions
-  doc["info"]["txPowerRange"] = "2.0 - 20.0 dBm";
+  doc["info"]["txPowerRange"] = "2.0 - 20.0 dBm (software limit)";
   doc["info"]["txPowerPrecision"] = "0.25 dBm steps";
   doc["info"]["powerSaveModes"]["none"] = "Best performance (~240mA)";
   doc["info"]["powerSaveModes"]["min"] = "Balanced (~100mA avg)";
   doc["info"]["powerSaveModes"]["max"] = "Lowest power (~20mA avg)";
+
+  // Measurement tips
+  doc["diagnostics"]["measurement_tips"]["actual_output"] =
+      "Measured output may be 1-3 dB lower due to: antenna mismatch, "
+      "connector loss, PA efficiency, modulation scheme";
+  doc["diagnostics"]["measurement_tips"]["protocol_dependent"] =
+      "802.11b has highest power, 802.11n HT40 MCS7 has lowest";
+  doc["diagnostics"]["measurement_tips"]["regulatory"] =
+      "Actual power limited by regulatory domain and chip capabilities";
 
   return doc;
 }

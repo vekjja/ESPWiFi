@@ -12,6 +12,9 @@ void ESPWiFi::start() {
   startMDNS();
   startWebServer();
   startRSSIWebSocket();
+#ifdef ESPWiFi_CAMERA_ENABLED
+  startCamera();
+#endif
   srvAll();
 }
 
@@ -23,8 +26,6 @@ void ESPWiFi::runSystem() {
   streamCamera();
 #endif
   feedWatchDog();
-  // static unsigned long lastHeartbeat = 0;
-  // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });
 }
 
 #endif // ESPWiFi_DEVICE

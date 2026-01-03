@@ -321,10 +321,10 @@ export default function CameraSettingsModal({
                 label="Camera URL"
                 value={localData?.url || ""}
                 onChange={(e) => handleDataChange("url", e.target.value)}
-                placeholder="Enter camera URL (e.g., /camera or ws://192.168.1.100:8080/camera)"
+                placeholder="Enter camera URL (e.g., /ws/camera or ws://192.168.1.100:8080/ws/camera)"
                 fullWidth
                 variant="outlined"
-                helperText="Local: /camera | Remote: ws://hostname:port/camera | HTTP: http://hostname:port/camera"
+                helperText="Local: /ws/camera | Remote: ws://hostname:port/ws/camera | HTTP: http://hostname:port/ws/camera"
               />
             </Box>
           )}

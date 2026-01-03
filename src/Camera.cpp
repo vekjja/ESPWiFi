@@ -47,12 +47,6 @@
 #include <esp_psram.h>
 #include <sdkconfig.h>
 
-// ============================================================================
-// Constants and Module TAG
-// ============================================================================
-
-static const char *CAM_TAG = "ESPWiFi_Camera";
-
 // Frame rate constraints (to keep streaming safe and watchdog-friendly)
 #define CAM_MIN_FPS 1
 #define CAM_MAX_FPS 15
@@ -66,12 +60,15 @@ static const char *CAM_TAG = "ESPWiFi_Camera";
 // ============================================================================
 // Camera Runtime State
 // ============================================================================
-// Note: These are kept file-static to avoid polluting ESPWiFi.h with
-// esp_camera types and to provide encapsulation of camera subsystem state.
 
-static WebSocket s_camWs;                ///< WebSocket for camera streaming
-static bool s_camWsStarted = false;      ///< WebSocket initialization flag
-static bool s_cameraInitialized = false; ///< Camera hardware init flag
+// WebSocket instance is managed in srvCamera.cpp (where route registration
+// happens), but we need access to it here for streaming operations.
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+extern WebSocket camSoc;
+extern bool camSocStarted;
+#endif
+
+static bool s_cameraInitialized = false;       ///< Camera hardware init flag
 static SemaphoreHandle_t s_camMutex = nullptr; ///< Mutex for concurrent access
 
 // ============================================================================
@@ -84,23 +81,28 @@ static SemaphoreHandle_t s_camMutex = nullptr; ///< Mutex for concurrent access
  * Lazily creates the mutex on first call. Uses a reasonable timeout to
  * prevent indefinite blocking of HTTP request handlers or streaming tasks.
  *
+ * @param espWifi ESPWiFi instance for logging (can be nullptr)
  * @param ticks Timeout in FreeRTOS ticks (default: 60ms)
  * @return true if mutex acquired, false on timeout or creation failure
  */
 static bool
-takeCamMutex_(TickType_t ticks = pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_FRAME_MS)) {
+takeCamMutex_(ESPWiFi *espWifi = nullptr,
+              TickType_t ticks = pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_FRAME_MS)) {
   // Lazy initialization of mutex
   if (s_camMutex == nullptr) {
     s_camMutex = xSemaphoreCreateMutex();
     if (s_camMutex == nullptr) {
-      ESP_LOGE(CAM_TAG, "Failed to create camera mutex");
+      if (espWifi)
+        espWifi->log(ERROR, "📷 Failed to create camera mutex");
       return false;
     }
   }
 
   if (xSemaphoreTake(s_camMutex, ticks) != pdTRUE) {
-    ESP_LOGW(CAM_TAG, "Camera mutex timeout after %lu ms",
-             (unsigned long)(ticks * portTICK_PERIOD_MS));
+    if (espWifi) {
+      espWifi->log(WARNING, "📷 Camera mutex timeout after %lu ms",
+                   (unsigned long)(ticks * portTICK_PERIOD_MS));
+    }
     return false;
   }
 
@@ -142,7 +144,7 @@ static void giveCamMutex_() {
 bool ESPWiFi::initCamera() {
   // Fast path: already initialized
   if (s_cameraInitialized) {
-    ESP_LOGD(CAM_TAG, "Camera already initialized");
+    log(DEBUG, "📷 Camera already initialized");
     return true;
   }
 
@@ -150,18 +152,16 @@ bool ESPWiFi::initCamera() {
   // (config handler, HTTP route, startup sequence)
   static bool initInProgress = false;
   if (initInProgress) {
-    ESP_LOGW(CAM_TAG, "Camera initialization already in progress");
+    log(WARNING, "📷 Camera initialization already in progress");
     return false;
   }
   initInProgress = true;
 
   log(INFO, "📷 Initializing Camera");
-  ESP_LOGI(CAM_TAG, "Starting camera initialization");
 
   // Acquire mutex with extended timeout for init operations
-  if (!takeCamMutex_(pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
+  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
     log(ERROR, "📷 Camera mutex timeout during init");
-    ESP_LOGE(CAM_TAG, "Failed to acquire camera mutex");
     initInProgress = false;
     return false;
   }
@@ -169,7 +169,7 @@ bool ESPWiFi::initCamera() {
   // Check if driver has sensor already (shouldn't happen, but be defensive)
   sensor_t *s = esp_camera_sensor_get();
   if (s != nullptr) {
-    ESP_LOGW(CAM_TAG, "Camera sensor already exists in driver");
+    log(WARNING, "📷 Camera sensor already exists in driver");
     s_cameraInitialized = true;
     giveCamMutex_();
     initInProgress = false;
@@ -209,7 +209,7 @@ bool ESPWiFi::initCamera() {
   // Output format: JPEG for efficient wireless transmission
   cam.pixel_format = PIXFORMAT_JPEG;
 
-  ESP_LOGI(CAM_TAG, "Pin configuration loaded for camera model");
+  log(DEBUG, "📷 Pin configuration loaded for camera model");
 
   // Adaptive buffering based on PSRAM availability
   // PSRAM allows larger frames and multiple buffers for smoother streaming
@@ -222,7 +222,7 @@ bool ESPWiFi::initCamera() {
     cam.fb_location = CAMERA_FB_IN_PSRAM; // Store in external RAM
     cam.grab_mode = CAMERA_GRAB_LATEST;   // Discard old frames
 
-    ESP_LOGI(CAM_TAG, "Using PSRAM: frame_size=SVGA, quality=15, buffers=2");
+    log(INFO, "📷 Using PSRAM: frame_size=SVGA, quality=15, buffers=2");
   } else {
     // Without PSRAM, use smaller frames and single buffer
     cam.frame_size = FRAMESIZE_QVGA;     // 320x240
@@ -231,7 +231,7 @@ bool ESPWiFi::initCamera() {
     cam.fb_location = CAMERA_FB_IN_DRAM; // Internal RAM only
     cam.grab_mode = CAMERA_GRAB_LATEST;
 
-    ESP_LOGI(CAM_TAG, "No PSRAM: frame_size=QVGA, quality=25, buffers=1");
+    log(INFO, "📷 No PSRAM: frame_size=QVGA, quality=25, buffers=1");
   }
 
   // Extract frame rate from configuration (with bounds checking)
@@ -241,17 +241,17 @@ bool ESPWiFi::initCamera() {
 
   // Clamp to safe range
   if (frameRate < CAM_MIN_FPS) {
-    ESP_LOGW(CAM_TAG, "Frame rate %d too low, clamping to %d", frameRate,
-             CAM_MIN_FPS);
+    log(WARNING, "📷 Frame rate %d too low, clamping to %d", frameRate,
+        CAM_MIN_FPS);
     frameRate = CAM_MIN_FPS;
   }
   if (frameRate > CAM_MAX_FPS) {
-    ESP_LOGW(CAM_TAG, "Frame rate %d too high, clamping to %d", frameRate,
-             CAM_MAX_FPS);
+    log(WARNING, "📷 Frame rate %d too high, clamping to %d", frameRate,
+        CAM_MAX_FPS);
     frameRate = CAM_MAX_FPS;
   }
 
-  ESP_LOGI(CAM_TAG, "Target frame rate: %d FPS", frameRate);
+  log(INFO, "📷 Target frame rate: %d FPS", frameRate);
 
   // Initialize the camera driver
   // Note: We do NOT use ESP_ERROR_CHECK here to avoid aborting on failure
@@ -260,7 +260,6 @@ bool ESPWiFi::initCamera() {
   if (err != ESP_OK) {
     const char *errName = esp_err_to_name(err);
     log(ERROR, "📷 Camera Init Failed: %s (0x%x)", errName, err);
-    ESP_LOGE(CAM_TAG, "esp_camera_init() failed: %s (0x%x)", errName, err);
 
     // Best-effort cleanup
     (void)esp_camera_deinit();
@@ -279,7 +278,6 @@ bool ESPWiFi::initCamera() {
 
   log(INFO, "📷 Camera initialized (%s, %d FPS)", usingPSRAM ? "PSRAM" : "DRAM",
       frameRate);
-  ESP_LOGI(CAM_TAG, "Camera initialization complete");
 
   return true;
 }
@@ -300,39 +298,15 @@ bool ESPWiFi::initCamera() {
 void ESPWiFi::startCamera() {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   log(WARNING, "📷 Camera WebSocket disabled (CONFIG_HTTPD_WS_SUPPORT is off)");
-  ESP_LOGW(CAM_TAG, "WebSocket support not enabled in build configuration");
   return;
 #else
-  if (s_camWsStarted) {
-    ESP_LOGD(CAM_TAG, "Camera WebSocket already started");
+  if (camSocStarted) {
+    log(DEBUG, "📷 Camera WebSocket already started");
     return;
   }
 
-  ESP_LOGI(CAM_TAG, "Starting camera WebSocket endpoint at /camera");
-
-  // Start WebSocket endpoint
-  // - Path: /camera
-  // - Requires authentication via ?token= parameter
-  // - No onMessage handler (server -> client only)
-  // - Max broadcast length: 128KB (for high-quality JPEG frames)
-  s_camWsStarted =
-      s_camWs.begin("/camera", // URI path
-                    this,      // Context pointer (ESPWiFi instance)
-                    nullptr,   // onMessage callback (not needed for camera)
-                    nullptr,   // onConnect callback
-                    nullptr,   // onDisconnect callback
-                    32, // Max message length for incoming (small, only control)
-                    128 * 1024, // Max broadcast length (128KB for JPEG frames)
-                    true        // Require authentication
-      );
-
-  if (!s_camWsStarted) {
-    log(ERROR, "📷 Camera WebSocket failed to start");
-    ESP_LOGE(CAM_TAG, "Failed to initialize WebSocket endpoint");
-  } else {
-    log(INFO, "📷 Camera WebSocket started");
-    ESP_LOGI(CAM_TAG, "WebSocket endpoint ready for connections");
-  }
+  log(INFO, "📷 Camera WebSocket streaming enabled");
+  camSocStarted = true;
 #endif
 }
 
@@ -348,31 +322,28 @@ void ESPWiFi::startCamera() {
  * Mutex-protected to prevent concurrent access during shutdown.
  */
 void ESPWiFi::deinitCamera() {
-  ESP_LOGI(CAM_TAG, "Deinitializing camera");
+  log(INFO, "📷 Deinitializing camera");
 
   // Stop streaming to clients first (best-effort)
-  if (s_camWsStarted) {
-    ESP_LOGD(CAM_TAG, "Closing all WebSocket connections");
-    s_camWs.closeAll();
-    s_camWsStarted = false;
+  if (camSocStarted) {
+    log(DEBUG, "📷 Closing all WebSocket connections");
+    camSoc.closeAll();
+    camSocStarted = false;
   }
 
   // Acquire mutex for shutdown
-  if (!takeCamMutex_(pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
-    log(WARNING, "📷 Camera mutex timeout during deinit");
-    ESP_LOGW(CAM_TAG, "Failed to acquire mutex for deinit, proceeding anyway");
+  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
+    log(WARNING, "📷 Camera mutex timeout during deinit, proceeding anyway");
     // Continue anyway - we need to clean up
   }
 
   if (s_cameraInitialized) {
     esp_err_t err = esp_camera_deinit();
     if (err != ESP_OK) {
-      ESP_LOGW(CAM_TAG, "esp_camera_deinit() returned: %s",
-               esp_err_to_name(err));
+      log(WARNING, "📷 esp_camera_deinit() returned: %s", esp_err_to_name(err));
     }
     s_cameraInitialized = false;
     log(INFO, "📷 Camera deinitialized");
-    ESP_LOGI(CAM_TAG, "Camera hardware deinitialized");
   }
 
   giveCamMutex_();
@@ -388,16 +359,16 @@ void ESPWiFi::deinitCamera() {
  * @note This is best-effort and watchdog-safe
  */
 void ESPWiFi::clearCameraBuffer() {
-  ESP_LOGD(CAM_TAG, "Clearing camera frame buffer");
+  log(DEBUG, "📷 Clearing camera frame buffer");
 
   // Drain up to 2 frames to get latest data
   for (int i = 0; i < 2; i++) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (fb) {
       esp_camera_fb_return(fb);
-      ESP_LOGV(CAM_TAG, "Cleared frame %d from buffer", i + 1);
+      log(VERBOSE, "📷 Cleared frame %d from buffer", i + 1);
     } else {
-      ESP_LOGV(CAM_TAG, "Buffer empty after %d frames", i);
+      log(VERBOSE, "📷 Buffer empty after %d frames", i);
       break;
     }
     // Feed watchdog to prevent timeout
@@ -432,11 +403,11 @@ void ESPWiFi::clearCameraBuffer() {
 void ESPWiFi::updateCameraSettings() {
   sensor_t *s = esp_camera_sensor_get();
   if (s == nullptr) {
-    ESP_LOGW(CAM_TAG, "Cannot update settings: sensor not available");
+    log(WARNING, "📷 Cannot update settings: sensor not available");
     return;
   }
 
-  ESP_LOGI(CAM_TAG, "Updating camera sensor settings from configuration");
+  log(INFO, "📷 Updating camera sensor settings from configuration");
 
   // Helper lambda: get integer config value with bounds checking
   auto getInt = [&](const char *key, int def, int minv, int maxv) -> int {
@@ -445,11 +416,11 @@ void ESPWiFi::updateCameraSettings() {
     }
     int v = config["camera"][key].as<int>();
     if (v < minv) {
-      ESP_LOGW(CAM_TAG, "Config %s=%d below min %d, clamping", key, v, minv);
+      log(WARNING, "📷 Config %s=%d below min %d, clamping", key, v, minv);
       v = minv;
     }
     if (v > maxv) {
-      ESP_LOGW(CAM_TAG, "Config %s=%d above max %d, clamping", key, v, maxv);
+      log(WARNING, "📷 Config %s=%d above max %d, clamping", key, v, maxv);
       v = maxv;
     }
     return v;
@@ -479,11 +450,10 @@ void ESPWiFi::updateCameraSettings() {
   s->set_awb_gain(s, awb_gain);
   s->set_wb_mode(s, wb_mode);
 
-  ESP_LOGI(CAM_TAG,
-           "Camera settings applied: brightness=%d, contrast=%d, "
-           "saturation=%d, ae_level=%d",
-           brightness, contrast, saturation, ae_level);
-  log(DEBUG, "📷 Camera settings updated");
+  log(INFO,
+      "📷 Camera settings applied: brightness=%d, contrast=%d, "
+      "saturation=%d, ae_level=%d",
+      brightness, contrast, saturation, ae_level);
 }
 
 /**
@@ -498,40 +468,27 @@ void ESPWiFi::updateCameraSettings() {
  * the HTTP API or startup sequence.
  */
 void ESPWiFi::cameraConfigHandler() {
+  if (!config["camera"]["installed"].as<bool>()) {
+    return;
+  }
+
+  static bool lastEnabled = false;
   const bool enabled = config["camera"]["enabled"].as<bool>();
-  const bool installed = config["camera"]["installed"].as<bool>();
 
-  ESP_LOGD(CAM_TAG, "Config handler: enabled=%d, installed=%d", enabled,
-           installed);
-
-  if (!installed) {
-    ESP_LOGI(CAM_TAG,
-             "Camera marked as not installed, skipping initialization");
-    return;
+  if (enabled != lastEnabled) {
+    if (!enabled) {
+      log(INFO, "📷 Camera Disabled");
+      deinitCamera();
+    } else {
+      log(INFO, "📷 Camera Enabled");
+      initCamera();
+    }
+    lastEnabled = enabled;
   }
 
-  if (!enabled) {
-    log(INFO, "📷 Camera disabled in configuration");
-    ESP_LOGI(CAM_TAG, "Camera disabled, deinitializing");
-    deinitCamera();
-    return;
-  }
-
-  // Enabled and installed: initialize and start WebSocket endpoint
-  log(INFO, "📷 Camera enabled in configuration");
-  ESP_LOGI(CAM_TAG, "Camera enabled, initializing");
-
-  bool initSuccess = initCamera();
-  if (initSuccess) {
-    startCamera();
-  } else {
-    ESP_LOGE(CAM_TAG, "Failed to initialize camera hardware");
-  }
+  // Start WebSocket endpoint
+  startCamera();
 }
-
-// ============================================================================
-// Camera Streaming
-// ============================================================================
 
 /**
  * @brief Stream camera frames to WebSocket clients
@@ -559,7 +516,7 @@ void ESPWiFi::streamCamera() {
   }
 
   // Check if WebSocket is active and has clients
-  if (!s_camWsStarted || s_camWs.numClients() == 0) {
+  if (!camSocStarted || camSoc.numClients() == 0) {
     return;
   }
 
@@ -593,8 +550,7 @@ void ESPWiFi::streamCamera() {
   }
 
   // Try to acquire mutex with short timeout (non-blocking approach)
-  if (!takeCamMutex_(pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_QUICK_MS))) {
-    ESP_LOGV(CAM_TAG, "Skipping frame - mutex busy");
+  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_QUICK_MS))) {
     return;
   }
 
@@ -603,25 +559,25 @@ void ESPWiFi::streamCamera() {
 
   // Validate frame buffer
   if (!fb) {
-    ESP_LOGW(CAM_TAG, "Failed to capture frame");
+    log(WARNING, "📷 Failed to capture frame");
     return;
   }
 
   if (fb->format != PIXFORMAT_JPEG || fb->buf == nullptr || fb->len == 0) {
-    ESP_LOGW(CAM_TAG, "Invalid frame: format=%d, buf=%p, len=%zu", fb->format,
-             fb->buf, fb->len);
+    log(WARNING, "📷 Invalid frame: format=%d, buf=%p, len=%zu", fb->format,
+        fb->buf, fb->len);
     esp_camera_fb_return(fb);
     return;
   }
 
   // Broadcast frame to all connected clients
   // Each frame is sent as a single binary WebSocket message
-  ESP_LOGV(CAM_TAG, "Broadcasting frame: %zu bytes to %d clients", fb->len,
-           s_camWs.numClients());
+  log(VERBOSE, "📷 Broadcasting frame: %zu bytes to %d clients", fb->len,
+      camSoc.numClients());
 
-  esp_err_t err = s_camWs.binaryAll((const uint8_t *)fb->buf, fb->len);
+  esp_err_t err = camSoc.binaryAll((const uint8_t *)fb->buf, fb->len);
   if (err != ESP_OK) {
-    ESP_LOGW(CAM_TAG, "Frame broadcast failed: %s", esp_err_to_name(err));
+    log(WARNING, "📷 Frame broadcast failed: %s", esp_err_to_name(err));
   }
 
   esp_camera_fb_return(fb);
@@ -650,20 +606,20 @@ void ESPWiFi::streamCamera() {
 esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
                                       const std::string &clientInfo) {
   if (req == nullptr) {
-    ESP_LOGE(CAM_TAG, "sendCameraSnapshot called with null request");
+    log(ERROR, "📷 sendCameraSnapshot called with null request");
     return ESP_ERR_INVALID_ARG;
   }
 
   // Check camera availability
   if (!s_cameraInitialized) {
-    ESP_LOGW(CAM_TAG, "Snapshot request but camera not initialized");
+    log(WARNING, "📷 Snapshot request but camera not initialized");
     return sendJsonResponse(req, 503, "{\"error\":\"Camera not available\"}",
                             &clientInfo);
   }
 
   // Try to acquire mutex (don't block request handler too long)
-  if (!takeCamMutex_(pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
-    ESP_LOGW(CAM_TAG, "Snapshot request but camera busy");
+  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
+    log(WARNING, "📷 Snapshot request but camera busy");
     return sendJsonResponse(req, 503, "{\"error\":\"Camera busy\"}",
                             &clientInfo);
   }
@@ -673,20 +629,20 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
 
   // Validate frame capture
   if (!fb) {
-    ESP_LOGE(CAM_TAG, "Frame capture failed for snapshot");
+    log(ERROR, "📷 Frame capture failed for snapshot");
     return sendJsonResponse(req, 500, "{\"error\":\"Capture failed\"}",
                             &clientInfo);
   }
 
   if (fb->format != PIXFORMAT_JPEG || fb->buf == nullptr || fb->len == 0) {
-    ESP_LOGE(CAM_TAG, "Invalid frame captured: format=%d, buf=%p, len=%zu",
-             fb->format, fb->buf, fb->len);
+    log(ERROR, "📷 Invalid frame captured: format=%d, buf=%p, len=%zu",
+        fb->format, fb->buf, fb->len);
     esp_camera_fb_return(fb);
     return sendJsonResponse(req, 500, "{\"error\":\"Invalid frame\"}",
                             &clientInfo);
   }
 
-  ESP_LOGI(CAM_TAG, "Sending snapshot: %zu bytes", fb->len);
+  log(INFO, "📷 Sending snapshot: %zu bytes", fb->len);
 
   // Set response headers
   httpd_resp_set_type(req, "image/jpeg");
@@ -702,8 +658,8 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
     size_t toSend = (fb->len - sent > CHUNK) ? CHUNK : (fb->len - sent);
     ret = httpd_resp_send_chunk(req, (const char *)fb->buf + sent, toSend);
     if (ret != ESP_OK) {
-      ESP_LOGE(CAM_TAG, "Chunk send failed at byte %zu: %s", sent,
-               esp_err_to_name(ret));
+      log(ERROR, "📷 Chunk send failed at byte %zu: %s", sent,
+          esp_err_to_name(ret));
       break;
     }
     sent += toSend;
@@ -727,9 +683,9 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   logAccess(statusCode, clientInfo, sent);
 
   if (ret == ESP_OK) {
-    ESP_LOGI(CAM_TAG, "Snapshot sent successfully: %zu bytes", sent);
+    log(INFO, "📷 Snapshot sent successfully: %zu bytes", sent);
   } else {
-    ESP_LOGE(CAM_TAG, "Snapshot send failed: %s", esp_err_to_name(ret));
+    log(ERROR, "📷 Snapshot send failed: %s", esp_err_to_name(ret));
   }
 
   return ret;

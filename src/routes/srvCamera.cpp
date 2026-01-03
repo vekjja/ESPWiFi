@@ -3,10 +3,11 @@
  * @brief HTTP API routes for camera control and capture
  *
  * This module registers HTTP endpoints for camera operations:
- * - GET /camera/snapshot - Capture and return a single JPEG frame
- * - GET /camera/status - Get camera state and configuration info
- * - POST /camera/start - Initialize camera (if disabled)
- * - POST /camera/stop - Deinitialize camera
+ * - GET /api/camera/snapshot - Capture and return a single JPEG frame
+ * - GET /api/camera/status - Get camera state and configuration info
+ * - POST /api/camera/start - Initialize camera (if disabled)
+ * - POST /api/camera/stop - Deinitialize camera
+ * - WebSocket /ws/camera - Real-time JPEG frame streaming
  *
  * All routes require authentication and follow standard REST conventions.
  *
@@ -34,10 +35,17 @@
 #define ESPWiFi_SRV_CAMERA
 
 #include "ESPWiFi.h"
+#include "WebSocket.h"
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_psram.h>
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+// WebSocket instance for camera streaming - accessible from Camera.cpp
+WebSocket camSoc;
+bool camSocStarted = false;
+#endif
 
 /**
  * @brief Register all camera-related HTTP routes
@@ -48,8 +56,25 @@
 void ESPWiFi::srvCamera() {
   log(DEBUG, "Registering camera HTTP routes");
 
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+  // Start the websocket here
+  if (!camSocStarted) {
+    camSocStarted = camSoc.begin("/ws/camera", this,
+                                 /*onMessage*/ nullptr,
+                                 /*onConnect*/ nullptr,
+                                 /*onDisconnect*/ nullptr,
+                                 /*maxMessageLen*/ 32,
+                                 /*maxBroadcastLen*/ 128 * 1024,
+                                 /*requireAuth*/ true);
+
+    if (!camSocStarted) {
+      log(ERROR, "📷 Camera WebSocket failed to start");
+    }
+  }
+#endif
+
   registerRoute(
-      "/camera/snapshot", HTTP_GET,
+      "/api/camera/snapshot", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         // Validate pointers
@@ -79,7 +104,7 @@ void ESPWiFi::srvCamera() {
       });
 
   registerRoute(
-      "/camera/status", HTTP_GET,
+      "/api/camera/status", HTTP_GET,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         if (!espwifi || !req) {
@@ -144,7 +169,7 @@ void ESPWiFi::srvCamera() {
       });
 
   registerRoute(
-      "/camera/start", HTTP_POST,
+      "/api/camera/start", HTTP_POST,
       [](ESPWiFi *espwifi, httpd_req_t *req,
          const std::string &clientInfo) -> esp_err_t {
         if (!espwifi || !req) {
@@ -178,7 +203,7 @@ void ESPWiFi::srvCamera() {
                                          &clientInfo);
       });
 
-  registerRoute("/camera/stop", HTTP_POST,
+  registerRoute("/api/camera/stop", HTTP_POST,
                 [](ESPWiFi *espwifi, httpd_req_t *req,
                    const std::string &clientInfo) -> esp_err_t {
                   if (!espwifi || !req) {

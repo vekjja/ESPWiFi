@@ -38,6 +38,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Bluetooth Audio
   doc["bluetooth"]["enabled"] = false;
 
+  // SD Card
+  doc["sd"]["enabled"] = true;
+
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/espwifi.log";
   doc["log"]["level"] = "debug";
@@ -77,8 +80,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectedFiles"].add("/asset-manifest.json");
 
   doc["ota"]["enabled"] = isOTAEnabled();
-
-  doc["sd"]["enabled"] = false;
 
 // Camera
 #ifdef ESPWiFi_CAMERA_ENABLED

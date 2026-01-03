@@ -32,7 +32,7 @@ export default function CameraModule({
   const [cameraStatus, setCameraStatus] = useState("unknown"); // "enabled", "disabled", or "unknown"
   const [settingsData, setSettingsData] = useState({
     name: config?.name || "",
-    url: config?.url || "/camera",
+    url: config?.url || "/ws/camera",
   });
 
   const wsRef = useRef(null);
@@ -42,7 +42,7 @@ export default function CameraModule({
 
   // Function to check if camera URL is for a remote device
   const isRemoteCamera = () => {
-    const cameraUrl = config?.url || "/camera";
+    const cameraUrl = config?.url || "/ws/camera";
     // If URL starts with http://, https://, or contains a hostname (not just a path)
     return (
       cameraUrl.startsWith("http://") ||
@@ -53,7 +53,7 @@ export default function CameraModule({
 
   // Function to get the remote device's config endpoint URL
   const getRemoteConfigUrl = () => {
-    const cameraUrl = config?.url || "/camera";
+    const cameraUrl = config?.url || "/ws/camera";
 
     if (cameraUrl.startsWith("ws://")) {
       // Convert ws://hostname:port/path to http://hostname:port/config
@@ -138,7 +138,7 @@ export default function CameraModule({
 
   useEffect(() => {
     // Convert relative path to absolute URL
-    let wsUrl = config?.url || "/camera";
+    let wsUrl = config?.url || "/ws/camera";
 
     // Check if URL already has a protocol
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
@@ -187,7 +187,7 @@ export default function CameraModule({
   useEffect(() => {
     setSettingsData({
       name: config?.name || "",
-      url: config?.url || "/camera",
+      url: config?.url || "/ws/camera",
     });
   }, [config?.name, config?.url]);
 
@@ -342,7 +342,7 @@ export default function CameraModule({
 
   const handleSnapshot = async () => {
     const mdnsHostname = globalConfig?.deviceName;
-    const snapshotUrl = buildApiUrl("/camera/snapshot", mdnsHostname);
+    const snapshotUrl = buildApiUrl("/api/camera/snapshot", mdnsHostname);
 
     try {
       const response = await fetch(
@@ -376,7 +376,7 @@ export default function CameraModule({
     // Set settings data
     setSettingsData({
       name: config?.name || "",
-      url: config?.url || "/camera",
+      url: config?.url || "/ws/camera",
     });
 
     setSettingsModalOpen(true);

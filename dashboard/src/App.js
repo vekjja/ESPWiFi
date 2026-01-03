@@ -130,7 +130,6 @@ function App() {
     async (forceUpdate = false) => {
       // Prevent concurrent fetches using ref for synchronous check
       if (isFetchingConfigRef.current) {
-        console.log("Config fetch already in progress, skipping...");
         return null;
       }
 
@@ -175,15 +174,19 @@ function App() {
 
         // Only update localConfig if there are no unsaved changes or if forced
         setLocalConfig((prevLocalConfig) => {
-          // Use prevLocalConfig and config state in the setter to avoid hasUnsavedChanges check
-          // that depends on external config state
+          // Always initialize if localConfig is null (first load)
+          if (prevLocalConfig === null) {
+            return configWithAPI;
+          }
+
+          // If forcing update, check if config changed
           if (forceUpdate) {
             return configsAreEqual(prevLocalConfig, configWithAPI)
               ? prevLocalConfig
               : configWithAPI;
           }
-          // If not forcing, only update if local config matches the new config
-          // (no unsaved changes)
+
+          // If not forcing, keep existing local config (preserve unsaved changes)
           return prevLocalConfig;
         });
 
@@ -221,44 +224,50 @@ function App() {
       setCheckingAuth(true);
       setLoading(true);
 
-      // Small delay to ensure loading bar is visible
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        // Small delay to ensure loading bar is visible
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Retry logic to handle device restarts
-      const maxRetries = 5;
-      const retryDelay = 1000; // 1 second between retries
-      let result = null;
+        // Retry logic to handle device restarts
+        const maxRetries = 5;
+        const retryDelay = 1000; // 1 second between retries
+        let result = null;
 
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        // If we have a token, try to fetch config to verify it's valid
-        if (isAuthenticated()) {
-          result = await fetchConfig();
-          if (result) {
-            setAuthenticated(true);
-            break;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          // If we have a token, try to fetch config to verify it's valid
+          if (isAuthenticated()) {
+            result = await fetchConfig();
+            if (result) {
+              setAuthenticated(true);
+              break;
+            }
+          } else {
+            // No token, try to fetch config anyway (auth might be disabled)
+            result = await fetchConfig();
+            if (result) {
+              setAuthenticated(true);
+              break;
+            }
           }
-        } else {
-          // No token, try to fetch config anyway (auth might be disabled)
-          result = await fetchConfig();
-          if (result) {
-            setAuthenticated(true);
-            break;
+
+          // If we didn't succeed and there are retries left, wait before retrying
+          if (attempt < maxRetries - 1) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
           }
         }
 
-        // If we didn't succeed and there are retries left, wait before retrying
-        if (attempt < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        // If all retries failed, set authenticated to false
+        if (!result) {
+          setAuthenticated(false);
         }
-      }
-
-      // If all retries failed, set authenticated to false
-      if (!result) {
+      } catch (error) {
+        console.error("Error during auth check:", error);
         setAuthenticated(false);
+      } finally {
+        // Always set these to false to exit loading state
+        setCheckingAuth(false);
+        setLoading(false);
       }
-
-      setCheckingAuth(false);
-      setLoading(false);
     };
 
     checkAuth();
@@ -363,11 +372,10 @@ function App() {
   /**
    * Update local config only (no device API calls)
    * Used for immediate UI updates before saving to device
-   * @param {Object} newConfig - The new configuration object
+   * @param {Object} newConfig - The new configuration object (can be partial)
    */
   const updateLocalConfig = (newConfig) => {
-    const configWithAPI = { ...newConfig, apiURL };
-    setLocalConfig(configWithAPI);
+    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
   };
 
   /**

@@ -11,7 +11,8 @@ export default function DeviceSettingsButton({
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleClick = () => {
-    if (deviceOnline) {
+    // Only open modal if device is online AND config is loaded
+    if (deviceOnline && config) {
       setModalOpen(true);
     }
   };
@@ -22,27 +23,40 @@ export default function DeviceSettingsButton({
 
   return (
     <>
-      <Tooltip title="Device Settings">
-        <Fab
-          size="medium"
-          color="primary"
-          onClick={handleClick}
-          disabled={!deviceOnline}
-          sx={{
-            color: !deviceOnline ? "text.disabled" : "primary.main",
-            backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
-            "&:hover": {
-              backgroundColor: !deviceOnline
-                ? "action.disabled"
-                : "action.selected",
-            },
-          }}
-        >
-          <SettingsIcon />
-        </Fab>
+      <Tooltip
+        title={
+          !deviceOnline
+            ? "Device Offline"
+            : !config
+            ? "Loading configuration..."
+            : "Device Settings"
+        }
+      >
+        <span>
+          <Fab
+            size="medium"
+            color="primary"
+            onClick={handleClick}
+            disabled={!deviceOnline || !config}
+            sx={{
+              color:
+                !deviceOnline || !config ? "text.disabled" : "primary.main",
+              backgroundColor:
+                !deviceOnline || !config ? "action.disabled" : "action.hover",
+              "&:hover": {
+                backgroundColor:
+                  !deviceOnline || !config
+                    ? "action.disabled"
+                    : "action.selected",
+              },
+            }}
+          >
+            <SettingsIcon />
+          </Fab>
+        </span>
       </Tooltip>
 
-      {modalOpen && (
+      {modalOpen && config && (
         <DeviceSettingsModal
           open={modalOpen}
           onClose={handleCloseModal}

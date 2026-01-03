@@ -1,6 +1,6 @@
 #include "sdkconfig.h"
 
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
 
 #ifndef ESPWiFi_BLUETOOTH_H
 #define ESPWiFi_BLUETOOTH_H
@@ -92,4 +92,4 @@ void ESPWiFi::bluetoothConfigHandler() {
 }
 
 #endif // ESPWiFi_BLUETOOTH_H
-#endif // CONFIG_BT_CLASSIC_ENABLED
+#endif // CONFIG_BT_A2DP_ENABLE

@@ -20,7 +20,7 @@
 #include <unistd.h>
 
 // ESP-IDF
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
 #include "esp_a2dp_api.h"
 #endif
 #include "esp_err.h"
@@ -197,7 +197,7 @@ public:
   void srvGPIO();
   void srvAuth();
   void srvConfig();
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
   void srvBluetooth();
 #endif
   void srvWildcard();
@@ -243,7 +243,7 @@ public:
   std::string otaMD5Hash;
 
   // ---- Bluetooth Audio
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
   bool connectBluetoothed = false;
   bool btStarted = false;
   void startBluetooth();
@@ -305,7 +305,7 @@ private:
                                    int32_t event_id, void *event_data);
 
   // Bluetooth event handlers
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
   void bluetoothConnectionSC(esp_a2d_connection_state_t state, void *obj);
   void btAudioStateChange(esp_a2d_audio_state_t state, void *obj);
   static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,

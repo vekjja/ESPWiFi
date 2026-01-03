@@ -10,7 +10,7 @@ void ESPWiFi::srvAll() {
   srvConfig();
   srvInfo();
   srvLog();
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
   srvBluetooth();
 #endif
   srvFiles();

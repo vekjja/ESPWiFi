@@ -1,6 +1,6 @@
 #include "sdkconfig.h"
 
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+#ifdef CONFIG_BT_A2DP_ENABLE
 
 #ifndef ESPWiFi_BLUETOOTH_HANDLERS
 #define ESPWiFi_BLUETOOTH_HANDLERS
@@ -130,4 +130,4 @@ void ESPWiFi::btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj) {
 }
 
 #endif // ESPWiFi_BLUETOOTH_HANDLERS
-#endif // CONFIG_BT_CLASSIC_ENABLED
+#endif // CONFIG_BT_A2DP_ENABLE

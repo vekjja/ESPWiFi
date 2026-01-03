@@ -3,41 +3,61 @@
     "wifi": {
         "enabled": true,
         "mode": "client",
-        "client": {
-            "ssid": "YOUR_SSID",
-            "password": "YOUR_PASSWORD"
-        },
-        "ap": {
+        "mdns": true,
+        "accessPoint": {
             "ssid": "ESPWiFi",
-            "password": "espwifi!"
+            "password": "espw!!f!!"
+        },
+        "client": {
+            "ssid": "YOUR_WIFI_SSID",
+            "password": "YOUR_WIFI_PASSWORD"
+        },
+        "power": {
+            "txPower": 19.5,
+            "powerSave": "none"
         }
     },
-    "auth": {
-        "enabled": true,
-        "username": "admin",
-        "password": "admin"
-    },
     "bluetooth": {
-        "enabled": false,
-        "installed": true
-    },
-    "camera": {
-        "enabled": true,
-        "frameRate": 10,
-        "rotation": 0,
-        "brightness": 1,
-        "contrast": 1,
-        "saturation": 1,
-        "exposure_level": 1,
-        "exposure_value": 400,
-        "agc_gain": 2,
-        "gain_ceiling": 2,
-        "white_balance": 1,
-        "awb_gain": 1,
-        "wb_mode": 0
+        "enabled": false
     },
     "log": {
+        "file": "/espwifi.log",
+        "level": "debug",
         "enabled": true,
-        "level": "info"
+        "useSD": true,
+        "maskedKeys": [
+            "password",
+            "token"
+        ]
+    },
+    "auth": {
+        "enabled": false,
+        "username": "admin",
+        "password": "admin",
+        "excludePaths": [
+            "/",
+            "/static/*",
+            "/favicon.ico",
+            "/api/auth/login",
+            "/asset-manifest.json"
+        ],
+        "protectedFiles": [
+            "static/*",
+            "index.html",
+            "config.json",
+            "asset-manifest.json"
+        ],
+        "cors": {
+            "enabled": true,
+            "origins": [
+                "https://espwifi.io",
+                "*"
+            ],
+            "methods": [
+                "GET",
+                "POST",
+                "PUT"
+            ]
+        }
     }
 }

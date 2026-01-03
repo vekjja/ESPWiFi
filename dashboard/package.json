@@ -2,6 +2,7 @@
   "name": "dashboard",
   "version": "0.1.0",
   "private": true,
+  "homepage": "/",
   "dependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@dnd-kit/core": "^6.3.1",
@@ -16,25 +17,29 @@
     "@testing-library/user-event": "^14.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-scripts": "^5.0.1",
+    "react-scripts": "5.0.1",
     "web-vitals": "^4.2.4"
   },
   "scripts": {
     "start": "BROWSER=none react-scripts start",
+    "clean": " npm run cleanSDK && cd .. && pio run -t clean",
+    "cleanSDK": "find .. -maxdepth 1 -name 'sdkconfig*' ! -name '*.defaults' -type f -delete || true",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build",
-    "release:dashboard": "npm run build && mkdir -p release && cd .. && zip -r dashboard.zip data/ && mv dashboard.zip ./release/dashboard.zip",
-    "release:firmware": "cd .. && pio run && mkdir -p release && grep '^\\[env:' platformio.ini | sed 's/.*\\[env:\\(.*\\)\\].*/\\1/' | while read env; do [ -f .pio/build/$env/firmware.bin ] && cp .pio/build/$env/firmware.bin ./release/firmamint-$env.bin; done",
-    "release": "npm run release:dashboard && npm run release:firmware",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "clean": "cd .. && pio run --target clean",
     "monitor": "cd .. && pio device monitor",
-    "upload": "cd .. && pio run --target upload",
+    "menuconfig": "cd .. && pio run -t menuconfig",
+    "upload": "npm run cleanSDK && cd .. && pio run -t upload",
+    "upload:monitor": "clear && npm run upload && npm run monitor",
     "uploadfs": "cd .. && pio run --target uploadfs",
-    "build:monitor": "npm run build && npm run uploadfs && npm run monitor",
-    "upload:monitor": "npm run upload && npm run monitor",
     "deploy": "npm run build && npm run uploadfs && npm run upload",
-    "deploy:monitor": "npm run  deploy && npm run monitor"
+    "deploy:monitor": "clear && npm run deploy && npm run monitor",
+    "clean:deploy": "npm run clean && npm run build && npm run uploadfs && npm run upload",
+    "clean:upload": "npm run clean && npm run upload",
+    "flash": "cd .. && pio run -e esp32-c3",
+    "flash:upload": "npm run flash && npm run upload",
+    "flash:monitor": "npm run flash && npm run upload && npm run monitor",
+    "secure:status": "cd .. && espefuse --port /dev/cu.usbmodem101 summary || echo 'Secure boot enabled (cannot read eFuse)'",
+    "secure:gen-key": "cd .. && espsecure generate-signing-key --version 2 --scheme ecdsa256 secure_boot/ecdsa_signing_key.pem",
+    "secure:verify": "cd .. && esptool --chip esp32c3 --port /dev/cu.usbmodem101 chip_id"
   },
   "eslintConfig": {
     "rules": {

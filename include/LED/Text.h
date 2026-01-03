@@ -10,7 +10,7 @@ FastLED_NeoMatrix matrix(leds, LED_WIDTH, LED_HEIGHT);
 const int espTextMaxLen = 200;
 
 // Text configuration
-char textContent[espTextMaxLen] = "*.*. Lit Box .*.*";  // 40 chars max + null
+char textContent[espTextMaxLen] = "*.*. Lit Box .*.*"; // 40 chars max + null
 char textAnimation[16] = "scroll";
 bool textRequested = false;
 int textSpeed = 75;
@@ -30,7 +30,7 @@ void scrollText(const char *text) {
     matrix.print(text);
     matrix.show();
     delay(constrain(120 - textSpeed, 20, 200));
-    yield();
+    feedWatchDog();
   }
 }
 

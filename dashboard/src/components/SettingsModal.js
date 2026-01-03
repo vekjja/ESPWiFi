@@ -19,6 +19,8 @@ export default function SettingsModal({
   maxWidth = "sm",
   fullWidth = true,
   disableEscapeKeyDown = false,
+  paperSx = {},
+  contentSx = {},
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -44,6 +46,7 @@ export default function SettingsModal({
           borderRadius: theme.shape.borderRadius,
           display: "flex",
           flexDirection: "column",
+          ...paperSx,
         },
       }}
       sx={{
@@ -82,6 +85,9 @@ export default function SettingsModal({
       <DialogContent
         sx={{
           flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
           p: isMobile ? 3 : 2,
           pt: isMobile ? 2 : 1.5,
           pb: isMobile ? 2 : 1.5,
@@ -100,9 +106,20 @@ export default function SettingsModal({
               background: "rgba(255, 255, 255, 0.5)",
             },
           },
+          ...contentSx,
         }}
       >
-        <Box sx={{ mt: 0 }}>{children}</Box>
+        <Box
+          sx={{
+            mt: 0,
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {children}
+        </Box>
       </DialogContent>
       {actions && (
         <DialogActions

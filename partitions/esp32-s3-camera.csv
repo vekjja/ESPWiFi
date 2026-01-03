@@ -1,0 +1,11 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+# ESP32-S3 with Camera - 4MB flash detected (XIAO ESP32S3)
+# Optimized for camera with PSRAM support
+# Total: 2MB app + ~1.75MB LittleFS + coredump + NVS/PHY
+# LittleFS slightly smaller to accommodate larger app with camera
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 2048K,
+littlefsp, data, littlefs, , 0x1B0000,
+coredump, data, coredump, , 0x10000,
+

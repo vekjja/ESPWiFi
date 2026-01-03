@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
@@ -9,6 +9,8 @@ import Login from "./components/Login";
 import SettingsButtonBar from "./components/SettingsButtonBar";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
+import { getRSSIThemeColor } from "./utils/rssiUtils";
+import { getUserFriendlyErrorMessage, logError } from "./utils/errorUtils";
 
 // Define the theme
 const theme = createTheme({
@@ -105,16 +107,42 @@ function App() {
 
   const apiURL = getApiUrl();
 
-  // Function to fetch config from device
+  // Use ref for fetch locking to avoid race conditions with async state updates
+  const isFetchingConfigRef = useRef(false);
+
+  /**
+   * Helper to compare two config objects for equality
+   * @param {Object} config1 - First config object
+   * @param {Object} config2 - Second config object
+   * @returns {boolean} True if configs are equal
+   */
+  const configsAreEqual = useCallback((config1, config2) => {
+    return JSON.stringify(config1) === JSON.stringify(config2);
+  }, []);
+
+  /**
+   * Fetch configuration from device
+   * Includes retry logic and offline detection
+   * @param {boolean} forceUpdate - Force update even if config unchanged
+   * @returns {Promise<Object|null>} Configuration object or null on error
+   */
   const fetchConfig = useCallback(
     async (forceUpdate = false) => {
+      // Prevent concurrent fetches using ref for synchronous check
+      if (isFetchingConfigRef.current) {
+        return null;
+      }
+
+      isFetchingConfigRef.current = true;
+
       try {
         // Create an AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
+        // Timeout set to 20 seconds to handle slow device responses
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         const response = await fetch(
-          buildApiUrl("/config"),
+          buildApiUrl("/api/config"),
           getFetchOptions({
             signal: controller.signal,
           })
@@ -138,26 +166,27 @@ function App() {
         const configWithAPI = { ...data, apiURL };
 
         // Only update state if config has actually changed
-        setConfig((prevConfig) => {
-          if (JSON.stringify(prevConfig) !== JSON.stringify(configWithAPI)) {
-            return configWithAPI;
-          }
-          return prevConfig;
-        });
+        setConfig((prevConfig) =>
+          configsAreEqual(prevConfig, configWithAPI)
+            ? prevConfig
+            : configWithAPI
+        );
 
         // Only update localConfig if there are no unsaved changes or if forced
         setLocalConfig((prevLocalConfig) => {
-          // Check if there are unsaved changes by comparing with the main config
-          const hasUnsavedChanges =
-            JSON.stringify(prevLocalConfig) !== JSON.stringify(config);
-
-          if (forceUpdate || !hasUnsavedChanges) {
-            if (
-              JSON.stringify(prevLocalConfig) !== JSON.stringify(configWithAPI)
-            ) {
-              return configWithAPI;
-            }
+          // Always initialize if localConfig is null (first load)
+          if (prevLocalConfig === null) {
+            return configWithAPI;
           }
+
+          // If forcing update, check if config changed
+          if (forceUpdate) {
+            return configsAreEqual(prevLocalConfig, configWithAPI)
+              ? prevLocalConfig
+              : configWithAPI;
+          }
+
+          // If not forcing, keep existing local config (preserve unsaved changes)
           return prevLocalConfig;
         });
 
@@ -173,120 +202,166 @@ function App() {
 
         // Only log errors if we're not already offline to avoid spam
         if (deviceOnline) {
-          if (error.name === "AbortError") {
-            console.warn("Device offline: Request timeout (6 seconds)");
-          } else if (
-            error.name === "TypeError" &&
-            error.message.includes("Failed to fetch")
-          ) {
-            console.warn("Device offline: Network connection failed");
-          } else {
-            console.warn("Device offline:", error.message);
-          }
+          console.warn(
+            getUserFriendlyErrorMessage(error, "fetching configuration")
+          );
         }
-        setDeviceOnline(false); // Device is offline
+        setDeviceOnline(false);
         return null;
+      } finally {
+        isFetchingConfigRef.current = false;
       }
     },
-    [apiURL, config, deviceOnline]
+    [apiURL, deviceOnline, configsAreEqual]
   );
 
-  // Check authentication status on mount
+  /**
+   * Check authentication status on application mount
+   * Includes retry logic for device restarts
+   */
   useEffect(() => {
     const checkAuth = async () => {
       setCheckingAuth(true);
       setLoading(true);
 
-      // Small delay to ensure loading bar is visible
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      try {
+        // Small delay to ensure loading bar is visible
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Retry logic to handle device restarts
-      const maxRetries = 5;
-      const retryDelay = 1000; // 1 second between retries
-      let result = null;
+        // Retry logic to handle device restarts
+        const maxRetries = 5;
+        const retryDelay = 1000; // 1 second between retries
+        let result = null;
 
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        // If we have a token, try to fetch config to verify it's valid
-        if (isAuthenticated()) {
-          result = await fetchConfig();
-          if (result) {
-            setAuthenticated(true);
-            break;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          // If we have a token, try to fetch config to verify it's valid
+          if (isAuthenticated()) {
+            result = await fetchConfig();
+            if (result) {
+              setAuthenticated(true);
+              break;
+            }
+          } else {
+            // No token, try to fetch config anyway (auth might be disabled)
+            result = await fetchConfig();
+            if (result) {
+              setAuthenticated(true);
+              break;
+            }
           }
-        } else {
-          // No token, try to fetch config anyway (auth might be disabled)
-          result = await fetchConfig();
-          if (result) {
-            setAuthenticated(true);
-            break;
+
+          // If we didn't succeed and there are retries left, wait before retrying
+          if (attempt < maxRetries - 1) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
           }
         }
 
-        // If we didn't succeed and there are retries left, wait before retrying
-        if (attempt < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        // If all retries failed, set authenticated to false
+        if (!result) {
+          setAuthenticated(false);
         }
-      }
-
-      // If all retries failed, set authenticated to false
-      if (!result) {
+      } catch (error) {
+        console.error("Error during auth check:", error);
         setAuthenticated(false);
+      } finally {
+        // Always set these to false to exit loading state
+        setCheckingAuth(false);
+        setLoading(false);
       }
-
-      setCheckingAuth(false);
-      setLoading(false);
     };
 
     checkAuth();
-  }, []); // Only run on mount
+  }, [fetchConfig]);
 
+  /**
+   * Set up polling for config updates when authenticated
+   * Uses exponential backoff for failed requests to avoid overwhelming the device
+   */
   useEffect(() => {
     // Only start polling if authenticated
     if (!authenticated) {
       return;
     }
 
-    // Set up intelligent polling
-    let pollInterval;
-    let retryCount = 0;
-    const maxRetries = 3;
+    let pollTimeout;
+    let consecutiveFailures = 0;
+    const maxConsecutiveFailures = 5; // Stop polling after 5 consecutive failures
+    const basePollInterval = 30000; // Base: 30 seconds (much more conservative)
+    const maxPollInterval = 120000; // Max: 2 minutes
+    let isActive = true; // Flag to check if effect is still active
 
-    const startPolling = () => {
-      pollInterval = setInterval(
-        () => {
-          fetchConfig().then((result) => {
-            if (result) {
-              retryCount = 0; // Reset retry count on successful fetch
-            } else if (deviceOnline) {
-              retryCount++;
-              if (retryCount >= maxRetries) {
-                console.warn(
-                  "Device appears to be offline - reducing polling frequency"
-                );
-                clearInterval(pollInterval);
-                // Poll less frequently when offline
-                pollInterval = setInterval(() => {
-                  fetchConfig();
-                }, 15000); // 15 seconds when offline
-              }
+    const scheduleNextPoll = (intervalMs) => {
+      if (!isActive) return;
+
+      pollTimeout = setTimeout(async () => {
+        // Skip if a fetch is already in progress
+        if (isFetchingConfigRef.current) {
+          console.log("Skipping poll - fetch already in progress");
+          // Try again after a short delay
+          scheduleNextPoll(5000);
+          return;
+        }
+
+        try {
+          const result = await fetchConfig();
+
+          if (result) {
+            consecutiveFailures = 0; // Reset failure count on success
+            scheduleNextPoll(basePollInterval); // Use base interval
+          } else {
+            consecutiveFailures++;
+
+            // Stop polling after max consecutive failures
+            if (consecutiveFailures >= maxConsecutiveFailures) {
+              console.warn(
+                `Stopping polling after ${maxConsecutiveFailures} consecutive failures. Device appears offline.`
+              );
+              return; // Stop polling
             }
-          });
-        },
-        deviceOnline ? 5000 : 15000
-      ); // 5 seconds when online, 15 seconds when offline
+
+            // Exponential backoff: double the interval for each failure, up to max
+            const backoffInterval = Math.min(
+              basePollInterval * Math.pow(2, consecutiveFailures - 1),
+              maxPollInterval
+            );
+            console.log(
+              `Poll failed (${consecutiveFailures}/${maxConsecutiveFailures}). Next poll in ${
+                backoffInterval / 1000
+              }s`
+            );
+            scheduleNextPoll(backoffInterval);
+          }
+        } catch (error) {
+          console.error("Error in polling loop:", error);
+          consecutiveFailures++;
+
+          if (consecutiveFailures < maxConsecutiveFailures) {
+            const backoffInterval = Math.min(
+              basePollInterval * Math.pow(2, consecutiveFailures - 1),
+              maxPollInterval
+            );
+            scheduleNextPoll(backoffInterval);
+          }
+        }
+      }, intervalMs);
     };
 
-    startPolling();
+    // Start polling
+    scheduleNextPoll(basePollInterval);
 
-    // Cleanup interval on unmount
+    // Cleanup on unmount
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      isActive = false;
+      if (pollTimeout) {
+        clearTimeout(pollTimeout);
       }
     };
-  }, [fetchConfig, deviceOnline, authenticated]);
+  }, [fetchConfig, authenticated]);
 
-  // Handle login
+  /**
+   * Handle successful login
+   * Fetches initial config and removes loading screen
+   */
   const handleLoginSuccess = () => {
     setAuthenticated(true);
     fetchConfig(true).then(() => {
@@ -294,108 +369,102 @@ function App() {
     });
   };
 
-  if (loading || checkingAuth) {
-    return <LinearProgress color="inherit" />;
-  }
-
-  // Update local config only (no ESP32 calls)
+  /**
+   * Update local config only (no device API calls)
+   * Used for immediate UI updates before saving to device
+   * @param {Object} newConfig - The new configuration object (can be partial)
+   */
   const updateLocalConfig = (newConfig) => {
-    const configWithAPI = { ...newConfig, apiURL };
-    setLocalConfig(configWithAPI);
-    // console.log("Local config updated:", configWithAPI);
+    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
   };
 
-  // Save config from ConfigButton (updates local config and saves to device)
-  const saveConfigFromButton = (newConfig) => {
-    // First update local config
-    const configWithAPI = { ...newConfig, apiURL };
-    setLocalConfig(configWithAPI);
+  /**
+   * Save configuration to device and update local state
+   * Used by buttons and components that need to persist changes
+   * Includes timeout handling and offline detection
+   * @param {Object} newConfig - The new configuration to save
+   */
+  const saveConfigFromButton = useCallback(
+    (newConfig) => {
+      // First update local config by merging with existing config
+      // This handles both full and partial config updates
+      setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
 
-    // Don't attempt to save if device is offline
-    if (!deviceOnline) {
-      console.warn("Device is offline - configuration saved locally only");
-      return;
-    }
+      // Don't attempt to save if device is offline
+      if (!deviceOnline) {
+        console.warn("Device is offline - configuration saved locally only");
+        return;
+      }
 
-    // Then save to device
-    setSaving(true);
-    const configToSave = { ...configWithAPI };
-    delete configToSave.apiURL; // Remove the apiURL key entirely
+      // Then save to device
+      setSaving(true);
+      const configToSave = { ...newConfig };
 
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for saves
+      // Create an AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    fetch(
-      buildApiUrl("/config"),
-      getFetchOptions({
-        method: "PUT",
-        body: JSON.stringify(configToSave),
-        signal: controller.signal,
-      })
-    )
-      .then((response) => {
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to save configuration to Device: ${response.status} ${response.statusText}`
+      fetch(
+        buildApiUrl("/api/config"),
+        getFetchOptions({
+          method: "PUT",
+          body: JSON.stringify(configToSave),
+          signal: controller.signal,
+        })
+      )
+        .then((response) => {
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to save configuration to Device: ${response.status} ${response.statusText}`
+            );
+          }
+          return response.json();
+        })
+        .then((savedConfig) => {
+          setSaving(false);
+          // No need to update state - the config was already updated locally before the save
+          // and the periodic polling will sync any server-side changes
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          const errorMessage = getUserFriendlyErrorMessage(
+            error,
+            "saving configuration"
           );
-        }
-        return response.json();
-      })
-      .then((savedConfig) => {
-        const configWithAPI = { ...savedConfig, apiURL };
-        setConfig(configWithAPI);
-        setLocalConfig(configWithAPI);
-        console.log("Configuration Saved to Device:", savedConfig);
-        setSaving(false);
-        // Force a fresh fetch to ensure we have the latest config
-        fetchConfig(true);
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        if (error.name === "AbortError") {
-          console.error("Save operation timed out - device may be offline");
-          alert(
-            "Save operation timed out. Device may be offline. Configuration saved locally."
-          );
-        } else {
-          console.error("Error saving configuration to Device:", error);
-          alert(`Failed to save configuration to Device: ${error.message}`);
-        }
-        setSaving(false);
-      });
-  };
+          logError(error, "Config Save", true);
+          alert(`${errorMessage} Configuration saved locally.`);
+          setSaving(false);
+        });
+    },
+    [apiURL, deviceOnline]
+  );
 
-  // Settings button handlers
-  const handleNetworkSettings = () => {}; // Device settings now handled by DeviceSettingsButton
-  const handleCameraSettings = () => {}; // Camera settings now handled by CameraButton
-  const handleRSSISettings = () => {}; // RSSI settings now handled by RSSIButton
-  const handleFileBrowser = () => {}; // File browser is now handled by FileBrowserButton
-  const handleAddModule = () => {}; // Add module now handled by AddModuleButton
+  /**
+   * Get RSSI color based on signal strength
+   * @param {number} rssi - The RSSI value in dBm
+   * @returns {string} Theme color string
+   */
+  const getRSSIColor = (rssi) => getRSSIThemeColor(rssi);
 
-  // RSSI helper functions
-  const getRSSIColor = (rssi) => {
-    if (rssi === null || rssi === undefined) {
-      return "text.disabled";
-    }
-    if (rssi >= -50) return "primary.main";
-    if (rssi >= -60) return "primary.main";
-    if (rssi >= -70) return "warning.main";
-    if (rssi >= -80) return "warning.main";
-    return "error.main";
-  };
-
+  /**
+   * Get appropriate RSSI icon name based on signal strength
+   * @param {number|null|undefined} rssi - The RSSI value in dBm
+   * @returns {string|null} Icon name or null for default
+   */
   const getRSSIIcon = (rssi) => {
-    if (rssi === null || rssi === undefined) {
-      return null; // Will use default SignalCellularAlt icon
-    }
+    if (rssi === null || rssi === undefined) return null;
     if (rssi >= -50) return "SignalCellular4Bar";
     if (rssi >= -60) return "SignalCellular3Bar";
     if (rssi >= -70) return "SignalCellular2Bar";
     if (rssi >= -80) return "SignalCellular1Bar";
     return "SignalCellular0Bar";
   };
+
+  // Show loading indicator while checking auth or loading initial config
+  if (loading || checkingAuth) {
+    return <LinearProgress color="inherit" />;
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -431,29 +500,18 @@ function App() {
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {localConfig?.["deviceName"] ||
-            config?.["deviceName"] ||
-            localConfig?.["mdns"] ||
-            config?.["mdns"] ||
-            "ESPWiFi"}
+          {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
         </Box>
       </Container>
 
-      {/* Responsive Settings Button Bar */}
+      {/* Settings Button Bar */}
       <SettingsButtonBar
         config={localConfig}
         deviceOnline={deviceOnline}
-        onNetworkSettings={handleNetworkSettings}
-        onCameraSettings={handleCameraSettings}
-        onRSSISettings={handleRSSISettings}
-        onFileBrowser={handleFileBrowser}
-        onAddModule={handleAddModule}
         saveConfig={updateLocalConfig}
         saveConfigToDevice={saveConfigFromButton}
-        onRSSIDataChange={() => {}} // RSSI data is now handled internally by RSSIButton
         getRSSIColor={getRSSIColor}
         getRSSIIcon={getRSSIIcon}
-        // Camera specific props
         cameraEnabled={localConfig?.camera?.enabled || false}
         getCameraColor={() =>
           localConfig?.camera?.enabled ? "primary.main" : "text.disabled"

@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from "react";
-import { Tabs, Tab, Box, useTheme, useMediaQuery } from "@mui/material";
+/**
+ * Device Settings Modal Component
+ * Manages device configuration including network, auth, OTA, and device info
+ * Organized into tabs for better UX and maintainability
+ */
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Box } from "@mui/material";
 import RestartIcon from "@mui/icons-material/RestartAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
+import CloseIcon from "@mui/icons-material/Close";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
-import SaveButton from "./SaveButton";
-import EditButton from "./EditButton";
-import TabPanel from "./tabPanels/TabPanel";
-import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
-import DeviceSettingsNetworkTab from "./tabPanels/DeviceSettingsNetworkTab";
-import DeviceSettingsAuthTab from "./tabPanels/DeviceSettingsAuthTab";
-import DeviceSettingsJsonTab from "./tabPanels/DeviceSettingsJsonTab";
-import DeviceSettingsOTATab from "./tabPanels/DeviceSettingsOTATab";
-import DeviceSettingsLogsTab from "./tabPanels/DeviceSettingsLogsTab";
+import DeviceSettingsInfoTab from "./deviceSettings/DeviceSettingsInfoTab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 import { clearAuthToken } from "../utils/authUtils";
+import { getUserFriendlyErrorMessage, logError } from "../utils/errorUtils";
 
 export default function DeviceSettingsModal({
   config,
@@ -24,129 +24,42 @@ export default function DeviceSettingsModal({
   open = false,
   onClose,
 }) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const [activeTab, setActiveTab] = useState(0);
-
-  // Check if OTA is enabled (default to true if not explicitly set to false)
-  const otaEnabled = config?.ota?.enabled !== false;
-
-  // Network settings state
-  const [ssid, setSsid] = useState("");
-  const [deviceName, setDeviceName] = useState(
-    config?.["deviceName"] || config?.["mdns"] || ""
-  );
-  const [password, setPassword] = useState("");
-  const [apSsid, setApSsid] = useState("");
-  const [apPassword, setApPassword] = useState("");
-  const [mode, setMode] = useState("client");
-
-  // Password visibility state
-  const [showPassword, setShowPassword] = useState(false);
-  const [showApPassword, setShowApPassword] = useState(false);
-  const [showAuthPassword, setShowAuthPassword] = useState(false);
-
-  // Auth settings state
-  const [authEnabled, setAuthEnabled] = useState(false);
-  const [authUsername, setAuthUsername] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-
-  // JSON editing state
-  const [jsonConfig, setJsonConfig] = useState("");
-  const [jsonError, setJsonError] = useState("");
-  const [isEditable, setIsEditable] = useState(false);
-
   // Device info state
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState("");
   const [retryCount, setRetryCount] = useState(0);
 
+  /**
+   * Initialize state from config when it changes
+   */
   useEffect(() => {
     if (config) {
-      setSsid(config.wifi?.client?.ssid || "");
-      setPassword(config.wifi?.client?.password || "");
-      setApSsid(config.wifi?.accessPoint?.ssid || "");
-      setApPassword(config.wifi?.accessPoint?.password || "");
-      // Handle backward compatibility: "ap" mode is now "accessPoint"
-      const wifiMode = config.wifi?.mode || "client";
-      setMode(wifiMode === "ap" ? "accessPoint" : wifiMode);
-      setDeviceName(config.deviceName || config.mdns || "");
-      setAuthEnabled(config.auth?.enabled ?? false);
-      setAuthUsername(config.auth?.username || "");
-      setAuthPassword(config.auth?.password || "");
+      // Config loaded
     }
   }, [config]);
 
-  // Function to update JSON config based on current network and auth settings
-  const updateJsonConfig = () => {
-    if (!config) return;
-    const configToUpdate = {
-      ...config,
-      deviceName: deviceName,
-      wifi: {
-        ...config.wifi,
-        mode: mode,
-        client: {
-          ssid: ssid,
-          password: password,
-        },
-        accessPoint: {
-          ssid: apSsid,
-          password: apPassword,
-        },
-      },
-      auth: {
-        ...config.auth,
-        enabled: authEnabled,
-        username: authUsername,
-        password: authPassword,
-      },
-    };
+  /**
+   * Handle modal open - fetch device info
+   */
+  const handleOpenModal = useCallback(() => {
+    fetchDeviceInfo();
+  }, []);
 
-    // Remove apiURL for JSON display
-    delete configToUpdate.apiURL;
-    setJsonConfig(JSON.stringify(configToUpdate, null, 2));
-  };
+  /**
+   * Handle modal close
+   */
+  const handleCloseModal = useCallback(() => {
+    if (onClose) onClose();
+  }, [onClose]);
 
-  // Update JSON config whenever network or auth settings change
-  useEffect(() => {
-    if (config) {
-      updateJsonConfig();
-    }
-  }, [
-    ssid,
-    password,
-    apSsid,
-    apPassword,
-    mode,
-    deviceName,
-    authEnabled,
-    authUsername,
-    authPassword,
-    config,
-  ]);
-
-  const handleOpenModal = () => {
-    // Format the config as pretty JSON when opening the modal, excluding apiURL
-    const configWithoutAPI = { ...config };
-    delete configWithoutAPI.apiURL;
-    setJsonConfig(JSON.stringify(configWithoutAPI, null, 2));
-    setJsonError("");
-    setIsEditable(false);
-    setActiveTab(0);
-    // Don't fetch here - fetch only when switching to Info tab
-  };
-
-  // Fetch device info from /info endpoint
+  /**
+   * Fetch device information from /api/info endpoint
+   * Includes automatic retry logic for transient failures
+   * @param {boolean} isRetry - Whether this is a retry attempt
+   */
   const fetchDeviceInfo = async (isRetry = false) => {
-    const fetchUrl = buildApiUrl("/info");
-    console.log(
-      "Fetching device info from:",
-      fetchUrl,
-      isRetry ? `(retry ${retryCount + 1})` : ""
-    );
-
+    const fetchUrl = buildApiUrl("/api/info");
     setInfoLoading(true);
     if (!isRetry) {
       setInfoError("");
@@ -170,23 +83,20 @@ export default function DeviceSettingsModal({
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       const data = await response.json();
-      console.log("Fetched device info:", data);
       setDeviceInfo(data);
       setRetryCount(0); // Reset retry count on success
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === "AbortError") {
-        console.error("Device info fetch timed out");
-        setInfoError("Request timed out - device may be offline");
-      } else {
-        console.error("Failed to fetch device info:", error);
-        setInfoError(`Failed to fetch device info: ${error.message}`);
-      }
-      setDeviceInfo(null); // Ensure deviceInfo is set to null on error
+      const errorMessage = getUserFriendlyErrorMessage(
+        error,
+        "fetching device info"
+      );
+      setInfoError(errorMessage);
+      logError(error, "Device Info Fetch");
+      setDeviceInfo(null);
 
       // Auto-retry once after a short delay
       if (!isRetry && retryCount < 1) {
-        console.log("Retrying device info fetch in 2 seconds...");
         setTimeout(() => {
           setRetryCount((prev) => prev + 1);
           fetchDeviceInfo(true);
@@ -197,92 +107,14 @@ export default function DeviceSettingsModal({
     }
   };
 
-  const handleCloseModal = () => {
-    setJsonError("");
-    setIsEditable(false);
-    if (onClose) onClose();
-  };
-
-  const handleTabChange = (event, newValue) => {
-    // Prevent switching to OTA tab if OTA is disabled
-    // OTA tab is now at index 5 (after adding Logs tab at index 4)
-    if (newValue === 5 && !otaEnabled) {
-      return;
-    }
-    setActiveTab(newValue);
-    // Fetch device info when switching to Info tab
-    if (newValue === 0) {
-      fetchDeviceInfo();
-    }
-  };
-
-  // Reset activeTab if OTA is disabled and we're on the OTA tab
-  useEffect(() => {
-    // OTA tab is now at index 5 (after adding Logs tab at index 4)
-    if (activeTab === 5 && !otaEnabled) {
-      setActiveTab(0);
-    }
-  }, [otaEnabled, activeTab]);
-
-  // Fetch device info when Info tab is first rendered
-  React.useEffect(() => {
-    if (activeTab === 0 && !deviceInfo && !infoLoading && !infoError) {
-      fetchDeviceInfo();
-    }
-  }, [activeTab, deviceInfo, infoLoading, infoError]);
-
-  const isValidHostname = (hostname) => {
-    const regex = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/;
-    return regex.test(hostname);
-  };
-
-  const handleNetworkSave = () => {
-    if (!isValidHostname(deviceName)) {
-      alert("Invalid device name. Please enter a valid hostname.");
-      return;
-    }
-
-    const configToSave = {
-      ...config,
-      deviceName: deviceName,
-      wifi: {
-        ...config.wifi,
-        mode: mode,
-        client: {
-          ssid: ssid,
-          password: password,
-        },
-        accessPoint: {
-          ssid: apSsid,
-          password: apPassword,
-        },
-      },
-    };
-
-    // Save to device (not just local config)
-    saveConfigToDevice(configToSave);
-    handleCloseModal();
-  };
-
-  const handleAuthSave = () => {
-    const configToSave = {
-      ...config,
-      auth: {
-        ...config.auth,
-        enabled: authEnabled,
-        username: authUsername,
-        password: authPassword,
-      },
-    };
-
-    // Save to device (not just local config)
-    saveConfigToDevice(configToSave);
-    handleCloseModal();
-  };
-
-  const handleRestart = () => {
-    const restartUrl = buildApiUrl("/restart");
-    fetch(restartUrl, getFetchOptions({ method: "GET" })).catch((error) => {
+  /**
+   * Restart device
+   */
+  const handleRestart = useCallback(() => {
+    // In dev, buildApiUrl() defaults to localhost unless we pass a device host.
+    // Always target the device.
+    const restartUrl = buildApiUrl("/api/restart", config?.deviceName);
+    fetch(restartUrl, getFetchOptions({ method: "POST" })).catch((error) => {
       // Ignore errors since device will restart
     });
 
@@ -291,55 +123,36 @@ export default function DeviceSettingsModal({
     setTimeout(() => {
       window.location.reload();
     }, 5000);
-  };
+  }, [config, handleCloseModal]);
 
-  const handleLogout = () => {
+  /**
+   * Logout user and reload page
+   */
+  const handleLogout = useCallback(() => {
     clearAuthToken();
     handleCloseModal();
     // Reload page to trigger login screen
     window.location.reload();
-  };
+  }, [handleCloseModal]);
 
-  // JSON editing handlers
-  const handleJsonSave = () => {
-    try {
-      const parsedConfig = JSON.parse(jsonConfig);
-
-      if (!parsedConfig.deviceName && !parsedConfig.mdns) {
-        setJsonError("Configuration must include 'deviceName' field");
-        return;
-      }
-
-      // Migrate mdns to deviceName if needed
-      if (parsedConfig.mdns && !parsedConfig.deviceName) {
-        parsedConfig.deviceName = parsedConfig.mdns;
-        delete parsedConfig.mdns;
-      }
-
-      delete parsedConfig.apiURL;
-      setJsonError("");
-      saveConfigToDevice(parsedConfig);
-      handleCloseModal();
-    } catch (error) {
-      setJsonError("Invalid JSON format. Please check your configuration.");
-    }
-  };
-
-  const toggleEditability = () => {
-    setIsEditable((prev) => !prev);
-  };
-
-  // Determine which actions to show based on active tab
-  const getActions = () => {
-    // Common buttons (restart and logout) - logout only shown when auth is enabled
-    const commonButtons = (
+  /**
+   * Get action buttons
+   * @returns {React.Element} Action buttons
+   */
+  const getActions = useCallback(() => {
+    return (
       <>
+        <IButton
+          Icon={CloseIcon}
+          onClick={handleCloseModal}
+          tooltip={"Close Settings"}
+        />
         <IButton
           Icon={RestartIcon}
           onClick={handleRestart}
           tooltip={"Restart Device"}
         />
-        {authEnabled && (
+        {config?.auth?.enabled && (
           <IButton
             Icon={LogoutIcon}
             onClick={handleLogout}
@@ -348,59 +161,12 @@ export default function DeviceSettingsModal({
         )}
       </>
     );
+  }, [config, handleRestart, handleLogout, handleCloseModal]);
 
-    if (activeTab === 0) {
-      // Info tab - only show restart and logout buttons
-      return commonButtons;
-    } else if (activeTab === 1) {
-      // Network settings tab - Save button on left, restart/logout on right
-      return (
-        <>
-          <SaveButton
-            onClick={handleNetworkSave}
-            tooltip="Save Settings to Device"
-          />
-          {commonButtons}
-        </>
-      );
-    } else if (activeTab === 2) {
-      // Auth settings tab - Save button on left, restart/logout on right
-      return (
-        <>
-          <SaveButton
-            onClick={handleAuthSave}
-            tooltip="Save Settings to Device"
-          />
-          {commonButtons}
-        </>
-      );
-    } else if (activeTab === 3) {
-      // JSON editing tab - Edit and Save on left, restart/logout on right
-      return (
-        <>
-          <EditButton
-            onClick={toggleEditability}
-            tooltip={isEditable ? "Stop Editing" : "Edit"}
-            isEditing={isEditable}
-          />
-          <SaveButton
-            onClick={handleJsonSave}
-            tooltip="Save Configuration to Device"
-          />
-          {commonButtons}
-        </>
-      );
-    } else if (activeTab === 4) {
-      // Logs tab - only show restart and logout buttons
-      return commonButtons;
-    } else {
-      // OTA tab - only show restart and logout buttons
-      return commonButtons;
-    }
-  };
-
-  // Update JSON config when modal opens
-  React.useEffect(() => {
+  /**
+   * Update JSON config when modal opens
+   */
+  useEffect(() => {
     if (open) {
       handleOpenModal();
       // Don't fetch device info here - only fetch when switching to Info tab
@@ -426,102 +192,31 @@ export default function DeviceSettingsModal({
         </Box>
       }
       maxWidth={false}
+      paperSx={{
+        // Better desktop use of space; keep mobile behavior intact
+        width: { xs: "90%", sm: "800px" },
+        maxWidth: { xs: "90%", sm: "800px" },
+        height: { xs: "90%", sm: "88vh" },
+        maxHeight: { xs: "90%", sm: "88vh" },
+      }}
+      contentSx={{
+        // Tighter padding so more fits on screen
+        p: { xs: 2, sm: 2 },
+        pt: { xs: 1.5, sm: 1.25 },
+        pb: { xs: 3, sm: 2.5 }, // More bottom padding to prevent cutoff
+        overflowY: "auto", // Enable scrolling for the content area
+        overflowX: "hidden", // Prevent horizontal scroll
+      }}
       actions={getActions()}
-      tabs={
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          aria-label="settings tabs"
-          variant={isMobile ? "scrollable" : "standard"}
-          scrollButtons="auto"
-          centered={!isMobile}
-          sx={{
-            "& .MuiTab-root": {
-              color: "primary.main",
-              "&.Mui-selected": {
-                color: "primary.main",
-              },
-              minWidth: isMobile ? "auto" : undefined,
-              padding: isMobile ? "12px 16px" : undefined,
-            },
-          }}
-        >
-          <Tab label="Info" />
-          <Tab label="WiFi" />
-          <Tab label="Auth" />
-          <Tab label="JSON" />
-          <Tab label="Logs" />
-          {otaEnabled && <Tab label="Update" />}
-        </Tabs>
-      }
     >
-      <Box>
-        <TabPanel value={activeTab} index={0}>
-          <DeviceSettingsInfoTab
-            deviceInfo={deviceInfo}
-            infoLoading={infoLoading}
-            infoError={infoError}
-            mode={mode}
-          />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={1}>
-          <DeviceSettingsNetworkTab
-            ssid={ssid}
-            setSsid={setSsid}
-            password={password}
-            setPassword={setPassword}
-            apSsid={apSsid}
-            setApSsid={setApSsid}
-            apPassword={apPassword}
-            setApPassword={setApPassword}
-            mode={mode}
-            setMode={setMode}
-            deviceName={deviceName}
-            setDeviceName={setDeviceName}
-            showPassword={showPassword}
-            setShowPassword={setShowPassword}
-            showApPassword={showApPassword}
-            setShowApPassword={setShowApPassword}
-          />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={2}>
-          <DeviceSettingsAuthTab
-            authEnabled={authEnabled}
-            setAuthEnabled={setAuthEnabled}
-            username={authUsername}
-            setUsername={setAuthUsername}
-            password={authPassword}
-            setPassword={setAuthPassword}
-            showPassword={showAuthPassword}
-            setShowPassword={setShowAuthPassword}
-          />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={3}>
-          <DeviceSettingsJsonTab
-            jsonConfig={jsonConfig}
-            setJsonConfig={setJsonConfig}
-            jsonError={jsonError}
-            setJsonError={setJsonError}
-            isEditable={isEditable}
-          />
-        </TabPanel>
-
-        <TabPanel value={activeTab} index={4}>
-          <DeviceSettingsLogsTab
-            config={config}
-            saveConfigToDevice={saveConfigToDevice}
-          />
-        </TabPanel>
-
-        {otaEnabled && (
-          <TabPanel value={activeTab} index={5}>
-            <DeviceSettingsOTATab config={config} />
-          </TabPanel>
-        )}
-      </Box>
+      <DeviceSettingsInfoTab
+        deviceInfo={deviceInfo}
+        config={config}
+        saveConfigToDevice={saveConfigToDevice}
+        infoLoading={infoLoading}
+        infoError={infoError}
+        mode={config?.wifi?.mode || "client"}
+      />
     </SettingsModal>
   );
 }

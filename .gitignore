@@ -1,9 +1,31 @@
+# macOS
 .DS_Store
 .vscode/
-.pio
+.venv/
+.pio/
 
+# Dashboard
 data/
-config.json
 node_modules/
+dashboard/public/config.json
 
-!examples/*
+# Secure Boot
+*.pem
+!*pub*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pyzw
+*.pyzwz
+*.pyzwzw
+
+# ESP-IDF
+sdkconfig*
+!sdkconfig*defaults*
+# managed_components/

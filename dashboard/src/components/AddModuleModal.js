@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   Button,
+  Divider,
   List,
   ListItem,
   ListItemIcon,
@@ -13,6 +14,7 @@ import {
   Wifi as WebSocketIcon,
   CameraAlt as CameraAltIcon,
   Add as AddIcon,
+  Settings as SettingsIcon,
 } from "@mui/icons-material";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
@@ -24,6 +26,8 @@ export default function AddModuleModal({
   saveConfigToDevice,
   open = false,
   onClose,
+  missingSettingsButtons = [],
+  onAddSettingsButton,
 }) {
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
@@ -49,7 +53,7 @@ export default function AddModuleModal({
 
   const [cameraData, setCameraData] = useState({
     name: "",
-    url: "/camera",
+    url: "/ws/camera",
     frameRate: 10,
   });
 
@@ -80,7 +84,7 @@ export default function AddModuleModal({
   const handleOpenCameraModal = () => {
     setCameraData({
       name: "",
-      url: "/camera",
+      url: "/ws/camera",
       frameRate: 10,
     });
     setCameraModalOpen(true);
@@ -264,6 +268,39 @@ export default function AddModuleModal({
               <ListItemText primary="Camera" secondary="Add camera module" />
             </ListItemButton>
           </ListItem>
+
+          {Array.isArray(missingSettingsButtons) &&
+            missingSettingsButtons.length > 0 && (
+              <>
+                <Divider sx={{ my: 1 }} />
+                <ListItem disablePadding>
+                  <ListItemButton disabled>
+                    <ListItemIcon>
+                      <SettingsIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Add Settings Button"
+                      secondary="Add a button back to the top bar"
+                    />
+                  </ListItemButton>
+                </ListItem>
+
+                {missingSettingsButtons.map((b) => (
+                  <ListItem key={b.id} disablePadding>
+                    <ListItemButton
+                      onClick={() => {
+                        if (onAddSettingsButton) onAddSettingsButton(b.id);
+                      }}
+                    >
+                      <ListItemIcon>
+                        <AddIcon />
+                      </ListItemIcon>
+                      <ListItemText primary={b.label || b.id} />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              </>
+            )}
         </List>
       </SettingsModal>
 

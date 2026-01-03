@@ -1,4 +1,4 @@
-import { getAuthHeader } from "./authUtils";
+import { getAuthHeader, getAuthToken } from "./authUtils";
 
 /**
  * Get the API base URL for HTTP requests
@@ -26,10 +26,11 @@ export const getApiUrl = () => {
 export const getWebSocketUrl = (mdnsHostname = null) => {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  // Use mDNS hostname if provided, otherwise use environment variables or localhost
-  const hostname = mdnsHostname
-    ? `${mdnsHostname}.local`
-    : process.env.REACT_APP_API_HOST || "localhost";
+  // Use provided hostname as-is (do NOT force ".local"; firmware may not run mDNS
+  // and callers may already pass a full hostname like "espwifi.local").
+  // Otherwise use environment variables, falling back to the current page host.
+  const hostname =
+    mdnsHostname || process.env.REACT_APP_API_HOST || window.location.hostname;
   const port = process.env.REACT_APP_API_PORT || 80;
 
   return `${protocol}//${hostname}:${port}`;
@@ -45,7 +46,7 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
   // If mDNS hostname is provided, use it with port 80
   if (mdnsHostname) {
     const protocol = window.location.protocol === "https:" ? "https:" : "http:";
-    return `${protocol}//${mdnsHostname}.local:80${path}`;
+    return `${protocol}//${mdnsHostname}:80${path}`;
   }
 
   // Always use getApiUrl() - it handles both development and production correctly
@@ -54,13 +55,30 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
 
 /**
  * Build a full WebSocket URL
- * @param {string} path - The WebSocket endpoint path (e.g., "/camera", "/rssi")
+ * @param {string} path - The WebSocket endpoint path (e.g., "/ws/camera", "/ws/rssi")
  * @param {string} mdnsHostname - Optional mDNS hostname
  * @returns {string} The full WebSocket URL
  */
 export const buildWebSocketUrl = (path, mdnsHostname = null) => {
   const wsUrl = getWebSocketUrl(mdnsHostname);
-  return `${wsUrl}${path}`;
+  let url = `${wsUrl}${path}`;
+
+  // WebSocket API doesn't allow setting custom headers.
+  // Pass auth token via query param so firmware can validate connections.
+  const token = getAuthToken();
+
+  // Only add token parameter if we have a valid token
+  if (
+    token &&
+    token !== "null" &&
+    token !== "undefined" &&
+    token.trim() !== ""
+  ) {
+    const sep = url.includes("?") ? "&" : "?";
+    url = `${url}${sep}token=${encodeURIComponent(token)}`;
+  }
+
+  return url;
 };
 
 /**

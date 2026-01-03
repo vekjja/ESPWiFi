@@ -61,7 +61,7 @@ export default function WebSocketSettingsModal({
         variant="outlined"
         fullWidth
         sx={{ marginBottom: 2 }}
-        helperText="Use relative path (e.g., /rssi) for same server, or full URL for external WebSockets"
+        helperText="Use relative path (e.g., /ws/rssi) for same server, or full URL for external WebSockets"
         data-no-dnd="true"
       />
 

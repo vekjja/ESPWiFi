@@ -12,7 +12,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
 import IButton from "./IButton";
 import SettingsModal from "./SettingsModal";
-import DeviceSettingsInfoTab from "./tabPanels/DeviceSettingsInfoTab";
+import DeviceSettingsInfoTab from "./deviceSettings/DeviceSettingsInfoTab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 import { clearAuthToken } from "../utils/authUtils";
 import { getUserFriendlyErrorMessage, logError } from "../utils/errorUtils";

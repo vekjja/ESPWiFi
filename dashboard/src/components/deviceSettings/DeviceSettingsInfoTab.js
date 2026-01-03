@@ -10,13 +10,13 @@
 
 import React from "react";
 import { Box, Alert, Typography, Grid, Skeleton } from "@mui/material";
-import NetworkInfoCard from "../deviceSettings/NetworkInfoCard";
-import WifiConfigInfoCard from "../deviceSettings/WifiConfigInfoCard";
-import AuthInfoCard from "../deviceSettings/AuthInfoCard";
-import MemoryInfoCard from "../deviceSettings/MemoryInfoCard";
-import StorageInfoCard from "../deviceSettings/StorageInfoCard";
-import WifiPowerInfoCard from "../deviceSettings/WifiPowerInfoCard";
-import JsonConfigCard from "../deviceSettings/JsonConfigCard";
+import NetworkInfoCard from "./NetworkInfoCard";
+import WifiConfigInfoCard from "./WifiConfigInfoCard";
+import AuthInfoCard from "./AuthInfoCard";
+import MemoryInfoCard from "./MemoryInfoCard";
+import StorageInfoCard from "./StorageInfoCard";
+import WifiPowerInfoCard from "./WifiPowerInfoCard";
+import JsonConfigCard from "./JsonConfigCard";
 
 /**
  * DeviceSettingsInfoTab Component
@@ -76,10 +76,10 @@ export default function DeviceSettingsInfoTab({
 
   // ====== Render Config Loading State ======
   if (!config) {
-  return (
-                  <Box
-                    sx={{
-                      display: "flex",
+    return (
+      <Box
+        sx={{
+          display: "flex",
           justifyContent: "center",
           alignItems: "center",
           minHeight: "200px",
@@ -87,8 +87,8 @@ export default function DeviceSettingsInfoTab({
       >
         <Typography variant="body1" color="text.secondary">
           Loading configuration...
-                    </Typography>
-                  </Box>
+        </Typography>
+      </Box>
     );
   }
 

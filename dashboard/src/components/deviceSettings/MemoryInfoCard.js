@@ -1,12 +1,12 @@
 /**
  * @file MemoryInfoCard.js
  * @brief Memory information card with usage visualization
- * 
+ *
  * Displays free, total, and used heap with color-coded progress bar
  */
 
 import React from "react";
-import { Box, Typography, LinearProgress, Skeleton } from "@mui/material";
+import { Box, Typography, LinearProgress, Skeleton, Grid } from "@mui/material";
 import MemoryIcon from "@mui/icons-material/Memory";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
@@ -46,9 +46,26 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
     <InfoCard title="Memory" icon={MemoryIcon}>
       {hasMemoryInfo ? (
         <>
-          <InfoRow label="Free Heap:" value={bytesToHumanReadable(free_heap)} />
-          <InfoRow label="Total Heap:" value={bytesToHumanReadable(total_heap)} />
-          <InfoRow label="Used Heap:" value={bytesToHumanReadable(used_heap)} />
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={4}>
+              <InfoRow
+                label="Free Heap:"
+                value={bytesToHumanReadable(free_heap)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <InfoRow
+                label="Total Heap:"
+                value={bytesToHumanReadable(total_heap)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <InfoRow
+                label="Used Heap:"
+                value={bytesToHumanReadable(used_heap)}
+              />
+            </Grid>
+          </Grid>
 
           <Box sx={{ mt: 1 }}>
             <Box
@@ -88,4 +105,3 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
     </InfoCard>
   );
 }
-

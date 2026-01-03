@@ -18,6 +18,7 @@ import {
   MenuItem,
   InputAdornment,
   IconButton,
+  Grid,
 } from "@mui/material";
 import WifiIcon from "@mui/icons-material/Wifi";
 import RouterIcon from "@mui/icons-material/Router";
@@ -92,67 +93,80 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
   const viewContent = (
     <>
-      <InfoRow
-        label="Device Name:"
-        value={config?.deviceName || "ESPWiFi"}
-        valueProps={{ fontWeight: 600, color: "primary.main" }}
-      />
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={3}>
+          <InfoRow
+            label="Device Name:"
+            value={config?.deviceName || "ESPWiFi"}
+          />
+        </Grid>
 
-      {(config?.wifi?.mode === "client" || config?.wifi?.mode === "apsta") && (
-        <InfoRow
-          label="Client SSID:"
-          value={config?.wifi?.client?.ssid || "Not configured"}
-        />
-      )}
-
-      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-        <Typography variant="body2" color="text.secondary">
-          Mode:
-        </Typography>
-        <Chip
-          label={
-            config?.wifi?.mode === "client"
-              ? "Client (Station)"
-              : config?.wifi?.mode === "accessPoint"
-              ? "Access Point"
-              : config?.wifi?.mode === "apsta"
-              ? "AP+STA (Dual Mode)"
-              : "Unknown"
-          }
-          color="primary"
-          size="small"
-        />
-      </Box>
-
-      {(config?.wifi?.mode === "client" || config?.wifi?.mode === "apsta") &&
-        isValidRssi(deviceInfo.rssi) && (
-          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-            <Typography variant="body2" color="text.secondary">
-              Signal Strength:
-            </Typography>
-            <Chip
-              label={`${deviceInfo.rssi} dBm`}
-              color={getRSSIChipColor(deviceInfo.rssi)}
-              sx={{ fontWeight: 600 }}
-              size="small"
+        {(config?.wifi?.mode === "client" ||
+          config?.wifi?.mode === "apsta") && (
+          <Grid item xs={12} sm={6} md={3}>
+            <InfoRow
+              label="Client SSID:"
+              value={config?.wifi?.client?.ssid || "Not configured"}
             />
-          </Box>
+          </Grid>
         )}
 
-      {(config?.wifi?.mode === "accessPoint" ||
-        config?.wifi?.mode === "apsta") && (
-        <InfoRow
-          label="AP SSID:"
-          value={
-            deviceInfo?.ap_ssid ||
-            (config?.wifi?.accessPoint?.ssid
-              ? `${config.wifi.accessPoint.ssid}-${
-                  config.deviceName || "espwifi"
-                }`
-              : "Not configured")
-          }
-        />
-      )}
+        {(config?.wifi?.mode === "accessPoint" ||
+          config?.wifi?.mode === "apsta") && (
+          <Grid item xs={12} sm={6} md={3}>
+            <InfoRow
+              label="AP SSID:"
+              value={
+                deviceInfo?.ap_ssid ||
+                (config?.wifi?.accessPoint?.ssid
+                  ? `${config.wifi.accessPoint.ssid}-${
+                      config.deviceName || "espwifi"
+                    }`
+                  : "Not configured")
+              }
+            />
+          </Grid>
+        )}
+
+        <Grid item xs={12} sm={6} md={3}>
+          <InfoRow
+            label="Mode:"
+            value={
+              <Chip
+                label={
+                  config?.wifi?.mode === "client"
+                    ? "Client (Station)"
+                    : config?.wifi?.mode === "accessPoint"
+                    ? "Access Point"
+                    : config?.wifi?.mode === "apsta"
+                    ? "AP+STA (Dual Mode)"
+                    : "Unknown"
+                }
+                color="primary"
+                size="small"
+                sx={{ mt: 0.5 }}
+              />
+            }
+          />
+        </Grid>
+
+        {(config?.wifi?.mode === "client" || config?.wifi?.mode === "apsta") &&
+          isValidRssi(deviceInfo.rssi) && (
+            <Grid item xs={12} sm={6} md={3}>
+              <InfoRow
+                label="Signal Strength:"
+                value={
+                  <Chip
+                    label={`${deviceInfo.rssi} dBm`}
+                    color={getRSSIChipColor(deviceInfo.rssi)}
+                    sx={{ fontWeight: 600, mt: 0.5 }}
+                    size="small"
+                  />
+                }
+              />
+            </Grid>
+          )}
+      </Grid>
     </>
   );
 

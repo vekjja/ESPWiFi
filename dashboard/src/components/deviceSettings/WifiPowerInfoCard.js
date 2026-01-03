@@ -1,7 +1,7 @@
 /**
  * @file WifiPowerInfoCard.js
  * @brief WiFi power settings card with TX power and power save mode
- * 
+ *
  * Displays and allows editing of TX power and power save configuration
  */
 
@@ -16,6 +16,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Grid,
 } from "@mui/material";
 import BoltIcon from "@mui/icons-material/Bolt";
 import SaveIcon from "@mui/icons-material/Save";
@@ -26,7 +27,7 @@ import { formatUptime } from "../../utils/formatUtils";
 
 /**
  * WifiPowerInfoCard Component
- * 
+ *
  * @param {Object} props - Component props
  * @param {Object} props.config - Device configuration
  * @param {Object} props.deviceInfo - Device information
@@ -74,50 +75,49 @@ export default function WifiPowerInfoCard({ config, deviceInfo, onSave }) {
 
   const viewContent = (
     <>
-      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-        <Typography variant="body2" color="text.secondary">
-          TX Power:
-        </Typography>
-        <Typography
-          variant="body1"
-          sx={{ fontWeight: 500, fontFamily: "monospace" }}
-        >
-          {deviceInfo.wifi_power.configured?.txPower?.toFixed(1) || "N/A"} dBm
-        </Typography>
-      </Box>
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={3}>
+          <InfoRow
+            label="TX Power:"
+            value={`${
+              deviceInfo.wifi_power.configured?.txPower?.toFixed(1) || "N/A"
+            } dBm`}
+          />
+        </Grid>
 
-      {deviceInfo.wifi_power.actual?.txPower && (
-        <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Typography variant="body2" color="text.secondary">
-            Actual TX Power:
-          </Typography>
-          <Typography
-            variant="body1"
-            sx={{ fontWeight: 500, fontFamily: "monospace" }}
-          >
-            {deviceInfo.wifi_power.actual.txPower.toFixed(1)} dBm
-          </Typography>
-        </Box>
-      )}
+        {deviceInfo.wifi_power.actual?.txPower && (
+          <Grid item xs={12} sm={3}>
+            <InfoRow
+              label="Actual TX Power:"
+              value={`${deviceInfo.wifi_power.actual.txPower.toFixed(1)} dBm`}
+            />
+          </Grid>
+        )}
 
-      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-        <Typography variant="body2" color="text.secondary">
-          Power Save:
-        </Typography>
-        <Chip
-          label={deviceInfo.wifi_power.configured?.powerSave || "none"}
-          size="small"
-          color={
-            deviceInfo.wifi_power.configured?.powerSave === "none"
-              ? "default"
-              : "success"
-          }
-        />
-      </Box>
+        <Grid item xs={12} sm={3}>
+          <InfoRow
+            label="Power Save:"
+            value={
+              <Chip
+                label={deviceInfo.wifi_power.configured?.powerSave || "none"}
+                size="small"
+                color={
+                  deviceInfo.wifi_power.configured?.powerSave === "none"
+                    ? "default"
+                    : "success"
+                }
+                sx={{ mt: 0.5 }}
+              />
+            }
+          />
+        </Grid>
 
-      {deviceInfo.uptime !== undefined && (
-        <InfoRow label="Uptime:" value={formatUptime(deviceInfo.uptime)} />
-      )}
+        {deviceInfo.uptime !== undefined && (
+          <Grid item xs={12} sm={3}>
+            <InfoRow label="Uptime:" value={formatUptime(deviceInfo.uptime)} />
+          </Grid>
+        )}
+      </Grid>
     </>
   );
 
@@ -180,4 +180,3 @@ export default function WifiPowerInfoCard({ config, deviceInfo, onSave }) {
     </InfoCard>
   );
 }
-

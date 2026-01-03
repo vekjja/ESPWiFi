@@ -121,10 +121,16 @@ void ESPWiFi::srvCamera() {
         // Build status JSON
         JsonDocument statusDoc;
 
-        // Basic configuration
-        statusDoc["enabled"] = espwifi->config["camera"]["enabled"].as<bool>();
+        // "installed" indicates camera hardware is physically available on
+        // device
         statusDoc["installed"] =
             espwifi->config["camera"]["installed"].as<bool>();
+
+        // "enabled" reflects actual runtime state: user enabled AND hardware
+        // ready
+        bool userEnabled = espwifi->config["camera"]["enabled"].as<bool>();
+        bool hardwareReady = (espwifi->camera != nullptr);
+        statusDoc["enabled"] = userEnabled && hardwareReady;
 
         // Frame rate configuration
         int frameRate = espwifi->config["camera"]["frameRate"].isNull()
@@ -132,16 +138,13 @@ void ESPWiFi::srvCamera() {
                             : espwifi->config["camera"]["frameRate"].as<int>();
         statusDoc["frameRate"] = frameRate;
 
-        // Check if camera hardware is initialized
-        sensor_t *sensor = esp_camera_sensor_get();
-        statusDoc["initialized"] = (sensor != nullptr);
-
-        if (sensor != nullptr) {
+        if (espwifi->camera != nullptr) {
           // Get sensor information
-          camera_sensor_info_t *info = esp_camera_sensor_get_info(&sensor->id);
+          camera_sensor_info_t *info =
+              esp_camera_sensor_get_info(&espwifi->camera->id);
           if (info) {
             statusDoc["sensor"]["name"] = info->name;
-            statusDoc["sensor"]["pid"] = sensor->id.PID;
+            statusDoc["sensor"]["pid"] = espwifi->camera->id.PID;
             statusDoc["sensor"]["model"] = info->model;
             statusDoc["sensor"]["max_size"] = info->max_size;
           }

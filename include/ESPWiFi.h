@@ -23,6 +23,9 @@
 #ifdef CONFIG_BT_A2DP_ENABLE
 #include "esp_a2dp_api.h"
 #endif
+#ifdef ESPWiFi_CAMERA_ENABLED
+#include <esp_camera.h>
+#endif
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -257,11 +260,13 @@ public:
 
   // ---- Camera
 #ifdef ESPWiFi_CAMERA_ENABLED
+  sensor_t *camera = nullptr;
   void srvCamera();
   bool initCamera();
   void deinitCamera();
   void clearCameraBuffer();
   void updateCameraSettings();
+  void printCameraSettings();
   void cameraConfigHandler();
   void streamCamera();
   esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);

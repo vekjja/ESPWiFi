@@ -245,8 +245,6 @@ void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 
 void ESPWiFi::handleConfigUpdate() {
   if (configUpdate.size() > 0) {
-    config = configUpdate;
-    configUpdate.clear();
     refreshCorsCache();
     logConfigHandler();
     powerConfigHandler();
@@ -256,6 +254,9 @@ void ESPWiFi::handleConfigUpdate() {
 #ifdef ESPWiFi_CAMERA_ENABLED
     cameraConfigHandler();
 #endif
+
+    config = configUpdate;
+    configUpdate.clear();
   }
   if (configNeedsSave) {
     saveConfig();

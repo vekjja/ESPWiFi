@@ -68,8 +68,7 @@ void ESPWiFi::cameraInitHandler(bool success, void *obj) {
 void ESPWiFi::cameraSettingsUpdateHandler(void *obj) {
   ESPWiFi_OBJ_CAST(obj);
 
-  sensor_t *sensor = esp_camera_sensor_get();
-  if (sensor == nullptr) {
+  if (espwifi->camera == nullptr) {
     espwifi->log(WARNING, "📷 Camera sensor not available for settings update");
     ESP_LOGW(CAM_HANDLER_TAG, "Sensor unavailable for settings update");
     return;
@@ -152,8 +151,7 @@ void ESPWiFi::cameraErrorHandler(esp_err_t errorCode, const char *errorContext,
  */
 esp_err_t ESPWiFi::registerCameraHandlers() {
   // Check if camera sensor is available (instead of accessing file-static var)
-  sensor_t *sensor = esp_camera_sensor_get();
-  if (sensor == nullptr) {
+  if (camera == nullptr) {
     ESP_LOGW(CAM_HANDLER_TAG,
              "Cannot register handlers: camera not initialized");
     return ESP_ERR_INVALID_STATE;

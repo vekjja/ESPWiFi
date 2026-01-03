@@ -71,7 +71,6 @@ extern WebSocket camSoc;
 extern bool camSocStarted;
 #endif
 
-static bool s_cameraInitialized = false;       ///< Camera hardware init flag
 static SemaphoreHandle_t s_camMutex = nullptr; ///< Mutex for concurrent access
 
 // ============================================================================
@@ -126,7 +125,6 @@ static void giveCamMutex_() {
 // ============================================================================
 // Camera Initialization and Lifecycle
 // ============================================================================
-
 /**
  * @brief Initialize camera hardware and driver
  *
@@ -145,9 +143,8 @@ static void giveCamMutex_() {
  * @note Safe to call from HTTP handlers or configuration update tasks
  */
 bool ESPWiFi::initCamera() {
-  // Fast path: already initialized
-  if (s_cameraInitialized) {
-    log(DEBUG, "📷 Camera already initialized");
+  // Early return if already initialized
+  if (camera != nullptr) {
     return true;
   }
 
@@ -162,6 +159,26 @@ bool ESPWiFi::initCamera() {
 
   log(INFO, "📷 Initializing Camera");
 
+  // Check PSRAM availability and free space before init
+  const bool usingPSRAM = esp_psram_is_initialized();
+  if (usingPSRAM) {
+    size_t freePSRAM = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t totalPSRAM = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    log(DEBUG, "📷 PSRAM before init: %u / %u bytes free", freePSRAM,
+        totalPSRAM);
+
+    // Each SVGA frame buffer is ~96KB, we need at least 2 buffers
+    const size_t minRequiredPSRAM = 200 * 1024; // 200KB safety margin
+    if (freePSRAM < minRequiredPSRAM) {
+      log(ERROR, "📷 Insufficient PSRAM: %u bytes free, need at least %u bytes",
+          freePSRAM, minRequiredPSRAM);
+      log(ERROR, "📷 Camera initialization aborted due to low memory");
+      giveCamMutex_();
+      initInProgress = false;
+      return false;
+    }
+  }
+
   // Acquire mutex with extended timeout for init operations
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
     log(ERROR, "📷 Camera mutex timeout during init");
@@ -173,7 +190,7 @@ bool ESPWiFi::initCamera() {
   sensor_t *s = esp_camera_sensor_get();
   if (s != nullptr) {
     log(WARNING, "📷 Camera sensor already exists in driver");
-    s_cameraInitialized = true;
+    camera = s; // Cache the sensor pointer
     giveCamMutex_();
     initInProgress = false;
     return true;
@@ -212,12 +229,10 @@ bool ESPWiFi::initCamera() {
   // Output format: JPEG for efficient wireless transmission
   cam.pixel_format = PIXFORMAT_JPEG;
 
-  log(DEBUG, "📷 Pin configuration loaded for camera model");
-
   // Adaptive buffering based on PSRAM availability
   // PSRAM allows larger frames and multiple buffers for smoother streaming
   // ESP-IDF: Use esp_psram_is_initialized() instead of Arduino's psramFound()
-  const bool usingPSRAM = esp_psram_is_initialized();
+  // Note: usingPSRAM was already checked above
   if (usingPSRAM) {
     cam.frame_size = FRAMESIZE_SVGA;      // 800x600
     cam.jpeg_quality = 15;                // Lower = better quality (0-63)
@@ -254,7 +269,7 @@ bool ESPWiFi::initCamera() {
     frameRate = CAM_MAX_FPS;
   }
 
-  log(INFO, "📷 Target frame rate: %d FPS", frameRate);
+  // log(INFO, "📷 Target frame rate: %d FPS", frameRate);
 
   // Initialize the camera driver
   // Note: We do NOT use ESP_ERROR_CHECK here to avoid aborting on failure
@@ -272,10 +287,19 @@ bool ESPWiFi::initCamera() {
     return false;
   }
 
+  // Cache the sensor pointer immediately after successful init
+  camera = esp_camera_sensor_get();
+  if (camera == nullptr) {
+    log(ERROR, "📷 Failed to get camera sensor after init");
+    (void)esp_camera_deinit();
+    giveCamMutex_();
+    initInProgress = false;
+    return false;
+  }
+
   // Apply user configuration settings (brightness, contrast, etc.)
   updateCameraSettings();
 
-  s_cameraInitialized = true;
   giveCamMutex_();
   initInProgress = false;
 
@@ -290,38 +314,77 @@ bool ESPWiFi::initCamera() {
  *
  * Cleanly shuts down the camera subsystem:
  * 1. Closes all active WebSocket connections
- * 2. Deinitializes the camera driver
- * 3. Resets internal state flags
+ * 2. Clears frame buffers to prevent stale data
+ * 3. Deinitializes the camera driver
+ * 4. Resets internal state flags
  *
  * This is safe to call even if camera is not initialized (no-op).
  * Mutex-protected to prevent concurrent access during shutdown.
  */
 void ESPWiFi::deinitCamera() {
+  // Early exit if already deinitialized
+  if (camera == nullptr) {
+    return;
+  }
+
   log(INFO, "📷 Deinitializing camera");
 
-  // Stop streaming to clients first (best-effort)
+  // Stop streaming FIRST - close WebSocket connections before touching hardware
   if (camSocStarted) {
     log(DEBUG, "📷 Closing all WebSocket connections");
     camSoc.closeAll();
-    camSocStarted = false;
+    // Keep camSocStarted true - the WebSocket is still registered
+    // Only srvCamera() manages this flag
   }
 
-  // Acquire mutex for shutdown
+  // Acquire mutex for shutdown to prevent streaming interference
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
     log(WARNING, "📷 Camera mutex timeout during deinit, proceeding anyway");
     // Continue anyway - we need to clean up
   }
 
-  if (s_cameraInitialized) {
-    esp_err_t err = esp_camera_deinit();
-    if (err != ESP_OK) {
-      log(WARNING, "📷 esp_camera_deinit() returned: %s", esp_err_to_name(err));
+  // Clear any pending frames from buffer before deinit
+  // This must be done while driver is still valid
+  log(DEBUG, "📷 Clearing frame buffers before deinit");
+  for (int i = 0; i < 3; i++) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb) {
+      esp_camera_fb_return(fb);
+      log(VERBOSE, "📷 Freed frame buffer %d", i + 1);
+    } else {
+      break; // No more frames
     }
-    s_cameraInitialized = false;
-    log(INFO, "📷 Camera deinitialized");
+    feedWatchDog(1);
   }
 
+  // Deinitialize the camera driver
+  esp_err_t err = esp_camera_deinit();
+  if (err != ESP_OK) {
+    log(WARNING, "📷 esp_camera_deinit() returned: %s", esp_err_to_name(err));
+
+    // If deinit fails, force clear the pointer anyway to prevent further use
+    // This prevents cascading errors
+    camera = nullptr;
+    giveCamMutex_();
+    return;
+  }
+
+  camera = nullptr; // Clear the cached sensor pointer
+  log(INFO, "📷 Camera Deinitialized");
+
   giveCamMutex_();
+
+  // Allow hardware and memory to settle after deinit
+  // This is critical for PSRAM to release frame buffers
+  feedWatchDog(200);
+
+  // Log memory status after deinit
+  if (esp_psram_is_initialized()) {
+    size_t freePSRAM = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t totalPSRAM = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    log(DEBUG, "📷 PSRAM after deinit: %u / %u bytes free", freePSRAM,
+        totalPSRAM);
+  }
 }
 
 /**
@@ -356,6 +419,69 @@ void ESPWiFi::clearCameraBuffer() {
 // ============================================================================
 
 /**
+ * @brief Print camera settings as indented JSON in debug log
+ *
+ * Retrieves all current camera sensor settings and formats them as
+ * indented JSON for debugging and diagnostics. Safe to call even if
+ * camera is not initialized (no-op).
+ *
+ * @note Only logs if sensor is available
+ */
+void ESPWiFi::printCameraSettings() {
+  if (camera == nullptr) {
+    log(WARNING, "📷 Cannot print settings: sensor not available");
+    return;
+  }
+
+  // Helper to get config value with default
+  auto getInt = [&](const char *key, int def) -> int {
+    return config["camera"][key].isNull() ? def
+                                          : config["camera"][key].as<int>();
+  };
+
+  // Retrieve all settings from config
+  int brightness = getInt("brightness", 1);
+  int contrast = getInt("contrast", 1);
+  int saturation = getInt("saturation", 1);
+  int sharpness = getInt("sharpness", 0);
+  int denoise = getInt("denoise", 0);
+  int quality = getInt("quality", 12);
+  int ae_level = getInt("exposure_level", 1);
+  int aec_value = getInt("exposure_value", 400);
+  int agc_gain = getInt("agc_gain", 2);
+  int gain_ceiling = getInt("gain_ceiling", 2);
+  int whitebal = getInt("white_balance", 1);
+  int awb_gain = getInt("awb_gain", 1);
+  int wb_mode = getInt("wb_mode", 0);
+  int rotation = getInt("rotation", 0);
+  int frameRate = getInt("frameRate", CAM_DEFAULT_FPS);
+
+  // Build JSON string with proper indentation
+  log(DEBUG,
+      "📷 Camera settings JSON:\n"
+      "{\n"
+      "  \"brightness\": %d,\n"
+      "  \"contrast\": %d,\n"
+      "  \"saturation\": %d,\n"
+      "  \"sharpness\": %d,\n"
+      "  \"denoise\": %d,\n"
+      "  \"quality\": %d,\n"
+      "  \"exposure_level\": %d,\n"
+      "  \"exposure_value\": %d,\n"
+      "  \"agc_gain\": %d,\n"
+      "  \"gain_ceiling\": %d,\n"
+      "  \"white_balance\": %d,\n"
+      "  \"awb_gain\": %d,\n"
+      "  \"wb_mode\": %d,\n"
+      "  \"rotation\": %d,\n"
+      "  \"frameRate\": %d\n"
+      "}",
+      brightness, contrast, saturation, sharpness, denoise, quality, ae_level,
+      aec_value, agc_gain, gain_ceiling, whitebal, awb_gain, wb_mode, rotation,
+      frameRate);
+}
+
+/**
  * @brief Update camera sensor settings from configuration
  *
  * Applies user-configurable sensor parameters:
@@ -376,8 +502,7 @@ void ESPWiFi::clearCameraBuffer() {
  * @note Safe to call even if camera is not initialized (no-op)
  */
 void ESPWiFi::updateCameraSettings() {
-  sensor_t *s = esp_camera_sensor_get();
-  if (s == nullptr) {
+  if (camera == nullptr) {
     log(WARNING, "📷 Cannot update settings: sensor not available");
     return;
   }
@@ -418,22 +543,22 @@ void ESPWiFi::updateCameraSettings() {
   int rotation = getInt("rotation", 0, 0, 270);
 
   // Set sensor parameters
-  s->set_brightness(s, brightness);
-  s->set_contrast(s, contrast);
-  s->set_saturation(s, saturation);
-  if (s->set_sharpness)
-    s->set_sharpness(s, sharpness);
-  if (s->set_denoise)
-    s->set_denoise(s, denoise);
-  if (s->set_quality)
-    s->set_quality(s, quality);
-  s->set_ae_level(s, ae_level);
-  s->set_aec_value(s, aec_value);
-  s->set_agc_gain(s, agc_gain);
-  s->set_gainceiling(s, (gainceiling_t)gain_ceiling);
-  s->set_whitebal(s, whitebal);
-  s->set_awb_gain(s, awb_gain);
-  s->set_wb_mode(s, wb_mode);
+  camera->set_brightness(camera, brightness);
+  camera->set_contrast(camera, contrast);
+  camera->set_saturation(camera, saturation);
+  if (camera->set_sharpness)
+    camera->set_sharpness(camera, sharpness);
+  if (camera->set_denoise)
+    camera->set_denoise(camera, denoise);
+  if (camera->set_quality)
+    camera->set_quality(camera, quality);
+  camera->set_ae_level(camera, ae_level);
+  camera->set_aec_value(camera, aec_value);
+  camera->set_agc_gain(camera, agc_gain);
+  camera->set_gainceiling(camera, (gainceiling_t)gain_ceiling);
+  camera->set_whitebal(camera, whitebal);
+  camera->set_awb_gain(camera, awb_gain);
+  camera->set_wb_mode(camera, wb_mode);
 
   // Apply rotation using vflip and hflip
   // Note: Rotation is approximate using sensor flip functions
@@ -443,32 +568,30 @@ void ESPWiFi::updateCameraSettings() {
   // 270° = vflip only
   switch (rotation) {
   case 0:
-    s->set_vflip(s, 0);
-    s->set_hmirror(s, 0);
+    camera->set_vflip(camera, 0);
+    camera->set_hmirror(camera, 0);
     break;
   case 90:
-    s->set_vflip(s, 0);
-    s->set_hmirror(s, 1);
+    camera->set_vflip(camera, 0);
+    camera->set_hmirror(camera, 1);
     break;
   case 180:
-    s->set_vflip(s, 1);
-    s->set_hmirror(s, 1);
+    camera->set_vflip(camera, 1);
+    camera->set_hmirror(camera, 1);
     break;
   case 270:
-    s->set_vflip(s, 1);
-    s->set_hmirror(s, 0);
+    camera->set_vflip(camera, 1);
+    camera->set_hmirror(camera, 0);
     break;
   default:
     log(WARNING, "📷 Invalid rotation value: %d, using 0°", rotation);
-    s->set_vflip(s, 0);
-    s->set_hmirror(s, 0);
+    camera->set_vflip(camera, 0);
+    camera->set_hmirror(camera, 0);
     break;
   }
 
-  log(INFO,
-      "📷 Camera settings applied: brightness=%d, contrast=%d, "
-      "saturation=%d, ae_level=%d, rotation=%d°",
-      brightness, contrast, saturation, ae_level, rotation);
+  log(INFO, "📷 Camera settings applied");
+  printCameraSettings();
 }
 
 /**
@@ -479,6 +602,9 @@ void ESPWiFi::updateCameraSettings() {
  * - Camera installation status
  * - Setting updates
  *
+ * Compares configUpdate with current config to determine what changed.
+ * This is called before config is updated with configUpdate values.
+ *
  * This is the main entry point for responding to config updates from
  * the HTTP API or startup sequence.
  */
@@ -487,117 +613,64 @@ void ESPWiFi::cameraConfigHandler() {
     return;
   }
 
-  static bool lastEnabled = false;
-  const bool enabled = config["camera"]["enabled"].as<bool>();
+  // Compare old (config) and new (configUpdate) values
+  // If a field is not in configUpdate, use current config value (no change)
+  bool oldEnabled = config["camera"]["enabled"].as<bool>();
+  bool newEnabled = configUpdate["camera"]["enabled"].isNull()
+                        ? oldEnabled
+                        : configUpdate["camera"]["enabled"].as<bool>();
 
-  // Track previous settings to detect changes
-  static int lastFrameRate = -1;
-  static int lastRotation = -1;
-  static int lastBrightness = -999;
-  static int lastContrast = -999;
-  static int lastSaturation = -999;
-  static int lastSharpness = -999;
-  static int lastDenoise = -999;
-  static int lastQuality = -999;
-  static int lastExposureLevel = -999;
-  static int lastExposureValue = -999;
-  static int lastAgcGain = -999;
-  static int lastGainCeiling = -999;
-  static int lastWhiteBalance = -999;
-  static int lastAwbGain = -999;
-  static int lastWbMode = -999;
+  // Check if any settings changed (only if they're present in configUpdate)
+  bool settingsChanged = false;
 
-  // Get current settings from config with defaults
-  int currentFrameRate = config["camera"]["frameRate"].isNull()
-                             ? 10
-                             : config["camera"]["frameRate"].as<int>();
-  int currentRotation = config["camera"]["rotation"].isNull()
-                            ? 0
-                            : config["camera"]["rotation"].as<int>();
-  int currentBrightness = config["camera"]["brightness"].isNull()
-                              ? 1
-                              : config["camera"]["brightness"].as<int>();
-  int currentContrast = config["camera"]["contrast"].isNull()
-                            ? 1
-                            : config["camera"]["contrast"].as<int>();
-  int currentSaturation = config["camera"]["saturation"].isNull()
-                              ? 1
-                              : config["camera"]["saturation"].as<int>();
-  int currentSharpness = config["camera"]["sharpness"].isNull()
-                             ? 0
-                             : config["camera"]["sharpness"].as<int>();
-  int currentDenoise = config["camera"]["denoise"].isNull()
-                           ? 0
-                           : config["camera"]["denoise"].as<int>();
-  int currentQuality = config["camera"]["quality"].isNull()
-                           ? 12
-                           : config["camera"]["quality"].as<int>();
-  int currentExposureLevel = config["camera"]["exposure_level"].isNull()
-                                 ? 1
-                                 : config["camera"]["exposure_level"].as<int>();
-  int currentExposureValue = config["camera"]["exposure_value"].isNull()
-                                 ? 400
-                                 : config["camera"]["exposure_value"].as<int>();
-  int currentAgcGain = config["camera"]["agc_gain"].isNull()
-                           ? 2
-                           : config["camera"]["agc_gain"].as<int>();
-  int currentGainCeiling = config["camera"]["gain_ceiling"].isNull()
-                               ? 2
-                               : config["camera"]["gain_ceiling"].as<int>();
-  int currentWhiteBalance = config["camera"]["white_balance"].isNull()
-                                ? 1
-                                : config["camera"]["white_balance"].as<int>();
-  int currentAwbGain = config["camera"]["awb_gain"].isNull()
-                           ? 1
-                           : config["camera"]["awb_gain"].as<int>();
-  int currentWbMode = config["camera"]["wb_mode"].isNull()
-                          ? 0
-                          : config["camera"]["wb_mode"].as<int>();
+  // List of camera settings that trigger updateCameraSettings()
+  const char *settingKeys[] = {"frameRate",      "rotation",   "brightness",
+                               "contrast",       "saturation", "sharpness",
+                               "denoise",        "quality",    "exposure_level",
+                               "exposure_value", "agc_gain",   "gain_ceiling",
+                               "white_balance",  "awb_gain",   "wb_mode"};
 
-  bool settingsChanged =
-      (lastFrameRate != currentFrameRate || lastRotation != currentRotation ||
-       lastBrightness != currentBrightness || lastContrast != currentContrast ||
-       lastSaturation != currentSaturation ||
-       lastSharpness != currentSharpness || lastDenoise != currentDenoise ||
-       lastQuality != currentQuality ||
-       lastExposureLevel != currentExposureLevel ||
-       lastExposureValue != currentExposureValue ||
-       lastAgcGain != currentAgcGain || lastGainCeiling != currentGainCeiling ||
-       lastWhiteBalance != currentWhiteBalance ||
-       lastAwbGain != currentAwbGain || lastWbMode != currentWbMode);
+  for (const char *key : settingKeys) {
+    if (!configUpdate["camera"][key].isNull()) {
+      // This setting is being updated, check if value actually changed
+      auto oldVal = config["camera"][key];
+      auto newVal = configUpdate["camera"][key];
+      if (oldVal != newVal) {
+        settingsChanged = true;
+        break;
+      }
+    }
+  }
 
-  if (enabled != lastEnabled) {
-    if (!enabled) {
-      log(INFO, "📷 Camera Disabled");
+  // Handle enable/disable transitions
+  if (newEnabled != oldEnabled) {
+    if (!newEnabled) {
+      // log(INFO, "📷 Camera Disabled");
       deinitCamera();
     } else {
-      log(INFO, "📷 Camera Enabled");
+      // log(INFO, "📷 Camera Enabled");
       initCamera();
       // Apply settings immediately after init
       updateCameraSettings();
     }
-    lastEnabled = enabled;
-  } else if (enabled && settingsChanged) {
+  } else if (newEnabled && settingsChanged) {
     log(INFO, "📷 Camera settings changed, applying updates");
-    updateCameraSettings();
-  }
 
-  // Update last known settings
-  lastFrameRate = currentFrameRate;
-  lastRotation = currentRotation;
-  lastBrightness = currentBrightness;
-  lastContrast = currentContrast;
-  lastSaturation = currentSaturation;
-  lastSharpness = currentSharpness;
-  lastDenoise = currentDenoise;
-  lastQuality = currentQuality;
-  lastExposureLevel = currentExposureLevel;
-  lastExposureValue = currentExposureValue;
-  lastAgcGain = currentAgcGain;
-  lastGainCeiling = currentGainCeiling;
-  lastWhiteBalance = currentWhiteBalance;
-  lastAwbGain = currentAwbGain;
-  lastWbMode = currentWbMode;
+    // Ensure camera is initialized before applying settings
+    if (camera != nullptr) {
+      updateCameraSettings();
+
+      // Clear frame buffer to avoid showing stale frames with old settings
+      feedWatchDog(50); // Wait for sensor to apply settings
+      for (int i = 0; i < 3; i++) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) {
+          esp_camera_fb_return(fb);
+        }
+      }
+      log(DEBUG, "📷 Frame buffer cleared after settings update");
+    }
+  }
 }
 
 /**
@@ -626,12 +699,19 @@ void ESPWiFi::streamCamera() {
   }
 
   // Check if WebSocket is active and has clients
-  if (!camSocStarted || camSoc.numClients() == 0) {
+  // Don't waste resources capturing frames if no one is watching
+  if (!camSocStarted) {
+    return;
+  }
+
+  int clientCount = camSoc.numClients();
+  if (clientCount == 0) {
+    // No clients connected - don't capture or stream
     return;
   }
 
   // Ensure camera is initialized
-  if (!s_cameraInitialized) {
+  if (camera == nullptr) {
     if (!initCamera()) {
       return;
     }
@@ -659,8 +739,17 @@ void ESPWiFi::streamCamera() {
     return; // Not time for next frame yet
   }
 
+  // Track consecutive frame capture failures for error recovery
+  static int consecutiveFailures = 0;
+  const int maxFailures = 10;
+
   // Try to acquire mutex with short timeout (non-blocking approach)
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_QUICK_MS))) {
+    consecutiveFailures++;
+    if (consecutiveFailures >= maxFailures) {
+      log(ERROR, "📷 Camera mutex locked for too long, possible deadlock");
+      consecutiveFailures = 0;
+    }
     return;
   }
 
@@ -669,7 +758,23 @@ void ESPWiFi::streamCamera() {
 
   // Validate frame buffer
   if (!fb) {
-    log(WARNING, "📷 Failed to capture frame");
+    consecutiveFailures++;
+    if (consecutiveFailures >= maxFailures) {
+      log(ERROR,
+          "📷 Failed to capture %d consecutive frames, reinitializing camera",
+          consecutiveFailures);
+      consecutiveFailures = 0;
+
+      // Attempt recovery: reinitialize camera
+      deinitCamera();
+      feedWatchDog(100);
+      if (!initCamera()) {
+        log(ERROR, "📷 Camera recovery failed");
+      }
+    } else {
+      log(WARNING, "📷 Failed to capture frame (%d/%d)", consecutiveFailures,
+          maxFailures);
+    }
     return;
   }
 
@@ -677,17 +782,43 @@ void ESPWiFi::streamCamera() {
     log(WARNING, "📷 Invalid frame: format=%d, buf=%p, len=%zu", fb->format,
         fb->buf, fb->len);
     esp_camera_fb_return(fb);
+    consecutiveFailures++;
+    return;
+  }
+
+  // Success - reset failure counter
+  consecutiveFailures = 0;
+
+  // Double-check clients still connected before broadcast
+  // (they may have disconnected between the initial check and now)
+  if (camSoc.numClients() == 0) {
+    esp_camera_fb_return(fb);
     return;
   }
 
   // Broadcast frame to all connected clients
   // Each frame is sent as a single binary WebSocket message
-  log(VERBOSE, "📷 Broadcasting frame: %zu bytes to %d clients", fb->len,
-      camSoc.numClients());
+  // log(VERBOSE, "📷 Broadcasting frame: %zu bytes to %d clients", fb->len,
+  //     clientCount);
 
   esp_err_t err = camSoc.binaryAll((const uint8_t *)fb->buf, fb->len);
   if (err != ESP_OK) {
-    log(WARNING, "📷 Frame broadcast failed: %s", esp_err_to_name(err));
+    // Handle memory errors gracefully - log but don't spam
+    static unsigned long lastMemErrorMs = 0;
+    unsigned long now = millis();
+    if (err == ESP_ERR_NO_MEM) {
+      // Only log memory errors every 5 seconds to avoid spam
+      if (now - lastMemErrorMs > 5000) {
+        log(WARNING,
+            "📷 Frame broadcast failed (out of memory): frame size %zu bytes, "
+            "%d clients",
+            fb->len, clientCount);
+        lastMemErrorMs = now;
+      }
+    } else {
+      // Log other errors normally
+      log(WARNING, "📷 Frame broadcast failed: %s", esp_err_to_name(err));
+    }
   }
 
   esp_camera_fb_return(fb);
@@ -721,7 +852,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   }
 
   // Check camera availability
-  if (!s_cameraInitialized) {
+  if (camera == nullptr) {
     log(WARNING, "📷 Snapshot request but camera not initialized");
     return sendJsonResponse(req, 503, "{\"error\":\"Camera not available\"}",
                             &clientInfo);
@@ -788,18 +919,18 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
             size_t written = fwrite(fb->buf, 1, fb->len, file);
             fclose(file);
             if (written == fb->len) {
-              log(INFO, "📷 Snapshot saved to SD: %s (%zu bytes)", filename,
+              log(INFO, "📸 Snapshot saved to SD: %s (%zu bytes)", filename,
                   fb->len);
             } else {
-              log(ERROR, "📷 Failed to write complete snapshot: %zu/%zu bytes",
-                  written, fb->len);
+              log(ERROR, "📸 Failed to Write Snapshot: %zu/%zu bytes", written,
+                  fb->len);
             }
           } else {
-            log(ERROR, "📷 Failed to open file for snapshot: %s (errno=%d)",
+            log(ERROR, "📸 Failed to Open File for Snapshot: %s (errno=%d)",
                 filename, errno);
           }
         } else {
-          log(WARNING, "📷 Snapshot save requested but SD card not available");
+          log(WARNING, "📸 Snapshot save requested but SD card not available");
         }
       }
     }

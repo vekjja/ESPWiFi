@@ -252,6 +252,9 @@ void ESPWiFi::handleConfigUpdate() {
 #ifdef CONFIG_BT_CLASSIC_ENABLED
     bluetoothConfigHandler();
 #endif
+#ifdef ESPWiFi_CAMERA_ENABLED
+    cameraConfigHandler();
+#endif
   }
   if (configNeedsSave) {
     saveConfig();

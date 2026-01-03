@@ -78,27 +78,27 @@ JsonDocument ESPWiFi::defaultConfig() {
 
   doc["ota"]["enabled"] = isOTAEnabled();
 
-  doc["sdcard"]["enabled"] = false;
+  doc["sd"]["enabled"] = false;
 
-  // Camera
-  // #ifdef ESPWiFi_CAMERA
-  //   doc["camera"]["installed"] = true;
-  //   doc["camera"]["enabled"] = false;
-  //   doc["camera"]["frameRate"] = 10;
-  //   doc["camera"]["rotation"] = 0;
-  //   doc["camera"]["brightness"] = 1;
-  //   doc["camera"]["contrast"] = 1;
-  //   doc["camera"]["saturation"] = 1;
-  //   doc["camera"]["exposure_level"] = 1;
-  //   doc["camera"]["exposure_value"] = 400;
-  //   doc["camera"]["agc_gain"] = 2;
-  //   doc["camera"]["gain_ceiling"] = 2;
-  //   doc["camera"]["white_balance"] = 1;
-  //   doc["camera"]["awb_gain"] = 1;
-  //   doc["camera"]["wb_mode"] = 0;
-  // #else
-  //   doc["camera"]["installed"] = false;
-  // #endif
+// Camera
+#ifdef ESPWiFi_CAMERA_ENABLED
+  doc["camera"]["installed"] = true;
+  doc["camera"]["enabled"] = false;
+  doc["camera"]["frameRate"] = 10;
+  doc["camera"]["rotation"] = 0;
+  doc["camera"]["brightness"] = 1;
+  doc["camera"]["contrast"] = 1;
+  doc["camera"]["saturation"] = 1;
+  doc["camera"]["exposure_level"] = 1;
+  doc["camera"]["exposure_value"] = 400;
+  doc["camera"]["agc_gain"] = 2;
+  doc["camera"]["gain_ceiling"] = 2;
+  doc["camera"]["white_balance"] = 1;
+  doc["camera"]["awb_gain"] = 1;
+  doc["camera"]["wb_mode"] = 0;
+#else
+  doc["camera"]["installed"] = false;
+#endif
 
   return doc;
 }

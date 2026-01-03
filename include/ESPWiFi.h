@@ -255,6 +255,31 @@ public:
   void UnregisterBluetoothHandlers();
 #endif
 
+  // ---- Camera
+#ifdef ESPWiFi_CAMERA_ENABLED
+  void srvCamera();
+  bool initCamera();
+  void startCamera();
+  void deinitCamera();
+  void clearCameraBuffer();
+  void updateCameraSettings();
+  void cameraConfigHandler();
+  void streamCamera();
+  esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
+
+  // Camera event handlers (instance methods)
+  void cameraInitHandler(bool success, void *obj);
+  void cameraSettingsUpdateHandler(void *obj);
+  void cameraFrameCaptureHandler(uint32_t frameNumber, size_t frameSize,
+                                 void *obj);
+  void cameraErrorHandler(esp_err_t errorCode, const char *errorContext,
+                          void *obj);
+
+  // Camera handler registration
+  esp_err_t registerCameraHandlers();
+  void unregisterCameraHandlers();
+#endif
+
 private:
   std::string _version = "v0.1.0";
 
@@ -311,6 +336,16 @@ private:
   static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
                                           void *obj);
   static void btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj);
+#endif
+
+  // Camera event handlers (static wrappers for callbacks)
+#ifdef ESPWiFi_CAMERA_ENABLED
+  static void cameraInitHandlerStatic(bool success, void *obj);
+  static void cameraSettingsUpdateHandlerStatic(void *obj);
+  static void cameraFrameCaptureHandlerStatic(uint32_t frameNumber,
+                                              size_t frameSize, void *obj);
+  static void cameraErrorHandlerStatic(esp_err_t errorCode,
+                                       const char *errorContext, void *obj);
 #endif
 };
 

@@ -4,7 +4,7 @@
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
 # Base requirements for all builds
-set(COMPONENT_REQUIRES esp_http_server esp_netif esp_event nvs_flash app_update esp_littlefs mdns)
+set(COMPONENT_REQUIRES esp_http_server esp_netif esp_event nvs_flash app_update esp_littlefs mdns esp_psram)
 
 # Add Bluetooth dependencies only if A2DP is enabled
 if(CONFIG_BT_A2DP_ENABLE)
@@ -13,6 +13,10 @@ else()
     # Exclude Bluetooth source files when A2DP is disabled
     list(FILTER app_sources EXCLUDE REGEX ".*/(Bluetooth.*|srvBluetooth)\\.cpp$")
 endif()
+
+# Add Camera dependencies if enabled
+# Check for the build flag in the compile definitions
+list(APPEND COMPONENT_REQUIRES esp32-camera)
 
 idf_component_register(
     SRCS ${app_sources}

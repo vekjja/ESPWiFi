@@ -19,6 +19,9 @@ void ESPWiFi::runSystem() {
   handleConfigUpdate();
   checkSDCard();
   streamRSSI();
+#ifdef ESPWiFi_CAMERA_ENABLED
+  streamCamera();
+#endif
   feedWatchDog();
   // static unsigned long lastHeartbeat = 0;
   // runAtInterval(18000, lastHeartbeat, [this]() { log(DEBUG, "🫀"); });

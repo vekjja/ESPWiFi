@@ -1,6 +1,9 @@
 [submodule "components/ESP32-A2DP"]
 	path = components/ESP32-A2DP
-	url = https://github.com/pschatzmann/ESP32-A2DP.git
+	url = https://github.com/vekjja/ESP32-A2DP.git
 [submodule "components/arduino-audio-tools"]
 	path = components/arduino-audio-tools
-	url = https://github.com/pschatzmann/arduino-audio-tools.git
+	url = https://github.com/vekjja/arduino-audio-tools.git
+[submodule "components/esp32-camera"]
+	path = components/esp32-camera
+	url = git@github.com:vekjja/esp32-camera.git

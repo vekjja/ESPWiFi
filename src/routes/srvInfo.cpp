@@ -109,13 +109,13 @@ void ESPWiFi::srvInfo() {
         if (espwifi->lfs != nullptr) {
           size_t totalBytes, usedBytes, freeBytes;
           espwifi->getStorageInfo("lfs", totalBytes, usedBytes, freeBytes);
-          jsonDoc["littlefs_free"] = freeBytes;
-          jsonDoc["littlefs_used"] = usedBytes;
-          jsonDoc["littlefs_total"] = totalBytes;
+          jsonDoc["lfs_free"] = freeBytes;
+          jsonDoc["lfs_used"] = usedBytes;
+          jsonDoc["lfs_total"] = totalBytes;
         } else {
-          jsonDoc["littlefs_free"] = 0;
-          jsonDoc["littlefs_used"] = 0;
-          jsonDoc["littlefs_total"] = 0;
+          jsonDoc["lfs_free"] = 0;
+          jsonDoc["lfs_used"] = 0;
+          jsonDoc["lfs_total"] = 0;
         }
 
         // Yield to prevent watchdog timeout

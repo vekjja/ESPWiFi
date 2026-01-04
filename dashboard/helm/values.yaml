@@ -1,0 +1,120 @@
+# Default values for torch.cloud.
+# This is a YAML-formatted file.
+
+# kubectl create namespace espwifi-io
+
+# Install PostgreSQL using Helm with flags
+# helm upgrade --install psql bitnami/postgresql \
+#   --namespace "espwifi-io" \
+#   --create-namespace \
+#   --set primary.persistence.storageClass=local-path \
+#   --set primary.persistence.enabled=true \
+#   --set primary.persistence.size=10Gi \
+#   --set volumePermissions.enabled=true
+
+# Create a secret for the Docker registry
+# kubectl create secret docker-registry ghcr-secret \
+#   --namespace "espwifi-io" \
+#   --docker-server=ghcr.io \
+#   --docker-username=vekjja \
+#   --docker-password=${GITHUB_CR_PAT}
+
+# Declare variables to be passed into your templates.
+#  helm upgrade --install espwifi-io ./helm -f ./helm/values.yaml \
+#    --namespace espwifi-io \
+#    --create-namespace
+
+# This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+replicaCount: 1
+
+image:
+  repository: ghcr.io/vekjja/ESPWiFi
+  pullPolicy: Always
+  tag: "development"
+
+imagePullSecrets:
+- name: ghcr-secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+# This section builds out the srvice account 
+# more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {} # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# Name of the secret containing all environment variables
+# Create this secret with: kubectl create secret generic espwifi.io-env --from-env-file=.env
+envSecretName: espwifi.io-env
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "cloudflare-letsencrypt-production"
+    external-dns.alpha.kubernetes.io/hostname: espwifi.io
+    external-dns.alpha.kubernetes.io/target: "174.44.105.210"
+  hosts:
+  - host: espwifi.io
+    paths:
+    - path: /
+      pathType: Prefix
+  tls:
+  - secretName: espwifi.io-tls
+    hosts:
+    - espwifi.io
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+startupProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 9
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+volumes: []
+volumeMounts: []
+nodeSelector: {}
+tolerations: []
+affinity: {}

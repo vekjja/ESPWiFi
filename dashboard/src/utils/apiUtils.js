@@ -1,15 +1,33 @@
 import { getAuthHeader, getAuthToken } from "./authUtils";
 
+const normalizeProtocol = (protocol) => {
+  if (!protocol) return "";
+  // Accept "http", "http:", "https", "https:" (same for ws/wss)
+  return protocol.endsWith(":") ? protocol : `${protocol}:`;
+};
+
 /**
  * Get the API base URL for HTTP requests
  * Uses environment variables or falls back to localhost:80
  * @returns {string} The API base URL
  */
 export const getApiUrl = () => {
-  // In production, use relative URLs
-  if (process.env.NODE_ENV === "production") {
-    return "";
+  // Allow explicit API override even in production (e.g. app on espwifi.io,
+  // API on espwifi.local).
+  const forcedHost = process.env.REACT_APP_API_HOST;
+  if (forcedHost) {
+    const forcedPort = process.env.REACT_APP_API_PORT || 80;
+    const forcedProtocol = normalizeProtocol(
+      process.env.REACT_APP_API_PROTOCOL ||
+        (process.env.NODE_ENV === "production"
+          ? window.location.protocol
+          : "http:")
+    );
+    return `${forcedProtocol}//${forcedHost}:${forcedPort}`;
   }
+
+  // Default production behavior: use relative URLs (same-origin)
+  if (process.env.NODE_ENV === "production") return "";
 
   // Use environment variables if set, otherwise default to localhost:80
   const hostname = process.env.REACT_APP_API_HOST || "localhost";
@@ -24,7 +42,10 @@ export const getApiUrl = () => {
  * @returns {string} The WebSocket base URL
  */
 export const getWebSocketUrl = (mdnsHostname = null) => {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const protocol = normalizeProtocol(
+    process.env.REACT_APP_WS_PROTOCOL ||
+      (window.location.protocol === "https:" ? "wss:" : "ws:")
+  );
 
   // Use provided hostname as-is (do NOT force ".local"; firmware may not run mDNS
   // and callers may already pass a full hostname like "espwifi.local").

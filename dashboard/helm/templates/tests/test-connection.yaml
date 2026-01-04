@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "espwifi.io.fullname" . }}-test-connection"
+  labels:
+    {{- include "espwifi.io.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "espwifi.io.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never

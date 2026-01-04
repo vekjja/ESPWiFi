@@ -36,6 +36,31 @@ A modern, drag-and-drop web dashboard for managing ESPWiFi devices, modules, and
    # Output goes to ../data for ESPWiFi static hosting
    ```
 
+---
+
+## 🐳 Docker (production)
+
+This repo includes a production `dashboard/Dockerfile` that builds a static bundle with `react-scripts` and serves it with nginx.
+
+- **Create `dashboard/.env.prod`** (not committed) to force the API host when the UI is served from `espwifi.io`:
+
+```bash
+REACT_APP_API_HOST=espwifi.local
+REACT_APP_API_PORT=80
+REACT_APP_API_PROTOCOL=http:
+REACT_APP_WS_PROTOCOL=ws:
+```
+
+- **Build + run:**
+
+```bash
+cd dashboard
+docker build -t espwifi-dashboard:prod --build-arg ENV_FILE=.env.prod .
+docker run --rm -p 3000:3000 espwifi-dashboard:prod
+```
+
+For development containers, use `dashboard/Dockerfile.dev`.
+
 4. **Upload static files to ESP device (via PlatformIO):**
    ```bash
    npm run build:uploadfs

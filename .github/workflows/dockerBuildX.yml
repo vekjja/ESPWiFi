@@ -50,8 +50,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: ./dashboard/Dockerfile
+          # Build the dashboard image (and leverage dashboard/.dockerignore)
+          context: ./dashboard
+          file: Dockerfile
           pull: true
           no-cache: true
           push: true

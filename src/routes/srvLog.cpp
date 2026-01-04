@@ -4,7 +4,6 @@
 #include "ESPWiFi.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
-#include "sdkconfig.h"
 #include <cstring>
 #include <stdarg.h>
 #include <sys/time.h>

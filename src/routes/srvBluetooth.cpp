@@ -5,6 +5,7 @@
 
 void ESPWiFi::srvBluetooth() {
 #ifdef CONFIG_BT_A2DP_ENABLE
+
   registerRoute("/api/bt/start", HTTP_POST,
                 [](ESPWiFi *espwifi, httpd_req_t *req,
                    const std::string &clientInfo) -> esp_err_t {

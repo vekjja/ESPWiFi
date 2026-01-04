@@ -7,7 +7,6 @@
 #include "esp_littlefs.h"
 #include "esp_vfs_fat.h"
 #include "ff.h"
-#include "sdkconfig.h"
 #include "sdmmc_cmd.h"
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
     defined(CONFIG_IDF_TARGET_ESP32C3)

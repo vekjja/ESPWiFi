@@ -54,6 +54,7 @@ bool camSocStarted = false;
  * authentication and use the standard route handler pattern.
  */
 void ESPWiFi::srvCamera() {
+#ifdef ESPWiFi_CAMERA_ENABLED
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   // Start the websocket here
   if (!camSocStarted) {
@@ -225,6 +226,7 @@ void ESPWiFi::srvCamera() {
                   return espwifi->sendJsonResponse(
                       req, 200, "{\"status\":\"stopped\"}", &clientInfo);
                 });
+#endif // ESPWiFi_CAMERA_ENABLED
 }
 
 #endif // ESPWiFi_SRV_CAMERA

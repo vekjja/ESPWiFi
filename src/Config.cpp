@@ -56,7 +56,7 @@ void ESPWiFi::readConfig() {
     log(ERROR, "⚙️ Could not access filesystem: Using default config");
   }
 
-  refreshCorsCache();
+  corsConfigHandler();
   // Print config summary instead of full pretty-printed config to reduce stack
   // usage Full config is available via /api/config endpoint
   if (configLoaded) {
@@ -244,20 +244,18 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
 void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 
 void ESPWiFi::handleConfigUpdate() {
+
   if (configUpdate.size() > 0) {
-    refreshCorsCache();
+    corsConfigHandler();
     logConfigHandler();
     powerConfigHandler();
-#ifdef CONFIG_BT_CLASSIC_ENABLED
+    bleConfigHandler();
     bluetoothConfigHandler();
-#endif
-#ifdef ESPWiFi_CAMERA_ENABLED
     cameraConfigHandler();
-#endif
-
     config = configUpdate;
     configUpdate.clear();
   }
+
   if (configNeedsSave) {
     saveConfig();
   }

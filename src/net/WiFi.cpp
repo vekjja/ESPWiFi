@@ -164,9 +164,14 @@ void ESPWiFi::startClient() {
     log(ERROR, "📶 Failed to connect to WiFi, falling back to AP");
     setWiFiAutoReconnect(false); // Disable reconnect when switching to AP
     config["wifi"]["mode"] = "accessPoint";
-    startAP();
+    startAP(); // This will start BLE if enabled in config
     return;
   }
+
+  // WiFi connected successfully - stop BLE provisioning if running
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  deinitBLE();
+#endif
 
   std::string hostname = getHostname();
   log(DEBUG, "📶\tHostname: %s", hostname.c_str());
@@ -252,6 +257,13 @@ void ESPWiFi::startAP() {
   log(DEBUG, "📶\tPassword: %s", password.c_str());
 
   setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
+
+  // Start BLE provisioning when in AP mode (if enabled in config)
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  if (config["ble"]["enabled"].as<bool>()) {
+    startBLE();
+  }
+#endif
 
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();

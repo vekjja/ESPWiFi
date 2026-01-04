@@ -1,6 +1,9 @@
 #ifndef ESPWiFi_H
 #define ESPWiFi_H
 
+// ESP-IDF Configuration (must be first to provide CONFIG_* defines)
+#include "sdkconfig.h"
+
 // Standard library
 #include <cctype>
 #include <cstdarg>
@@ -42,6 +45,11 @@
 
 #include <ArduinoJson.h>
 #include <IntervalTimer.h>
+
+// Forward declarations for BLE types (to avoid pulling in NimBLE headers)
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+struct ble_gap_event;
+#endif
 
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
@@ -200,9 +208,8 @@ public:
   void srvGPIO();
   void srvAuth();
   void srvConfig();
-#ifdef CONFIG_BT_A2DP_ENABLE
+  void srvBLE();
   void srvBluetooth();
-#endif
   void srvWildcard();
 
   // ---- RSSI (stub)
@@ -245,14 +252,25 @@ public:
   std::string otaErrorString;
   std::string otaMD5Hash;
 
+  // ---- BLE Provisioning
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  void *ble = nullptr;
+  bool startBLE();
+  void deinitBLE();
+  uint8_t getBLEStatus();
+  std::string getBLEAddress();
+  void bleConfigHandler();
+  esp_err_t startBLEAdvertising();
+#endif
+
   // ---- Bluetooth Audio
+  void bluetoothConfigHandler();
 #ifdef CONFIG_BT_A2DP_ENABLE
   bool connectBluetoothed = false;
   bool btStarted = false;
   void startBluetooth();
   void stopBluetooth();
   void scanBluetooth();
-  void bluetoothConfigHandler();
   void connectBluetooth(const std::string &address);
   esp_err_t RegisterBluetoothHandlers();
   void UnregisterBluetoothHandlers();
@@ -308,7 +326,7 @@ private:
                              // from HTTP handler
 
   // ---- CORS cache (minimize per-request work/allocations)
-  void refreshCorsCache();
+  void corsConfigHandler();
   bool cors_cache_enabled = true;
   bool cors_cache_has_origins = false;
   bool cors_cache_allow_any_origin = true; // true when origins contains "*", or
@@ -340,6 +358,24 @@ private:
   static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
                                           void *obj);
   static void btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj);
+#endif
+
+  // BLE event handlers (instance methods)
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  void bleConnectionHandler(int status, uint16_t conn_handle, void *obj);
+  void bleDisconnectionHandler(int reason, void *obj);
+  void bleAdvertisingCompleteHandler(void *obj);
+  void bleSubscribeHandler(uint16_t conn_handle, void *obj);
+  void bleMtuUpdateHandler(uint16_t conn_handle, uint16_t mtu, void *obj);
+  void bleHostSyncHandler(void *obj);
+  void bleHostResetHandler(int reason, void *obj);
+  void bleHostTaskStartedHandler(void *obj);
+
+  // BLE static callbacks for NimBLE stack
+  static int bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg);
+  static void bleHostSyncCallbackStatic(void *arg);
+  static void bleHostResetCallbackStatic(int reason, void *arg);
+  static void bleHostTaskStatic(void *arg);
 #endif
 
   // Camera event handlers (static wrappers for callbacks)

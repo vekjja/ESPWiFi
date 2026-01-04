@@ -38,6 +38,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Bluetooth Audio
   doc["bluetooth"]["enabled"] = false;
 
+  // BLE Provisioning
+  doc["ble"]["enabled"] = true;
+  doc["ble"]["passkey"] = 123456;
+
   // SD Card
   doc["sd"]["enabled"] = true;
 
@@ -48,6 +52,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["log"]["useSD"] = true;
   doc["log"]["maskedKeys"] = JsonArray();
   doc["log"]["maskedKeys"].add("password");
+  doc["log"]["maskedKeys"].add("passkey");
   doc["log"]["maskedKeys"].add("token");
 
   // Auth

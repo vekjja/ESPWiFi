@@ -1,12 +1,11 @@
-#include "sdkconfig.h"
 
+#include "ESPWiFi.h"
 #ifdef CONFIG_BT_A2DP_ENABLE
 
 #ifndef ESPWiFi_BLUETOOTH_H
 #define ESPWiFi_BLUETOOTH_H
 
 #include "BluetoothA2DPSource.h"
-#include "ESPWiFi.h"
 #include "esp_log.h"
 #include <cstring>
 
@@ -76,8 +75,13 @@ void ESPWiFi::connectBluetooth(const std::string &address) {
   }
   log(INFO, "🛜 Bluetooth Connecting to %s", address.c_str());
 }
+#endif // ESPWiFi_BLUETOOTH_H
+
+#endif // CONFIG_BT_A2DP_ENABLE
 
 void ESPWiFi::bluetoothConfigHandler() {
+#ifdef CONFIG_BT_CLASSIC_ENABLED
+
   static bool lastEnabled = config["bluetooth"]["enabled"].as<bool>();
   static bool currentEnabled = config["bluetooth"]["enabled"].as<bool>();
 
@@ -89,7 +93,5 @@ void ESPWiFi::bluetoothConfigHandler() {
       stopBluetooth();
     }
   }
+#endif
 }
-
-#endif // ESPWiFi_BLUETOOTH_H
-#endif // CONFIG_BT_A2DP_ENABLE

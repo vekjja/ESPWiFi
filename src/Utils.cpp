@@ -1,7 +1,6 @@
 // Utils.cpp
 #include "ESPWiFi.h"
 #include "driver/uart.h"
-#include "sdkconfig.h"
 #include <cctype>
 #include <cstring>
 

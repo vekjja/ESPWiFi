@@ -2,7 +2,6 @@
 #define ESPWiFi_SRV_ALL
 
 #include "ESPWiFi.h"
-#include "sdkconfig.h"
 
 void ESPWiFi::srvAll() {
   srvRoot();
@@ -12,12 +11,9 @@ void ESPWiFi::srvAll() {
   srvLog();
   srvFiles();
   srvGPIO();
-#ifdef ESPWiFi_CAMERA_ENABLED
+  srvBLE();
   srvCamera();
-#endif
-#ifdef CONFIG_BT_A2DP_ENABLE
   srvBluetooth();
-#endif
   srvWildcard();
 }
 

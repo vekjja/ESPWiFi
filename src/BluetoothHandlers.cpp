@@ -1,4 +1,4 @@
-#include "sdkconfig.h"
+#include "ESPWiFi.h"
 
 #ifdef CONFIG_BT_A2DP_ENABLE
 
@@ -6,7 +6,6 @@
 #define ESPWiFi_BLUETOOTH_HANDLERS
 
 #include "BluetoothA2DPSource.h"
-#include "ESPWiFi.h"
 #include "esp_a2dp_api.h"
 #include "esp_log.h"
 

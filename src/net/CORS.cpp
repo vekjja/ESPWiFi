@@ -4,7 +4,7 @@
 #include <cctype>
 #include <cstring>
 
-void ESPWiFi::refreshCorsCache() {
+void ESPWiFi::corsConfigHandler() {
   // Defaults (preserve legacy behavior unless configured)
   cors_cache_enabled = true;
   cors_cache_has_origins = false;

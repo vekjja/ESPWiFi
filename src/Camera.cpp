@@ -595,85 +595,6 @@ void ESPWiFi::updateCameraSettings() {
 }
 
 /**
- * @brief Configuration change handler for camera subsystem
- *
- * Called when camera-related configuration changes. Handles:
- * - Camera enable/disable
- * - Camera installation status
- * - Setting updates
- *
- * Compares configUpdate with current config to determine what changed.
- * This is called before config is updated with configUpdate values.
- *
- * This is the main entry point for responding to config updates from
- * the HTTP API or startup sequence.
- */
-void ESPWiFi::cameraConfigHandler() {
-  if (!config["camera"]["installed"].as<bool>()) {
-    return;
-  }
-
-  // Compare old (config) and new (configUpdate) values
-  // If a field is not in configUpdate, use current config value (no change)
-  bool oldEnabled = config["camera"]["enabled"].as<bool>();
-  bool newEnabled = configUpdate["camera"]["enabled"].isNull()
-                        ? oldEnabled
-                        : configUpdate["camera"]["enabled"].as<bool>();
-
-  // Check if any settings changed (only if they're present in configUpdate)
-  bool settingsChanged = false;
-
-  // List of camera settings that trigger updateCameraSettings()
-  const char *settingKeys[] = {"frameRate",      "rotation",   "brightness",
-                               "contrast",       "saturation", "sharpness",
-                               "denoise",        "quality",    "exposure_level",
-                               "exposure_value", "agc_gain",   "gain_ceiling",
-                               "white_balance",  "awb_gain",   "wb_mode"};
-
-  for (const char *key : settingKeys) {
-    if (!configUpdate["camera"][key].isNull()) {
-      // This setting is being updated, check if value actually changed
-      auto oldVal = config["camera"][key];
-      auto newVal = configUpdate["camera"][key];
-      if (oldVal != newVal) {
-        settingsChanged = true;
-        break;
-      }
-    }
-  }
-
-  // Handle enable/disable transitions
-  if (newEnabled != oldEnabled) {
-    if (!newEnabled) {
-      // log(INFO, "📷 Camera Disabled");
-      deinitCamera();
-    } else {
-      // log(INFO, "📷 Camera Enabled");
-      initCamera();
-      // Apply settings immediately after init
-      updateCameraSettings();
-    }
-  } else if (newEnabled && settingsChanged) {
-    log(INFO, "📷 Camera settings changed, applying updates");
-
-    // Ensure camera is initialized before applying settings
-    if (camera != nullptr) {
-      updateCameraSettings();
-
-      // Clear frame buffer to avoid showing stale frames with old settings
-      feedWatchDog(50); // Wait for sensor to apply settings
-      for (int i = 0; i < 3; i++) {
-        camera_fb_t *fb = esp_camera_fb_get();
-        if (fb) {
-          esp_camera_fb_return(fb);
-        }
-      }
-      log(DEBUG, "📷 Frame buffer cleared after settings update");
-    }
-  }
-}
-
-/**
  * @brief Stream camera frames to WebSocket clients
  *
  * This function should be called periodically from the main loop. It:
@@ -1002,3 +923,84 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
 }
 
 #endif // Camera model check
+
+/**
+ * @brief Configuration change handler for camera subsystem
+ *
+ * Called when camera-related configuration changes. Handles:
+ * - Camera enable/disable
+ * - Camera installation status
+ * - Setting updates
+ *
+ * Compares configUpdate with current config to determine what changed.
+ * This is called before config is updated with configUpdate values.
+ *
+ * This is the main entry point for responding to config updates from
+ * the HTTP API or startup sequence.
+ */
+void ESPWiFi::cameraConfigHandler() {
+#ifdef ESPWiFi_CAMERA_ENABLED
+  if (!config["camera"]["installed"].as<bool>()) {
+    return;
+  }
+
+  // Compare old (config) and new (configUpdate) values
+  // If a field is not in configUpdate, use current config value (no change)
+  bool oldEnabled = config["camera"]["enabled"].as<bool>();
+  bool newEnabled = configUpdate["camera"]["enabled"].isNull()
+                        ? oldEnabled
+                        : configUpdate["camera"]["enabled"].as<bool>();
+
+  // Check if any settings changed (only if they're present in configUpdate)
+  bool settingsChanged = false;
+
+  // List of camera settings that trigger updateCameraSettings()
+  const char *settingKeys[] = {"frameRate",      "rotation",   "brightness",
+                               "contrast",       "saturation", "sharpness",
+                               "denoise",        "quality",    "exposure_level",
+                               "exposure_value", "agc_gain",   "gain_ceiling",
+                               "white_balance",  "awb_gain",   "wb_mode"};
+
+  for (const char *key : settingKeys) {
+    if (!configUpdate["camera"][key].isNull()) {
+      // This setting is being updated, check if value actually changed
+      auto oldVal = config["camera"][key];
+      auto newVal = configUpdate["camera"][key];
+      if (oldVal != newVal) {
+        settingsChanged = true;
+        break;
+      }
+    }
+  }
+
+  // Handle enable/disable transitions
+  if (newEnabled != oldEnabled) {
+    if (!newEnabled) {
+      // log(INFO, "📷 Camera Disabled");
+      deinitCamera();
+    } else {
+      // log(INFO, "📷 Camera Enabled");
+      initCamera();
+      // Apply settings immediately after init
+      updateCameraSettings();
+    }
+  } else if (newEnabled && settingsChanged) {
+    log(INFO, "📷 Camera settings changed, applying updates");
+
+    // Ensure camera is initialized before applying settings
+    if (camera != nullptr) {
+      updateCameraSettings();
+
+      // Clear frame buffer to avoid showing stale frames with old settings
+      feedWatchDog(50); // Wait for sensor to apply settings
+      for (int i = 0; i < 3; i++) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) {
+          esp_camera_fb_return(fb);
+        }
+      }
+      log(DEBUG, "📷 Frame buffer cleared after settings update");
+    }
+  }
+#endif
+}

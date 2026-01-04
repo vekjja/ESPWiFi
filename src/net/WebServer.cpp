@@ -43,6 +43,32 @@ static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
   return ESP_OK;
 }
 
+bool ESPWiFi::setTlsServerCredentials(const char *certPem, size_t certPemLen,
+                                      const char *keyPem, size_t keyPemLen) {
+  if (certPem == nullptr || keyPem == nullptr || certPemLen == 0 ||
+      keyPemLen == 0) {
+    clearTlsServerCredentials();
+    return false;
+  }
+
+  tlsServerCertPem_.assign(certPem, certPemLen);
+  tlsServerKeyPem_.assign(keyPem, keyPemLen);
+
+  // Basic sanity checks (best-effort; do not parse in runtime path).
+  if (tlsServerCertPem_.find("BEGIN CERTIFICATE") == std::string::npos ||
+      tlsServerKeyPem_.find("BEGIN") == std::string::npos) {
+    clearTlsServerCredentials();
+    return false;
+  }
+
+  return true;
+}
+
+void ESPWiFi::clearTlsServerCredentials() {
+  tlsServerCertPem_.clear();
+  tlsServerKeyPem_.clear();
+}
+
 static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
   if (self == nullptr) {
     return false;
@@ -83,20 +109,10 @@ static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
   }
 
   // Keep in memory for the lifetime of the HTTPS server.
-  self->tlsServerCertPem_.assign(cert, certLen);
-  self->tlsServerKeyPem_.assign(key, keyLen);
+  const bool ok = self->setTlsServerCredentials(cert, certLen, key, keyLen);
   free(cert);
   free(key);
-
-  // Basic sanity checks (best-effort; do not parse in runtime path).
-  if (self->tlsServerCertPem_.find("BEGIN CERTIFICATE") == std::string::npos ||
-      self->tlsServerKeyPem_.find("BEGIN") == std::string::npos) {
-    self->tlsServerCertPem_.clear();
-    self->tlsServerKeyPem_.clear();
-    return false;
-  }
-
-  return true;
+  return ok;
 }
 
 void ESPWiFi::startWebServer() {
@@ -141,8 +157,7 @@ void ESPWiFi::startWebServer() {
     } else {
       log(ERROR, "❌ Failed to start HTTPS server: %s", esp_err_to_name(ret));
       // Clear cert/key to free RAM if HTTPS fails.
-      tlsServerCertPem_.clear();
-      tlsServerKeyPem_.clear();
+      clearTlsServerCredentials();
     }
   }
 

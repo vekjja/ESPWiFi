@@ -176,6 +176,13 @@ public:
   bool webServerStarted = false;
   httpd_handle_t webServer = nullptr;
 
+  // ---- HTTPS/TLS credential management
+  // TLS materials are kept in-memory for the lifetime of the HTTPS server,
+  // because esp_https_server expects the cert/key buffers to remain valid.
+  bool setTlsServerCredentials(const char *certPem, size_t certPemLen,
+                               const char *keyPem, size_t keyPemLen);
+  void clearTlsServerCredentials();
+
   // Route registration helpers
   esp_err_t registerRoute(const char *uri, httpd_method_t method,
                           RouteHandler handler);
@@ -302,11 +309,14 @@ public:
 #ifdef ESPWiFi_CAMERA_INSTALLED
   sensor_t *camera = nullptr;
   void srvCamera();
+  void printCameraSettings();
+#endif
+
+  // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();
   void deinitCamera();
   void clearCameraBuffer();
   void updateCameraSettings();
-  void printCameraSettings();
   void cameraConfigHandler();
   void streamCamera();
   esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
@@ -322,7 +332,6 @@ public:
   // Camera handler registration
   esp_err_t registerCameraHandlers();
   void unregisterCameraHandlers();
-#endif
 
 private:
   std::string _version = "v0.1.0";
@@ -411,14 +420,12 @@ private:
 #endif
 
   // Camera event handlers (static wrappers for callbacks)
-#ifdef ESPWiFi_CAMERA_INSTALLED
   static void cameraInitHandlerStatic(bool success, void *obj);
   static void cameraSettingsUpdateHandlerStatic(void *obj);
   static void cameraFrameCaptureHandlerStatic(uint32_t frameNumber,
                                               size_t frameSize, void *obj);
   static void cameraErrorHandlerStatic(esp_err_t errorCode,
                                        const char *errorContext, void *obj);
-#endif
 };
 
 // String helper

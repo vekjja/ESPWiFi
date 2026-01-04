@@ -52,7 +52,9 @@ jobs:
         with:
           # Build the dashboard image (and leverage dashboard/.dockerignore)
           context: ./dashboard
-          file: Dockerfile
+          # NOTE: build-push-action resolves `file:` relative to the repo root,
+          # not relative to `context:`, so this must include the dashboard path.
+          file: ./dashboard/Dockerfile
           pull: true
           no-cache: true
           push: true

@@ -15,13 +15,13 @@
  * - Mutex-protected concurrent access
  * - Watchdog-safe chunked transfers
  *
- * @note Camera functionality requires ESPWiFi_CAMERA_ENABLED build flag
+ * @note Camera functionality requires ESPWiFi_CAMERA_INSTALLED build flag
  * @note Requires CAMERA_MODEL_* to be defined (e.g., CAMERA_MODEL_XIAO_ESP32S3)
  * @note WebSocket streaming requires CONFIG_HTTPD_WS_SUPPORT
  */
 
 // Only compile if camera is explicitly enabled AND a camera model is selected
-#if defined(ESPWiFi_CAMERA_ENABLED) &&                                         \
+#if defined(ESPWiFi_CAMERA_INSTALLED) &&                                       \
     (defined(CAMERA_MODEL_WROVER_KIT) || defined(CAMERA_MODEL_ESP_EYE) ||      \
      defined(CAMERA_MODEL_M5STACK_PSRAM) ||                                    \
      defined(CAMERA_MODEL_M5STACK_V2_PSRAM) ||                                 \
@@ -329,14 +329,6 @@ void ESPWiFi::deinitCamera() {
 
   log(INFO, "📷 Deinitializing camera");
 
-  // Stop streaming FIRST - close WebSocket connections before touching hardware
-  if (camSocStarted) {
-    log(DEBUG, "📷 Closing all WebSocket connections");
-    camSoc.closeAll();
-    // Keep camSocStarted true - the WebSocket is still registered
-    // Only srvCamera() manages this flag
-  }
-
   // Acquire mutex for shutdown to prevent streaming interference
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
     log(WARNING, "📷 Camera mutex timeout during deinit, proceeding anyway");
@@ -370,6 +362,15 @@ void ESPWiFi::deinitCamera() {
   }
 
   camera = nullptr; // Clear the cached sensor pointer
+
+  // Close WebSocket connections before completing deinit
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+  if (camSocStarted) {
+    log(DEBUG, "📷 Closing all WebSocket connections");
+    camSoc.closeAll();
+  }
+#endif
+
   log(INFO, "📷 Camera Deinitialized");
 
   giveCamMutex_();
@@ -553,7 +554,7 @@ void ESPWiFi::updateCameraSettings() {
   if (camera->set_quality)
     camera->set_quality(camera, quality);
   camera->set_ae_level(camera, ae_level);
-  camera->set_aec_value(camera, aec_value);
+  camera->set_aec_value(camera, aec_value > 0 ? aec_value : 1);
   camera->set_agc_gain(camera, agc_gain);
   camera->set_gainceiling(camera, (gainceiling_t)gain_ceiling);
   camera->set_whitebal(camera, whitebal);
@@ -904,7 +905,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ret;
 }
 
-#else // No camera model defined or ESPWiFi_CAMERA_ENABLED not set
+#else // No camera model defined or ESPWiFi_CAMERA_INSTALLED not set
 
 // Provide stub implementations when camera is disabled
 #include "ESPWiFi.h"
@@ -939,7 +940,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
  * the HTTP API or startup sequence.
  */
 void ESPWiFi::cameraConfigHandler() {
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
   if (!config["camera"]["installed"].as<bool>()) {
     return;
   }

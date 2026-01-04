@@ -22,6 +22,8 @@ static bool netif_initialized = false;
 static bool wifi_initialized = false;
 static esp_netif_t *current_netif = nullptr;
 
+bool ESPWiFi::isWiFiInitialized() const { return wifi_initialized; }
+
 void ESPWiFi::initNVS() {
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
@@ -258,13 +260,6 @@ void ESPWiFi::startAP() {
 
   setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
 
-  // Start BLE provisioning when in AP mode (if enabled in config)
-#ifdef CONFIG_BT_NIMBLE_ENABLED
-  if (config["ble"]["enabled"].as<bool>()) {
-    startBLE();
-  }
-#endif
-
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
@@ -341,6 +336,17 @@ void ESPWiFi::startAP() {
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
   log(DEBUG, "📶\tIP Address: %s", ip_str);
+
+  // Start BLE provisioning when in AP mode (if enabled in config)
+  // MUST be done after WiFi is fully initialized to avoid BT/WiFi coexistence
+  // issues
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  if (config["ble"]["enabled"].as<bool>()) {
+    // Give WiFi a moment to stabilize before enabling BLE
+    vTaskDelay(pdMS_TO_TICKS(200));
+    startBLE();
+  }
+#endif
 
 #ifdef LED_BUILTIN
   gpio_set_direction((gpio_num_t)LED_BUILTIN, GPIO_MODE_OUTPUT);

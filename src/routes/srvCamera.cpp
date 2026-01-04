@@ -11,12 +11,12 @@
  *
  * All routes require authentication and follow standard REST conventions.
  *
- * @note Requires ESPWiFi_CAMERA_ENABLED build flag
+ * @note Requires ESPWiFi_CAMERA_INSTALLED build flag
  * @note Requires CAMERA_MODEL_* to be defined
  */
 
 // Only compile if camera is explicitly enabled AND a camera model is selected
-#if defined(ESPWiFi_CAMERA_ENABLED) &&                                         \
+#if defined(ESPWiFi_CAMERA_INSTALLED) &&                                       \
     (defined(CAMERA_MODEL_WROVER_KIT) || defined(CAMERA_MODEL_ESP_EYE) ||      \
      defined(CAMERA_MODEL_M5STACK_PSRAM) ||                                    \
      defined(CAMERA_MODEL_M5STACK_V2_PSRAM) ||                                 \
@@ -54,7 +54,7 @@ bool camSocStarted = false;
  * authentication and use the standard route handler pattern.
  */
 void ESPWiFi::srvCamera() {
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   // Start the websocket here
   if (!camSocStarted) {
@@ -226,12 +226,12 @@ void ESPWiFi::srvCamera() {
                   return espwifi->sendJsonResponse(
                       req, 200, "{\"status\":\"stopped\"}", &clientInfo);
                 });
-#endif // ESPWiFi_CAMERA_ENABLED
+#endif // ESPWiFi_CAMERA_INSTALLED
 }
 
 #endif // ESPWiFi_SRV_CAMERA
 
-#else // No camera model defined or ESPWiFi_CAMERA_ENABLED not set
+#else // No camera model defined or ESPWiFi_CAMERA_INSTALLED not set
 
 // Provide stub implementation when camera is disabled
 #include "ESPWiFi.h"

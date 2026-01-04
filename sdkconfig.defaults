@@ -1,5 +1,8 @@
 # Common Configuration (shared across all boards)
 
+# Logging
+# Changed from DEBUG to INFO to reduce binary size
+# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
 
 # Secure Boot V2 (ECDSA preferred, RSA disabled)
 # CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
@@ -36,15 +39,17 @@ CONFIG_LITTLEFS_OBJ_NAME_LEN=64
 CONFIG_LITTLEFS_PAGE_SIZE=256
 CONFIG_LITTLEFS_USE_MTIME=y
 
+# FATFS
+CONFIG_FATFS_LFN_NONE=n
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
 # Camera (esp32-camera component)
 # Needed when building with esp32-camera; harmless otherwise.
 CONFIG_SCCB_CLK_FREQ=100000
 
 # WebSocket
 CONFIG_HTTPD_WS_SUPPORT=y
-
-# SDCard Long File Name Support
-CONFIG_FATFS_LFN_NONE=n
 
 # -----------------------------------------------------------------------------
 # System event task (ESP-IDF)
@@ -68,10 +73,3 @@ CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
-# Logging
-# Changed from DEBUG to INFO to reduce binary size
-# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
-
-# Partition Table (board-specific overrides)
-CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_OFFSET=0x8000

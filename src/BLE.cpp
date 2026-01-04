@@ -23,9 +23,9 @@
 
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 
-#include "esp_bt.h"
 #include "esp_log.h"
-#include "esp_nimble_hci.h"
+#include "host/ble_att.h"
+#include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
 #include "host/util/util.h"
@@ -36,7 +36,74 @@
 
 // BLE runtime state
 static bool bleStarted = false;
-static bool bleInitialized = false;
+static bool nimbleInitialized =
+    false; // Track NimBLE stack initialization separately
+
+// ============================================================================
+// Minimal GATT service
+//
+// NOTE (Web Bluetooth): browsers only expose services listed in
+// `optionalServices` when using `acceptAllDevices: true`. Your UI already
+// requests the standard Device Information service, so we use 0x180A here to
+// allow "auto-discovery" from the UI without hardcoding a custom service UUID.
+// ============================================================================
+static const ble_uuid16_t kSvcUuid =
+    BLE_UUID16_INIT(0x180A); // Device Information
+static const ble_uuid16_t kChrUuid = BLE_UUID16_INIT(0xFFF1);
+
+static bool gatt_defs_initialized = false;
+static ble_gatt_chr_def gatt_svr_chrs[2];
+static ble_gatt_svc_def gatt_svr_svcs[2];
+
+static int gatt_svr_chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
+                                  struct ble_gatt_access_ctxt *ctxt,
+                                  void *arg) {
+  (void)conn_handle;
+  (void)attr_handle;
+  (void)arg;
+
+  if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+    static const char kResp[] = "ok";
+    return os_mbuf_append(ctxt->om, kResp, sizeof(kResp) - 1) == 0
+               ? 0
+               : BLE_ATT_ERR_INSUFFICIENT_RES;
+  }
+  if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+    // Accept writes; provisioning payload handling can be added later.
+    return 0;
+  }
+
+  return BLE_ATT_ERR_UNLIKELY;
+}
+
+static void gatt_svr_init_defs() {
+  if (gatt_defs_initialized) {
+    return;
+  }
+
+  // Zero-init everything to avoid missing-field-initializer warnings and to
+  // ensure forward-compatible default values across NimBLE versions.
+  memset(gatt_svr_chrs, 0, sizeof(gatt_svr_chrs));
+  memset(gatt_svr_svcs, 0, sizeof(gatt_svr_svcs));
+
+  // Characteristic: READ/WRITE "ok"
+  gatt_svr_chrs[0].uuid = (const ble_uuid_t *)&kChrUuid;
+  gatt_svr_chrs[0].access_cb = gatt_svr_chr_access_cb;
+  gatt_svr_chrs[0].arg = nullptr;
+  gatt_svr_chrs[0].descriptors = nullptr;
+  gatt_svr_chrs[0].flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE;
+  gatt_svr_chrs[0].min_key_size = 0;
+  gatt_svr_chrs[0].val_handle = nullptr;
+  gatt_svr_chrs[0].cpfd = nullptr;
+
+  // Service: Primary 0xFFF0
+  gatt_svr_svcs[0].type = BLE_GATT_SVC_TYPE_PRIMARY;
+  gatt_svr_svcs[0].uuid = (const ble_uuid_t *)&kSvcUuid;
+  gatt_svr_svcs[0].includes = nullptr;
+  gatt_svr_svcs[0].characteristics = gatt_svr_chrs;
+
+  gatt_defs_initialized = true;
+}
 
 /**
  * @brief Start BLE advertising
@@ -51,6 +118,7 @@ esp_err_t ESPWiFi::startBLEAdvertising() {
   struct ble_hs_adv_fields fields = {};
   const char *device_name;
   int rc;
+  uint8_t own_addr_type;
 
   // Set advertising parameters
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND; // Undirected connectable
@@ -66,14 +134,26 @@ esp_err_t ESPWiFi::startBLEAdvertising() {
   // Set the advertising flags
   fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
 
+  // Advertise our custom service UUID so clients expecting advertised services
+  // (or filtering by UUID) can find it.
+  fields.uuids16 = (ble_uuid16_t *)&kSvcUuid;
+  fields.num_uuids16 = 1;
+  fields.uuids16_is_complete = 1;
+
   rc = ble_gap_adv_set_fields(&fields);
   if (rc != 0) {
     log(ERROR, "🔵 Failed to set advertising data, error=%d", rc);
     return ESP_FAIL;
   }
 
+  rc = ble_hs_id_infer_auto(0, &own_addr_type);
+  if (rc != 0) {
+    log(ERROR, "🔵 Failed to infer BLE address type, rc=%d", rc);
+    return ESP_FAIL;
+  }
+
   // Start advertising - pass 'this' as arg for callbacks
-  rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params,
+  rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
                          bleGapEventCallbackStatic, this);
   if (rc != 0) {
     log(ERROR, "🔵 Failed to start advertising, error=%d", rc);
@@ -96,6 +176,7 @@ esp_err_t ESPWiFi::startBLEAdvertising() {
  * @note Cannot run simultaneously with Classic Bluetooth (A2DP)
  */
 bool ESPWiFi::startBLE() {
+  // Early return if already started
   if (bleStarted) {
     log(DEBUG, "🔵 BLE Already running");
     return true;
@@ -109,60 +190,61 @@ bool ESPWiFi::startBLE() {
   }
 #endif
 
+  // Re-entrancy guard
+  static bool initInProgress = false;
+  if (initInProgress) {
+    log(WARNING, "🔵 BLE initialization already in progress");
+    return false;
+  }
+  initInProgress = true;
+
   log(INFO, "🔵 Starting BLE Provisioning");
 
   esp_err_t ret;
 
-  // Initialize BT controller only once
-  if (!bleInitialized) {
-    // Release Classic BT memory if not using it
-    ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-      log(ERROR, "🔵 Failed to release BT Classic memory: %s",
-          esp_err_to_name(ret));
-      // Continue anyway, this is not fatal
-    }
-
-    // Initialize BT controller for BLE
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    ret = esp_bt_controller_init(&bt_cfg);
-    if (ret != ESP_OK) {
-      log(ERROR, "🔵 Failed to initialize BT controller: %s",
-          esp_err_to_name(ret));
-      return false;
-    }
-
-    ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
-    if (ret != ESP_OK) {
-      log(ERROR, "🔵 Failed to enable BT controller: %s", esp_err_to_name(ret));
-      esp_bt_controller_deinit();
-      return false;
-    }
-
-    bleInitialized = true;
-    feedWatchDog(); // Yield after controller init
-  }
-
-  // Initialize NimBLE host
-  ret = nimble_port_init();
-  if (ret != ESP_OK) {
-    log(ERROR, "🔵 Failed to initialize NimBLE port: %s", esp_err_to_name(ret));
-    return false;
-  }
-
-  // Configure the host callbacks - pass 'this' as arg
+  // Configure the host callbacks BEFORE nimble_port_init (required)
   ble_hs_cfg.sync_cb = [](void) {
-    // We need to get the ESPWiFi instance from somewhere
-    // The sync callback doesn't receive user arg, so we use a wrapper
-    extern ESPWiFi espwifi; // Reference to global instance
+    extern ESPWiFi espwifi;
     espwifi.bleHostSyncHandler(&espwifi);
   };
 
   ble_hs_cfg.reset_cb = [](int reason) {
-    // Same issue - no user arg in reset callback
     extern ESPWiFi espwifi;
     espwifi.bleHostResetHandler(reason, &espwifi);
   };
+
+  // Initialize NimBLE host - but only if not already initialized
+  // Double-init causes ESP_ERR_INVALID_STATE
+  if (!nimbleInitialized) {
+    log(DEBUG, "🔵 Initializing NimBLE stack");
+    ret = nimble_port_init();
+    if (ret == ESP_ERR_INVALID_STATE) {
+      // On some ESP-IDF versions this can mean NimBLE/controller was already
+      // initialized elsewhere. Treat it as already-initialized.
+      log(WARNING,
+          "🔵 NimBLE port already initialized (ESP_ERR_INVALID_STATE), "
+          "continuing");
+    } else if (ret != ESP_OK) {
+      log(ERROR, "🔵 Failed to initialize NimBLE port: %s",
+          esp_err_to_name(ret));
+
+      initInProgress = false;
+      return false;
+    }
+
+    nimbleInitialized = true;
+
+    // NimBLE initialized successfully
+    // Allow time for WiFi/BT coexistence to stabilize if WiFi is running
+    if (isWiFiInitialized()) {
+      log(DEBUG, "🔵 WiFi coexistence: allowing stabilization period");
+      vTaskDelay(pdMS_TO_TICKS(200));
+      feedWatchDog();
+    }
+  } else {
+    log(DEBUG,
+        "🔵 NimBLE stack already initialized, skipping nimble_port_init");
+  }
 
   // Set device name from config
   std::string deviceName = config["deviceName"].as<std::string>();
@@ -176,12 +258,28 @@ bool ESPWiFi::startBLE() {
   ble_svc_gap_init();
   ble_svc_gatt_init();
 
-  feedWatchDog(); // Yield after service init
+  // Register application services/characteristics
+  gatt_svr_init_defs();
+  int rc = ble_gatts_count_cfg(gatt_svr_svcs);
+  if (rc != 0) {
+    log(ERROR, "🔵 Failed to count GATT services, rc=%d", rc);
+    initInProgress = false;
+    return false;
+  }
+  rc = ble_gatts_add_svcs(gatt_svr_svcs);
+  if (rc != 0) {
+    log(ERROR, "🔵 Failed to add GATT services, rc=%d", rc);
+    initInProgress = false;
+    return false;
+  }
 
-  // Start the host task - pass 'this' as parameter
+  feedWatchDog();
+
+  // Start the host task
   nimble_port_freertos_init(bleHostTaskStatic);
 
   bleStarted = true;
+  initInProgress = false;
   log(INFO, "🔵 BLE Provisioning Started");
 
   return true;
@@ -190,51 +288,50 @@ bool ESPWiFi::startBLE() {
 /**
  * @brief Stop and deinitialize BLE provisioning
  *
- * Stops advertising, disconnects clients, and shuts down the NimBLE stack.
- * Safe to call even if BLE is not running.
+ * Stops advertising, disconnects clients, and shuts down the NimBLE stack
+ * and BT controller. Safe to call even if BLE is not running.
  *
- * @note Does not deinit the BT controller to allow quick restart
+ * Performs full cleanup to ensure clean restart.
  */
 void ESPWiFi::deinitBLE() {
-  if (!bleStarted) {
+  // Early return if nothing to stop
+  if (!bleStarted && !nimbleInitialized) {
     return;
   }
 
   log(INFO, "🔵 Stopping BLE Provisioning");
 
-  // Stop NimBLE host (this will end the host task)
+  // Prevent auto-restart advertising on disconnect while we intentionally stop.
+  bleStarted = false;
+
+  // Stop NimBLE host (ends the host task)
   esp_err_t ret = nimble_port_stop();
   if (ret != ESP_OK) {
     log(WARNING, "🔵 Failed to stop NimBLE port: %s", esp_err_to_name(ret));
     // Continue with cleanup anyway
   }
 
-  feedWatchDog(); // Yield during shutdown
+  feedWatchDog();
 
-  // Deinitialize NimBLE
-  nimble_port_deinit();
+  // Deinitialize NimBLE (on newer ESP-IDF this owns controller/HCI lifecycle)
+  if (nimbleInitialized) {
+    nimble_port_deinit();
+    nimbleInitialized = false;
+  }
 
   bleStarted = false;
   log(INFO, "🔵 BLE Provisioning Stopped");
-
-  // Note: We don't deinit the BT controller here to allow quick restart.
-  // Full cleanup (esp_bt_controller_disable/deinit) would be done only
-  // if we need to switch to Classic BT or free all BT resources.
 }
 
 /**
  * @brief Get current BLE status
  *
- * @return 0 = not initialized, 1 = initialized but not advertising,
+ * @return 0 = not running, 1 = started but not advertising,
  *         2 = advertising, 3 = connected
  */
 uint8_t ESPWiFi::getBLEStatus() {
-  if (!bleInitialized) {
-    return 0; // Not initialized
-  }
-
   if (!bleStarted) {
-    return 1; // Initialized but not running
+    return 0; // Not running
   }
 
   // Check if we have any active connections
@@ -254,10 +351,10 @@ uint8_t ESPWiFi::getBLEStatus() {
  * @brief Get BLE MAC address
  *
  * @return BLE MAC address as string (e.g., "AA:BB:CC:DD:EE:FF")
- *         Returns empty string if BLE is not initialized
+ *         Returns empty string if BLE is not running
  */
 std::string ESPWiFi::getBLEAddress() {
-  if (!bleInitialized) {
+  if (!bleStarted) {
     return "";
   }
 

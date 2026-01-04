@@ -246,12 +246,14 @@ void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 void ESPWiFi::handleConfigUpdate() {
 
   if (configUpdate.size() > 0) {
+    cameraConfigHandler();
+    powerConfigHandler();
     corsConfigHandler();
     logConfigHandler();
-    powerConfigHandler();
     bleConfigHandler();
+#ifdef CONFIG_BT_A2DP_ENABLE
     bluetoothConfigHandler();
-    cameraConfigHandler();
+#endif
     config = configUpdate;
     configUpdate.clear();
   }

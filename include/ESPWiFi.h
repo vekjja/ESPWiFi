@@ -26,7 +26,7 @@
 #ifdef CONFIG_BT_A2DP_ENABLE
 #include "esp_a2dp_api.h"
 #endif
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
 #include <esp_camera.h>
 #endif
 #include "esp_err.h"
@@ -71,6 +71,8 @@ public:
   void setWiFiAutoReconnect(bool enable) { wifiAutoReconnect = enable; }
   // Current connection status tracked by the WiFi event handlers.
   bool isWiFiConnected() const { return wifi_connection_success; }
+  // Check if WiFi driver is initialized (regardless of connection status)
+  bool isWiFiInitialized() const;
 
   // ---- Lifecycle
   void start();
@@ -264,10 +266,10 @@ public:
 #endif
 
   // ---- Bluetooth Audio
-  void bluetoothConfigHandler();
 #ifdef CONFIG_BT_A2DP_ENABLE
   bool connectBluetoothed = false;
   bool btStarted = false;
+  void bluetoothConfigHandler();
   void startBluetooth();
   void stopBluetooth();
   void scanBluetooth();
@@ -277,7 +279,7 @@ public:
 #endif
 
   // ---- Camera
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
   sensor_t *camera = nullptr;
   void srvCamera();
   bool initCamera();
@@ -379,7 +381,7 @@ private:
 #endif
 
   // Camera event handlers (static wrappers for callbacks)
-#ifdef ESPWiFi_CAMERA_ENABLED
+#ifdef ESPWiFi_CAMERA_INSTALLED
   static void cameraInitHandlerStatic(bool success, void *obj);
   static void cameraSettingsUpdateHandlerStatic(void *obj);
   static void cameraFrameCaptureHandlerStatic(uint32_t frameNumber,

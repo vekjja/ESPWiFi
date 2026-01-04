@@ -57,8 +57,17 @@ void ESPWiFi::bleConnectionHandler(int status, uint16_t conn_handle,
   if (status == 0) {
     espwifi->log(INFO, "🔵 BLE Connection established (handle=%d)",
                  conn_handle);
+    // Once connected, stop advertising (some clients expect this).
+    if (ble_gap_adv_active()) {
+      (void)ble_gap_adv_stop();
+    }
   } else {
     espwifi->log(WARNING, "🔵 BLE Connection failed, status=%d", status);
+    // If a connection attempt failed, resume advertising so device is
+    // scannable.
+    if (espwifi->getBLEStatus() != 0) {
+      (void)espwifi->startBLEAdvertising();
+    }
   }
 }
 
@@ -74,6 +83,12 @@ void ESPWiFi::bleDisconnectionHandler(int reason, void *obj) {
   ESPWiFi_OBJ_CAST(obj);
 
   espwifi->log(INFO, "🔵 BLE Disconnected, reason=%d", reason);
+  // Resume advertising after disconnect so the device can be found again.
+  // Skip if BLE is stopping (we mark bleStarted=false at the start of
+  // deinitBLE()).
+  if (espwifi->getBLEStatus() != 0) {
+    (void)espwifi->startBLEAdvertising();
+  }
 }
 
 /**
@@ -87,6 +102,10 @@ void ESPWiFi::bleAdvertisingCompleteHandler(void *obj) {
   ESPWiFi_OBJ_CAST(obj);
 
   espwifi->log(DEBUG, "🔵 BLE Advertising complete");
+  // Keep advertising unless we're connected or BLE is stopping.
+  if (espwifi->getBLEStatus() != 0 && !ble_gap_conn_active()) {
+    (void)espwifi->startBLEAdvertising();
+  }
 }
 
 /**

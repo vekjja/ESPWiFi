@@ -28,8 +28,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   // - powerSave: WiFi power save mode (none, min, max)
   //   - "none": No power saving (best performance, highest power consumption)
   //   - "min": Minimum modem power saving (balanced)
-  //   - "max": Maximum modem power saving (lowest power, may affect
-  //   performance)
+  //   - "max": Maximum modem power saving (lowest power, affects performance)
   doc["wifi"]["power"]["powerSave"] = "none";
 
   // mDNS (Multicast DNS) - network service discovery

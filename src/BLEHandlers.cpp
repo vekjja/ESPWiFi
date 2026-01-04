@@ -28,6 +28,205 @@
 
 static const char *BLE_HANDLER_TAG = "ESPWiFi_BLE_Handler";
 
+// ============================================================================
+// Small helpers for readable logs (event numbers / reason codes)
+// ============================================================================
+
+static const char *ble_gap_event_type_to_str(int type) {
+  switch (type) {
+  case BLE_GAP_EVENT_CONNECT:
+    return "BLE_GAP_EVENT_CONNECT";
+  case BLE_GAP_EVENT_DISCONNECT:
+    return "BLE_GAP_EVENT_DISCONNECT";
+  case BLE_GAP_EVENT_CONN_UPDATE:
+    return "BLE_GAP_EVENT_CONN_UPDATE";
+  case BLE_GAP_EVENT_CONN_UPDATE_REQ:
+    return "BLE_GAP_EVENT_CONN_UPDATE_REQ";
+  case BLE_GAP_EVENT_L2CAP_UPDATE_REQ:
+    return "BLE_GAP_EVENT_L2CAP_UPDATE_REQ";
+  case BLE_GAP_EVENT_TERM_FAILURE:
+    return "BLE_GAP_EVENT_TERM_FAILURE";
+  case BLE_GAP_EVENT_ADV_COMPLETE:
+    return "BLE_GAP_EVENT_ADV_COMPLETE";
+  case BLE_GAP_EVENT_ENC_CHANGE:
+    return "BLE_GAP_EVENT_ENC_CHANGE";
+  case BLE_GAP_EVENT_SUBSCRIBE:
+    return "BLE_GAP_EVENT_SUBSCRIBE";
+  case BLE_GAP_EVENT_MTU:
+    return "BLE_GAP_EVENT_MTU";
+  case BLE_GAP_EVENT_NOTIFY_RX:
+    return "BLE_GAP_EVENT_NOTIFY_RX";
+  case BLE_GAP_EVENT_NOTIFY_TX:
+    return "BLE_GAP_EVENT_NOTIFY_TX";
+  case BLE_GAP_EVENT_REPEAT_PAIRING:
+    return "BLE_GAP_EVENT_REPEAT_PAIRING";
+  case BLE_GAP_EVENT_PASSKEY_ACTION:
+    return "BLE_GAP_EVENT_PASSKEY_ACTION";
+  case BLE_GAP_EVENT_IDENTITY_RESOLVED:
+    return "BLE_GAP_EVENT_IDENTITY_RESOLVED";
+  case BLE_GAP_EVENT_DISC:
+    return "BLE_GAP_EVENT_DISC";
+  case BLE_GAP_EVENT_DISC_COMPLETE:
+    return "BLE_GAP_EVENT_DISC_COMPLETE";
+#ifdef BLE_GAP_EVENT_PHY_UPDATE_COMPLETE
+  case BLE_GAP_EVENT_PHY_UPDATE_COMPLETE:
+    return "BLE_GAP_EVENT_PHY_UPDATE_COMPLETE";
+#endif
+#ifdef BLE_GAP_EVENT_EXT_DISC
+  case BLE_GAP_EVENT_EXT_DISC:
+    return "BLE_GAP_EVENT_EXT_DISC";
+#endif
+#ifdef BLE_GAP_EVENT_PERIODIC_SYNC
+  case BLE_GAP_EVENT_PERIODIC_SYNC:
+    return "BLE_GAP_EVENT_PERIODIC_SYNC";
+#endif
+#ifdef BLE_GAP_EVENT_PERIODIC_REPORT
+  case BLE_GAP_EVENT_PERIODIC_REPORT:
+    return "BLE_GAP_EVENT_PERIODIC_REPORT";
+#endif
+#ifdef BLE_GAP_EVENT_PERIODIC_SYNC_LOST
+  case BLE_GAP_EVENT_PERIODIC_SYNC_LOST:
+    return "BLE_GAP_EVENT_PERIODIC_SYNC_LOST";
+#endif
+#ifdef BLE_GAP_EVENT_SCAN_REQ_RCVD
+  case BLE_GAP_EVENT_SCAN_REQ_RCVD:
+    return "BLE_GAP_EVENT_SCAN_REQ_RCVD";
+#endif
+#ifdef BLE_GAP_EVENT_PERIODIC_TRANSFER
+  case BLE_GAP_EVENT_PERIODIC_TRANSFER:
+    return "BLE_GAP_EVENT_PERIODIC_TRANSFER";
+#endif
+#ifdef BLE_GAP_EVENT_PATHLOSS_THRESHOLD
+  case BLE_GAP_EVENT_PATHLOSS_THRESHOLD:
+    return "BLE_GAP_EVENT_PATHLOSS_THRESHOLD";
+#endif
+#ifdef BLE_GAP_EVENT_TRANSMIT_POWER
+  case BLE_GAP_EVENT_TRANSMIT_POWER:
+    return "BLE_GAP_EVENT_TRANSMIT_POWER";
+#endif
+#ifdef BLE_GAP_EVENT_PARING_COMPLETE
+  case BLE_GAP_EVENT_PARING_COMPLETE:
+    return "BLE_GAP_EVENT_PARING_COMPLETE";
+#endif
+#ifdef BLE_GAP_EVENT_SUBRATE_CHANGE
+  case BLE_GAP_EVENT_SUBRATE_CHANGE:
+    return "BLE_GAP_EVENT_SUBRATE_CHANGE";
+#endif
+#ifdef BLE_GAP_EVENT_VS_HCI
+  case BLE_GAP_EVENT_VS_HCI:
+    return "BLE_GAP_EVENT_VS_HCI";
+#endif
+#ifdef BLE_GAP_EVENT_BIGINFO_REPORT
+  case BLE_GAP_EVENT_BIGINFO_REPORT:
+    return "BLE_GAP_EVENT_BIGINFO_REPORT";
+#endif
+#ifdef BLE_GAP_EVENT_REATTEMPT_COUNT
+  case BLE_GAP_EVENT_REATTEMPT_COUNT:
+    return "BLE_GAP_EVENT_REATTEMPT_COUNT";
+#endif
+#ifdef BLE_GAP_EVENT_AUTHORIZE
+  case BLE_GAP_EVENT_AUTHORIZE:
+    return "BLE_GAP_EVENT_AUTHORIZE";
+#endif
+#ifdef BLE_GAP_EVENT_TEST_UPDATE
+  case BLE_GAP_EVENT_TEST_UPDATE:
+    return "BLE_GAP_EVENT_TEST_UPDATE";
+#endif
+#ifdef BLE_GAP_EVENT_DATA_LEN_CHG
+  case BLE_GAP_EVENT_DATA_LEN_CHG:
+    return "BLE_GAP_EVENT_DATA_LEN_CHG";
+#endif
+#ifdef BLE_GAP_EVENT_CONNLESS_IQ_REPORT
+  case BLE_GAP_EVENT_CONNLESS_IQ_REPORT:
+    return "BLE_GAP_EVENT_CONNLESS_IQ_REPORT";
+#endif
+#ifdef BLE_GAP_EVENT_CONN_IQ_REPORT
+  case BLE_GAP_EVENT_CONN_IQ_REPORT:
+    return "BLE_GAP_EVENT_CONN_IQ_REPORT";
+#endif
+#ifdef BLE_GAP_EVENT_CTE_REQ_FAILED
+  case BLE_GAP_EVENT_CTE_REQ_FAILED:
+    return "BLE_GAP_EVENT_CTE_REQ_FAILED";
+#endif
+#ifdef BLE_GAP_EVENT_LINK_ESTAB
+  case BLE_GAP_EVENT_LINK_ESTAB:
+    return "BLE_GAP_EVENT_LINK_ESTAB";
+#endif
+#ifdef BLE_GAP_EVENT_EATT
+  case BLE_GAP_EVENT_EATT:
+    return "BLE_GAP_EVENT_EATT";
+#endif
+#ifdef BLE_GAP_EVENT_PER_SUBEV_DATA_REQ
+  case BLE_GAP_EVENT_PER_SUBEV_DATA_REQ:
+    return "BLE_GAP_EVENT_PER_SUBEV_DATA_REQ";
+#endif
+#ifdef BLE_GAP_EVENT_PER_SUBEV_RESP
+  case BLE_GAP_EVENT_PER_SUBEV_RESP:
+    return "BLE_GAP_EVENT_PER_SUBEV_RESP";
+#endif
+#ifdef BLE_GAP_EVENT_PERIODIC_TRANSFER_V2
+  case BLE_GAP_EVENT_PERIODIC_TRANSFER_V2:
+    return "BLE_GAP_EVENT_PERIODIC_TRANSFER_V2";
+#endif
+  default:
+    return "BLE_GAP_EVENT_UNKNOWN";
+  }
+}
+
+static const char *ble_hci_reason_to_str(uint8_t hci_reason) {
+  switch (hci_reason) {
+  case 0x08:
+    return "Connection Timeout";
+  case 0x13:
+    return "Remote User Terminated Connection";
+  case 0x14:
+    return "Remote Device Terminated Connection (Low Resources)";
+  case 0x15:
+    return "Remote Device Terminated Connection (Power Off)";
+  case 0x16:
+    return "Connection Terminated by Local Host";
+  case 0x1A:
+    return "Unsupported Remote Feature";
+  case 0x1F:
+    return "Unspecified Error";
+  case 0x3E:
+    return "Connection Failed to be Established";
+  default:
+    return "Unknown/Other";
+  }
+}
+
+// NimBLE commonly reports disconnect/status codes as 0x200 + HCI_reason.
+// Example: 531 == 0x213 == 0x200 + 0x13 (Remote User Terminated Connection)
+static void ble_status_to_text(int status, char *out, size_t out_len) {
+  if (out_len == 0) {
+    return;
+  }
+
+  if (status == 0) {
+    snprintf(out, out_len, "OK");
+    return;
+  }
+
+  // 0x200..0x2FF: HCI reason embedded in low byte
+  if ((status & 0xFF00) == 0x0200) {
+    uint8_t hci_reason = static_cast<uint8_t>(status & 0xFF);
+    snprintf(out, out_len, "0x%X (HCI 0x%02X: %s)", status, hci_reason,
+             ble_hci_reason_to_str(hci_reason));
+    return;
+  }
+
+  // 0x00..0xFF: raw HCI reason (some paths report it directly)
+  if ((status & 0xFFFFFF00) == 0) {
+    uint8_t hci_reason = static_cast<uint8_t>(status & 0xFF);
+    snprintf(out, out_len, "0x%X (HCI 0x%02X: %s)", status, hci_reason,
+             ble_hci_reason_to_str(hci_reason));
+    return;
+  }
+
+  snprintf(out, out_len, "0x%X", status);
+}
+
 // Cast helper macro with null check
 #define ESPWiFi_OBJ_CAST(obj)                                                  \
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(obj);                              \
@@ -62,7 +261,10 @@ void ESPWiFi::bleConnectionHandler(int status, uint16_t conn_handle,
       (void)ble_gap_adv_stop();
     }
   } else {
-    espwifi->log(WARNING, "🔵 BLE Connection failed, status=%d", status);
+    char status_text[96];
+    ble_status_to_text(status, status_text, sizeof(status_text));
+    espwifi->log(WARNING, "🔵 BLE Connection failed, status=%d (%s)", status,
+                 status_text);
     // If a connection attempt failed, resume advertising so device is
     // scannable.
     if (espwifi->getBLEStatus() != 0) {
@@ -82,7 +284,10 @@ void ESPWiFi::bleConnectionHandler(int status, uint16_t conn_handle,
 void ESPWiFi::bleDisconnectionHandler(int reason, void *obj) {
   ESPWiFi_OBJ_CAST(obj);
 
-  espwifi->log(INFO, "🔵 BLE Disconnected, reason=%d", reason);
+  char reason_text[96];
+  ble_status_to_text(reason, reason_text, sizeof(reason_text));
+  espwifi->log(INFO, "🔵 BLE Disconnected, reason=%d (%s)", reason,
+               reason_text);
   // Resume advertising after disconnect so the device can be found again.
   // Skip if BLE is stopping (we mark bleStarted=false at the start of
   // deinitBLE()).
@@ -204,6 +409,11 @@ int ESPWiFi::bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg) {
 
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(arg);
 
+  // Always log the raw event type with a best-effort name, so numbered events
+  // like 38/34/18 become readable in logs.
+  espwifi->log(DEBUG, "🔵 BLE GAP event: %d (%s)", event->type,
+               ble_gap_event_type_to_str(event->type));
+
   switch (event->type) {
   case BLE_GAP_EVENT_CONNECT:
     espwifi->bleConnectionHandler(event->connect.status,
@@ -227,7 +437,6 @@ int ESPWiFi::bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg) {
     break;
 
   default:
-    espwifi->log(DEBUG, "🔵 BLE GAP event: %d", event->type);
     break;
   }
 

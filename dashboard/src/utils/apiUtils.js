@@ -19,9 +19,9 @@ export const getApiUrl = () => {
     const forcedPort = process.env.REACT_APP_API_PORT || 80;
     const forcedProtocol = normalizeProtocol(
       process.env.REACT_APP_API_PROTOCOL ||
-        (process.env.NODE_ENV === "production"
-          ? window.location.protocol
-          : "http:")
+        // If we're explicitly pointing at a device host, default to HTTP
+        // even when the dashboard is served over HTTPS (espwifi.io).
+        "http:"
     );
     return `${forcedProtocol}//${forcedHost}:${forcedPort}`;
   }
@@ -42,9 +42,16 @@ export const getApiUrl = () => {
  * @returns {string} The WebSocket base URL
  */
 export const getWebSocketUrl = (mdnsHostname = null) => {
+  const hasForcedApiHost = Boolean(process.env.REACT_APP_API_HOST);
   const protocol = normalizeProtocol(
     process.env.REACT_APP_WS_PROTOCOL ||
-      (window.location.protocol === "https:" ? "wss:" : "ws:")
+      // If we're explicitly pointing at a device host, default to WS (not WSS)
+      // even when the dashboard is served over HTTPS.
+      (hasForcedApiHost
+        ? "ws:"
+        : window.location.protocol === "https:"
+        ? "wss:"
+        : "ws:")
   );
 
   // Use provided hostname as-is (do NOT force ".local"; firmware may not run mDNS
@@ -66,7 +73,9 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
 export const buildApiUrl = (path, mdnsHostname = null) => {
   // If mDNS hostname is provided, use it with port 80
   if (mdnsHostname) {
-    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    const protocol = normalizeProtocol(
+      process.env.REACT_APP_API_PROTOCOL || "http:"
+    );
     return `${protocol}//${mdnsHostname}:80${path}`;
   }
 

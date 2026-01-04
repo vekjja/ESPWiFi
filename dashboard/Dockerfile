@@ -24,6 +24,17 @@ RUN npm install --no-audit --no-fund
 
 COPY . .
 
+# Bake API target into the CRA build.
+# These must be present in the environment when `react-scripts build` runs.
+ARG REACT_APP_API_HOST
+ARG REACT_APP_API_PORT
+ARG REACT_APP_API_PROTOCOL
+ARG REACT_APP_WS_PROTOCOL
+ENV REACT_APP_API_HOST=${REACT_APP_API_HOST}
+ENV REACT_APP_API_PORT=${REACT_APP_API_PORT}
+ENV REACT_APP_API_PROTOCOL=${REACT_APP_API_PROTOCOL}
+ENV REACT_APP_WS_PROTOCOL=${REACT_APP_WS_PROTOCOL}
+
 # If you provide an env file in the build context (default: .env.prod),
 # copy it into CRA's production env filename so react-scripts will load it.
 ARG ENV_FILE=.env.prod

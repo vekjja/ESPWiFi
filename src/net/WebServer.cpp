@@ -3,6 +3,7 @@
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_wifi.h"
@@ -42,12 +43,68 @@ static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
   return ESP_OK;
 }
 
+static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
+  if (self == nullptr) {
+    return false;
+  }
+  if (self->lfs == nullptr) {
+    return false;
+  }
+
+  // We store TLS materials on LittleFS so they can be uploaded/rotated without
+  // rebuilding firmware. These paths are relative to LittleFS root.
+  const std::string certRel = "/tls/server.crt";
+  const std::string keyRel = "/tls/server.key";
+
+  const std::string certFull = self->lfsMountPoint + certRel;
+  const std::string keyFull = self->lfsMountPoint + keyRel;
+
+  if (!self->fileExists(certFull) || !self->fileExists(keyFull)) {
+    return false;
+  }
+
+  size_t certLen = 0;
+  char *cert = self->readFile(certRel, &certLen);
+  if (cert == nullptr || certLen == 0) {
+    if (cert) {
+      free(cert);
+    }
+    return false;
+  }
+
+  size_t keyLen = 0;
+  char *key = self->readFile(keyRel, &keyLen);
+  if (key == nullptr || keyLen == 0) {
+    free(cert);
+    if (key) {
+      free(key);
+    }
+    return false;
+  }
+
+  // Keep in memory for the lifetime of the HTTPS server.
+  self->tlsServerCertPem_.assign(cert, certLen);
+  self->tlsServerKeyPem_.assign(key, keyLen);
+  free(cert);
+  free(key);
+
+  // Basic sanity checks (best-effort; do not parse in runtime path).
+  if (self->tlsServerCertPem_.find("BEGIN CERTIFICATE") == std::string::npos ||
+      self->tlsServerKeyPem_.find("BEGIN") == std::string::npos) {
+    self->tlsServerCertPem_.clear();
+    self->tlsServerKeyPem_.clear();
+    return false;
+  }
+
+  return true;
+}
+
 void ESPWiFi::startWebServer() {
   if (webServerStarted) {
     return;
   }
 
-  // Configure HTTP server
+  // Configure base HTTPD server options (shared by HTTP and HTTPS)
   httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
   httpd_config.max_uri_len = 512;
   httpd_config.max_open_sockets = 7;
@@ -60,13 +117,47 @@ void ESPWiFi::startWebServer() {
   // during handlers.
   httpd_config.stack_size = 8192;
 
-  // Start the HTTP server
-  esp_err_t ret = httpd_start(&webServer, &httpd_config);
-  if (ret != ESP_OK) {
-    log(ERROR, "❌ Failed to start HTTP server: %s", esp_err_to_name(ret));
-    webServerStarted = false;
-    return;
+  // Prefer HTTPS when TLS credentials are available on LittleFS.
+  tlsServerEnabled_ = false;
+  webServerPort_ = 80;
+
+  esp_err_t ret = ESP_FAIL;
+  const bool haveTls = loadTlsCredentialsFromLfs(this);
+  if (haveTls) {
+    httpd_ssl_config_t ssl_conf = HTTPD_SSL_CONFIG_DEFAULT();
+    ssl_conf.httpd = httpd_config;
+    ssl_conf.httpd.server_port = 443;
+
+    // IMPORTANT: these buffers must remain valid for server lifetime.
+    ssl_conf.servercert = (const unsigned char *)tlsServerCertPem_.c_str();
+    ssl_conf.servercert_len = tlsServerCertPem_.size() + 1;
+    ssl_conf.prvtkey_pem = (const unsigned char *)tlsServerKeyPem_.c_str();
+    ssl_conf.prvtkey_len = tlsServerKeyPem_.size() + 1;
+
+    ret = httpd_ssl_start(&webServer, &ssl_conf);
+    if (ret == ESP_OK) {
+      tlsServerEnabled_ = true;
+      webServerPort_ = 443;
+    } else {
+      log(ERROR, "❌ Failed to start HTTPS server: %s", esp_err_to_name(ret));
+      // Clear cert/key to free RAM if HTTPS fails.
+      tlsServerCertPem_.clear();
+      tlsServerKeyPem_.clear();
+    }
   }
+
+  // Fallback to plain HTTP if HTTPS was not started.
+  if (!tlsServerEnabled_) {
+    httpd_config.server_port = 80;
+    ret = httpd_start(&webServer, &httpd_config);
+    if (ret != ESP_OK) {
+      log(ERROR, "❌ Failed to start HTTP server: %s", esp_err_to_name(ret));
+      webServerStarted = false;
+      return;
+    }
+    webServerPort_ = 80;
+  }
+
   webServerStarted = true;
 
   // Global CORS preflight handler (covers all routes)
@@ -88,11 +179,13 @@ void ESPWiFi::startWebServer() {
   // srvAll();
 
   webServerStarted = true;
-  log(INFO, "🗄️ HTTP Web Server started");
-  log(DEBUG, "🗄️\thttp://%s:%d", getHostname().c_str(), 80);
-  log(DEBUG, "🗄️\thttp://%s:%d", ipAddress().c_str(), 80);
+  log(INFO, "🗄️ %s Web Server started", tlsServerEnabled_ ? "HTTPS" : "HTTP");
+  const char *scheme = tlsServerEnabled_ ? "https" : "http";
+  log(DEBUG, "🗄️\t%s://%s:%d", scheme, getHostname().c_str(), webServerPort_);
+  log(DEBUG, "🗄️\t%s://%s:%d", scheme, ipAddress().c_str(), webServerPort_);
   if (config["wifi"]["mdns"].as<bool>()) {
-    log(DEBUG, "🗄️\thttp://%s.local:%d", getHostname().c_str(), 80);
+    log(DEBUG, "🗄️\t%s://%s.local:%d", scheme, getHostname().c_str(),
+        webServerPort_);
   }
 }
 

@@ -169,7 +169,9 @@ export default function RSSISettingsModal({
           </a>
           <br /> <br />
           WebSocket URL: ws://
-          {config?.deviceName
+          {config?.hostname
+            ? `${config.hostname}`
+            : config?.deviceName
             ? `${config.deviceName}`
             : window.location.hostname}
           :{window.location.port || 80}/ws/rssi

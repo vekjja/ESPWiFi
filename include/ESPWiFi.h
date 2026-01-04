@@ -327,6 +327,16 @@ public:
 private:
   std::string _version = "v0.1.0";
 
+  // ---- HTTPS/TLS server state
+  //
+  // When TLS credentials are loaded from LittleFS, we keep them in-memory for
+  // the lifetime of the web server, because esp_https_server expects the cert
+  // and key buffers to remain valid.
+  bool tlsServerEnabled_ = false;
+  uint16_t webServerPort_ = 80;
+  std::string tlsServerCertPem_;
+  std::string tlsServerKeyPem_;
+
   // ---- Route trampoline/state
   struct RouteCtx {
     ESPWiFi *self = nullptr;

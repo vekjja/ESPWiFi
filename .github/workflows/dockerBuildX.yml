@@ -55,6 +55,13 @@ jobs:
           # NOTE: build-push-action resolves `file:` relative to the repo root,
           # not relative to `context:`, so this must include the dashboard path.
           file: ./dashboard/Dockerfile
+          # These are baked into the React bundle at build time (CRA).
+          # They make the UI served from espwifi.io call the device at espwifi.local.
+          build-args: |
+            REACT_APP_API_HOST=espwifi.local
+            REACT_APP_API_PORT=80
+            REACT_APP_API_PROTOCOL=http:
+            REACT_APP_WS_PROTOCOL=ws:
           pull: true
           no-cache: true
           push: true

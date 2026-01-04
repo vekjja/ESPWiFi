@@ -13,8 +13,11 @@ dist
 .cache
 
 # Local env files (keep these out of images)
-.env
-.env.*
+.env*
+
+# Allow a single optional build-time env file if you choose to use it.
+# (Better practice is passing build args / CI secrets, but this enables local builds.)
+!.env.prod
 
 # OS / editor noise
 .DS_Store

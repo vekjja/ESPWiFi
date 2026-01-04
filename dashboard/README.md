@@ -55,7 +55,13 @@ REACT_APP_WS_PROTOCOL=ws:
 
 ```bash
 cd dashboard
-docker build -t espwifi-dashboard:prod --build-arg ENV_FILE=.env.prod .
+docker build -t espwifi-dashboard:prod \
+  --build-arg REACT_APP_API_HOST=espwifi.local \
+  --build-arg REACT_APP_API_PORT=80 \
+  --build-arg REACT_APP_API_PROTOCOL=http: \
+  --build-arg REACT_APP_WS_PROTOCOL=ws: \
+  --build-arg ENV_FILE=.env.prod \
+  .
 docker run --rm -p 3000:3000 espwifi-dashboard:prod
 ```
 

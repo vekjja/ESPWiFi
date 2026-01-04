@@ -28,7 +28,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/vekjja/ESPWiFi
+  repository: ghcr.io/vekjja/espwifi
   pullPolicy: Always
   tag: "development"
 

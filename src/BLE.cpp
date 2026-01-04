@@ -34,75 +34,71 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
+#include "ESPWiFiGattServices.h"
+#include "GattServiceDef.h"
+
 // BLE runtime state
 static bool bleStarted = false;
 static bool nimbleInitialized =
     false; // Track NimBLE stack initialization separately
 
+// Encapsulated GATT service definitions + callbacks.
+static ESPWiFiGattServices gattServices;
+
 // ============================================================================
-// Minimal GATT service
-//
-// NOTE (Web Bluetooth): browsers only expose services listed in
-// `optionalServices` when using `acceptAllDevices: true`. Your UI already
-// requests the standard Device Information service, so we use 0x180A here to
-// allow "auto-discovery" from the UI without hardcoding a custom service UUID.
+// ESPWiFi BLE GATT registry wrappers (registerRoute-style)
 // ============================================================================
-static const ble_uuid16_t kSvcUuid =
-    BLE_UUID16_INIT(0x180A); // Device Information
-static const ble_uuid16_t kChrUuid = BLE_UUID16_INIT(0xFFF1);
 
-static bool gatt_defs_initialized = false;
-static ble_gatt_chr_def gatt_svr_chrs[2];
-static ble_gatt_svc_def gatt_svr_svcs[2];
-
-static int gatt_svr_chr_access_cb(uint16_t conn_handle, uint16_t attr_handle,
-                                  struct ble_gatt_access_ctxt *ctxt,
-                                  void *arg) {
-  (void)conn_handle;
-  (void)attr_handle;
-  (void)arg;
-
-  if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-    static const char kResp[] = "ok";
-    return os_mbuf_append(ctxt->om, kResp, sizeof(kResp) - 1) == 0
-               ? 0
-               : BLE_ATT_ERR_INSUFFICIENT_RES;
-  }
-  if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-    // Accept writes; provisioning payload handling can be added later.
-    return 0;
-  }
-
-  return BLE_ATT_ERR_UNLIKELY;
+void ESPWiFi::startBLEServices() {
+  // Hook point: define your BLE services/characteristics here.
+  //
+  // Recommendation: clear the registry first so repeated start/stop cycles
+  // don't accumulate duplicated characteristics.
+  //
+  // Example:
+  //   clearBleServices();
+  //   registerBleService16(0x180A); // Device Information
+  //   addBleCharacteristic16(0x180A, 0xFFF2,
+  //                          BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+  //                          myAccessCb, this);
+  //
+  // NOTE: Changes take effect for the current startBLE() call because we call
+  // this before `ble_gatts_count_cfg()` / `ble_gatts_add_svcs()`.
 }
 
-static void gatt_svr_init_defs() {
-  if (gatt_defs_initialized) {
-    return;
+bool ESPWiFi::registerBleService16(uint16_t svcUuid16) {
+  // Changing the registry affects next BLE start; safe to call any time.
+  return gattServices.registerService16(svcUuid16);
+}
+
+bool ESPWiFi::unregisterBleService16(uint16_t svcUuid16) {
+  return gattServices.unregisterService16(svcUuid16);
+}
+
+bool ESPWiFi::addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
+                                     uint16_t flags, BleAccessCallback accessCb,
+                                     void *arg, uint8_t minKeySize) {
+  return gattServices.addCharacteristic16(svcUuid16, chrUuid16, flags, accessCb,
+                                          arg, minKeySize);
+}
+
+void ESPWiFi::clearBleServices() { gattServices.clear(); }
+
+bool ESPWiFi::applyBleServiceRegistry(bool restartNow) {
+  if (!restartNow) {
+    return true;
   }
 
-  // Zero-init everything to avoid missing-field-initializer warnings and to
-  // ensure forward-compatible default values across NimBLE versions.
-  memset(gatt_svr_chrs, 0, sizeof(gatt_svr_chrs));
-  memset(gatt_svr_svcs, 0, sizeof(gatt_svr_svcs));
-
-  // Characteristic: READ/WRITE "ok"
-  gatt_svr_chrs[0].uuid = (const ble_uuid_t *)&kChrUuid;
-  gatt_svr_chrs[0].access_cb = gatt_svr_chr_access_cb;
-  gatt_svr_chrs[0].arg = nullptr;
-  gatt_svr_chrs[0].descriptors = nullptr;
-  gatt_svr_chrs[0].flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE;
-  gatt_svr_chrs[0].min_key_size = 0;
-  gatt_svr_chrs[0].val_handle = nullptr;
-  gatt_svr_chrs[0].cpfd = nullptr;
-
-  // Service: Primary 0xFFF0
-  gatt_svr_svcs[0].type = BLE_GATT_SVC_TYPE_PRIMARY;
-  gatt_svr_svcs[0].uuid = (const ble_uuid_t *)&kSvcUuid;
-  gatt_svr_svcs[0].includes = nullptr;
-  gatt_svr_svcs[0].characteristics = gatt_svr_chrs;
-
-  gatt_defs_initialized = true;
+  // Restart BLE only if it is currently running/initialized.
+  const bool wasRunning = (getBLEStatus() != 0);
+  if (wasRunning) {
+    deinitBLE();
+  }
+  // If config says BLE should be enabled, restart it; otherwise leave stopped.
+  if (config["ble"]["enabled"].as<bool>()) {
+    return startBLE();
+  }
+  return true;
 }
 
 /**
@@ -134,11 +130,16 @@ esp_err_t ESPWiFi::startBLEAdvertising() {
   // Set the advertising flags
   fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
 
-  // Advertise our custom service UUID so clients expecting advertised services
-  // (or filtering by UUID) can find it.
-  fields.uuids16 = (ble_uuid16_t *)&kSvcUuid;
-  fields.num_uuids16 = 1;
-  fields.uuids16_is_complete = 1;
+  // Advertise a best-effort list of 16-bit service UUIDs from the registry.
+  // (Truncated for ADV payload size.)
+  size_t advUuidCount = 0;
+  const ble_uuid16_t *advUuids =
+      gattServices.advertisedUuids16(&advUuidCount, this);
+  if (advUuidCount > 0) {
+    fields.uuids16 = (ble_uuid16_t *)advUuids;
+    fields.num_uuids16 = advUuidCount;
+    fields.uuids16_is_complete = 1;
+  }
 
   rc = ble_gap_adv_set_fields(&fields);
   if (rc != 0) {
@@ -258,15 +259,18 @@ bool ESPWiFi::startBLE() {
   ble_svc_gap_init();
   ble_svc_gatt_init();
 
+  // Allow user code to register services/characteristics for this start.
+  startBLEServices();
+
   // Register application services/characteristics
-  gatt_svr_init_defs();
-  int rc = ble_gatts_count_cfg(gatt_svr_svcs);
+  const ble_gatt_svc_def *svcs = gattServices.serviceDefs(this);
+  int rc = ble_gatts_count_cfg(svcs);
   if (rc != 0) {
     log(ERROR, "🔵 Failed to count GATT services, rc=%d", rc);
     initInProgress = false;
     return false;
   }
-  rc = ble_gatts_add_svcs(gatt_svr_svcs);
+  rc = ble_gatts_add_svcs(svcs);
   if (rc != 0) {
     log(ERROR, "🔵 Failed to add GATT services, rc=%d", rc);
     initInProgress = false;

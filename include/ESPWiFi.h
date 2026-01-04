@@ -49,6 +49,7 @@
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 struct ble_gap_event;
+struct ble_gatt_access_ctxt;
 #endif
 
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
@@ -256,6 +257,10 @@ public:
 
   // ---- BLE Provisioning
 #ifdef CONFIG_BT_NIMBLE_ENABLED
+  using BleAccessCallback = int (*)(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt,
+                                    void *arg);
+
   void *ble = nullptr;
   bool startBLE();
   void deinitBLE();
@@ -263,6 +268,21 @@ public:
   std::string getBLEAddress();
   void bleConfigHandler();
   esp_err_t startBLEAdvertising();
+
+  // ---- BLE GATT registry (registerRoute-style API)
+  //
+  // NOTE: With current NimBLE settings, adding/removing services takes effect
+  // on the next BLE restart (deinitBLE -> startBLE).
+  // Hook called by startBLE() to allow registering services/characteristics.
+  // Override by editing the implementation in `src/BLE.cpp`.
+  void startBLEServices();
+  bool registerBleService16(uint16_t svcUuid16);
+  bool unregisterBleService16(uint16_t svcUuid16);
+  bool addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
+                              uint16_t flags, BleAccessCallback accessCb,
+                              void *arg = nullptr, uint8_t minKeySize = 0);
+  void clearBleServices();
+  bool applyBleServiceRegistry(bool restartNow = true);
 #endif
 
   // ---- Bluetooth Audio

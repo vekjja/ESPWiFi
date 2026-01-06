@@ -181,17 +181,14 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
       // capture what we have.
       //
       // NOTE: We intentionally avoid calling ESPWiFi::logImpl() here because it
-      // uses printf(), which would recurse back into this hook. We also avoid
-      // adding our own timestamp/level prefix because ESP-IDF already includes
-      // its own formatting (and calling timestamp helpers adds extra work in
-      // this hot path).
+      // uses printf(), which would recurse back into this hook.
       std::string msg(line);
       if (!msg.empty() && msg.back() != '\n') {
         msg.push_back('\n');
       }
-      // If you want an ESPWiFi-style prefix in the log file, infer the ESP-IDF
-      // level from the formatted line (usually begins with E/W/I/D/V) and add
-      // our timestamp + level tag. Still avoid logImpl()/printf recursion.
+      // infer the ESP-IDF level from the formatted line (usually begins with
+      // E/W/I/D/V) Add espwifi timestamp + level tag.
+      // Avoid logImpl()/printf recursion.
       ParsedIdfLine parsed = parseIdfLogLine(msg.c_str());
       const LogLevel lvl = parsed.isIdf ? parsed.level : s_lastIdfLevel;
       std::string idfTag = parsed.tag;
@@ -295,7 +292,7 @@ void ESPWiFi::startLogging() {
   }
   this->logFilePath = filePath;
 
-  // cleanLogFile();
+  cleanLogFile();
 
   writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 

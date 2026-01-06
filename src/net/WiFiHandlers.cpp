@@ -140,27 +140,4 @@ void ESPWiFi::ipEventHandler(esp_event_base_t event_base, int32_t event_id,
   }
 }
 
-// Optional helper to block until connected or timeout
-bool ESPWiFi::waitForWiFiConnection(int timeout_ms, int check_interval_ms) {
-  (void)check_interval_ms; // not strictly needed if we just use the semaphore
-
-  if (wifi_connect_semaphore == nullptr) {
-    wifi_connect_semaphore = xSemaphoreCreateBinary();
-  }
-
-  // Drain any old signal
-  xSemaphoreTake(wifi_connect_semaphore, 0);
-  wifi_connection_success = false;
-
-  // Wait for either GOT_IP or DISCONNECTED
-  TickType_t ticks = pdMS_TO_TICKS(timeout_ms);
-  if (xSemaphoreTake(wifi_connect_semaphore, ticks) == pdTRUE) {
-    return wifi_connection_success;
-  }
-
-  // Timeout
-  log(WARNING, "WiFi Connection Timeout: %d ms", timeout_ms);
-  return false;
-}
-
 #endif // ESPWiFi_WIFI_HANDLERS

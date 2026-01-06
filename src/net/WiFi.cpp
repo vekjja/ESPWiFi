@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -159,9 +160,6 @@ void ESPWiFi::startClient() {
   }
   printf("\n");
 
-  // (Alternative: you could use waitForWiFiConnection(connectTimeout) instead)
-  // bool connected = waitForWiFiConnection(connectTimeout);
-
   if (!connected) {
     log(ERROR, "📶 Failed to connect to WiFi, falling back to AP");
     setWiFiAutoReconnect(false); // Disable reconnect when switching to AP
@@ -203,8 +201,18 @@ void ESPWiFi::startClient() {
 }
 
 int ESPWiFi::selectBestChannel() {
-  // Count clients per channel (14 channels in 2.4 GHz band)
-  int channels[14] = {0};
+  // Select the "best" 2.4GHz channel (1-13) for our AP.
+  //
+  // Scoring model:
+  // - Stronger nearby APs (higher RSSI) contribute more interference.
+  // - Adjacent channels partially overlap, so they also contribute.
+  // - If scores tie (or are extremely close), prefer 1/6/11.
+  constexpr int kMinChannel = 1;
+  constexpr int kMaxChannel = 13;
+  constexpr int kMaxOverlapDistance =
+      4; // beyond this, assume negligible overlap
+
+  float score[14] = {0.0f}; // index by channel number; [0] unused
 
   wifi_scan_config_t scan_config = {};
   scan_config.ssid = nullptr;
@@ -222,31 +230,110 @@ int ESPWiFi::selectBestChannel() {
   }
 
   uint16_t numNetworks = 0;
-  esp_wifi_scan_get_ap_num(&numNetworks);
+  (void)esp_wifi_scan_get_ap_num(&numNetworks);
 
   if (numNetworks > 0) {
     wifi_ap_record_t *ap_records =
         (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t) * numNetworks);
     if (ap_records != nullptr) {
-      ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&numNetworks, ap_records));
+      esp_err_t rec_ret =
+          esp_wifi_scan_get_ap_records(&numNetworks, ap_records);
+      if (rec_ret != ESP_OK) {
+        log(WARNING,
+            " WiFi scan results unavailable (%s), using default channel 1",
+            esp_err_to_name(rec_ret));
+        free(ap_records);
+        return 1;
+      }
+
+      auto rssiToWeight = [](int rssi) -> float {
+        // Map RSSI dBm to a bounded weight. Typical RSSI range is ~[-90, -30].
+        // -90 dBm -> ~1, -80 -> 2, -70 -> 4, ... -40 -> 32, -30 -> 64
+        float w = powf(2.0f, (static_cast<float>(rssi) + 90.0f) / 10.0f);
+        if (w < 0.25f)
+          w = 0.25f;
+        if (w > 64.0f)
+          w = 64.0f;
+        return w;
+      };
+
+      auto overlapWeight = [](int distance) -> float {
+        // distance 0 => 1.0, 1 => 0.5, 2 => 0.25, ...
+        if (distance < 0)
+          distance = -distance;
+        if (distance > kMaxOverlapDistance)
+          return 0.0f;
+        return 1.0f / static_cast<float>(1 << distance);
+      };
 
       for (int i = 0; i < numNetworks; i++) {
-        int channel = ap_records[i].primary;
-        if (channel > 0 && channel <= 13) {
-          channels[channel]++;
+        int apChannel = ap_records[i].primary;
+        if (apChannel < kMinChannel || apChannel > kMaxChannel) {
+          continue;
+        }
+
+        float apWeight = rssiToWeight(ap_records[i].rssi);
+        for (int ch = kMinChannel; ch <= kMaxChannel; ch++) {
+          int d = ch - apChannel;
+          if (d < 0)
+            d = -d;
+          float ow = overlapWeight(d);
+          if (ow > 0.0f) {
+            score[ch] += apWeight * ow;
+          }
         }
       }
       free(ap_records);
     }
   }
 
-  int leastCongestedChannel = 1;
-  for (int i = 1; i <= 13; i++) {
-    if (channels[i] < channels[leastCongestedChannel]) {
-      leastCongestedChannel = i;
+  auto isPreferred = [](int ch) -> bool {
+    return (ch == 1 || ch == 6 || ch == 11);
+  };
+
+  auto preferredOrder = [](int ch) -> int {
+    // Lower is better among preferred channels
+    if (ch == 1)
+      return 0;
+    if (ch == 6)
+      return 1;
+    if (ch == 11)
+      return 2;
+    return 999;
+  };
+
+  constexpr float kTieEpsilon = 0.001f;
+  int bestChannel = 1;
+  for (int ch = kMinChannel; ch <= kMaxChannel; ch++) {
+    if (score[ch] + kTieEpsilon < score[bestChannel]) {
+      bestChannel = ch;
+      continue;
+    }
+
+    float diff = score[ch] - score[bestChannel];
+    if (diff < 0.0f)
+      diff = -diff;
+    if (diff <= kTieEpsilon) {
+      // Tie-break: prefer 1/6/11; then stable ordering.
+      bool chPref = isPreferred(ch);
+      bool bestPref = isPreferred(bestChannel);
+      if (chPref && !bestPref) {
+        bestChannel = ch;
+      } else if (chPref && bestPref) {
+        if (preferredOrder(ch) < preferredOrder(bestChannel)) {
+          bestChannel = ch;
+        }
+      } else if (!chPref && !bestPref) {
+        if (ch < bestChannel) {
+          bestChannel = ch;
+        }
+      }
     }
   }
-  return leastCongestedChannel;
+
+  log(DEBUG, "📶\tChannel scan: selected %d (score=%.2f)", bestChannel,
+      score[bestChannel]);
+  return bestChannel;
 }
 
 void ESPWiFi::startAP() {

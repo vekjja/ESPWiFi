@@ -401,7 +401,6 @@ private:
   // ---- WiFi event handlers
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();
-  bool waitForWiFiConnection(int timeout_ms, int check_interval_ms = 100);
   void wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
                         void *event_data);
   void ipEventHandler(esp_event_base_t event_base, int32_t event_id,

@@ -297,7 +297,7 @@ void ESPWiFi::startLogging() {
   writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
   log(INFO, "📺 Serial Output Enabled");
-  log(DEBUG, "📺\tBaud: 115200");
+  log(INFO, "📺\tBaud: 115200");
 
   printFilesystemInfo();
 

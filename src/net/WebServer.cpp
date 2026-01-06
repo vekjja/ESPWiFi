@@ -196,10 +196,10 @@ void ESPWiFi::startWebServer() {
   webServerStarted = true;
   log(INFO, "🗄️ %s Web Server started", tlsServerEnabled_ ? "HTTPS" : "HTTP");
   const char *scheme = tlsServerEnabled_ ? "https" : "http";
-  log(DEBUG, "🗄️\t%s://%s:%d", scheme, getHostname().c_str(), webServerPort_);
-  log(DEBUG, "🗄️\t%s://%s:%d", scheme, ipAddress().c_str(), webServerPort_);
+  log(INFO, "🗄️\t%s://%s:%d", scheme, getHostname().c_str(), webServerPort_);
+  log(INFO, "🗄️\t%s://%s:%d", scheme, ipAddress().c_str(), webServerPort_);
   if (config["wifi"]["mdns"].as<bool>()) {
-    log(DEBUG, "🗄️\t%s://%s.local:%d", scheme, getHostname().c_str(),
+    log(INFO, "🗄️\t%s://%s.local:%d", scheme, getHostname().c_str(),
         webServerPort_);
   }
 }

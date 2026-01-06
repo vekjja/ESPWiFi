@@ -150,7 +150,7 @@ void ESPWiFi::initSDCard() {
     spi_host_device_t spiHost = (spi_host_device_t)hostId;
     sdSpiHost = spiHost;
 
-    log(DEBUG, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
+    log(INFO, "💾 SD(SPI) config: host=%d, mosi=%d, miso=%d, sclk=%d, cs=%d",
         spiHost, mosi, miso, sclk, cs);
     feedWatchDog(1); // Yield before SPI bus init
 
@@ -189,7 +189,7 @@ void ESPWiFi::initSDCard() {
     } else {
       // Success
       sdCard = (void *)card;
-      log(DEBUG, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
+      log(INFO, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
       config["sd"]["initialized"] = true;
     }
     feedWatchDog(1); // Yield after SPI mount attempt
@@ -416,9 +416,9 @@ void ESPWiFi::getStorageInfo(const std::string &fsParam, size_t &totalBytes,
 void ESPWiFi::logFilesystemInfo(const std::string &fsName, size_t totalBytes,
                                 size_t usedBytes) {
   log(INFO, "💾 %s Filesystem", fsName.c_str());
-  log(DEBUG, "💾\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
-  log(DEBUG, "💾\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
-  log(DEBUG, "💾\tFree: %s",
+  log(INFO, "💾\tTotal: %s", bytesToHumanReadable(totalBytes).c_str());
+  log(INFO, "💾\tUsed: %s", bytesToHumanReadable(usedBytes).c_str());
+  log(INFO, "💾\tFree: %s",
       bytesToHumanReadable(totalBytes - usedBytes).c_str());
 }
 
@@ -440,13 +440,14 @@ void ESPWiFi::printFilesystemInfo() {
   // SD card not available - log status if we attempted detection
   if (sdInitAttempted) {
     if (sdNotSupported) {
-      log(DEBUG, "💾 SD card not available: not configured for this target\n"
-                 "Configure SPI pins in config (SDCardPins.h) to enable SD "
-                 "card support");
+      log(WARNING, "💾 SD card not available: not configured for this target\n"
+                   "Configure SPI pins in config (SDCardPins.h) to enable SD "
+                   "card support");
     } else if (sdInitLastErr != ESP_OK) {
-      log(DEBUG, "💾 SD card not detected: %s", esp_err_to_name(sdInitLastErr));
+      log(WARNING, "💾 SD card not detected: %s",
+          esp_err_to_name(sdInitLastErr));
     } else {
-      log(DEBUG, "💾 SD card not detected");
+      log(WARNING, "💾 SD card not detected");
     }
   }
 }

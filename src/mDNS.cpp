@@ -27,13 +27,13 @@
 void ESPWiFi::startMDNS() {
   // Skip mDNS if WiFi is not enabled
   if (!config["wifi"]["enabled"].as<bool>()) {
-    log(DEBUG, "🏷️ mDNS: Skipped (WiFi disabled)");
+    log(WARNING, "🏷️ mDNS: Skipped (WiFi disabled)");
     return;
   }
 
   // Check if mDNS is explicitly disabled in config (defaults to enabled)
   if (config["wifi"]["mdns"].is<bool>() && !config["wifi"]["mdns"].as<bool>()) {
-    log(INFO, "🏷️ mDNS: Disabled by configuration");
+    log(WARNING, "🏷️ mDNS: Disabled by configuration");
     return;
   }
 
@@ -42,7 +42,7 @@ void ESPWiFi::startMDNS() {
   std::string deviceName = config["deviceName"].as<std::string>();
 
   if (hostname.empty()) {
-    log(WARNING, "🏷️ mDNS: Hostname is empty, cannot start mDNS");
+    log(ERROR, "🏷️ mDNS: Hostname is empty, cannot start mDNS");
     return;
   }
 
@@ -86,7 +86,7 @@ void ESPWiFi::startMDNS() {
     err = mdns_service_txt_set("_http", "_tcp", httpTxt,
                                sizeof(httpTxt) / sizeof(httpTxt[0]));
     if (err != ESP_OK) {
-      log(DEBUG, "🏷️ mDNS: Failed to set HTTP TXT records: %s",
+      log(WARNING, "🏷️ mDNS: Failed to set HTTP TXT records: %s",
           esp_err_to_name(err));
       // Non-critical
     }
@@ -95,7 +95,7 @@ void ESPWiFi::startMDNS() {
   // Advertise WebSocket service for RSSI streaming
   err = mdns_service_add(nullptr, "_ws", "_tcp", 80, nullptr, 0);
   if (err != ESP_OK) {
-    log(DEBUG, "🏷️ mDNS: Failed to advertise WebSocket service: %s",
+    log(WARNING, "🏷️ mDNS: Failed to advertise WebSocket service: %s",
         esp_err_to_name(err));
     // Non-critical
   } else {
@@ -103,7 +103,7 @@ void ESPWiFi::startMDNS() {
     err = mdns_service_txt_set("_ws", "_tcp", wsTxt,
                                sizeof(wsTxt) / sizeof(wsTxt[0]));
     if (err != ESP_OK) {
-      log(DEBUG, "🏷️ mDNS: Failed to set WebSocket TXT records: %s",
+      log(WARNING, "🏷️ mDNS: Failed to set WebSocket TXT records: %s",
           esp_err_to_name(err));
     }
   }
@@ -111,7 +111,7 @@ void ESPWiFi::startMDNS() {
   // Advertise Arduino/ESP32 service for IDE discovery (OTA updates)
   err = mdns_service_add(nullptr, "_arduino", "_tcp", 3232, nullptr, 0);
   if (err != ESP_OK) {
-    log(DEBUG, "🏷️ mDNS: Failed to advertise Arduino service: %s",
+    log(WARNING, "🏷️ mDNS: Failed to advertise Arduino service: %s",
         esp_err_to_name(err));
     // Non-critical
   } else {
@@ -123,15 +123,15 @@ void ESPWiFi::startMDNS() {
     err = mdns_service_txt_set("_arduino", "_tcp", arduinoTxt,
                                sizeof(arduinoTxt) / sizeof(arduinoTxt[0]));
     if (err != ESP_OK) {
-      log(DEBUG, "🏷️ mDNS: Failed to set Arduino TXT records: %s",
+      log(WARNING, "🏷️ mDNS: Failed to set Arduino TXT records: %s",
           esp_err_to_name(err));
     }
   }
 
   log(INFO, "🏷️ mDNS: Started successfully");
-  log(DEBUG, "🏷️\tHostname: %s.local", hostname.c_str());
-  log(DEBUG, "🏷️\tInstance: %s", deviceName.c_str());
-  log(DEBUG, "🏷️\tServices: HTTP (80), WebSocket (80), Arduino OTA (3232)");
+  log(INFO, "🏷️\tHostname: %s.local", hostname.c_str());
+  log(INFO, "🏷️\tInstance: %s", deviceName.c_str());
+  log(INFO, "🏷️\tServices: HTTP (80), WebSocket (80), Arduino OTA (3232)");
 }
 
 #endif // ESPWiFi_MDNS

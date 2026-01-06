@@ -18,6 +18,7 @@
 #include <vector>
 
 // POSIX / libc
+
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -63,7 +64,7 @@ public:
   std::string version() { return _version; }
   void feedWatchDog(int ms = 10) { vTaskDelay(pdMS_TO_TICKS(ms)); }
 
-  int connectTimeout = 27000;
+  int connectTimeout = 15000;
   JsonDocument config = defaultConfig();
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";

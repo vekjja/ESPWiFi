@@ -414,7 +414,7 @@ void ESPWiFi::srvFiles() {
         std::string oldPath = espwifi->getQueryParam(req, "oldPath");
         std::string newName = espwifi->getQueryParam(req, "newName");
 
-        espwifi->log(DEBUG, "✏️ Rename: fs=%s, oldPath=%s, newName=%s",
+        espwifi->log(INFO, "✏️ Rename: fs=%s, oldPath=%s, newName=%s",
                      fsParam.c_str(), oldPath.c_str(), newName.c_str());
 
         if (fsParam.empty() || oldPath.empty() || newName.empty()) {
@@ -506,7 +506,7 @@ void ESPWiFi::srvFiles() {
         std::string fsParam = espwifi->getQueryParam(req, "fs");
         std::string filePath = espwifi->getQueryParam(req, "path");
 
-        espwifi->log(DEBUG, "🗑️ Delete: fs=%s, path=%s", fsParam.c_str(),
+        espwifi->log(INFO, "🗑️ Delete: fs=%s, path=%s", fsParam.c_str(),
                      filePath.c_str());
 
         if (fsParam.empty() || filePath.empty()) {

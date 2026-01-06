@@ -58,7 +58,6 @@ void ESPWiFi::srvCamera() {
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   // Start the websocket here
   if (!camSocStarted) {
-    log(DEBUG, "📷 Registering camera WebSocket at /ws/camera");
     camSocStarted =
         camSoc.begin("/ws/camera", this,
                      /*onMessage*/ nullptr,
@@ -74,7 +73,7 @@ void ESPWiFi::srvCamera() {
       log(INFO, "📷 Camera WebSocket successfully registered");
     }
   } else {
-    log(DEBUG, "📷 Camera WebSocket already registered, skipping");
+    log(WARNING, "📷 Camera WebSocket already registered, skipping");
   }
 #endif
 
@@ -116,8 +115,6 @@ void ESPWiFi::srvCamera() {
           espwifi->log(ERROR, "Invalid parameters to status handler");
           return ESP_ERR_INVALID_ARG;
         }
-
-        espwifi->log(DEBUG, "📷 Status request from %s", clientInfo.c_str());
 
         // Build status JSON
         JsonDocument statusDoc;

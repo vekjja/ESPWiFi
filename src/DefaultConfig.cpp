@@ -86,9 +86,9 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["ota"]["enabled"] = isOTAEnabled();
 
 // Camera
-#if defined(ESPWiFi_CAMERA_INSTALLED) || defined(ESPWiFi_CAMERA_ENABLED)
+#if defined(ESPWiFi_CAMERA_INSTALLED)
   doc["camera"]["installed"] = true;
-  doc["camera"]["enabled"] = false;
+  doc["camera"]["enabled"] = true;
   doc["camera"]["frameRate"] = 10;
   doc["camera"]["rotation"] = 0;
   doc["camera"]["brightness"] = 1;
@@ -98,7 +98,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["denoise"] = 0;
   doc["camera"]["quality"] = 12;
   doc["camera"]["exposure_level"] = 1;
-  doc["camera"]["exposure_value"] = 400;
+  doc["camera"]["exposure_value"] = 360;
   doc["camera"]["agc_gain"] = 2;
   doc["camera"]["gain_ceiling"] = 2;
   doc["camera"]["white_balance"] = 1;

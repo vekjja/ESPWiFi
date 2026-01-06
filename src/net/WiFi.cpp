@@ -176,29 +176,29 @@ void ESPWiFi::startClient() {
 #endif
 
   std::string hostname = getHostname();
-  log(DEBUG, "📶\tHostname: %s", hostname.c_str());
+  log(INFO, "📶\tHostname: %s", hostname.c_str());
 
   esp_netif_ip_info_t ip_info;
   ESP_ERROR_CHECK(esp_netif_get_ip_info(current_netif, &ip_info));
 
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.netmask));
-  log(DEBUG, "📶\tSubnet: %s", ip_str);
+  log(INFO, "📶\tSubnet: %s", ip_str);
 
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.gw));
-  log(DEBUG, "📶\tGateway: %s", ip_str);
+  log(INFO, "📶\tGateway: %s", ip_str);
 
   esp_netif_dns_info_t dns_info;
   if (esp_netif_get_dns_info(current_netif, ESP_NETIF_DNS_MAIN, &dns_info) ==
       ESP_OK) {
     snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
-    log(DEBUG, "📶\tDNS: %s", ip_str);
+    log(INFO, "📶\tDNS: %s", ip_str);
   }
 
   wifi_ap_record_t ap_info;
   if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-    log(DEBUG, "📶\tRSSI: %d dBm", ap_info.rssi);
-    log(DEBUG, "📶\tChannel: %d", ap_info.primary);
+    log(INFO, "📶\tRSSI: %d dBm", ap_info.rssi);
+    log(INFO, "📶\tChannel: %d", ap_info.primary);
   }
 }
 

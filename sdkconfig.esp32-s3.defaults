@@ -49,3 +49,7 @@ CONFIG_BT_CONTROLLER_ENABLED=y
 # We observed "***ERROR*** A stack overflow in task nimble_host" at runtime.
 # Increase host stack for BLE security + GATT services.
 CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192
+
+# CONFIG_ESPTOOLPY_FLASHSIZE_4MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"

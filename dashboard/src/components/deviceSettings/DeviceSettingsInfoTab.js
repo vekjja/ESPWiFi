@@ -11,6 +11,7 @@
 import React from "react";
 import { Box, Alert, Typography, Grid, Skeleton } from "@mui/material";
 import NetworkInfoCard from "./NetworkInfoCard";
+import ChipInfoCard from "./ChipInfoCard";
 import WifiConfigInfoCard from "./WifiConfigInfoCard";
 import AuthInfoCard from "./AuthInfoCard";
 import MemoryInfoCard from "./MemoryInfoCard";
@@ -111,15 +112,18 @@ export default function DeviceSettingsInfoTab({
       {/* Memory */}
       <MemoryInfoCard deviceInfo={deviceInfo} loading={infoLoading} />
 
-      {/* Storage */}
-      <StorageInfoCard deviceInfo={deviceInfo} loading={infoLoading} />
-
       {/* WiFi Power */}
       <WifiPowerInfoCard
         config={config}
         deviceInfo={deviceInfo}
         onSave={saveConfigToDevice}
       />
+
+      {/* Storage */}
+      <StorageInfoCard deviceInfo={deviceInfo} loading={infoLoading} />
+
+      {/* Chip */}
+      <ChipInfoCard deviceInfo={deviceInfo} />
 
       {/* JSON Configuration Editor */}
       <JsonConfigCard config={config} onSave={saveConfigToDevice} />

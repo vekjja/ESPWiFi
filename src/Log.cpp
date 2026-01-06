@@ -3,12 +3,252 @@
 
 #include "ESPWiFi.h"
 #include "driver/uart.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include <cstring>
 #include <stdarg.h>
 #include <sys/time.h>
 
-std::string logLevelToString(LogLevel level) {
+// ---- ESP-IDF log capture (optional)
+//
+// ESP-IDF logging (ESP_LOGx) ultimately prints via a vprintf-like function
+// that can be replaced with esp_log_set_vprintf(). By hooking this once, we can
+// capture ALL ESP-IDF logs (like httpd_txrx) without subscribing to events.
+//
+// Important: Our normal ESPWiFi::logImpl() uses printf(), which would recurse
+// back into this hook. So the hook writes to the log FILE only via writeLog().
+static vprintf_like_t s_prevEspVprintf = nullptr;
+static ESPWiFi *s_espwifiForEspLogs = nullptr;
+static bool s_espLogHookInstalled = false;
+static bool s_inEspLogHook = false;
+static std::string s_lastIdfTag;
+static LogLevel s_lastIdfLevel = INFO;
+
+static const char *skipAnsiAndWhitespace(const char *p) {
+  if (p == nullptr) {
+    return nullptr;
+  }
+  // Skip ANSI color sequences (ESC [ ... m)
+  while (*p == '\033') {
+    if (*(p + 1) == '[') {
+      p += 2;
+      while (*p != '\0' && *p != 'm') {
+        ++p;
+      }
+      if (*p == 'm') {
+        ++p;
+        continue;
+      }
+    }
+    break;
+  }
+  // Skip whitespace
+  while (*p == ' ' || *p == '\t') {
+    ++p;
+  }
+  return p;
+}
+
+struct ParsedIdfLine {
+  bool isIdf = false;
+  LogLevel level = INFO;
+  std::string tag;
+  std::string body; // may be empty for tag-only lines like "I (123) wifi:"
+};
+
+static ParsedIdfLine parseIdfLogLine(const char *line) {
+  ParsedIdfLine out;
+  if (line == nullptr) {
+    return out;
+  }
+
+  const char *p = skipAnsiAndWhitespace(line);
+  if (p == nullptr) {
+    return out;
+  }
+
+  // Expect: [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' [ ' ' <body> ]
+  const char lvl = *p;
+  if (!(lvl == 'E' || lvl == 'W' || lvl == 'I' || lvl == 'D' || lvl == 'V')) {
+    return out;
+  }
+  out.isIdf = true;
+  switch (lvl) {
+  case 'E':
+    out.level = ERROR;
+    break;
+  case 'W':
+    out.level = WARNING;
+    break;
+  case 'I':
+    out.level = DEBUG;
+    break;
+  case 'D':
+    out.level = DEBUG;
+    break;
+  case 'V':
+    out.level = VERBOSE;
+    break;
+  default:
+    out.level = DEBUG;
+    break;
+  }
+
+  const char *closeParen = std::strstr(p, ") ");
+  if (closeParen == nullptr) {
+    return out;
+  }
+
+  const char *tagStart = closeParen + 2;
+  const char *colon = std::strchr(tagStart, ':');
+  if (colon != nullptr && colon > tagStart) {
+    out.tag.assign(tagStart, (size_t)(colon - tagStart));
+    const char *body = colon + 1;
+    if (*body == ' ') {
+      ++body;
+    }
+    if (*body != '\0' && *body != '\n') {
+      out.body.assign(body);
+    }
+  }
+  return out;
+}
+
+static bool isAllWhitespace(const std::string &s) {
+  for (char c : s) {
+    if (!(c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static const char *espwifiIconForIdfTag(const std::string &tag) {
+  // Keep this small and cheap: string comparisons are fine at these rates.
+  if (tag == "wifi" || tag == "net80211" || tag == "wifi_init" ||
+      tag == "esp_netif_handlers" || tag == "phy_init" || tag == "pp") {
+    return "📶";
+  }
+  if (tag == "httpd" || tag == "httpd_txrx" || tag == "httpd_uri") {
+    return "🗄️";
+  }
+  if (tag == "mdns" || tag == "mdns_mem") {
+    return "🏷️";
+  }
+  if (tag == "cam_hal" || tag == "camera" || tag == "esp_camera" ||
+      tag == "s3 ll_cam" || tag == "sccb-ng" || tag == "ov3660") {
+    return "📷";
+  }
+  if (tag == "BTDM_INIT" || tag == "BT" || tag == "NimBLE" || tag == "nimble") {
+    return "🔵";
+  }
+  return "";
+}
+
+static int espwifiEspLogVprintfHook(const char *format, va_list args) {
+  // Preserve original behavior (serial output).
+  int ret = 0;
+  if (s_prevEspVprintf != nullptr) {
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    ret = s_prevEspVprintf(format, argsCopy);
+    va_end(argsCopy);
+  } else {
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    ret = vprintf(format, argsCopy);
+    va_end(argsCopy);
+  }
+
+  // If logging isn't ready, or we are already in our hook, just return.
+  ESPWiFi *espwifi = s_espwifiForEspLogs;
+  if (espwifi == nullptr || s_inEspLogHook) {
+    return ret;
+  }
+
+  // Best-effort capture: format the final log line and append it to the file.
+  // Keep this bounded and avoid allocations/printf recursion.
+  s_inEspLogHook = true;
+  char line[768];
+  {
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    int n = vsnprintf(line, sizeof(line), format, argsCopy);
+    va_end(argsCopy);
+
+    if (n > 0) {
+      // vsnprintf always NUL-terminates (when size > 0). If truncated, we just
+      // capture what we have.
+      //
+      // NOTE: We intentionally avoid calling ESPWiFi::logImpl() here because it
+      // uses printf(), which would recurse back into this hook. We also avoid
+      // adding our own timestamp/level prefix because ESP-IDF already includes
+      // its own formatting (and calling timestamp helpers adds extra work in
+      // this hot path).
+      std::string msg(line);
+      if (!msg.empty() && msg.back() != '\n') {
+        msg.push_back('\n');
+      }
+      // If you want an ESPWiFi-style prefix in the log file, infer the ESP-IDF
+      // level from the formatted line (usually begins with E/W/I/D/V) and add
+      // our timestamp + level tag. Still avoid logImpl()/printf recursion.
+      ParsedIdfLine parsed = parseIdfLogLine(msg.c_str());
+      const LogLevel lvl = parsed.isIdf ? parsed.level : s_lastIdfLevel;
+      std::string idfTag = parsed.tag;
+      if (!idfTag.empty()) {
+        s_lastIdfTag = idfTag;
+        s_lastIdfLevel = lvl;
+      } else {
+        idfTag =
+            s_lastIdfTag; // best-effort tag inheritance for continuation lines
+      }
+
+      std::string body = parsed.isIdf ? parsed.body : msg;
+      if (parsed.isIdf && body.empty()) {
+        // Drop tag-only lines like "I (xxxx) wifi:"; the subsequent
+        // continuation lines will inherit the tag.
+        s_inEspLogHook = false;
+        return ret;
+      }
+      // Drop standalone whitespace-only prints (often just "\n") to avoid
+      // spammy blank lines with inherited tags.
+      if (isAllWhitespace(body)) {
+        s_inEspLogHook = false;
+        return ret;
+      }
+      if (!body.empty() && body.back() != '\n') {
+        body.push_back('\n');
+      }
+
+      const char *icon = idfTag.empty() ? "" : espwifiIconForIdfTag(idfTag);
+      if (icon[0] != '\0') {
+        espwifi->writeLog(espwifi->timestamp() +
+                          espwifi->logLevelToString(lvl) + " " + icon + " " +
+                          body);
+      } else if (!idfTag.empty()) {
+        espwifi->writeLog(espwifi->timestamp() +
+                          espwifi->logLevelToString(lvl) + " (" + idfTag +
+                          ") " + body);
+      } else {
+        espwifi->writeLog(espwifi->timestamp() +
+                          espwifi->logLevelToString(lvl) + " " + body);
+      }
+    }
+  }
+  s_inEspLogHook = false;
+  return ret;
+}
+
+static void installEspIdfLogCapture(ESPWiFi *espwifi) {
+  s_espwifiForEspLogs = espwifi;
+  if (s_espLogHookInstalled) {
+    return;
+  }
+  s_prevEspVprintf = esp_log_set_vprintf(&espwifiEspLogVprintfHook);
+  s_espLogHookInstalled = true;
+}
+
+std::string ESPWiFi::logLevelToString(LogLevel level) {
   switch (level) {
   case ACCESS:
     return "[ACCESS]";
@@ -55,7 +295,7 @@ void ESPWiFi::startLogging() {
   }
   this->logFilePath = filePath;
 
-  cleanLogFile();
+  // cleanLogFile();
 
   writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
@@ -63,6 +303,10 @@ void ESPWiFi::startLogging() {
   log(DEBUG, "📺\tBaud: 115200");
 
   printFilesystemInfo();
+
+  // Capture ESP-IDF logs (ESP_LOGx) into the same espwifi log file, so
+  // warnings like `httpd_txrx` show up without having to catch ESP events.
+  installEspIdfLogCapture(this);
 }
 
 bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {

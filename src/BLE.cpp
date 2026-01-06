@@ -34,8 +34,10 @@
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-#include "ESPWiFiGattServices.h"
+#include "esp_app_desc.h"
+
 #include "GattServiceDef.h"
+#include "GattServices.h"
 
 // BLE runtime state
 static bool bleStarted = false;
@@ -43,7 +45,29 @@ static bool nimbleInitialized =
     false; // Track NimBLE stack initialization separately
 
 // Encapsulated GATT service definitions + callbacks.
-static ESPWiFiGattServices gattServices;
+static GattServices gattServices;
+
+// ============================================================================
+// Standard Device Information Service (0x180A) characteristics
+// ============================================================================
+namespace {
+
+// Standard DIS characteristic UUIDs (16-bit)
+constexpr uint16_t kDisModelNumberString = 0x2A24;
+constexpr uint16_t kDisSerialNumberString = 0x2A25;
+constexpr uint16_t kDisFirmwareRevisionString = 0x2A26;
+constexpr uint16_t kDisManufacturerNameString = 0x2A29;
+
+static int bleReadString(struct ble_gatt_access_ctxt *ctxt, const char *s) {
+  if (!ctxt || !ctxt->om || !s) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  return os_mbuf_append(ctxt->om, s, strlen(s)) == 0
+             ? 0
+             : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+} // namespace
 
 // ============================================================================
 // ESPWiFi BLE GATT registry wrappers (registerRoute-style)
@@ -64,6 +88,97 @@ void ESPWiFi::startBLEServices() {
   //
   // NOTE: Changes take effect for the current startBLE() call because we call
   // this before `ble_gatts_count_cfg()` / `ble_gatts_add_svcs()`.
+
+  // Device Information Service (DIS) must use standard characteristics.
+  // You can still include your provisioning/control characteristic here for
+  // Web Bluetooth filtering convenience.
+  (void)registerBleService16(0x180A);
+
+  // Standard DIS characteristics (read-only strings)
+  (void)registerBleCharacteristic16(
+      0x180A, kDisManufacturerNameString, BLE_GATT_CHR_F_READ,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)espwifi;
+        (void)conn_handle;
+        (void)attr_handle;
+        return bleReadString(ctxt, "ESPWiFi");
+      });
+
+  (void)registerBleCharacteristic16(
+      0x180A, kDisModelNumberString, BLE_GATT_CHR_F_READ,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)conn_handle;
+        (void)attr_handle;
+        if (!ctxt) {
+          return BLE_ATT_ERR_UNLIKELY;
+        }
+        std::string model =
+            espwifi->config["deviceName"].isNull()
+                ? std::string("ESP32")
+                : espwifi->config["deviceName"].as<std::string>();
+        return os_mbuf_append(ctxt->om, model.c_str(), model.size()) == 0
+                   ? 0
+                   : BLE_ATT_ERR_INSUFFICIENT_RES;
+      });
+
+  (void)registerBleCharacteristic16(
+      0x180A, kDisSerialNumberString, BLE_GATT_CHR_F_READ,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)conn_handle;
+        (void)attr_handle;
+        if (!ctxt) {
+          return BLE_ATT_ERR_UNLIKELY;
+        }
+        std::string serial = espwifi->getBLEAddress();
+        return os_mbuf_append(ctxt->om, serial.c_str(), serial.size()) == 0
+                   ? 0
+                   : BLE_ATT_ERR_INSUFFICIENT_RES;
+      });
+
+  (void)registerBleCharacteristic16(
+      0x180A, kDisFirmwareRevisionString, BLE_GATT_CHR_F_READ,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)conn_handle;
+        (void)attr_handle;
+        if (!ctxt) {
+          return BLE_ATT_ERR_UNLIKELY;
+        }
+        const esp_app_desc_t *app = esp_app_get_description();
+        std::string fw = (app && app->version[0] != '\0')
+                             ? std::string(app->version)
+                             : espwifi->version();
+        return os_mbuf_append(ctxt->om, fw.c_str(), fw.size()) == 0
+                   ? 0
+                   : BLE_ATT_ERR_INSUFFICIENT_RES;
+      });
+
+  // Optional: keep a custom control characteristic under DIS for provisioning.
+  (void)registerBleCharacteristic16(
+      0x180A, GattServices::controlCharUUID.value,
+      BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)espwifi;
+        (void)conn_handle;
+        (void)attr_handle;
+        if (!ctxt) {
+          return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+          return bleReadString(ctxt, "ok");
+        }
+
+        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+          return 0;
+        }
+
+        return BLE_ATT_ERR_UNLIKELY;
+      });
 }
 
 bool ESPWiFi::registerBleService16(uint16_t svcUuid16) {
@@ -82,7 +197,44 @@ bool ESPWiFi::addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                                           arg, minKeySize);
 }
 
-void ESPWiFi::clearBleServices() { gattServices.clear(); }
+bool ESPWiFi::registerBleCharacteristic16(uint16_t svcUuid16,
+                                          uint16_t chrUuid16, uint16_t flags,
+                                          BleRouteHandler handler,
+                                          uint8_t minKeySize) {
+  if (!handler) {
+    return false;
+  }
+
+  // Ensure service exists (idempotent) WITHOUT resetting characteristics.
+  (void)gattServices.ensureService16(svcUuid16);
+
+  if (bleRouteCtxCount_ >= kMaxBleRouteContexts) {
+    log(ERROR, "🔵 BLE GATT route ctx pool exhausted (%u)",
+        (unsigned)kMaxBleRouteContexts);
+    return false;
+  }
+
+  BleRouteCtx *ctx = &bleRouteCtx_[bleRouteCtxCount_++];
+  *ctx = BleRouteCtx{this, handler, svcUuid16, chrUuid16};
+
+  return addBleCharacteristic16(svcUuid16, chrUuid16, flags,
+                                bleGattAccessTrampoline, ctx, minKeySize);
+}
+
+void ESPWiFi::clearBleServices() {
+  gattServices.clear();
+  bleRouteCtxCount_ = 0;
+}
+
+int ESPWiFi::bleGattAccessTrampoline(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt,
+                                     void *arg) {
+  BleRouteCtx *ctx = static_cast<BleRouteCtx *>(arg);
+  if (!ctx || !ctx->self || !ctx->handler) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  return ctx->handler(ctx->self, conn_handle, attr_handle, ctxt);
+}
 
 bool ESPWiFi::applyBleServiceRegistry(bool restartNow) {
   if (!restartNow) {

@@ -139,6 +139,7 @@ public:
   void logConfigHandler();
   bool shouldLog(LogLevel level);
   void writeLog(std::string message);
+  std::string logLevelToString(LogLevel level);
 
   // Core logging implementation - formats and writes the log message
   void logImpl(LogLevel level, const std::string &message);
@@ -263,17 +264,27 @@ public:
   std::string otaMD5Hash;
 
   // ---- BLE Provisioning
+  // Declared unconditionally because config handling calls this even when BLE
+  // is compiled out; implementation is a stub when CONFIG_BT_NIMBLE_ENABLED is
+  // disabled.
+  void bleConfigHandler();
 #ifdef CONFIG_BT_NIMBLE_ENABLED
   using BleAccessCallback = int (*)(uint16_t conn_handle, uint16_t attr_handle,
                                     struct ble_gatt_access_ctxt *ctxt,
                                     void *arg);
+
+  // Route-style BLE characteristic handler.
+  // Similar idea to `RouteHandler`, but for NimBLE GATT access callbacks.
+  // NOTE: must be a plain function pointer (non-capturing lambda is OK).
+  using BleRouteHandler = int (*)(ESPWiFi *espwifi, uint16_t conn_handle,
+                                  uint16_t attr_handle,
+                                  struct ble_gatt_access_ctxt *ctxt);
 
   void *ble = nullptr;
   bool startBLE();
   void deinitBLE();
   uint8_t getBLEStatus();
   std::string getBLEAddress();
-  void bleConfigHandler();
   esp_err_t startBLEAdvertising();
 
   // ---- BLE GATT registry (registerRoute-style API)
@@ -288,6 +299,15 @@ public:
   bool addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                               uint16_t flags, BleAccessCallback accessCb,
                               void *arg = nullptr, uint8_t minKeySize = 0);
+
+  // Convenience helper: like registerRoute(), but for BLE GATT characteristics.
+  // - Auto-registers the service if needed.
+  // - Provides ESPWiFi* to the handler.
+  // - Stores handler context in a fixed-size pool (no heap).
+  bool registerBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
+                                   uint16_t flags, BleRouteHandler handler,
+                                   uint8_t minKeySize = 0);
+
   void clearBleServices();
   bool applyBleServiceRegistry(bool restartNow = true);
 #endif
@@ -306,19 +326,19 @@ public:
 #endif
 
   // ---- Camera
+  void srvCamera();
 #ifdef ESPWiFi_CAMERA_INSTALLED
   sensor_t *camera = nullptr;
-  void srvCamera();
   void printCameraSettings();
 #endif
 
   // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();
   void deinitCamera();
+  void streamCamera();
   void clearCameraBuffer();
   void updateCameraSettings();
   void cameraConfigHandler();
-  void streamCamera();
   esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
 
   // Camera event handlers (instance methods)
@@ -403,6 +423,22 @@ private:
 
   // BLE event handlers (instance methods)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
+  // ---- BLE route-style trampoline/state (fixed pool; no heap).
+  struct BleRouteCtx {
+    ESPWiFi *self = nullptr;
+    BleRouteHandler handler = nullptr;
+    uint16_t svcUuid16 = 0;
+    uint16_t chrUuid16 = 0;
+  };
+
+  static constexpr size_t kMaxBleRouteContexts = 48;
+  BleRouteCtx bleRouteCtx_[kMaxBleRouteContexts]{};
+  size_t bleRouteCtxCount_ = 0;
+
+  static int bleGattAccessTrampoline(uint16_t conn_handle, uint16_t attr_handle,
+                                     struct ble_gatt_access_ctxt *ctxt,
+                                     void *arg);
+
   void bleConnectionHandler(int status, uint16_t conn_handle, void *obj);
   void bleDisconnectionHandler(int reason, void *obj);
   void bleAdvertisingCompleteHandler(void *obj);

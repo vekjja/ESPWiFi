@@ -21,7 +21,7 @@ class ESPWiFi;
  * - No heap allocations (safe for embedded).
  * - Stable storage for NimBLE service/characteristic definitions.
  */
-class ESPWiFiGattServices {
+class GattServices {
 public:
   // ---- Capacity limits (no heap).
   static constexpr size_t maxServices = 6;
@@ -66,6 +66,18 @@ public:
 
     markDirty();
     return true;
+  }
+
+  // Ensure a service exists without resetting its characteristics.
+  // - If the service already exists, returns true and leaves it unchanged.
+  // - If not, registers it.
+  bool ensureService16(uint16_t svcUuid16,
+                       uint8_t svcType = BLE_GATT_SVC_TYPE_PRIMARY) {
+    ServiceEntry *entry = findServiceEntry(svcUuid16);
+    if (entry && entry->inUse) {
+      return true;
+    }
+    return registerService16(svcUuid16, svcType);
   }
 
   // Remove a service by UUID.

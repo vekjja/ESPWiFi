@@ -73,6 +73,7 @@ void ESPWiFi::srvInfo() {
           snprintf(chip_model, sizeof(chip_model), "ESP32-Unknown");
         }
         jsonDoc["chip"] = std::string(chip_model);
+        jsonDoc["fw_version"] = espwifi->version();
         jsonDoc["sdk_version"] = std::string(esp_get_idf_version());
 
         // Heap information

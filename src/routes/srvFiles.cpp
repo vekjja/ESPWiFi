@@ -811,9 +811,12 @@ void ESPWiFi::srvFiles() {
         FILE *outFile = nullptr;
         std::string relFilePath;
         std::string fullFilePath;
+        std::string uploadFilename;
         bool headersParsed = false;
         size_t totalWritten = 0;
         size_t bytesReceived = 0;
+        size_t totalReceived = 0;
+        uint32_t nextProgressPct = 10;
         bool cleanupDone = false;
 
         // Boundary markers (RFC 2046 compliant)
@@ -865,6 +868,27 @@ void ESPWiFi::srvFiles() {
           }
           remaining -= (size_t)bytesRead;
           bytesReceived += (size_t)bytesRead;
+          totalReceived += (size_t)bytesRead;
+
+          // Progress logging (percent of request body received)
+          if (req->content_len > 0) {
+            uint32_t pct = (uint32_t)(((uint64_t)totalReceived * 100ULL) /
+                                      (uint64_t)req->content_len);
+            if (pct > 100)
+              pct = 100;
+            if (pct >= nextProgressPct || pct == 100) {
+              const char *name =
+                  uploadFilename.empty() ? "<pending>" : uploadFilename.c_str();
+              espwifi->log(DEBUG,
+                           "📤 Upload: Progress: %s: %u%% (%zu/%zu bytes, "
+                           "written=%zu)",
+                           name, (unsigned)pct, totalReceived, req->content_len,
+                           totalWritten);
+              while (nextProgressPct <= pct && nextProgressPct < 100) {
+                nextProgressPct += 10;
+              }
+            }
+          }
 
           // Feed watchdog periodically
           if (bytesReceived >= 32768) {
@@ -942,6 +966,7 @@ void ESPWiFi::srvFiles() {
 
             std::string filename = headers.substr(fnPos, fnEnd - fnPos);
             std::string sanitized = espwifi->sanitizeFilename(filename);
+            uploadFilename = sanitized;
 
             espwifi->log(DEBUG, "📤 Upload: Sanitized '%s' -> '%s'",
                          filename.c_str(), sanitized.c_str());

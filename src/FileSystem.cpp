@@ -105,6 +105,7 @@ static void cleanupSpiBus(spi_host_device_t hostId, bool busOwned) {
 void ESPWiFi::initSDCard() {
   // Early return if already initialized
   if (sdCard != nullptr || !config["sd"]["enabled"].as<bool>()) {
+    config["sd"]["initialized"] = false;
     return;
   }
 

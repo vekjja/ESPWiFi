@@ -142,6 +142,9 @@ static const char *espwifiIconForIdfTag(const std::string &tag) {
   if (tag == "BTDM_INIT" || tag == "BT" || tag == "NimBLE" || tag == "nimble") {
     return "🔵";
   }
+  if (tag == "SPI") {
+    return "🔵";
+  }
   return "";
 }
 
@@ -217,18 +220,20 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
         body.push_back('\n');
       }
 
-      const char *icon = idfTag.empty() ? "" : espwifiIconForIdfTag(idfTag);
-      if (icon[0] != '\0') {
-        espwifi->writeLog(espwifi->timestamp() +
-                          espwifi->logLevelToString(lvl) + " " + icon + " " +
-                          body);
-      } else if (!idfTag.empty()) {
-        espwifi->writeLog(espwifi->timestamp() +
-                          espwifi->logLevelToString(lvl) + " (" + idfTag +
-                          ") " + body);
-      } else {
-        espwifi->writeLog(espwifi->timestamp() +
-                          espwifi->logLevelToString(lvl) + " " + body);
+      if (espwifi->shouldLog(lvl)) {
+        const char *icon = idfTag.empty() ? "" : espwifiIconForIdfTag(idfTag);
+        if (icon[0] != '\0') {
+          espwifi->writeLog(espwifi->timestamp() +
+                            espwifi->logLevelToString(lvl) + " " + icon + " " +
+                            body);
+        } else if (!idfTag.empty()) {
+          espwifi->writeLog(espwifi->timestamp() +
+                            espwifi->logLevelToString(lvl) + " (" + idfTag +
+                            ") " + body);
+        } else {
+          espwifi->writeLog(espwifi->timestamp() +
+                            espwifi->logLevelToString(lvl) + " " + body);
+        }
       }
     }
   }

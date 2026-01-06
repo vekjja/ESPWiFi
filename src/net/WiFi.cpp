@@ -69,8 +69,8 @@ void ESPWiFi::startClient() {
   }
 
   log(INFO, "📶 WiFi Connecting to Network");
-  log(DEBUG, "📶\tSSID: %s", ssid.c_str());
-  log(DEBUG, "📶\tPassword: **********");
+  log(INFO, "📶\tSSID: %s", ssid.c_str());
+  log(INFO, "📶\tPassword: **********");
 
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
@@ -331,7 +331,7 @@ int ESPWiFi::selectBestChannel() {
     }
   }
 
-  log(DEBUG, "📶\tChannel scan: selected %d (score=%.2f)", bestChannel,
+  log(INFO, "📶\tChannel scan: selected %d (score=%.2f)", bestChannel,
       score[bestChannel]);
   return bestChannel;
 }
@@ -342,8 +342,8 @@ void ESPWiFi::startAP() {
       config["wifi"]["accessPoint"]["password"].as<std::string>();
 
   log(INFO, "📡 Starting Access Point");
-  log(DEBUG, "📶\tSSID: %s", ssid.c_str());
-  log(DEBUG, "📶\tPassword: %s", password.c_str());
+  log(INFO, "📶\tSSID: %s", ssid.c_str());
+  log(INFO, "📶\tPassword: %s", password.c_str());
 
   setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
 
@@ -377,7 +377,7 @@ void ESPWiFi::startAP() {
 
   int bestChannel =
       selectBestChannel(); // Falls back to channel 1 if scan fails
-  log(DEBUG, "📶\tChannel: %d", bestChannel);
+  log(INFO, "📶\tChannel: %d", bestChannel);
 
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
   assert(ap_netif);
@@ -422,7 +422,7 @@ void ESPWiFi::startAP() {
 
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-  log(DEBUG, "📶\tIP Address: %s", ip_str);
+  log(INFO, "📶\tIP Address: %s", ip_str);
 
   // Start BLE provisioning when in AP mode (if enabled in config)
   // MUST be done after WiFi is fully initialized to avoid BT/WiFi coexistence

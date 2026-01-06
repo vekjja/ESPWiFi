@@ -300,7 +300,7 @@ bool ESPWiFi::checkSDCard() {
       // Card was removed - try to reinitialize if it's been reinserted
       initSDCard();
       if (sdCard != nullptr) {
-        log(WARNING, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
+        log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
       }
     }
   }
@@ -311,7 +311,7 @@ void ESPWiFi::handleSDCardError() {
   // Called when SD card operations fail - mark as unavailable
   // The card will be automatically re-detected in runSystem() if reinserted
   if (sdCard != nullptr) {
-    log(WARNING, "💾 SD Card Error Detected, Unmounting");
+    log(ERROR, "💾 SD Card Error Detected, Unmounting");
     deinitSDCard();
   }
 }

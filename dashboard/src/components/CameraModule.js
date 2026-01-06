@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import Module from "./Module";
 import { Box, Typography, IconButton, Tooltip } from "@mui/material";
-import {
-  PlayArrow,
-  Pause,
-  Fullscreen,
-  FullscreenExit,
-  CameraAlt,
-} from "@mui/icons-material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PauseIcon from "@mui/icons-material/Pause";
+import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
 import {
   buildApiUrl,
@@ -635,7 +633,7 @@ export default function CameraModule({
                       : "primary.main",
                 }}
               >
-                {isStreaming ? <Pause /> : <PlayArrow />}
+                {isStreaming ? <PauseIcon /> : <PlayArrowIcon />}
               </IconButton>
             </span>
           </Tooltip>
@@ -651,7 +649,7 @@ export default function CameraModule({
                   color: !deviceOnline ? "text.disabled" : "primary.main",
                 }}
               >
-                <CameraAlt />
+                <CameraAltIcon />
               </IconButton>
             </span>
           </Tooltip>
@@ -673,7 +671,7 @@ export default function CameraModule({
                   color: !deviceOnline ? "text.disabled" : "primary.main",
                 }}
               >
-                {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
               </IconButton>
             </span>
           </Tooltip>

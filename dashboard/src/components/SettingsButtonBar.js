@@ -15,7 +15,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DeleteOutline as DeleteOutlineIcon } from "@mui/icons-material";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";

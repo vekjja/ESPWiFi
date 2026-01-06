@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import {
-  SignalCellularAlt as SignalCellularAltIcon,
-  SignalCellularAlt1Bar as SignalCellularAlt1BarIcon,
-  SignalCellularAlt2Bar as SignalCellularAlt2BarIcon,
-} from "@mui/icons-material";
+import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
+import SignalCellularAlt1BarIcon from "@mui/icons-material/SignalCellularAlt1Bar";
+import SignalCellularAlt2BarIcon from "@mui/icons-material/SignalCellularAlt2Bar";
 import RSSISettingsModal from "./RSSISettingsModal";
 import { buildWebSocketUrl } from "../utils/apiUtils";
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import { CameraAlt as CameraAltIcon } from "@mui/icons-material";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import NoPhotographyIcon from "@mui/icons-material/NoPhotography";
 import CameraSettingsModal from "./CameraSettingsModal";
 

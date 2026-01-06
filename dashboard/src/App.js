@@ -1,16 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  Suspense,
+  lazy,
+} from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
-import { Save, Delete, Edit, Settings } from "@mui/icons-material";
-import Modules from "./components/Modules";
-import Login from "./components/Login";
-import SettingsButtonBar from "./components/SettingsButtonBar";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
 import { getUserFriendlyErrorMessage, logError } from "./utils/errorUtils";
+
+// Lazy-load heavier UI chunks so first paint is faster
+const Modules = lazy(() => import("./components/Modules"));
+const Login = lazy(() => import("./components/Login"));
+const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
 
 // Define the theme
 const theme = createTheme({
@@ -85,21 +93,11 @@ const theme = createTheme({
       },
     },
   },
-  // Custom theme properties for icons and components
-  custom: {
-    icons: {
-      save: Save,
-      delete: Delete,
-      edit: Edit,
-      settings: Settings,
-    },
-  },
 });
 
 function App() {
   const [config, setConfig] = useState(null);
   const [localConfig, setLocalConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
@@ -109,6 +107,11 @@ function App() {
 
   // Use ref for fetch locking to avoid race conditions with async state updates
   const isFetchingConfigRef = useRef(false);
+  const deviceOnlineRef = useRef(deviceOnline);
+
+  useEffect(() => {
+    deviceOnlineRef.current = deviceOnline;
+  }, [deviceOnline]);
 
   /**
    * Helper to compare two config objects for equality
@@ -201,7 +204,7 @@ function App() {
         }
 
         // Only log errors if we're not already offline to avoid spam
-        if (deviceOnline) {
+        if (deviceOnlineRef.current) {
           console.warn(
             getUserFriendlyErrorMessage(error, "fetching configuration")
           );
@@ -212,7 +215,7 @@ function App() {
         isFetchingConfigRef.current = false;
       }
     },
-    [apiURL, deviceOnline, configsAreEqual]
+    [apiURL, configsAreEqual]
   );
 
   /**
@@ -222,33 +225,19 @@ function App() {
   useEffect(() => {
     const checkAuth = async () => {
       setCheckingAuth(true);
-      setLoading(true);
 
       try {
-        // Small delay to ensure loading bar is visible
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
         // Retry logic to handle device restarts
-        const maxRetries = 5;
+        const hasToken = isAuthenticated();
+        // If we don't have a token, extra retries just delay showing Login.
+        // If we DO have a token, retries can help survive device restarts.
+        const maxRetries = hasToken ? 5 : 1;
         const retryDelay = 1000; // 1 second between retries
         let result = null;
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-          // If we have a token, try to fetch config to verify it's valid
-          if (isAuthenticated()) {
-            result = await fetchConfig();
-            if (result) {
-              setAuthenticated(true);
-              break;
-            }
-          } else {
-            // No token, try to fetch config anyway (auth might be disabled)
-            result = await fetchConfig();
-            if (result) {
-              setAuthenticated(true);
-              break;
-            }
-          }
+          result = await fetchConfig();
+          if (result) break;
 
           // If we didn't succeed and there are retries left, wait before retrying
           if (attempt < maxRetries - 1) {
@@ -264,9 +253,7 @@ function App() {
         console.error("Error during auth check:", error);
         setAuthenticated(false);
       } finally {
-        // Always set these to false to exit loading state
         setCheckingAuth(false);
-        setLoading(false);
       }
     };
 
@@ -364,9 +351,7 @@ function App() {
    */
   const handleLoginSuccess = () => {
     setAuthenticated(true);
-    fetchConfig(true).then(() => {
-      setLoading(false);
-    });
+    fetchConfig(true);
   };
 
   /**
@@ -461,17 +446,26 @@ function App() {
     return "SignalCellular0Bar";
   };
 
-  // Show loading indicator while checking auth or loading initial config
-  if (loading || checkingAuth) {
-    return <LinearProgress color="inherit" />;
-  }
-
   return (
     <ThemeProvider theme={theme}>
       {/* Show saving progress bar at the top when saving */}
       {saving && (
         <LinearProgress
           color="primary"
+          sx={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1002,
+          }}
+        />
+      )}
+
+      {/* Show connection progress bar while we're determining auth/config */}
+      {checkingAuth && !saving && (
+        <LinearProgress
+          color="inherit"
           sx={{
             position: "fixed",
             top: 0,
@@ -505,31 +499,37 @@ function App() {
       </Container>
 
       {/* Settings Button Bar */}
-      <SettingsButtonBar
-        config={localConfig}
-        deviceOnline={deviceOnline}
-        saveConfig={updateLocalConfig}
-        saveConfigToDevice={saveConfigFromButton}
-        getRSSIColor={getRSSIColor}
-        getRSSIIcon={getRSSIIcon}
-        cameraEnabled={localConfig?.camera?.enabled || false}
-        getCameraColor={() =>
-          localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
-        }
-      />
-
-      <Container>
-        <Modules
+      <Suspense fallback={null}>
+        <SettingsButtonBar
           config={localConfig}
+          deviceOnline={deviceOnline}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
-          deviceOnline={deviceOnline}
+          getRSSIColor={getRSSIColor}
+          getRSSIIcon={getRSSIIcon}
+          cameraEnabled={localConfig?.camera?.enabled || false}
+          getCameraColor={() =>
+            localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
+          }
         />
+      </Suspense>
+
+      <Container>
+        <Suspense fallback={<LinearProgress color="inherit" />}>
+          <Modules
+            config={localConfig}
+            saveConfig={updateLocalConfig}
+            saveConfigToDevice={saveConfigFromButton}
+            deviceOnline={deviceOnline}
+          />
+        </Suspense>
       </Container>
 
       {/* Show login modal when not authenticated */}
       {!authenticated && !checkingAuth && (
-        <Login onLoginSuccess={handleLoginSuccess} />
+        <Suspense fallback={null}>
+          <Login onLoginSuccess={handleLoginSuccess} />
+        </Suspense>
       )}
     </ThemeProvider>
   );

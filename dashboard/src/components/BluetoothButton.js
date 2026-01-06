@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Fab, Tooltip, Badge } from "@mui/material";
-import {
-  Bluetooth as BluetoothIcon,
-  BluetoothDisabled as BluetoothDisabledIcon,
-  BluetoothSearching as BluetoothSearchingIcon,
-  BluetoothConnected as BluetoothConnectedIcon,
-} from "@mui/icons-material";
+import BluetoothIcon from "@mui/icons-material/Bluetooth";
+import BluetoothDisabledIcon from "@mui/icons-material/BluetoothDisabled";
+import BluetoothSearchingIcon from "@mui/icons-material/BluetoothSearching";
+import BluetoothConnectedIcon from "@mui/icons-material/BluetoothConnected";
 import BluetoothSettingsModal from "./BluetoothSettingsModal";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 

@@ -1,9 +1,9 @@
 import React from "react";
 import IButton from "./IButton";
 import DeleteButton from "./DeleteButton";
-import { RestartAlt } from "@mui/icons-material";
 import { Card, CardContent, Typography } from "@mui/material";
-import { Settings } from "@mui/icons-material";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import SettingsIcon from "@mui/icons-material/Settings";
 
 // Height in px for bottom controls (input/send + buttons)
 const BOTTOM_CONTROLS_HEIGHT = 88;
@@ -17,7 +17,7 @@ export default function Module({
   settingsTooltip = "Settings",
   deleteTooltip = "Delete",
   reconnectTooltip = "Reconnect",
-  reconnectIcon = RestartAlt,
+  reconnectIcon = RestartAltIcon,
   reconnectColor = "secondary",
   sx = {},
   bottomContent, // Add new prop
@@ -102,7 +102,7 @@ export default function Module({
                 onClick={onSettings}
                 tooltip={settingsTooltip}
                 tooltipPlacement="bottom"
-                Icon={Settings}
+                Icon={SettingsIcon}
                 disabled={settingsDisabled}
                 sx={{ pointerEvents: "auto" }}
               />

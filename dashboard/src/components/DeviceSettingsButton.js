@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import { Settings as SettingsIcon } from "@mui/icons-material";
+import SettingsIcon from "@mui/icons-material/Settings";
 import DeviceSettingsModal from "./DeviceSettingsModal";
 
 export default function DeviceSettingsButton({

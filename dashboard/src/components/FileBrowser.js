@@ -28,16 +28,14 @@ import {
 } from "@mui/material";
 import { getFetchOptions } from "../utils/apiUtils";
 import { getAuthHeader } from "../utils/authUtils";
-import {
-  Storage,
-  Upload,
-  Download,
-  Folder,
-  InsertDriveFile,
-  MoreVert,
-  Home,
-  Refresh,
-} from "@mui/icons-material";
+import StorageIcon from "@mui/icons-material/Storage";
+import UploadIcon from "@mui/icons-material/Upload";
+import DownloadIcon from "@mui/icons-material/Download";
+import FolderIcon from "@mui/icons-material/Folder";
+import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import HomeIcon from "@mui/icons-material/Home";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material";
 import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
 
@@ -823,7 +821,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
         underline="none"
       >
-        <Home fontSize="small" />
+        <HomeIcon fontSize="small" />
         Root
       </Link>,
     ];
@@ -906,7 +904,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           >
             {config?.sd?.initialized === true && (
               <ToggleButton value="sd">
-                <Storage sx={{ mr: 0.5 }} />
+                <StorageIcon sx={{ mr: 0.5 }} />
                 <Box sx={{ display: { xs: "none", sm: "inline" } }}>
                   SD Card
                 </Box>
@@ -914,7 +912,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               </ToggleButton>
             )}
             <ToggleButton value="lfs">
-              <Storage sx={{ mr: 0.5 }} />
+              <StorageIcon sx={{ mr: 0.5 }} />
               <Box sx={{ display: { xs: "none", sm: "inline" } }}>Device</Box>
               <Box sx={{ display: { xs: "inline", sm: "none" } }}>Int</Box>
             </ToggleButton>
@@ -923,7 +921,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
           <Button
             variant="contained"
             component="label"
-            startIcon={<Upload />}
+            startIcon={<UploadIcon />}
             disabled={loading || isUploading || isDownloading}
             size="small"
             sx={{
@@ -944,7 +942,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
 
           <Button
             variant="outlined"
-            startIcon={<Folder />}
+            startIcon={<FolderIcon />}
             onClick={() => setNewFolderDialog({ open: true, folderName: "" })}
             disabled={loading || isUploading || isDownloading}
             size="small"
@@ -965,7 +963,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
             size="small"
             sx={{ height: "32px", width: "32px" }}
           >
-            <Refresh />
+            <RefreshIcon />
           </IconButton>
         </Box>
 
@@ -1197,7 +1195,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                 }}
               >
                 <ListItemIcon>
-                  <Folder color="primary" />
+                  <FolderIcon color="primary" />
                 </ListItemIcon>
                 <ListItemText primary=".." />
               </ListItem>
@@ -1216,9 +1214,9 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               >
                 <ListItemIcon>
                   {file.isDirectory ? (
-                    <Folder color="primary" />
+                    <FolderIcon color="primary" />
                   ) : (
-                    <InsertDriveFile color="action" />
+                    <InsertDriveFileIcon color="action" />
                   )}
                 </ListItemIcon>
                 <ListItemText
@@ -1248,7 +1246,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
                       handleContextMenu(e, file);
                     }}
                   >
-                    <MoreVert />
+                    <MoreVertIcon />
                   </IconButton>
                 </ListItemSecondaryAction>
               </ListItem>
@@ -1292,7 +1290,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
               handleContextMenuClose();
             }}
           >
-            <Download sx={{ mr: 1 }} />
+            <DownloadIcon sx={{ mr: 1 }} />
             Download
           </MenuItem>
         )}

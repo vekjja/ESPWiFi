@@ -13,13 +13,11 @@ import {
   Collapse,
   TextField,
 } from "@mui/material";
-import {
-  Bluetooth as BluetoothIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Visibility as ReadIcon,
-  Edit as WriteIcon,
-} from "@mui/icons-material";
+import BluetoothIcon from "@mui/icons-material/Bluetooth";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ReadIcon from "@mui/icons-material/Visibility";
+import WriteIcon from "@mui/icons-material/Edit";
 import SettingsModal from "./SettingsModal";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 

@@ -9,13 +9,11 @@ import {
   ListItemButton,
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
-import {
-  Input as PinIcon,
-  Wifi as WebSocketIcon,
-  CameraAlt as CameraAltIcon,
-  Add as AddIcon,
-  Settings as SettingsIcon,
-} from "@mui/icons-material";
+import PinIcon from "@mui/icons-material/Input";
+import WebSocketIcon from "@mui/icons-material/Wifi";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import AddIcon from "@mui/icons-material/Add";
+import SettingsIcon from "@mui/icons-material/Settings";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import CameraSettingsModal from "./CameraSettingsModal";

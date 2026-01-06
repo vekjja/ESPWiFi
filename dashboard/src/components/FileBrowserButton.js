@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
-import { FolderOpen as FolderOpenIcon } from "@mui/icons-material";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import SettingsModal from "./SettingsModal";
 import FileBrowserComponent from "./FileBrowser";
 

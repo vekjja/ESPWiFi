@@ -16,15 +16,13 @@ import {
   Divider,
   Chip,
 } from "@mui/material";
-import {
-  ExpandMore as ExpandMoreIcon,
-  CameraAlt as CameraAltIcon,
-  Brightness6 as BrightnessIcon,
-  Contrast as ContrastIcon,
-  Timer as TimerIcon,
-  WbSunny as ExposureIcon,
-  Rotate90DegreesCcw as RotateIcon,
-} from "@mui/icons-material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import BrightnessIcon from "@mui/icons-material/Brightness6";
+import ContrastIcon from "@mui/icons-material/Contrast";
+import TimerIcon from "@mui/icons-material/Timer";
+import ExposureIcon from "@mui/icons-material/WbSunny";
+import RotateIcon from "@mui/icons-material/Rotate90DegreesCcw";
 import NoPhotographyIcon from "@mui/icons-material/NoPhotography";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";

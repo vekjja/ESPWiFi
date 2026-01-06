@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Typography, TextField, Button, Box } from "@mui/material";
-import { RestartAlt, Link, LinkOff } from "@mui/icons-material";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import LinkIcon from "@mui/icons-material/Link";
+import LinkOffIcon from "@mui/icons-material/LinkOff";
 import Module from "./Module";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import { buildWebSocketUrl } from "../utils/apiUtils";
@@ -282,13 +284,13 @@ export default function WebSocketModule({
   const getConnectionIcon = () => {
     switch (connectionStatus) {
       case "connected":
-        return Link;
+        return LinkIcon;
       case "connecting":
-        return RestartAlt;
+        return RestartAltIcon;
       case "error":
-        return LinkOff;
+        return LinkOffIcon;
       default:
-        return LinkOff;
+        return LinkOffIcon;
     }
   };
 

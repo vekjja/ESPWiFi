@@ -314,6 +314,14 @@ export default function CameraModule({
     }
   };
 
+  const handleDeleteModule = () => {
+    // Best-effort cleanup before removing the module
+    handleStopStream();
+    if (onDelete && moduleKey) {
+      onDelete(moduleKey);
+    }
+  };
+
   const handleFullscreen = () => {
     if (!isFullscreen) {
       // Enter fullscreen
@@ -473,6 +481,8 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
+        onDelete={onDelete ? handleDeleteModule : undefined}
+        deleteTooltip="Delete Camera"
         settingsDisabled={!deviceOnline}
         settingsTooltip={!deviceOnline ? "Device is offline" : "Settings"}
         errorOutline={!deviceOnline}

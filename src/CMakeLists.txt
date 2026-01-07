@@ -7,7 +7,7 @@ FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 set(COMPONENT_REQUIRES esp_http_server esp_https_server esp_netif esp_event nvs_flash app_update esp_littlefs mdns esp_psram)
 
 # Add Bluetooth dependencies only if A2DP is enabled
-if(CONFIG_BT_A2DP_ENABLE)
+if(CONFIG_BT_A2DP_ENABLE AND ESP_PLATFORM)
     list(APPEND COMPONENT_REQUIRES bt ESP32-A2DP arduino-audio-tools)
 endif()
 

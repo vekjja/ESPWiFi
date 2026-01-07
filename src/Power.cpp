@@ -108,14 +108,8 @@ void ESPWiFi::applyWiFiPowerSettings() {
       if (difference > 0.5) {
         log(WARNING,
             "🔋 WiFi Power: Applied power differs from requested by %.1f dBm "
-            "(hardware/regulatory/chip limitation)",
+            "(hardware limitation)",
             difference);
-      }
-
-      // Additional diagnostic info
-      if (actualPowerDbm < 19.0) {
-        log(INFO, "🔋\tNote: ESP32-C3 typical max is 18.5-21 dBm depending on "
-                  "modulation (MCS rate)");
       }
     } else {
       // Fallback if read fails

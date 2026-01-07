@@ -1,0 +1,63 @@
+# Common Configuration (shared across all boards)
+
+# Logging
+# Changed from DEBUG to INFO to reduce binary size
+# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
+
+# Secure Boot V2 (ECDSA preferred, RSA disabled)
+# CONFIG_SECURE_BOOT_SIGNING_KEY="secure_boot/ecdsa_signing_key.pem"
+# CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+# CONFIG_SECURE_BOOT_V2_ENABLED=y
+# CONFIG_SECURE_BOOT=y
+
+# Explicitly disable RSA for ECDSA
+# CONFIG_SECURE_BOOT_V2_RSA_ENABLED is not set
+# CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME is not set
+
+# Flash Encryption
+# CONFIG_SECURE_FLASH_ENC_ENABLED=n
+
+# Secure/Insecure Download Mode
+CONFIG_SECURE_INSECURE_ALLOW_DL_MODE=y
+CONFIG_SECURE_ROM_DL_MODE_ENABLED=y
+
+
+# -----------------------------------------------------------------------------
+# System event task (ESP-IDF)
+# -----------------------------------------------------------------------------
+#
+# ESP-IDF runs the "sys_evt" task for system/event loop callbacks (WiFi/BT/etc).
+# The default stack is too small for this project on ESP32-WROOM-32 class boards
+# and results in a reboot loop:
+#   "***ERROR*** A stack overflow in task sys_evt has been detected."
+#
+# Keep this reasonably sized; 4096 has been sufficient in practice.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# WiFi
+CONFIG_ESP32_WIFI_ENABLED=y
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+
+# mDNS
+CONFIG_MDNS_MAX_SERVICES=10
+CONFIG_MDNS_TASK_PRIORITY=1
+CONFIG_MDNS_TASK_STACK_SIZE=4096
+CONFIG_MDNS_TASK_AFFINITY_CPU0=y
+CONFIG_MDNS_SERVICE_ADD_TIMEOUT_MS=2000
+
+# LittleFS
+CONFIG_LITTLEFS_MAX_PARTITIONS=3
+CONFIG_LITTLEFS_OBJ_NAME_LEN=64
+CONFIG_LITTLEFS_PAGE_SIZE=256
+CONFIG_LITTLEFS_USE_MTIME=y
+
+# FATFS
+CONFIG_FATFS_LFN_NONE=n
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# WebSocket
+CONFIG_HTTPD_WS_SUPPORT=y
+
+

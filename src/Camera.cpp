@@ -20,21 +20,8 @@
  * @note WebSocket streaming requires CONFIG_HTTPD_WS_SUPPORT
  */
 
-// Only compile if camera is explicitly enabled AND a camera model is selected
-#if defined(ESPWiFi_CAMERA_INSTALLED) &&                                       \
-    (defined(CAMERA_MODEL_WROVER_KIT) || defined(CAMERA_MODEL_ESP_EYE) ||      \
-     defined(CAMERA_MODEL_M5STACK_PSRAM) ||                                    \
-     defined(CAMERA_MODEL_M5STACK_V2_PSRAM) ||                                 \
-     defined(CAMERA_MODEL_M5STACK_WIDE) ||                                     \
-     defined(CAMERA_MODEL_M5STACK_ESP32CAM) ||                                 \
-     defined(CAMERA_MODEL_M5STACK_UNITCAM) ||                                  \
-     defined(CAMERA_MODEL_AI_THINKER) ||                                       \
-     defined(CAMERA_MODEL_TTGO_T_JOURNAL) ||                                   \
-     defined(CAMERA_MODEL_XIAO_ESP32S3) ||                                     \
-     defined(CAMERA_MODEL_ESP32_CAM_BOARD) ||                                  \
-     defined(CAMERA_MODEL_ESP32S3_CAM_LCD) ||                                  \
-     defined(CAMERA_MODEL_ESP32S2_CAM_BOARD) ||                                \
-     defined(CAMERA_MODEL_ESP32S3_EYE))
+// Only compile if camera is explicitly enabled
+#if defined(ESPWiFi_CAMERA_INSTALLED)
 
 #include "ESPWiFi.h"
 #include "IntervalTimer.h"

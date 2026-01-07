@@ -10,6 +10,7 @@ node_modules/
 dashboard/public/config.json
 
 # Secure Boot
+*.key
 *.pem
 !*pub*.pem
 
@@ -26,5 +27,5 @@ __pycache__/
 *.pyzwzw
 
 # ESP-IDF
-sdkconfig*
-# managed_components/
+/sdkconfig.*
+managed_components/

@@ -12,5 +12,6 @@ extern "C" void app_main(void) {
   espwifi.start();
   while (1) {
     espwifi.runSystem();
+    espwifi.feedWatchDog();
   }
 }

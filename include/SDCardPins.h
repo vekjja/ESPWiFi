@@ -15,7 +15,7 @@
 // Seeed XIAO ESP32-S3 Sense microSD card slot (SPI)
 // CS=21, SCK=7 (D8), MISO=8 (D9), MOSI=9 (D10)
 // -----------------------------------------------------------------------------
-#if defined(SDCARD_MODEL_SEEED_XIAO_ESP32S3)
+#if defined(ESPWiFi_SDCARD_MODEL_SEEED_XIAO_ESP32S3)
 
 #define SDCARD_SPI_MISO_GPIO_NUM 8
 #define SDCARD_SPI_MOSI_GPIO_NUM 9

@@ -84,8 +84,8 @@ public:
   void initSDCard();
   void initLittleFS();
   void initFilesystem() {
-    initSDCard();
     initLittleFS();
+    initSDCard();
   }
   bool checkSDCard();
   void deinitSDCard();

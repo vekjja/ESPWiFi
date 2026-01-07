@@ -44,10 +44,6 @@ CONFIG_FATFS_LFN_NONE=n
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
 
-# Camera (esp32-camera component)
-# Needed when building with esp32-camera; harmless otherwise.
-CONFIG_SCCB_CLK_FREQ=100000
-
 # WebSocket
 CONFIG_HTTPD_WS_SUPPORT=y
 

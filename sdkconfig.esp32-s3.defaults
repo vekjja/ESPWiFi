@@ -18,6 +18,10 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/esp32-s3-camera.csv"
 CONFIG_ESP32S3_DEFAULT_CPU_FREQ_160=y
 # CONFIG_FREERTOS_UNICORE is not set
 
+# Camera (esp32-camera component)
+# Needed when building with esp32-camera; harmless otherwise.
+CONFIG_SCCB_CLK_FREQ=100000
+
 # PSRAM Configuration (ESP32-S3)
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y

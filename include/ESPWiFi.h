@@ -28,6 +28,10 @@
 #include "esp_a2dp_api.h"
 #endif
 
+// SDCard model selection helper. This is safe to include even when no SD card
+// model is selected (it will set ESPWiFi_SDCARD_MODEL_SELECTED=0 and pins=-1).
+#include "SDCardPins.h"
+
 // Camera model selection helper. This is safe to include even when no camera
 // model is selected (it will set ESPWiFi_CAMERA_MODEL_SELECTED=0 and pins=-1).
 #include "CameraPins.h"

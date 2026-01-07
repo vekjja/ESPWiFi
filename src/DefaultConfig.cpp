@@ -5,7 +5,6 @@
 
 JsonDocument ESPWiFi::defaultConfig() {
   JsonDocument doc;
-
   doc["deviceName"] = "ESPWiFi";
   doc["hostname"] = getHostname();
 
@@ -81,6 +80,14 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectedFiles"].add("/asset-manifest.json");
 
   doc["ota"]["enabled"] = isOTAEnabled();
+
+  // SD Card
+  doc["sd"]["initialized"] = false;
+#if ESPWiFi_HAS_SDCARD
+  doc["sd"]["enabled"] = true;
+#else
+  doc["sd"]["enabled"] = false;
+#endif
 
 // Camera
 #if ESPWiFi_HAS_CAMERA

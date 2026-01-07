@@ -3,15 +3,6 @@
 
 # kubectl create namespace espwifi-io
 
-# Install PostgreSQL using Helm with flags
-# helm upgrade --install psql bitnami/postgresql \
-#   --namespace "espwifi-io" \
-#   --create-namespace \
-#   --set primary.persistence.storageClass=local-path \
-#   --set primary.persistence.enabled=true \
-#   --set primary.persistence.size=10Gi \
-#   --set volumePermissions.enabled=true
-
 # Create a secret for the Docker registry
 # kubectl create secret docker-registry ghcr-secret \
 #   --namespace "espwifi-io" \
@@ -39,7 +30,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 # This section builds out the srvice account 
-# more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
+# https://kubernetes.io/docs/concepts/security/service-accounts/
 serviceAccount:
   create: true
   automount: true

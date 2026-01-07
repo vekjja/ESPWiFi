@@ -217,11 +217,6 @@ export default function WebSocketModule({
   };
 
   const handleDeleteSocket = () => {
-    onDelete(moduleKey);
-    handleCloseModal();
-  };
-
-  const handleDeleteModule = () => {
     // Best-effort cleanup before removing the module
     try {
       if (
@@ -236,6 +231,7 @@ export default function WebSocketModule({
     socketRef.current = null;
     connectionManager.delete(moduleKey);
     onDelete(moduleKey);
+    handleCloseModal();
   };
 
   const handleSaveSettings = () => {
@@ -343,8 +339,6 @@ export default function WebSocketModule({
       title={initialProps.name || "WebSocket" + moduleKey}
       onSettings={handleSettingsClick}
       settingsTooltip="WebSocket Settings"
-      onDelete={onDelete ? handleDeleteModule : undefined}
-      deleteTooltip="Delete WebSocket"
       onReconnect={
         connectionStatus === "connected" ? handleDisconnect : handleConnect
       }

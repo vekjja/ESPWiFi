@@ -216,11 +216,6 @@ export default function PinModule({
     handleClosePinModal();
   };
 
-  const handleDeleteModule = () => {
-    // Reuse the same delete flow as the settings modal (also updates the device)
-    updatePinState({}, "DELETE");
-  };
-
   useEffect(() => {
     if (duty < pinSettingsData.dutyMin)
       setDuty(Number(pinSettingsData.dutyMin));
@@ -258,8 +253,6 @@ export default function PinModule({
     <Module
       title={moduleTitle}
       onSettings={handleOpenPinModal}
-      onDelete={onDelete ? handleDeleteModule : undefined}
-      deleteTooltip="Delete Pin"
       settingsTooltip={
         remoteURL && remoteURL.trim()
           ? `Pin Settings (Remote: ${remoteURL})`

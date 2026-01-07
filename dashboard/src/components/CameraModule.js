@@ -481,8 +481,6 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
-        onDelete={onDelete ? handleDeleteModule : undefined}
-        deleteTooltip="Delete Camera"
         settingsDisabled={!deviceOnline}
         settingsTooltip={!deviceOnline ? "Device is offline" : "Settings"}
         errorOutline={!deviceOnline}
@@ -692,7 +690,7 @@ export default function CameraModule({
         open={settingsModalOpen}
         onClose={handleCloseSettings}
         onSave={handleSaveSettings}
-        onDelete={onDelete ? () => onDelete(moduleKey) : undefined}
+        onDelete={onDelete ? handleDeleteModule : undefined}
         cameraData={settingsData}
         onCameraDataChange={setSettingsData}
         config={globalConfig}

@@ -29,7 +29,7 @@
 // ESP32-2432S028R / "2.8 inch 240x320 smart display" microSD (SPI / VSPI)
 // MISO=19, MOSI=23, SCK=18, CS=5
 // -----------------------------------------------------------------------------
-#elif defined(SDCARD_MODEL_ESP32_2432S028R)
+#elif defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
 
 #define SDCARD_SPI_MISO_GPIO_NUM 19
 #define SDCARD_SPI_MOSI_GPIO_NUM 23

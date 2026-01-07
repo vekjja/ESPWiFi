@@ -42,7 +42,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["ble"]["passkey"] = 123456;
 
   // SD Card
-  doc["sd"]["enabled"] = false;
+  doc["sd"]["enabled"] = true;
 
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/espwifi.log";

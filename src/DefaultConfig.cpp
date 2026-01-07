@@ -41,9 +41,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["ble"]["enabled"] = true;
   doc["ble"]["passkey"] = 123456;
 
-  // SD Card
-  doc["sd"]["enabled"] = true;
-
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/espwifi.log";
   doc["log"]["level"] = "debug";
@@ -86,7 +83,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["ota"]["enabled"] = isOTAEnabled();
 
 // Camera
-#if defined(ESPWiFi_CAMERA_ENABLED)
+#if ESPWiFi_HAS_CAMERA
   doc["camera"]["installed"] = true;
   doc["camera"]["enabled"] = true;
   doc["camera"]["frameRate"] = 10;

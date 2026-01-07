@@ -1,5 +1,14 @@
+#pragma once
+
+// Camera pin mappings selected by ESPWiFi_CAMERA_MODEL_* compile definitions.
+// This header is safe to include even when no camera is selected.
+// - When a model is selected: ESPWiFi_CAMERA_MODEL_SELECTED = 1 and GPIO macros
+// are set
+// - When no model is selected: ESPWiFi_CAMERA_MODEL_SELECTED = 0 and GPIO
+// macros are set to -1
 
 #if defined(ESPWiFi_CAMERA_MODEL_WROVER_KIT)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 21
@@ -19,6 +28,7 @@
 #define PCLK_GPIO_NUM 22
 
 #elif defined(ESPWiFi_CAMERA_MODEL_ESP_EYE)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 4
@@ -40,6 +50,7 @@
 #define LED_GPIO_NUM 22
 
 #elif defined(ESPWiFi_CAMERA_MODEL_M5STACK_PSRAM)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -59,6 +70,7 @@
 #define PCLK_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_M5STACK_V2_PSRAM)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -78,6 +90,7 @@
 #define PCLK_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_M5STACK_WIDE)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -99,6 +112,7 @@
 #define LED_GPIO_NUM 2
 
 #elif defined(ESPWiFi_CAMERA_MODEL_M5STACK_ESP32CAM)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -118,6 +132,7 @@
 #define PCLK_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_M5STACK_UNITCAM)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -137,6 +152,7 @@
 #define PCLK_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_AI_THINKER)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -158,6 +174,7 @@
 #define LED_GPIO_NUM 33
 
 #elif defined(ESPWiFi_CAMERA_MODEL_TTGO_T_JOURNAL)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM 0
 #define RESET_GPIO_NUM 15
 #define XCLK_GPIO_NUM 27
@@ -177,6 +194,7 @@
 #define PCLK_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_XIAO_ESP32S3)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 10
@@ -198,6 +216,7 @@
 #define LED_GPIO_NUM 21
 
 #elif defined(ESPWiFi_CAMERA_MODEL_ESP32_CAM_BOARD)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 // The 18 pin header on the board has Y5 and Y3 swapped
 #define USE_BOARD_HEADER 0
 #define PWDN_GPIO_NUM 32
@@ -227,6 +246,7 @@
 #define PCLK_GPIO_NUM 25
 
 #elif defined(ESPWiFi_CAMERA_MODEL_ESP32S3_CAM_LCD)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 40
@@ -246,6 +266,7 @@
 #define PCLK_GPIO_NUM 11
 
 #elif defined(ESPWiFi_CAMERA_MODEL_ESP32S2_CAM_BOARD)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 // The 18 pin header on the board has Y5 and Y3 swapped
 #define USE_BOARD_HEADER 0
 #define PWDN_GPIO_NUM 1
@@ -275,6 +296,7 @@
 #define PCLK_GPIO_NUM 3
 
 #elif defined(ESPWiFi_CAMERA_MODEL_ESP32S3_EYE)
+#define ESPWiFi_CAMERA_MODEL_SELECTED 1
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 15
@@ -295,5 +317,30 @@
 #define PCLK_GPIO_NUM 13
 
 #else
-#error "Camera model not selected"
+#define ESPWiFi_CAMERA_MODEL_SELECTED 0
+#define PWDN_GPIO_NUM -1
+#define RESET_GPIO_NUM -1
+#define XCLK_GPIO_NUM -1
+#define SIOD_GPIO_NUM -1
+#define SIOC_GPIO_NUM -1
+#define Y9_GPIO_NUM -1
+#define Y8_GPIO_NUM -1
+#define Y7_GPIO_NUM -1
+#define Y6_GPIO_NUM -1
+#define Y5_GPIO_NUM -1
+#define Y4_GPIO_NUM -1
+#define Y3_GPIO_NUM -1
+#define Y2_GPIO_NUM -1
+#define VSYNC_GPIO_NUM -1
+#define HREF_GPIO_NUM -1
+#define PCLK_GPIO_NUM -1
+#define LED_GPIO_NUM -1
+#endif
+
+// Single helper macro for "camera feature compiled in?"
+// This avoids repeating `defined(...) && (...)` checks across the codebase.
+#if ESPWiFi_CAMERA_MODEL_SELECTED
+#define ESPWiFi_HAS_CAMERA 1
+#else
+#define ESPWiFi_HAS_CAMERA 0
 #endif

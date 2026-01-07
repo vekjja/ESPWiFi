@@ -15,15 +15,19 @@
  * - Mutex-protected concurrent access
  * - Watchdog-safe chunked transfers
  *
- * @note Camera functionality requires ESPWiFi_CAMERA_ENABLED build flag
- * @note Requires CAMERA_MODEL_* to be defined (e.g., CAMERA_MODEL_XIAO_ESP32S3)
+ * @note Camera functionality is built when a camera model is selected
+ *       (via ESPWiFi_CAMERA_MODEL_*; see `include/CameraPins.h`).
+ * @note Requires ESPWiFi_CAMERA_MODEL_* to be defined (e.g.,
+ *       ESPWiFi_CAMERA_MODEL_XIAO_ESP32S3)
  * @note WebSocket streaming requires CONFIG_HTTPD_WS_SUPPORT
  */
 
-// Only compile if camera is explicitly enabled
-#if defined(ESPWiFi_CAMERA_ENABLED)
-
+// Always include project header; it conditionally pulls in esp_camera only when
+// a camera model is selected, and defines ESPWiFi_HAS_CAMERA.
 #include "ESPWiFi.h"
+
+// Only compile when a camera model is selected
+#if ESPWiFi_HAS_CAMERA
 
 #include <CameraPins.h>
 #include <errno.h>
@@ -883,11 +887,9 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ret;
 }
 
-#else // No camera model defined or ESPWiFi_CAMERA_ENABLED not set
+#else // No camera model selected
 
 // Provide stub implementations when camera is disabled
-#include "ESPWiFi.h"
-
 bool ESPWiFi::initCamera() { return false; }
 void ESPWiFi::deinitCamera() {}
 void ESPWiFi::clearCameraBuffer() {}
@@ -900,7 +902,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ESP_ERR_NOT_SUPPORTED;
 }
 
-#endif // Camera model check
+#endif // ESPWiFi_HAS_CAMERA
 
 /**
  * @brief Configuration change handler for camera subsystem
@@ -917,7 +919,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
  * the HTTP API or startup sequence.
  */
 void ESPWiFi::cameraConfigHandler() {
-#ifdef ESPWiFi_CAMERA_ENABLED
+#if ESPWiFi_HAS_CAMERA
   if (!config["camera"]["installed"].as<bool>()) {
     return;
   }

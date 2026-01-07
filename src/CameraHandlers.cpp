@@ -7,12 +7,13 @@
  * lifecycle events. Follows ESP-IDF component architecture best practices.
  */
 
-#ifdef ESPWiFi_CAMERA_ENABLED
+#include "ESPWiFi.h"
+
+#if ESPWiFi_HAS_CAMERA
 
 #ifndef ESPWiFi_CAMERA_HANDLERS
 #define ESPWiFi_CAMERA_HANDLERS
 
-#include "ESPWiFi.h"
 #include "esp_camera.h"
 #include "esp_log.h"
 
@@ -239,11 +240,9 @@ void ESPWiFi::cameraErrorHandlerStatic(esp_err_t errorCode,
 
 #endif // ESPWiFi_CAMERA_HANDLERS
 
-#else // No camera model defined or ESPWiFi_CAMERA_ENABLED not set
+#else // No camera model selected
 
 // Provide stub implementations when camera is disabled
-#include "ESPWiFi.h"
-
 void ESPWiFi::cameraInitHandler(bool success, void *obj) {
   (void)success;
   (void)obj;
@@ -281,4 +280,4 @@ void ESPWiFi::cameraErrorHandlerStatic(esp_err_t errorCode,
   (void)obj;
 }
 
-#endif // Camera model check
+#endif // ESPWiFi_HAS_CAMERA

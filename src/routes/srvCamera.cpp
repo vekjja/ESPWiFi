@@ -11,17 +11,19 @@
  *
  * All routes require authentication and follow standard REST conventions.
  *
- * @note Requires ESPWiFi_CAMERA_ENABLED build flag
+ * @note Camera routes are built when a camera model is selected (via
+ *       ESPWiFi_CAMERA_MODEL_*; see `include/CameraPins.h`).
  * @note Requires ESPWiFi_CAMERA_MODEL_* to be defined (see
  * `include/CameraPins.h`)
  */
 
-#ifdef ESPWiFi_CAMERA_ENABLED
+#include "ESPWiFi.h"
+
+#if ESPWiFi_HAS_CAMERA
 
 #ifndef ESPWiFi_SRV_CAMERA
 #define ESPWiFi_SRV_CAMERA
 
-#include "ESPWiFi.h"
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
@@ -206,13 +208,11 @@ void ESPWiFi::srvCamera() {
 
 #endif // ESPWiFi_SRV_CAMERA
 
-#else // ESPWiFi_CAMERA_ENABLED not set
+#else // No camera model selected
 
 // Provide stub implementation when camera is disabled
-#include "ESPWiFi.h"
-
 void ESPWiFi::srvCamera() {
   // Camera not enabled - no routes registered
 }
 
-#endif // ESPWiFi_CAMERA_ENABLED
+#endif // ESPWiFi_HAS_CAMERA

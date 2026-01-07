@@ -28,7 +28,11 @@
 #include "esp_a2dp_api.h"
 #endif
 
-#ifdef ESPWiFi_CAMERA_ENABLED
+// Camera model selection helper. This is safe to include even when no camera
+// model is selected (it will set ESPWiFi_CAMERA_MODEL_SELECTED=0 and pins=-1).
+#include "CameraPins.h"
+
+#if ESPWiFi_HAS_CAMERA
 #include <esp_camera.h>
 #endif
 
@@ -331,7 +335,7 @@ public:
 
   // ---- Camera
   void srvCamera();
-#ifdef ESPWiFi_CAMERA_ENABLED
+#if ESPWiFi_HAS_CAMERA
   sensor_t *camera = nullptr;
   void printCameraSettings();
 #endif

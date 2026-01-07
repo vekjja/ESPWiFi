@@ -11,8 +11,17 @@ if(CONFIG_IDF_TARGET_ESP32 AND CONFIG_BT_A2DP_ENABLE)
     list(APPEND COMPONENT_REQUIRES bt ESP32-A2DP arduino-audio-tools)
 endif()
 
-# Add Camera dependencies if enabled
-if(ESPWiFi_CAMERA_ENABLED)
+# Add Camera dependencies when a camera model is selected (via -DESPWiFi_CAMERA_MODEL_*)
+set(ESPWiFi_HAS_CAMERA OFF)
+foreach(_flags_var IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
+    if(DEFINED ${_flags_var})
+        if("${${_flags_var}}" MATCHES "([\\s]|^)-DESPWiFi_CAMERA_MODEL_[A-Za-z0-9_]+")
+            set(ESPWiFi_HAS_CAMERA ON)
+        endif()
+    endif()
+endforeach()
+
+if(ESPWiFi_HAS_CAMERA)
     list(APPEND COMPONENT_REQUIRES esp32-camera)
 endif()
 

@@ -60,7 +60,8 @@ void ESPWiFi::readConfig() {
   // Print config summary instead of full pretty-printed config to reduce stack
   // usage Full config is available via /api/config endpoint
   if (configLoaded) {
-    log(INFO, "⚙️ Using Config (size: %zu bytes)", measureJson(config));
+    log(INFO, "⚙️ Config Read from LittleFS (size: %zu bytes)",
+        measureJson(config));
   } else {
     log(WARNING, "⚙️ Using Default Config");
   }
@@ -179,7 +180,6 @@ void ESPWiFi::saveConfig() {
 
   feedWatchDog(); // Yield after serialization
 
-  // Use atomic write to prevent corruption
   bool success = writeFile(configFile, (const uint8_t *)buffer, written);
   free(buffer);
 

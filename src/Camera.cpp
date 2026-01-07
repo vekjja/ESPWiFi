@@ -15,17 +15,15 @@
  * - Mutex-protected concurrent access
  * - Watchdog-safe chunked transfers
  *
- * @note Camera functionality requires ESPWiFi_CAMERA_INSTALLED build flag
+ * @note Camera functionality requires ESPWiFi_CAMERA_ENABLED build flag
  * @note Requires CAMERA_MODEL_* to be defined (e.g., CAMERA_MODEL_XIAO_ESP32S3)
  * @note WebSocket streaming requires CONFIG_HTTPD_WS_SUPPORT
  */
 
 // Only compile if camera is explicitly enabled
-#if defined(ESPWiFi_CAMERA_INSTALLED)
+#if defined(ESPWiFi_CAMERA_ENABLED)
 
 #include "ESPWiFi.h"
-#include "IntervalTimer.h"
-#include "WebSocket.h"
 
 #include <CameraPins.h>
 #include <errno.h>
@@ -50,13 +48,6 @@
 // ============================================================================
 // Camera Runtime State
 // ============================================================================
-
-// WebSocket instance is managed in srvCamera.cpp (where route registration
-// happens), but we need access to it here for streaming operations.
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-extern WebSocket camSoc;
-extern bool camSocStarted;
-#endif
 
 static SemaphoreHandle_t s_camMutex = nullptr; ///< Mutex for concurrent access
 
@@ -892,7 +883,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ret;
 }
 
-#else // No camera model defined or ESPWiFi_CAMERA_INSTALLED not set
+#else // No camera model defined or ESPWiFi_CAMERA_ENABLED not set
 
 // Provide stub implementations when camera is disabled
 #include "ESPWiFi.h"
@@ -926,7 +917,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
  * the HTTP API or startup sequence.
  */
 void ESPWiFi::cameraConfigHandler() {
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA_ENABLED
   if (!config["camera"]["installed"].as<bool>()) {
     return;
   }

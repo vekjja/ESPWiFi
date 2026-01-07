@@ -24,12 +24,14 @@
 #include <unistd.h>
 
 // ESP-IDF
-#ifdef CONFIG_BT_A2DP_ENABLE
+#ifdef ESPWiFi_BT_ENABLED
 #include "esp_a2dp_api.h"
 #endif
-#ifdef ESPWiFi_CAMERA_INSTALLED
+
+#ifdef ESPWiFi_CAMERA_ENABLED
 #include <esp_camera.h>
 #endif
+
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -46,6 +48,7 @@
 
 #include <ArduinoJson.h>
 #include <IntervalTimer.h>
+#include <WebSocket.h>
 
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
@@ -328,9 +331,14 @@ public:
 
   // ---- Camera
   void srvCamera();
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA_ENABLED
   sensor_t *camera = nullptr;
   void printCameraSettings();
+#endif
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+  WebSocket camSoc;
+  bool camSocStarted = false;
 #endif
 
   // Camera API (always declared; stubs compile when camera is disabled)

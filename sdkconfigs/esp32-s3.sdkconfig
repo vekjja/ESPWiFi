@@ -5,10 +5,6 @@
 # This file contains only ESP32-S3-specific settings.
 # Common settings are in sdkconfig.defaults and are loaded first.
 
-ESPWiFi_SDCARD_MODEL_SEEED_XIAO_ESP32S3
-CAMERA_MODEL_XIAO_ESP32S3
-ESPWiFi_CAMERA_INSTALLED
-
 # Main task stack (increased for camera + dual-core)
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 

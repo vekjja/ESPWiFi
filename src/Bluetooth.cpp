@@ -1,6 +1,6 @@
 
 #include "ESPWiFi.h"
-#ifdef CONFIG_BT_A2DP_ENABLE
+#ifdef ESPWiFi_BT_ENABLED
 
 #ifndef ESPWiFi_BLUETOOTH_H
 #define ESPWiFi_BLUETOOTH_H
@@ -92,4 +92,5 @@ void ESPWiFi::bluetoothConfigHandler() {
 
 #endif // ESPWiFi_BLUETOOTH_H
 
-#endif // CONFIG_BT_A2DP_ENABLE
+#endif // defined(ESP_PLATFORM) && defined(CONFIG_IDF_TARGET_ESP32) &&
+       // defined(CONFIG_BT_A2DP_ENABLE)

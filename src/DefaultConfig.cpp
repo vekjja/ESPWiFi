@@ -86,7 +86,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["ota"]["enabled"] = isOTAEnabled();
 
 // Camera
-#if defined(ESPWiFi_CAMERA_INSTALLED)
+#if defined(ESPWiFi_CAMERA_ENABLED)
   doc["camera"]["installed"] = true;
   doc["camera"]["enabled"] = true;
   doc["camera"]["frameRate"] = 10;

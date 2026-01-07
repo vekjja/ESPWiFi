@@ -1,6 +1,4 @@
 #include "ESPWiFi.h"
-// WebSocket not yet ported to ESP-IDF
-// #include "WebSocket.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

@@ -19,7 +19,7 @@ void ESPWiFi::runSystem() {
   handleConfigUpdate();
   checkSDCard();
   streamRSSI();
-#ifdef ESPWiFi_CAMERA_INSTALLED
+#ifdef ESPWiFi_CAMERA_ENABLED
   streamCamera();
 #endif
   feedWatchDog();

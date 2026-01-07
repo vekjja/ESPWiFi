@@ -21,7 +21,8 @@ export default function RSSISettingsModal({
     // Add a delay to allow the backend to start the RSSI service
     const connectTimeout = setTimeout(() => {
       // Construct WebSocket URL
-      const mdnsHostname = config?.deviceName;
+      // Prefer explicit hostname (usually DNS/mDNS-safe) over display name.
+      const mdnsHostname = config?.hostname || config?.deviceName;
       const wsUrl = buildWebSocketUrl("/ws/rssi", mdnsHostname);
 
       // Connect to RSSI WebSocket

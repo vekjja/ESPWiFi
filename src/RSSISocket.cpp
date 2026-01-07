@@ -1,7 +1,5 @@
 // RSSISocket.cpp - Stubbed for now
 #include "ESPWiFi.h"
-#include "IntervalTimer.h"
-#include "WebSocket.h"
 #include "esp_wifi.h"
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT

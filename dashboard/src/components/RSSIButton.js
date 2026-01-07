@@ -56,7 +56,9 @@ export default function RSSIButton({
       // Add a delay to allow the backend to start the RSSI service
       connectTimeoutRef.current = setTimeout(() => {
         // Construct WebSocket URL
-        const mdnsHostname = config?.deviceName;
+        // Prefer explicit hostname (usually DNS/mDNS-safe) over display name.
+        // e.g. deviceName may be "espWiFi" while hostname is "espwifi".
+        const mdnsHostname = config?.hostname || config?.deviceName;
         const wsUrl = buildWebSocketUrl("/ws/rssi", mdnsHostname);
 
         // Connect to RSSI WebSocket
@@ -178,7 +180,7 @@ export default function RSSIButton({
       }
       setRssiValue(null);
     }
-  }, [deviceOnline, config?.deviceName]);
+  }, [deviceOnline, config?.hostname, config?.deviceName]);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {

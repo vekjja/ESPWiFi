@@ -1,6 +1,6 @@
-#include "ESPWiFi.h"
 
-#ifdef CONFIG_BT_A2DP_ENABLE
+#include "ESPWiFi.h"
+#ifdef ESPWiFi_BT_ENABLED
 
 #ifndef ESPWiFi_BLUETOOTH_HANDLERS
 #define ESPWiFi_BLUETOOTH_HANDLERS

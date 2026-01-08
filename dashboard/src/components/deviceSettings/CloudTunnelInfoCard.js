@@ -18,6 +18,7 @@ import {
   FormControlLabel,
   IconButton,
   Switch,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -33,10 +34,13 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [tempEnabled, setTempEnabled] = useState(false);
+  const [tempMaxFps, setTempMaxFps] = useState(0);
 
   useEffect(() => {
     setTempEnabled(Boolean(config?.cloudTunnel?.enabled));
-  }, [config?.cloudTunnel?.enabled]);
+    const v = config?.cloudTunnel?.maxFps;
+    setTempMaxFps(typeof v === "number" ? v : parseInt(v || 0, 10) || 0);
+  }, [config?.cloudTunnel?.enabled, config?.cloudTunnel?.maxFps]);
 
   const info = deviceInfo?.cloudTunnel || {};
   const endpoints = info?.endpoints || {};
@@ -51,6 +55,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
       cloudTunnel: {
         ...(config?.cloudTunnel || {}),
         enabled: tempEnabled,
+        maxFps: Number.isFinite(tempMaxFps) ? tempMaxFps : 0,
       },
     };
     onSave(next);
@@ -59,6 +64,8 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
 
   const handleCancel = () => {
     setTempEnabled(Boolean(config?.cloudTunnel?.enabled));
+    const v = config?.cloudTunnel?.maxFps;
+    setTempMaxFps(typeof v === "number" ? v : parseInt(v || 0, 10) || 0);
     setIsEditing(false);
   };
 
@@ -110,6 +117,16 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         label="Base URL:"
         value={info?.baseUrl || config?.cloudTunnel?.baseUrl || "—"}
       />
+      {(info?.enabled || config?.cloudTunnel?.enabled) && (
+        <InfoRow
+          label="Max FPS (cloud-only):"
+          value={
+            (config?.cloudTunnel?.maxFps ?? info?.maxFps ?? 0) === 0
+              ? "No cap"
+              : String(config?.cloudTunnel?.maxFps ?? info?.maxFps)
+          }
+        />
+      )}
       {Object.keys(endpoints || {}).length > 0 && (
         <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 2 }}>
           {Object.entries(endpoints).map(([name, ep]) => {
@@ -206,6 +223,20 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         label="Enable Cloud Tunnel"
       />
 
+      <TextField
+        label="Max cloud FPS (camera)"
+        type="number"
+        size="small"
+        value={tempMaxFps}
+        disabled={!tempEnabled}
+        onChange={(e) => {
+          const n = parseInt(e.target.value || "0", 10);
+          setTempMaxFps(Number.isFinite(n) ? n : 0);
+        }}
+        helperText="Applies only when viewing camera via cloud tunnel with no LAN clients. 0 = no cap."
+        inputProps={{ min: 0, step: 1 }}
+      />
+
       <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
         <Button
           variant="outlined"
@@ -230,7 +261,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   return (
     <>
       <InfoCard
-        title="Cloud Tunnel"
+        title="Secure Cloud Tunnel"
         icon={CloudIcon}
         headerActions={
           <Tooltip title="What is Cloud Tunnel?">
@@ -253,13 +284,21 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>ESPWiFi.iO Cloud Tunnel</DialogTitle>
+        <DialogTitle>ESPWiFi Secure Cloud Tunnel</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary">
-            Cloud Tunnel keeps an outbound WebSocket connection from the device
-            to wss://tnl.espwifi.io cloud so the dashboard can reach the
-            device’s WebSocket endpoints over the public internet (no VPN or
-            port-forwarding required).
+          <Typography variant="h5" color="text.primary" align="center">
+            ESPWiFi Secure Cloud Tunnel keeps an outbound WebSocket connection
+            from the device to wss://tnl.espwifi.io Secure Cloud Tunnel server
+            so the dashboard can reach the device’s WebSocket endpoints over the
+            public internet (no VPN or port-forwarding required). This is a
+            secure and private connection and provides authentication and
+            encryption.
+          </Typography>
+          <Typography variant="h7" color="text.secondary" align="center">
+            The cloud tunnel server is hosted by ESPWiFi.io and is free to use.
+            It is not required to use the cloud tunnel, but it is recommended if
+            you want to access the device’s WebSocket endpoints over the public
+            internet.
           </Typography>
         </DialogContent>
         <DialogActions>

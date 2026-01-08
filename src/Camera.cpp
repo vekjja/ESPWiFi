@@ -614,9 +614,40 @@ void ESPWiFi::streamCamera() {
   // capture)
   const bool anyConsumer =
       (camSoc.numLanClients() > 0) || camSoc.cloudUIConnected();
+  static IntervalTimer noConsumerGrace(3000);
+  static bool noConsumerGraceArmed = false;
+  const int64_t nowUs0 = esp_timer_get_time();
   if (!anyConsumer) {
+    // If the camera was previously initialized (e.g., a client disconnected),
+    // deinit it after a short grace period to avoid cam_hal FB-OVF spam while
+    // idle.
+    if (camera != nullptr) {
+      // Start the grace period on the first no-consumer observation.
+      // We intentionally avoid calling shouldRunAt() on the first tick because
+      // IntervalTimer returns true when lastRunUs_ == 0.
+      if (!noConsumerGraceArmed) {
+        noConsumerGrace.resetAt(nowUs0);
+        noConsumerGraceArmed = true;
+        return;
+      }
+
+      // Once armed, deinit after the grace interval elapses.
+      if (noConsumerGrace.shouldRunAt(nowUs0)) {
+        log(INFO, "📷 No consumers; deinitializing camera to avoid overflow");
+        deinitCamera();
+        noConsumerGraceArmed = false;
+        noConsumerGrace.resetAt(nowUs0);
+      }
+    } else {
+      // Camera already off; reset the timer baseline.
+      noConsumerGraceArmed = false;
+      noConsumerGrace.resetAt(nowUs0);
+    }
     return;
   }
+  // Reset idle timer as soon as we have any consumer.
+  noConsumerGraceArmed = false;
+  noConsumerGrace.resetAt(nowUs0);
 
   // Ensure camera is initialized
   if (camera == nullptr) {
@@ -635,6 +666,26 @@ void ESPWiFi::streamCamera() {
     frameRate = CAM_MIN_FPS;
   if (frameRate > CAM_MAX_FPS)
     frameRate = CAM_MAX_FPS;
+
+  // Optional cloud-only FPS cap, configurable via cloudTunnel.maxFps.
+  // Applies only when cloud UI is attached and there are no LAN clients.
+  // 0 = disabled (no cap).
+  const bool cloudTunnelEnabled = !config["cloudTunnel"]["enabled"].isNull() &&
+                                  config["cloudTunnel"]["enabled"].as<bool>();
+  if (cloudTunnelEnabled && camSoc.numLanClients() == 0 &&
+      camSoc.cloudUIConnected()) {
+    int maxCloudFps = config["cloudTunnel"]["maxFps"].isNull()
+                          ? 0
+                          : config["cloudTunnel"]["maxFps"].as<int>();
+    if (maxCloudFps > 0) {
+      if (maxCloudFps < 1)
+        maxCloudFps = 1;
+      if (maxCloudFps > CAM_MAX_FPS)
+        maxCloudFps = CAM_MAX_FPS;
+      if (frameRate > maxCloudFps)
+        frameRate = maxCloudFps;
+    }
+  }
 
   const int intervalMs = 1000 / frameRate;
 
@@ -927,15 +978,22 @@ void ESPWiFi::cameraConfigHandler() {
     return;
   }
 
-  // Compare old (config) and new (configUpdate) values
-  // If a field is not in configUpdate, use current config value (no change)
-  bool oldEnabled = config["camera"]["enabled"].as<bool>();
-  bool newEnabled = configUpdate["camera"]["enabled"].isNull()
-                        ? oldEnabled
-                        : configUpdate["camera"]["enabled"].as<bool>();
+  // NOTE: handleConfigUpdate() calls this handler before it swaps
+  // `config = configUpdate`. For any immediate hardware actions (init/reinit),
+  // we must apply settings using the *new* config values in configUpdate.
+  // Keep a snapshot of the old config for comparisons, but temporarily swap
+  // config to configUpdate when applying.
+  JsonDocument oldCfg = config;
+  JsonVariantConst oldCam = oldCfg["camera"];
+  JsonVariantConst newCam = configUpdate["camera"];
+
+  bool oldEnabled = oldCam["enabled"].as<bool>();
+  bool newEnabled =
+      newCam["enabled"].isNull() ? oldEnabled : newCam["enabled"].as<bool>();
 
   // Check if any settings changed (only if they're present in configUpdate)
   bool settingsChanged = false;
+  bool needsReinit = false;
 
   // List of camera settings that trigger updateCameraSettings()
   const char *settingKeys[] = {"frameRate",      "rotation",   "brightness",
@@ -945,12 +1003,20 @@ void ESPWiFi::cameraConfigHandler() {
                                "white_balance",  "awb_gain",   "wb_mode"};
 
   for (const char *key : settingKeys) {
-    if (!configUpdate["camera"][key].isNull()) {
+    if (!newCam[key].isNull()) {
       // This setting is being updated, check if value actually changed
-      auto oldVal = config["camera"][key];
-      auto newVal = configUpdate["camera"][key];
+      auto oldVal = oldCam[key];
+      auto newVal = newCam[key];
       if (oldVal != newVal) {
         settingsChanged = true;
+
+        // Some settings are flaky/driver-dependent; for stability, we reinit
+        // the camera when these change. (Requested: rotation + exposure).
+        if (strcmp(key, "rotation") == 0 ||
+            strcmp(key, "exposure_level") == 0 ||
+            strcmp(key, "exposure_value") == 0) {
+          needsReinit = true;
+        }
         break;
       }
     }
@@ -963,12 +1029,25 @@ void ESPWiFi::cameraConfigHandler() {
       deinitCamera();
     } else {
       // log(INFO, "📷 Camera Enabled");
+      // Apply using the *new* config values (configUpdate).
+      config = configUpdate;
       initCamera();
-      // Apply settings immediately after init
       updateCameraSettings();
+      clearCameraBuffer();
+      config = oldCfg;
     }
   } else if (newEnabled && settingsChanged) {
-    log(INFO, "📷 Camera settings changed, applying updates");
+    // Apply using the *new* config values (configUpdate).
+    config = configUpdate;
+
+    if (needsReinit) {
+      log(INFO,
+          "📷 Camera settings changed (requires reinit), restarting camera");
+      deinitCamera();
+      initCamera();
+    } else {
+      log(INFO, "📷 Camera settings changed, applying updates");
+    }
 
     // Ensure camera is initialized before applying settings
     if (camera != nullptr) {
@@ -976,14 +1055,10 @@ void ESPWiFi::cameraConfigHandler() {
 
       // Clear frame buffer to avoid showing stale frames with old settings
       feedWatchDog(50); // Wait for sensor to apply settings
-      for (int i = 0; i < 3; i++) {
-        camera_fb_t *fb = esp_camera_fb_get();
-        if (fb) {
-          esp_camera_fb_return(fb);
-        }
-      }
+      clearCameraBuffer();
       log(DEBUG, "📷 Frame buffer cleared after settings update");
     }
+    config = oldCfg;
   }
 #endif
 }

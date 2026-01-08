@@ -67,6 +67,10 @@ void ESPWiFi::srvInfo() {
               espwifi->config["cloudTunnel"]["tunnelAll"].isNull()
                   ? false
                   : espwifi->config["cloudTunnel"]["tunnelAll"].as<bool>();
+          ct["maxFps"] =
+              espwifi->config["cloudTunnel"]["maxFps"].isNull()
+                  ? 0
+                  : espwifi->config["cloudTunnel"]["maxFps"].as<int>();
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
           JsonObject endpoints = ct["endpoints"].to<JsonObject>();

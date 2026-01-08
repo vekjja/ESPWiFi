@@ -224,7 +224,8 @@ export default function SettingsButtonBar({
   const availableButtons = useMemo(() => {
     const items = [];
     const wifiMode = config?.wifi?.mode || "client";
-    const rssiAvailable = wifiMode !== "accessPoint";
+    // Don't mount RSSIButton until we have config; it auto-connects a WS.
+    const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
 
     items.push({
       id: "deviceSettings",

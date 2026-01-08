@@ -101,7 +101,8 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(false);
+  const [networkEnabled, setNetworkEnabled] = useState(false);
 
   const apiURL = getApiUrl();
 
@@ -112,6 +113,21 @@ function App() {
   useEffect(() => {
     deviceOnlineRef.current = deviceOnline;
   }, [deviceOnline]);
+
+  // Defer any network activity until after the first paint, so the page loads cleanly.
+  useEffect(() => {
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setNetworkEnabled(true);
+      });
+    });
+    return () => {
+      if (raf2) window.cancelAnimationFrame(raf2);
+      if (raf1) window.cancelAnimationFrame(raf1);
+    };
+  }, []);
 
   /**
    * Helper to compare two config objects for equality
@@ -218,11 +234,19 @@ function App() {
     [apiURL, configsAreEqual]
   );
 
+  // Keep a stable reference so effects can depend only on networkEnabled and
+  // not re-run due to function identity changes.
+  const fetchConfigRef = useRef(fetchConfig);
+  useEffect(() => {
+    fetchConfigRef.current = fetchConfig;
+  }, [fetchConfig]);
+
   /**
    * Check authentication status on application mount
    * Includes retry logic for device restarts
    */
   useEffect(() => {
+    if (!networkEnabled) return;
     const checkAuth = async () => {
       setCheckingAuth(true);
 
@@ -236,7 +260,7 @@ function App() {
         let result = null;
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-          result = await fetchConfig();
+          result = await fetchConfigRef.current?.();
           if (result) break;
 
           // If we didn't succeed and there are retries left, wait before retrying
@@ -258,7 +282,7 @@ function App() {
     };
 
     checkAuth();
-  }, [fetchConfig]);
+  }, [networkEnabled]);
 
   /**
    * Set up polling for config updates when authenticated
@@ -266,7 +290,7 @@ function App() {
    */
   useEffect(() => {
     // Only start polling if authenticated
-    if (!authenticated) {
+    if (!networkEnabled || !authenticated) {
       return;
     }
 
@@ -290,7 +314,7 @@ function App() {
         }
 
         try {
-          const result = await fetchConfig();
+          const result = await fetchConfigRef.current?.();
 
           if (result) {
             consecutiveFailures = 0; // Reset failure count on success
@@ -343,7 +367,7 @@ function App() {
         clearTimeout(pollTimeout);
       }
     };
-  }, [fetchConfig, authenticated]);
+  }, [authenticated, networkEnabled]);
 
   /**
    * Handle successful login
@@ -351,7 +375,7 @@ function App() {
    */
   const handleLoginSuccess = () => {
     setAuthenticated(true);
-    fetchConfig(true);
+    fetchConfigRef.current?.(true);
   };
 
   /**

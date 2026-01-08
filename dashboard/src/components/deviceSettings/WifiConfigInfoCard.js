@@ -94,7 +94,7 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
       <Grid container spacing={2}>
         {(config?.wifi?.mode === "client" ||
           config?.wifi?.mode === "apsta") && (
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} md={6}>
             <InfoRow
               label="Client SSID:"
               value={config?.wifi?.client?.ssid || "Not configured"}
@@ -104,7 +104,7 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
         {(config?.wifi?.mode === "client" ||
           config?.wifi?.mode === "apsta") && (
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} md={6}>
             <InfoRow
               label="Client Password:"
               value={
@@ -120,14 +120,14 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
         {(config?.wifi?.mode === "accessPoint" ||
           config?.wifi?.mode === "apsta") && (
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} md={6}>
             <InfoRow label="AP SSID:" value={getApSsidDisplay()} />
           </Grid>
         )}
 
         {(config?.wifi?.mode === "accessPoint" ||
           config?.wifi?.mode === "apsta") && (
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} md={6}>
             <InfoRow
               label="AP Password:"
               value={
@@ -141,8 +141,8 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           </Grid>
         )}
 
-        {/* Show mode + signal under SSID/password block */}
-        <Grid item xs={12} sm={6} md={3}>
+        {/* Mode + signal on a row below (wider fields above for passwords) */}
+        <Grid item xs={12} md={6}>
           <InfoRow
             label="Mode:"
             value={
@@ -166,7 +166,7 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
         {(config?.wifi?.mode === "client" || config?.wifi?.mode === "apsta") &&
           isValidRssi(deviceInfo.rssi) && (
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} md={6}>
               <InfoRow
                 label="Signal Strength:"
                 value={

@@ -23,7 +23,7 @@
     "secure:status": "cd .. && espefuse --port /dev/cu.usbmodem101 summary || echo 'Secure boot enabled (cannot read eFuse)'",
     "secure:gen-key": "cd .. && espsecure generate-signing-key --version 2 --scheme ecdsa256 secure_boot/ecdsa_signing_key.pem",
     "secure:verify": "cd .. && esptool --chip esp32c3 --port /dev/cu.usbmodem101 chip_id",
-    "deploy:helm": "helm upgrade --install espwifi-io ../espwifi.io -f ../espwifi.io/values.yaml --namespace espwifi-io --create-namespace"
+    "helm:deploy": "helm upgrade --install espwifi-io ../espwifi.io -f ../espwifi.io/values.yaml --namespace espwifi-io --create-namespace"
   },
   "dependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",

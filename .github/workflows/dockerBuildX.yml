@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   build-and-push-image:
+    name: Docker BuildX
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -122,7 +123,7 @@ jobs:
     # Deploy on:
     # - push to dev branch, OR
     # - push of a dev-* tag (e.g. dev-abcdef0)
-    if: github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref_name, 'dev-'))
+    if: github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'dev-'))
     permissions:
       contents: write
     steps:

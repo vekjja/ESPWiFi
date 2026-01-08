@@ -43,7 +43,7 @@ export const getApiUrl = () => {
  */
 export const getWebSocketUrl = (mdnsHostname = null) => {
   const hasForcedApiHost = Boolean(process.env.REACT_APP_API_HOST);
-  const protocol = normalizeProtocol(
+  let protocol = normalizeProtocol(
     process.env.REACT_APP_WS_PROTOCOL ||
       // If we're explicitly pointing at a device host, default to WS (not WSS)
       // even when the dashboard is served over HTTPS.
@@ -53,6 +53,11 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
         ? "wss:"
         : "ws:")
   );
+  // Browsers block ws:// from https:// pages. If we're on https, force wss://
+  // to avoid Mixed Content / SecurityError spam.
+  if (window.location.protocol === "https:" && protocol === "ws:") {
+    protocol = "wss:";
+  }
 
   // If an API host is explicitly forced, prefer it over any passed hostname.
   // This keeps WS behavior consistent with HTTP requests when the dashboard is

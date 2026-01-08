@@ -124,26 +124,65 @@ struct ParsedIdfLine {
 //   return true;
 // }
 
-static const char *espwifiIconForIdfTag(const std::string &tag) {
-  // Keep this small and cheap: string comparisons are fine at these rates.
-  if (tag == "wifi" || tag == "net80211" || tag == "wifi_init" ||
-      tag == "esp_netif_handlers" || tag == "phy_init" || tag == "pp") {
+// static const char *espwifiIconForIdfTag(const std::string &tag) {
+//   // Keep this small and cheap: string comparisons are fine at these rates.
+//   if (tag == "wifi" || tag == "net80211" || tag == "wifi_init" ||
+//       tag == "esp_netif_handlers" || tag == "phy_init" || tag == "pp") {
+//     return "📶";
+//   }
+//   if (tag == "httpd" || tag == "httpd_txrx" || tag == "httpd_uri") {
+//     return "🗄️";
+//   }
+//   if (tag == "mdns" || tag == "mdns_mem") {
+//     return "🏷️";
+//   }
+//   if (tag == "cam_hal" || tag == "camera" || tag == "esp_camera" ||
+//       tag == "s3 ll_cam" || tag == "sccb-ng" || tag == "ov3660") {
+//     return "📷";
+//   }
+//   if (tag == "BTDM_INIT" || tag == "BT" || tag == "NimBLE" || tag ==
+//   "nimble") {
+//     return "🔵";
+//   }
+//   if (tag == "SPI") {
+//     return "🔵";
+//   }
+//   return "";
+// }
+
+static inline bool tagEquals(const char *tag, size_t tagLen, const char *lit) {
+  const size_t litLen = std::strlen(lit);
+  if (tagLen != litLen) {
+    return false;
+  }
+  return std::memcmp(tag, lit, tagLen) == 0;
+}
+
+static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
+  if (tag == nullptr || tagLen == 0) {
+    return "";
+  }
+  if (tagEquals(tag, tagLen, "wifi") || tagEquals(tag, tagLen, "net80211") ||
+      tagEquals(tag, tagLen, "wifi_init") ||
+      tagEquals(tag, tagLen, "esp_netif_handlers") ||
+      tagEquals(tag, tagLen, "phy_init") || tagEquals(tag, tagLen, "pp")) {
     return "📶";
   }
-  if (tag == "httpd" || tag == "httpd_txrx" || tag == "httpd_uri") {
+  if (tagEquals(tag, tagLen, "httpd") || tagEquals(tag, tagLen, "httpd_txrx") ||
+      tagEquals(tag, tagLen, "httpd_uri")) {
     return "🗄️";
   }
-  if (tag == "mdns" || tag == "mdns_mem") {
+  if (tagEquals(tag, tagLen, "mdns") || tagEquals(tag, tagLen, "mdns_mem")) {
     return "🏷️";
   }
-  if (tag == "cam_hal" || tag == "camera" || tag == "esp_camera" ||
-      tag == "s3 ll_cam" || tag == "sccb-ng" || tag == "ov3660") {
+  if (tagEquals(tag, tagLen, "cam_hal") || tagEquals(tag, tagLen, "camera") ||
+      tagEquals(tag, tagLen, "esp_camera") ||
+      tagEquals(tag, tagLen, "s3 ll_cam") ||
+      tagEquals(tag, tagLen, "sccb-ng") || tagEquals(tag, tagLen, "ov3660")) {
     return "📷";
   }
-  if (tag == "BTDM_INIT" || tag == "BT" || tag == "NimBLE" || tag == "nimble") {
-    return "🔵";
-  }
-  if (tag == "SPI") {
+  if (tagEquals(tag, tagLen, "BTDM_INIT") || tagEquals(tag, tagLen, "BT") ||
+      tagEquals(tag, tagLen, "NimBLE") || tagEquals(tag, tagLen, "nimble")) {
     return "🔵";
   }
   return "";
@@ -217,11 +256,33 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
       s_lastIdfLevel = lvl;
 
       if (espwifi->shouldLog(lvl)) {
+        // Extract ESP-IDF tag for icon mapping:
+        // [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' ...
+        const char *icon = "";
+        if (p != nullptr) {
+          const char *closeParen = std::strstr(p, ") ");
+          if (closeParen != nullptr) {
+            const char *tagStart = closeParen + 2;
+            const char *colon = std::strchr(tagStart, ':');
+            if (colon != nullptr && colon > tagStart) {
+              icon = espwifiIconForIdfTagView(tagStart,
+                                              (size_t)(colon - tagStart));
+            }
+          }
+        }
+
         // NOTE: Keep this concatenation minimal. We accept that the IDF line
         // already includes its own timestamp/tag; we just prepend our own.
-        std::string out = espwifi->timestamp() +
-                          espwifi->logLevelToString(lvl) + " " +
-                          std::string(line, len);
+        std::string out;
+        out.reserve(64 + len);
+        out.append(espwifi->timestamp());
+        out.append(espwifi->logLevelToString(lvl));
+        out.push_back(' ');
+        if (icon[0] != '\0') {
+          out.append(icon);
+          out.push_back(' ');
+        }
+        out.append(line, len);
         if (!hasNl) {
           out.push_back('\n');
         }

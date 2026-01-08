@@ -223,6 +223,8 @@ export default function SettingsButtonBar({
    */
   const availableButtons = useMemo(() => {
     const items = [];
+    const wifiMode = config?.wifi?.mode || "client";
+    const rssiAvailable = wifiMode !== "accessPoint";
 
     items.push({
       id: "deviceSettings",
@@ -235,19 +237,21 @@ export default function SettingsButtonBar({
       ),
     });
 
-    items.push({
-      id: "rssi",
-      render: () => (
-        <RSSIButton
-          config={config}
-          deviceOnline={deviceOnline}
-          saveConfig={saveConfig}
-          saveConfigToDevice={saveConfigToDevice}
-          getRSSIColor={getRSSIColor}
-          getRSSIIcon={getRSSIIcon}
-        />
-      ),
-    });
+    if (rssiAvailable) {
+      items.push({
+        id: "rssi",
+        render: () => (
+          <RSSIButton
+            config={config}
+            deviceOnline={deviceOnline}
+            saveConfig={saveConfig}
+            saveConfigToDevice={saveConfigToDevice}
+            getRSSIColor={getRSSIColor}
+            getRSSIIcon={getRSSIIcon}
+          />
+        ),
+      });
+    }
 
     if (config && config?.bluetooth?.installed !== false) {
       items.push({

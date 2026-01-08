@@ -44,7 +44,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
   const [tempWifiMode, setTempWifiMode] = useState("client");
   const [tempClientSsid, setTempClientSsid] = useState("");
   const [tempClientPassword, setTempClientPassword] = useState("");
-  const [tempApSsid, setTempApSsid] = useState("");
   const [tempApPassword, setTempApPassword] = useState("");
   const [showClientPassword, setShowClientPassword] = useState(false);
   const [showApPassword, setShowApPassword] = useState(false);
@@ -54,10 +53,12 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
       setTempWifiMode(config.wifi?.mode || "client");
       setTempClientSsid(config.wifi?.client?.ssid || "");
       setTempClientPassword(config.wifi?.client?.password || "");
-      setTempApSsid(config.wifi?.accessPoint?.ssid || "");
       setTempApPassword(config.wifi?.accessPoint?.password || "");
     }
   }, [config]);
+
+  const getApSsidDisplay = () =>
+    config?.wifi?.accessPoint?.ssid || "Not configured";
 
   const handleSave = () => {
     const wifiConfig = {
@@ -69,7 +70,8 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           password: tempClientPassword,
         },
         accessPoint: {
-          ssid: tempApSsid || `ESP-${config?.deviceName || "WiFi"}`,
+          // AP SSID is derived from hostname; don't make it user-editable here.
+          ...(config?.wifi?.accessPoint || {}),
           password: tempApPassword,
         },
       },
@@ -82,7 +84,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
     setTempWifiMode(config?.wifi?.mode || "client");
     setTempClientSsid(config?.wifi?.client?.ssid || "");
     setTempClientPassword(config?.wifi?.client?.password || "");
-    setTempApSsid(config?.wifi?.accessPoint?.ssid || "");
     setTempApPassword(config?.wifi?.accessPoint?.password || "");
     setIsEditing(false);
   };
@@ -103,17 +104,7 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
         {(config?.wifi?.mode === "accessPoint" ||
           config?.wifi?.mode === "apsta") && (
           <Grid item xs={12} sm={6} md={3}>
-            <InfoRow
-              label="AP SSID:"
-              value={
-                deviceInfo?.ap_ssid ||
-                (config?.wifi?.accessPoint?.ssid
-                  ? `${config.wifi.accessPoint.ssid}-${
-                      config.deviceName || "espwifi"
-                    }`
-                  : "Not configured")
-              }
-            />
+            <InfoRow label="AP SSID:" value={getApSsidDisplay()} />
           </Grid>
         )}
 
@@ -260,11 +251,10 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           <TextField
             fullWidth
             size="small"
-            label="AP SSID Prefix"
-            value={tempApSsid}
-            onChange={(e) => setTempApSsid(e.target.value)}
-            placeholder="ESP"
-            helperText="Device name will be appended automatically"
+            label="AP SSID"
+            value={getApSsidDisplay()}
+            disabled
+            helperText="Derived from hostname (not editable)"
           />
           <TextField
             fullWidth

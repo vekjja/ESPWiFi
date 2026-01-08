@@ -60,4 +60,14 @@ CONFIG_FATFS_MAX_LFN=255
 # WebSocket
 CONFIG_HTTPD_WS_SUPPORT=y
 
+# -----------------------------------------------------------------------------
+# lwIP / TCPIP task stack
+# -----------------------------------------------------------------------------
+#
+# The lwIP tcpip thread can have a relatively small stack by default. Since we
+# install an ESP-IDF log capture hook (vprintf) that may run in networking
+# contexts, give the tcpip task a bit more headroom to avoid stack overflows
+# during high log volume (DHCP, sockets, etc).
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
+
 

@@ -10,8 +10,8 @@
 #   --docker-username=vekjja \
 #   --docker-password=${GITHUB_CR_PAT}
 
-# Declare variables to be passed into your templates.
-#  helm upgrade --install espwifi-io ./helm -f ./helm/values.yaml \
+# Deploy the chart using values
+#  helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
 #    --namespace espwifi-io \
 #    --create-namespace
 

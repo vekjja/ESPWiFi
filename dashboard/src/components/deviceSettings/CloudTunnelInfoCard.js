@@ -29,6 +29,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
 import MaskedValueField from "../common/MaskedValueField";
+import { safeGetItem } from "../../utils/storageUtils";
 
 export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -90,7 +91,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
     if (cfgTok && String(cfgTok).trim() !== "") {
       return String(cfgTok).trim();
     }
-    const t = localStorage.getItem("espwifi_auth_token") || "";
+    const t = safeGetItem("espwifi_auth_token") || "";
     return t && t !== "null" && t !== "undefined" ? t : "";
   }, [config?.auth?.token]);
 

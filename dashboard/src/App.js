@@ -105,6 +105,7 @@ function App() {
   const [networkEnabled, setNetworkEnabled] = useState(false);
 
   const apiURL = getApiUrl();
+  const headerRef = useRef(null);
 
   // Use ref for fetch locking to avoid race conditions with async state updates
   const isFetchingConfigRef = useRef(false);
@@ -113,6 +114,45 @@ function App() {
   useEffect(() => {
     deviceOnlineRef.current = deviceOnline;
   }, [deviceOnline]);
+
+  // Measure header height and expose as CSS var to avoid brittle vh math on mobile.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+
+    const setVar = () => {
+      const h = el.getBoundingClientRect?.().height || el.offsetHeight || 0;
+      const px = Math.max(0, Math.round(h));
+      document.documentElement.style.setProperty(
+        "--app-header-height",
+        `${px}px`
+      );
+    };
+
+    setVar();
+
+    let ro = null;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(() => setVar());
+      try {
+        ro.observe(el);
+      } catch {
+        // ignore
+      }
+    }
+
+    window.addEventListener("resize", setVar, { passive: true });
+    return () => {
+      window.removeEventListener("resize", setVar);
+      if (ro) {
+        try {
+          ro.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
 
   // Defer any network activity until after the first paint, so the page loads cleanly.
   useEffect(() => {
@@ -505,12 +545,14 @@ function App() {
       )}
 
       <Container
+        ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
           backgroundColor: deviceOnline ? "secondary.light" : "error.main",
           color: deviceOnline ? "primary.main" : "white",
           fontSize: "3em",
-          height: "9vh",
+          // Prefer measured height (CSS var) but keep a fallback for first paint.
+          height: "var(--app-header-height, 9vh)",
           zIndex: 1000,
           textAlign: "center",
           display: "flex",

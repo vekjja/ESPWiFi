@@ -2,6 +2,8 @@
  * Authentication utilities for managing tokens and auth state
  */
 
+import { safeGetItem, safeRemoveItem, safeSetItem } from "./storageUtils";
+
 const TOKEN_KEY = "espwifi_auth_token";
 
 /**
@@ -9,7 +11,7 @@ const TOKEN_KEY = "espwifi_auth_token";
  * @returns {string|null} The authentication token or null if not found
  */
 export const getAuthToken = () => {
-  return localStorage.getItem(TOKEN_KEY);
+  return safeGetItem(TOKEN_KEY);
 };
 
 /**
@@ -18,9 +20,9 @@ export const getAuthToken = () => {
  */
 export const setAuthToken = (token) => {
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
+    safeSetItem(TOKEN_KEY, token);
   } else {
-    localStorage.removeItem(TOKEN_KEY);
+    safeRemoveItem(TOKEN_KEY);
   }
 };
 
@@ -36,7 +38,7 @@ export const isAuthenticated = () => {
  * Clear authentication token (logout)
  */
 export const clearAuthToken = () => {
-  localStorage.removeItem(TOKEN_KEY);
+  safeRemoveItem(TOKEN_KEY);
 };
 
 /**

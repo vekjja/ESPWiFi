@@ -479,7 +479,7 @@ export default function SettingsButtonBar({
       elevation={2}
       sx={{
         position: "sticky",
-        top: "9vh", // Below the header
+        top: "var(--app-header-height, 9vh)", // Below the header (mobile-safe)
         zIndex: 1000,
         backgroundColor: "background.paper",
         borderRadius: 0,

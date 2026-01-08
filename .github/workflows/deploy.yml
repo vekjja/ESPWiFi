@@ -1,0 +1,95 @@
+name: Deploy (helm upgrade)
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Image tag to deploy"
+        required: true
+        type: string
+      deploy_dashboard:
+        description: "Whether to update dashboard image tag"
+        required: true
+        type: boolean
+      deploy_cloudtunnel:
+        description: "Whether to update cloudTunnel image tag"
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  helm-deploy:
+    name: Deploy (helm upgrade)
+    runs-on: ubuntu-latest
+    if: inputs.deploy_dashboard || inputs.deploy_cloudtunnel
+    permissions:
+      contents: write
+    steps:
+      # IMPORTANT: for tag-triggered runs, actions/checkout defaults to detached HEAD.
+      # We want to update values.yaml on main, so explicitly checkout main.
+      - name: GitHub Checkout (main)
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.kube"
+          echo "${{ secrets.KUBECONFIG }}" > "${HOME}/.kube/config"
+          chmod 600 "${HOME}/.kube/config"
+
+      - name: Helm upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+
+          SET_ARGS=()
+          if [[ "${{ inputs.deploy_dashboard }}" == "true" ]]; then
+            SET_ARGS+=(--set "image.tag=${TAG}")
+          fi
+          if [[ "${{ inputs.deploy_cloudtunnel }}" == "true" ]]; then
+            SET_ARGS+=(--set "cloudTunnel.image.tag=${TAG}")
+          fi
+
+          helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
+            --namespace espwifi-io --create-namespace \
+            "${SET_ARGS[@]}"
+
+      - name: Update espwifi.io/values.yaml (record deployed tag)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+
+          if [[ "${{ inputs.deploy_dashboard }}" == "true" ]]; then
+            # Dashboard image tag
+            perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          fi
+
+          if [[ "${{ inputs.deploy_cloudtunnel }}" == "true" ]]; then
+            # CloudTunnel image tag
+            perl -0777 -i -pe "s/(^cloudTunnel:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          fi
+
+      - name: Commit updated espwifi.io/values.yaml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add espwifi.io/values.yaml
+          git commit -m "chore(helm): record deployed tag ${{ inputs.tag }} [skip ci]" || exit 0
+          git push origin main
+

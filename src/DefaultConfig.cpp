@@ -91,6 +91,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["cloudTunnel"]["enabled"] = false;
   doc["cloudTunnel"]["baseUrl"] = "wss://tnl.espwifi.io";
   doc["cloudTunnel"]["tunnelAll"] = true;
+  // Max FPS to use when streaming camera over the cloud tunnel (applies only
+  // when a cloud UI is attached and there are no LAN clients).
+  // 0 = no cap (use camera.frameRate as-is).
+  doc["cloudTunnel"]["maxFps"] = 0;
   doc["cloudTunnel"]["uris"] = JsonArray();
 
 // SD Card

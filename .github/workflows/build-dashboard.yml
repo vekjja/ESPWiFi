@@ -1,0 +1,144 @@
+name: Build dashboard image
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "**"
+  pull_request:
+    branches:
+      - main
+      - dev
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  changes:
+    name: Detect changes (dashboard)
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.out.outputs.should_build }}
+    steps:
+      - name: GitHub Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Paths filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            dashboard:
+              - 'dashboard/Dockerfile'
+              - 'dashboard/package.json'
+              - 'dashboard/package-lock.json'
+              - 'dashboard/yarn.lock'
+              - 'dashboard/src/**'
+              - 'dashboard/public/**'
+
+      - name: Set outputs
+        id: out
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=${{ steps.filter.outputs.dashboard }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  vars:
+    name: Compute tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - name: Compute tag
+        id: vars
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${REF_NAME}"
+          else
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    name: Build & push (dashboard)
+    runs-on: ubuntu-latest
+    needs: [changes, vars]
+    if: github.actor != 'github-actions[bot]' && needs.changes.outputs.should_build == 'true'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: GitHub Checkout
+        uses: actions/checkout@v3
+
+      - name: Docker Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Docker Set up Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Docker Login
+        # For PRs from forks, secrets are not available; only login/push for same-repo PRs.
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Docker Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/vekjja/espwifi
+          tags: |
+            type=raw,value=${{ needs.vars.outputs.tag }}
+            type=raw,value=development,enable=${{ github.ref_name == 'dev' }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: ./dashboard
+          file: ./dashboard/Dockerfile
+          build-args: |
+            REACT_APP_API_HOST=espwifi.local
+            REACT_APP_API_PORT=80
+            REACT_APP_API_PROTOCOL=http:
+            REACT_APP_WS_PROTOCOL=ws:
+          pull: true
+          no-cache: true
+          push: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (dashboard)
+    needs: [changes, vars, build-and-push]
+    if: github.event_name == 'push' && needs.changes.outputs.should_build == 'true' && (github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/'))
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
+    with:
+      tag: ${{ needs.vars.outputs.tag }}
+      deploy_dashboard: true
+      deploy_cloudtunnel: false
+

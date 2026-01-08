@@ -75,6 +75,12 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
  * @returns {string} The full API URL
  */
 export const buildApiUrl = (path, mdnsHostname = null) => {
+  // If an API host is explicitly forced, always use it (even if a caller passes
+  // an mDNS hostname). This keeps behavior consistent across the app.
+  if (process.env.REACT_APP_API_HOST) {
+    return `${getApiUrl()}${path}`;
+  }
+
   // If mDNS hostname is provided, use it with port 80
   if (mdnsHostname) {
     const protocol = normalizeProtocol(

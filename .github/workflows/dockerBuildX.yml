@@ -45,23 +45,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}
 
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
-          # Build the dashboard image (and leverage dashboard/.dockerignore)
-          context: ./dashboard
-          # NOTE: build-push-action resolves `file:` relative to the repo root,
-          # not relative to `context:`, so this must include the dashboard path.
-          file: ./dashboard/Dockerfile
-          # These are baked into the React bundle at build time (CRA).
-          # They make the UI served from espwifi.io call the device at espwifi.local.
-          build-args: |
-            REACT_APP_API_HOST=espwifi.local
-            REACT_APP_API_PORT=80
-            REACT_APP_API_PROTOCOL=http:
-            REACT_APP_WS_PROTOCOL=ws:
+          context: ${{ matrix.context }}
+          # NOTE: build-push-action resolves `file:` relative to the repo root.
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
           pull: true
           no-cache: true
           push: true
@@ -71,3 +63,26 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+    strategy:
+      matrix:
+        include:
+          # Dashboard UI
+          - name: dashboard
+            context: ./dashboard
+            dockerfile: ./dashboard/Dockerfile
+            image_suffix: ""
+            # These are baked into the React bundle at build time (CRA).
+            # They make the UI served from espwifi.io call the device at espwifi.local.
+            build_args: |
+              REACT_APP_API_HOST=espwifi.local
+              REACT_APP_API_PORT=80
+              REACT_APP_API_PROTOCOL=http:
+              REACT_APP_WS_PROTOCOL=ws:
+
+          # Cloud tunnel broker
+          - name: cloudtunnel
+            context: ./cloudTunnel
+            dockerfile: ./cloudTunnel/Dockerfile
+            image_suffix: "-cloudtunnel"
+            build_args: ""

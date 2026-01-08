@@ -73,6 +73,38 @@ ingress:
     hosts:
     - espwifi.io
 
+# CloudTunnel broker (tnl.espwifi.io)
+cloudTunnel:
+  enabled: true
+
+  image:
+    repository: ghcr.io/vekjja/espwifi-cloudtunnel
+    pullPolicy: Always
+    tag: "development"
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "cloudflare-letsencrypt-production"
+      external-dns.alpha.kubernetes.io/hostname: tnl.espwifi.io
+      external-dns.alpha.kubernetes.io/target: "174.44.105.210"
+    hosts:
+    - host: tnl.espwifi.io
+      paths:
+      - path: /
+        pathType: Prefix
+    tls:
+    - secretName: tnl.espwifi.io-tls
+      hosts:
+      - tnl.espwifi.io
+
+  resources: {}
+
 resources: {}
   # limits:
   #   cpu: 100m

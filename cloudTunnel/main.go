@@ -45,6 +45,10 @@ type deviceConn struct {
 	uiMu sync.Mutex
 	ui   *websocket.Conn
 
+	// Device-provided auth token (used to authorize UI connections).
+	// Typically this is the device's auth.token so the UI can connect securely.
+	uiToken string
+
 	// Closed when device is torn down.
 	closed chan struct{}
 }
@@ -107,6 +111,10 @@ func (h *hub) snapshot(publicBase string) []deviceInfo {
 type server struct {
 	h *hub
 
+	// Optional global auth gates (kept for backwards compatibility).
+	// If unset, the device can still provide its own per-device token at
+	// registration time (?token=... / Authorization: Bearer ...), which is then
+	// required for UI websocket connections.
 	deviceAuthToken string
 	uiAuthToken     string
 
@@ -246,11 +254,16 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture per-device UI token (device provides it during registration).
+	// This is used to authorize /ws/ui connections for this device.
+	deviceProvidedToken := extractToken(r)
+
 	dc := &deviceConn{
 		id:          makeKey(deviceID, tunnel),
 		ws:          conn,
 		connectedAt: time.Now().UTC(),
 		closed:      make(chan struct{}),
+		uiToken:     deviceProvidedToken,
 	}
 	dc.lastSeen.Store(time.Now().UTC().UnixNano())
 
@@ -275,6 +288,9 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			"tunnel":       tunnel,
 			"ui_ws_url":    ui,
 			"device_ws_url": dev,
+			// Hint for clients: UI must present the token the device provided when
+			// connecting to the tunnel (typically auth.token).
+			"ui_token_required": dc.uiToken != "",
 		}))
 	}
 
@@ -357,6 +373,16 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	if dc == nil {
 		http.Error(w, "device offline", http.StatusNotFound)
 		return
+	}
+
+	// Per-device UI token gate: if the device provided a token at registration,
+	// require the UI to present the same token (?token=... or Bearer ...).
+	if dc.uiToken != "" {
+		got := extractToken(r)
+		if subtle.ConstantTimeCompare([]byte(got), []byte(dc.uiToken)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	uiConn, err := s.upgrader.Upgrade(w, r, nil)
@@ -555,6 +581,23 @@ func authOK(r *http.Request, token string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+func extractToken(r *http.Request) string {
+	// Supports either:
+	// - Authorization: Bearer <token>
+	// - ?token=<token>
+	got := ""
+	if ah := r.Header.Get("Authorization"); ah != "" {
+		const pfx = "Bearer "
+		if strings.HasPrefix(ah, pfx) {
+			got = strings.TrimSpace(strings.TrimPrefix(ah, pfx))
+		}
+	}
+	if got == "" {
+		got = r.URL.Query().Get("token")
+	}
+	return got
 }
 
 func mustJSON(v any) []byte {

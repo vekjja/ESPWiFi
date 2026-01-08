@@ -362,7 +362,7 @@ export default function CameraModule({
   };
 
   const handleSnapshot = async () => {
-    const mdnsHostname = globalConfig?.deviceName;
+    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
     const baseUrl = buildApiUrl("/api/camera/snapshot", mdnsHostname);
     const snapshotUrl = `${baseUrl}?save=true`; // Always save to SD
 

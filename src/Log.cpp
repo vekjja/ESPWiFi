@@ -56,72 +56,73 @@ struct ParsedIdfLine {
   std::string body; // may be empty for tag-only lines like "I (123) wifi:"
 };
 
-static ParsedIdfLine parseIdfLogLine(const char *line) {
-  ParsedIdfLine out;
-  if (line == nullptr) {
-    return out;
-  }
+// static ParsedIdfLine parseIdfLogLine(const char *line) {
+//   ParsedIdfLine out;
+//   if (line == nullptr) {
+//     return out;
+//   }
 
-  const char *p = skipAnsiAndWhitespace(line);
-  if (p == nullptr) {
-    return out;
-  }
+//   const char *p = skipAnsiAndWhitespace(line);
+//   if (p == nullptr) {
+//     return out;
+//   }
 
-  // Expect: [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' [ ' ' <body> ]
-  const char lvl = *p;
-  if (!(lvl == 'E' || lvl == 'W' || lvl == 'I' || lvl == 'D' || lvl == 'V')) {
-    return out;
-  }
-  out.isIdf = true;
-  switch (lvl) {
-  case 'E':
-    out.level = ERROR;
-    break;
-  case 'W':
-    out.level = WARNING;
-    break;
-  case 'I':
-    out.level = DEBUG;
-    break;
-  case 'D':
-    out.level = DEBUG;
-    break;
-  case 'V':
-    out.level = VERBOSE;
-    break;
-  default:
-    out.level = DEBUG;
-    break;
-  }
+//   // Expect: [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' [ ' ' <body> ]
+//   const char lvl = *p;
+//   if (!(lvl == 'E' || lvl == 'W' || lvl == 'I' || lvl == 'D' || lvl == 'V'))
+//   {
+//     return out;
+//   }
+//   out.isIdf = true;
+//   switch (lvl) {
+//   case 'E':
+//     out.level = ERROR;
+//     break;
+//   case 'W':
+//     out.level = WARNING;
+//     break;
+//   case 'I':
+//     out.level = DEBUG;
+//     break;
+//   case 'D':
+//     out.level = DEBUG;
+//     break;
+//   case 'V':
+//     out.level = VERBOSE;
+//     break;
+//   default:
+//     out.level = DEBUG;
+//     break;
+//   }
 
-  const char *closeParen = std::strstr(p, ") ");
-  if (closeParen == nullptr) {
-    return out;
-  }
+//   const char *closeParen = std::strstr(p, ") ");
+//   if (closeParen == nullptr) {
+//     return out;
+//   }
 
-  const char *tagStart = closeParen + 2;
-  const char *colon = std::strchr(tagStart, ':');
-  if (colon != nullptr && colon > tagStart) {
-    out.tag.assign(tagStart, (size_t)(colon - tagStart));
-    const char *body = colon + 1;
-    if (*body == ' ') {
-      ++body;
-    }
-    if (*body != '\0' && *body != '\n') {
-      out.body.assign(body);
-    }
-  }
-  return out;
-}
+//   const char *tagStart = closeParen + 2;
+//   const char *colon = std::strchr(tagStart, ':');
+//   if (colon != nullptr && colon > tagStart) {
+//     out.tag.assign(tagStart, (size_t)(colon - tagStart));
+//     const char *body = colon + 1;
+//     if (*body == ' ') {
+//       ++body;
+//     }
+//     if (*body != '\0' && *body != '\n') {
+//       out.body.assign(body);
+//     }
+//   }
+//   return out;
+// }
 
-static bool isAllWhitespace(const std::string &s) {
-  for (char c : s) {
-    if (!(c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
-      return false;
-    }
-  }
-  return true;
-}
+// static bool isAllWhitespace(const std::string &s) {
+//   for (char c : s) {
+//     if (!(c == ' ' || c == '\t' || c == '\r' || c == '\n')) {
+//       return false;
+//     }
+//   }
+//   return true;
+// }
 
 static const char *espwifiIconForIdfTag(const std::string &tag) {
   // Keep this small and cheap: string comparisons are fine at these rates.
@@ -170,9 +171,14 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
   }
 
   // Best-effort capture: format the final log line and append it to the file.
-  // Keep this bounded and avoid allocations/printf recursion.
+  //
+  // CRITICAL: This hook can run in small-stack system tasks (e.g. lwIP/tcpip).
+  // Keep stack usage and allocations minimal to avoid stack overflows when
+  // network events (DHCP, etc) log.
   s_inEspLogHook = true;
-  char line[768];
+  // Keep this small: bigger buffers here have caused stack overflows in
+  // networking tasks. Truncation is acceptable for file capture.
+  char line[256];
   {
     va_list argsCopy;
     va_copy(argsCopy, args);
@@ -180,60 +186,46 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
     va_end(argsCopy);
 
     if (n > 0) {
-      // vsnprintf always NUL-terminates (when size > 0). If truncated, we just
-      // capture what we have.
-      //
-      // NOTE: We intentionally avoid calling ESPWiFi::logImpl() here because it
-      // uses printf(), which would recurse back into this hook.
-      std::string msg(line);
-      if (!msg.empty() && msg.back() != '\n') {
-        msg.push_back('\n');
-      }
-      // infer the ESP-IDF level from the formatted line (usually begins with
-      // E/W/I/D/V) Add espwifi timestamp + level tag.
-      // Avoid logImpl()/printf recursion.
-      ParsedIdfLine parsed = parseIdfLogLine(msg.c_str());
-      const LogLevel lvl = parsed.isIdf ? parsed.level : s_lastIdfLevel;
-      std::string idfTag = parsed.tag;
-      if (!idfTag.empty()) {
-        s_lastIdfTag = idfTag;
-        s_lastIdfLevel = lvl;
-      } else {
-        idfTag =
-            s_lastIdfTag; // best-effort tag inheritance for continuation lines
-      }
+      // Ensure newline termination (best effort).
+      const size_t len = strnlen(line, sizeof(line));
+      const bool hasNl = (len > 0 && line[len - 1] == '\n');
 
-      std::string body = parsed.isIdf ? parsed.body : msg;
-      if (parsed.isIdf && body.empty()) {
-        // Drop tag-only lines like "I (xxxx) wifi:"; the subsequent
-        // continuation lines will inherit the tag.
-        s_inEspLogHook = false;
-        return ret;
+      // Infer log level from the formatted line prefix. Avoid allocations.
+      LogLevel lvl = s_lastIdfLevel;
+      const char *p = skipAnsiAndWhitespace(line);
+      if (p != nullptr) {
+        switch (*p) {
+        case 'E':
+          lvl = ERROR;
+          break;
+        case 'W':
+          lvl = WARNING;
+          break;
+        case 'I':
+          lvl = DEBUG;
+          break;
+        case 'D':
+          lvl = DEBUG;
+          break;
+        case 'V':
+          lvl = VERBOSE;
+          break;
+        default:
+          break;
+        }
       }
-      // Drop standalone whitespace-only prints (often just "\n") to avoid
-      // spammy blank lines with inherited tags.
-      if (isAllWhitespace(body)) {
-        s_inEspLogHook = false;
-        return ret;
-      }
-      if (!body.empty() && body.back() != '\n') {
-        body.push_back('\n');
-      }
+      s_lastIdfLevel = lvl;
 
       if (espwifi->shouldLog(lvl)) {
-        const char *icon = idfTag.empty() ? "" : espwifiIconForIdfTag(idfTag);
-        if (icon[0] != '\0') {
-          espwifi->writeLog(espwifi->timestamp() +
-                            espwifi->logLevelToString(lvl) + " " + icon + " " +
-                            body);
-        } else if (!idfTag.empty()) {
-          espwifi->writeLog(espwifi->timestamp() +
-                            espwifi->logLevelToString(lvl) + " (" + idfTag +
-                            ") " + body);
-        } else {
-          espwifi->writeLog(espwifi->timestamp() +
-                            espwifi->logLevelToString(lvl) + " " + body);
+        // NOTE: Keep this concatenation minimal. We accept that the IDF line
+        // already includes its own timestamp/tag; we just prepend our own.
+        std::string out = espwifi->timestamp() +
+                          espwifi->logLevelToString(lvl) + " " +
+                          std::string(line, len);
+        if (!hasNl) {
+          out.push_back('\n');
         }
+        espwifi->writeLog(out);
       }
     }
   }

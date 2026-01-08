@@ -54,11 +54,15 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
         : "ws:")
   );
 
+  // If an API host is explicitly forced, prefer it over any passed hostname.
+  // This keeps WS behavior consistent with HTTP requests when the dashboard is
+  // served from a different origin (e.g. espwifi.io).
+  const forcedHost = process.env.REACT_APP_API_HOST;
+
   // Use provided hostname as-is (do NOT force ".local"; firmware may not run mDNS
   // and callers may already pass a full hostname like "espwifi.local").
   // Otherwise use environment variables, falling back to the current page host.
-  const hostname =
-    mdnsHostname || process.env.REACT_APP_API_HOST || window.location.hostname;
+  const hostname = forcedHost || mdnsHostname || window.location.hostname;
   const port = process.env.REACT_APP_API_PORT || 80;
 
   return `${protocol}//${hostname}:${port}`;

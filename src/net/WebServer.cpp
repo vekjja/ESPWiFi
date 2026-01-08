@@ -191,8 +191,6 @@ void ESPWiFi::startWebServer() {
                         return ESP_OK;
                       });
 
-  // srvAll();
-
   webServerStarted = true;
   log(INFO, "🗄️ %s Web Server started", tlsServerEnabled_ ? "HTTPS" : "HTTP");
   const char *scheme = tlsServerEnabled_ ? "https" : "http";

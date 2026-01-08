@@ -112,7 +112,7 @@ void ESPWiFi::startClient() {
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
-  setHostname(config["deviceName"].as<std::string>());
+  setHostname(genHostname());
 
   wifi_config_t wifi_config = {};
   strncpy((char *)wifi_config.sta.ssid, ssid.c_str(),
@@ -383,7 +383,7 @@ void ESPWiFi::startAP() {
   assert(ap_netif);
   current_netif = ap_netif;
 
-  setHostname(config["deviceName"].as<std::string>());
+  setHostname(genHostname());
 
   wifi_init_config_t cfg_wifi = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg_wifi));
@@ -458,28 +458,62 @@ std::string ESPWiFi::ipAddress() {
 }
 
 std::string ESPWiFi::getHostname() {
-  // Attempt to get hostname from network interface
+  std::string hostname;
+
+  // // Attempt to get hostname from network interface
   if (current_netif != nullptr) {
     const char *hostname_ptr = nullptr;
     esp_err_t err = esp_netif_get_hostname(current_netif, &hostname_ptr);
     if (err == ESP_OK && hostname_ptr != nullptr && strlen(hostname_ptr) > 0) {
-      config["hostname"] = std::string(hostname_ptr);
-      return std::string(hostname_ptr);
+      hostname = std::string(hostname_ptr);
+      config["hostname"] = hostname;
     }
   }
 
-  // Fallback: "espwifi-XXXXXX" where XXXXXX is last 6 hex digits of MAC
+  // // "deviceName-XXXXXX" where XXXXXX is last 6 hex digits of MAC
+  // uint8_t mac[6];
+  // esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  // if (ret == ESP_OK) {
+  //   char macSuffix[7];
+  //   snprintf(macSuffix, sizeof(macSuffix), "%02x%02x%02x", mac[3], mac[4],
+  //            mac[5]);
+  //   hostname =
+  //       config["deviceName"].as<std::string>() + "-" +
+  //       std::string(macSuffix);
+  //   config["hostname"] = hostname;
+  //   return hostname;
+  // }
+
+  return hostname;
+}
+
+std::string ESPWiFi::genHostname() {
+  // // Attempt to get hostname from network interface
+  // if (current_netif != nullptr) {
+  //   const char *hostname_ptr = nullptr;
+  //   esp_err_t err = esp_netif_get_hostname(current_netif, &hostname_ptr);
+  //   if (err == ESP_OK && hostname_ptr != nullptr && strlen(hostname_ptr) > 0)
+  //   {
+  //     config["hostname"] = std::string(hostname_ptr);
+  //     return std::string(hostname_ptr);
+  //   }
+  // }
+
+  std::string hostname;
+  // "deviceName-XXXXXX" where XXXXXX is last 6 hex digits of MAC
   uint8_t mac[6];
   esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
   if (ret == ESP_OK) {
     char macSuffix[7];
     snprintf(macSuffix, sizeof(macSuffix), "%02x%02x%02x", mac[3], mac[4],
              mac[5]);
-    config["hostname"] = "espwifi-" + std::string(macSuffix);
-    return "espwifi-" + std::string(macSuffix);
+    hostname =
+        config["deviceName"].as<std::string>() + "-" + std::string(macSuffix);
+    config["hostname"] = hostname;
+    return hostname;
   }
 
-  return "espwifi-000000";
+  return hostname;
 }
 
 void ESPWiFi::setHostname(std::string hostname) {

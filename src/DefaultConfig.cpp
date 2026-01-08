@@ -81,6 +81,18 @@ JsonDocument ESPWiFi::defaultConfig() {
 
   doc["ota"]["enabled"] = isOTAEnabled();
 
+  // CloudTunnel (WebSocket cloud tunneling)
+  // - enabled: global enable switch
+  // - baseUrl: ws(s) base URL of the tunnel broker (e.g.
+  // "wss://tnl.espwifi.io")
+  // - tunnelAll: if true, all websocket URIs are tunneled
+  // - uris: optional allowlist of websocket URIs to tunnel (e.g.
+  // ["/ws/camera"])
+  doc["cloudTunnel"]["enabled"] = false;
+  doc["cloudTunnel"]["baseUrl"] = "wss://tnl.espwifi.io";
+  doc["cloudTunnel"]["tunnelAll"] = true;
+  doc["cloudTunnel"]["uris"] = JsonArray();
+
 // SD Card
 #if ESPWiFi_HAS_SDCARD
   doc["sd"]["installed"] = true;

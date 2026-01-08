@@ -3,6 +3,7 @@
 #include <ESPWiFi.h>
 
 #include <arpa/inet.h>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <memory>
@@ -10,6 +11,11 @@
 #include <new>
 #include <string>
 #include <sys/socket.h>
+
+#include "esp_websocket_client.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #include "esp_timer.h"
 
@@ -19,6 +25,147 @@ struct WebSocket::BroadcastJob {
   size_t len;
   // payload bytes follow
 };
+
+// -------------------------
+// Cloud tunnel helpers
+// -------------------------
+
+static size_t safeCopy(char *dst, size_t dstLen, const char *src) {
+  if (dst == nullptr || dstLen == 0) {
+    return 0;
+  }
+  dst[0] = '\0';
+  if (src == nullptr) {
+    return 0;
+  }
+  size_t i = 0;
+  for (; i + 1 < dstLen && src[i] != '\0'; i++) {
+    dst[i] = src[i];
+  }
+  dst[i] = '\0';
+  return i;
+}
+
+static size_t safeAppend(char *dst, size_t dstLen, const char *src) {
+  if (dst == nullptr || dstLen == 0) {
+    return 0;
+  }
+  if (src == nullptr || src[0] == '\0') {
+    return strlen(dst);
+  }
+  size_t di = strnlen(dst, dstLen);
+  if (di >= dstLen) {
+    // Not NUL-terminated (shouldn't happen); force terminate.
+    dst[dstLen - 1] = '\0';
+    return dstLen - 1;
+  }
+  size_t si = 0;
+  while (di + 1 < dstLen && src[si] != '\0') {
+    dst[di++] = src[si++];
+  }
+  dst[di] = '\0';
+  return di;
+}
+
+static bool isUnreservedUrlChar(char c) {
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9')) {
+    return true;
+  }
+  return (c == '-' || c == '_' || c == '.' || c == '~');
+}
+
+static size_t urlEncode(const char *in, char *out, size_t outLen) {
+  if (out == nullptr || outLen == 0) {
+    return 0;
+  }
+  out[0] = '\0';
+  if (in == nullptr) {
+    return 0;
+  }
+  static const char *hex = "0123456789ABCDEF";
+  size_t oi = 0;
+  for (size_t i = 0; in[i] != '\0'; i++) {
+    const unsigned char c = (unsigned char)in[i];
+    if (isUnreservedUrlChar((char)c)) {
+      if (oi + 1 >= outLen) {
+        break;
+      }
+      out[oi++] = (char)c;
+    } else {
+      if (oi + 3 >= outLen) {
+        break;
+      }
+      out[oi++] = '%';
+      out[oi++] = hex[c >> 4];
+      out[oi++] = hex[c & 0x0F];
+    }
+  }
+  out[oi] = '\0';
+  return oi;
+}
+
+static void deriveTunnelKeyFromUri(const char *uri, char *out, size_t outLen) {
+  if (out == nullptr || outLen == 0) {
+    return;
+  }
+  out[0] = '\0';
+  if (uri == nullptr) {
+    return;
+  }
+  // Example: "/ws/camera" -> "ws_camera"
+  size_t oi = 0;
+  for (size_t i = 0; uri[i] != '\0' && oi + 1 < outLen; i++) {
+    const char c = uri[i];
+    if (c == '/') {
+      // skip leading '/', but translate internal '/' to '_'
+      if (i == 0) {
+        continue;
+      }
+      out[oi++] = '_';
+    } else if (std::isalnum((unsigned char)c) || c == '-' || c == '_' ||
+               c == '.') {
+      out[oi++] = (char)std::tolower((unsigned char)c);
+    } else {
+      // replace any weird chars with '_'
+      out[oi++] = '_';
+    }
+  }
+  out[oi] = '\0';
+}
+
+esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
+                                     const uint8_t *payload, size_t len) {
+  if (!cloudTunnelConnected_ || !cloudTunnelEnabled_) {
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (payload == nullptr && len > 0) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  // Lock around client handle usage so stop/destroy can't race send.
+  SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
+  if (mu) {
+    (void)xSemaphoreTake(mu, pdMS_TO_TICKS(25));
+  }
+  esp_websocket_client_handle_t c = (esp_websocket_client_handle_t)cloudClient_;
+  const bool connected = (c != nullptr) && esp_websocket_client_is_connected(c);
+  int sent = -1;
+  if (connected) {
+    const int timeoutMs = 0; // never block in broadcast path
+    if (type == HTTPD_WS_TYPE_TEXT) {
+      sent = esp_websocket_client_send_text(c, (const char *)payload, (int)len,
+                                            timeoutMs);
+    } else {
+      sent = esp_websocket_client_send_bin(c, (const char *)payload, (int)len,
+                                           timeoutMs);
+    }
+  }
+  if (mu) {
+    (void)xSemaphoreGive(mu);
+  }
+  return (sent >= 0) ? ESP_OK : ESP_FAIL;
+}
 
 void WebSocket::getRemoteInfo_(int fd, char *outIp, size_t outIpLen,
                                uint16_t *outPort) {
@@ -287,6 +434,15 @@ void WebSocket::broadcastNow_(httpd_ws_type_t type, const uint8_t *payload,
     }
     ++i;
   }
+
+  // Also forward broadcasts to the cloud tunnel if enabled/connected.
+  if (cloudTunnelEnabled_ && cloudTunnelConnected_) {
+    // Keep payload bounded using the existing maxBroadcastLen_ enforcement at
+    // the call-sites (textAll/binaryAll). This is a last line of defense.
+    if (len <= maxBroadcastLen_) {
+      (void)cloudSendFrame_(type, payload, len);
+    }
+  }
 #else
   (void)type;
   (void)payload;
@@ -295,6 +451,7 @@ void WebSocket::broadcastNow_(httpd_ws_type_t type, const uint8_t *payload,
 }
 
 WebSocket::~WebSocket() {
+  stopCloudTunnel_();
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   if (started_ && espWifi_ != nullptr && espWifi_->webServer != nullptr &&
       uri_[0] != '\0') {
@@ -369,8 +526,354 @@ bool WebSocket::begin(const char *uri, ESPWiFi *espWifi, OnMessageCb onMessage,
 
   started_ = true;
   espWifi_->log(INFO, "🕸️ WebSocket Started: %s", uri_);
+
+  // Optional: auto-configure cloud tunnel from ESPWiFi config.
+  applyCloudTunnelConfigFromESPWiFi_();
   return true;
 #endif
+}
+
+void WebSocket::setCloudTunnelEnabled(bool enabled) {
+  if (!enabled) {
+    cloudTunnelEnabled_ = false;
+    stopCloudTunnel_();
+    return;
+  }
+  cloudTunnelEnabled_ = true;
+  startCloudTunnelTask_();
+}
+
+void WebSocket::configureCloudTunnel(const char *baseUrl, const char *deviceId,
+                                     const char *token, const char *tunnelKey) {
+  safeCopy(cloudBaseUrl_, sizeof(cloudBaseUrl_), baseUrl ? baseUrl : "");
+  if (deviceId != nullptr && deviceId[0] != '\0') {
+    safeCopy(cloudDeviceId_, sizeof(cloudDeviceId_), deviceId);
+  } else {
+    // Use hostname as stable device id.
+    if (espWifi_ != nullptr) {
+      const std::string h = espWifi_->getHostname();
+      safeCopy(cloudDeviceId_, sizeof(cloudDeviceId_), h.c_str());
+    } else {
+      cloudDeviceId_[0] = '\0';
+    }
+  }
+  safeCopy(cloudToken_, sizeof(cloudToken_), token ? token : "");
+
+  if (tunnelKey != nullptr && tunnelKey[0] != '\0') {
+    safeCopy(cloudTunnelKey_, sizeof(cloudTunnelKey_), tunnelKey);
+  } else {
+    deriveTunnelKeyFromUri(uri_, cloudTunnelKey_, sizeof(cloudTunnelKey_));
+  }
+
+  // If already enabled, restart quickly to apply new settings.
+  if (cloudTunnelEnabled_) {
+    // Stop the current client (keep enabled flag true so the task reconnects).
+    cloudTunnelConnected_ = false;
+    SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
+    if (mu) {
+      (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
+    }
+    esp_websocket_client_handle_t c =
+        (esp_websocket_client_handle_t)cloudClient_;
+    cloudClient_ = nullptr;
+    if (c) {
+      (void)esp_websocket_client_stop(c);
+      esp_websocket_client_destroy(c);
+    }
+    if (mu) {
+      (void)xSemaphoreGive(mu);
+    }
+    startCloudTunnelTask_();
+  }
+}
+
+void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
+  if (espWifi_ == nullptr) {
+    return;
+  }
+  // Config schema:
+  // cloudTunnel.enabled (bool)
+  // cloudTunnel.baseUrl (string)
+  // cloudTunnel.tunnelAll (bool)
+  // cloudTunnel.uris (array<string>) - if non-empty, only these URIs tunnel
+  const bool enabled =
+      espWifi_->config["cloudTunnel"]["enabled"].isNull()
+          ? false
+          : espWifi_->config["cloudTunnel"]["enabled"].as<bool>();
+  const char *baseUrl =
+      espWifi_->config["cloudTunnel"]["baseUrl"].as<const char *>();
+  // Use the shared auth token so both device and UI can use the same secret
+  // without duplicating config fields.
+  const char *token = espWifi_->config["auth"]["token"].as<const char *>();
+
+  bool shouldTunnel = enabled;
+  const bool tunnelAll =
+      espWifi_->config["cloudTunnel"]["tunnelAll"].isNull()
+          ? false
+          : espWifi_->config["cloudTunnel"]["tunnelAll"].as<bool>();
+  if (shouldTunnel && !tunnelAll) {
+    // If uris array exists and is non-empty, require uri_ to be in it.
+    if (espWifi_->config["cloudTunnel"]["uris"].is<JsonArray>()) {
+      JsonArray arr = espWifi_->config["cloudTunnel"]["uris"].as<JsonArray>();
+      if (arr.size() > 0) {
+        bool found = false;
+        for (JsonVariant v : arr) {
+          const char *u = v.as<const char *>();
+          if (u != nullptr && uri_[0] != '\0' && strcmp(u, uri_) == 0) {
+            found = true;
+            break;
+          }
+        }
+        shouldTunnel = found;
+      }
+    }
+  }
+
+  configureCloudTunnel(baseUrl ? baseUrl : "", /*deviceId*/ nullptr,
+                       token ? token : "", /*tunnelKey*/ nullptr);
+  setCloudTunnelEnabled(shouldTunnel && cloudBaseUrl_[0] != '\0');
+}
+
+void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
+                                   int32_t event_id, void *event_data) {
+  (void)base;
+  WebSocket *ws = static_cast<WebSocket *>(handler_args);
+  if (ws == nullptr) {
+    return;
+  }
+
+  if (event_id == WEBSOCKET_EVENT_CONNECTED) {
+    ws->cloudTunnelConnected_ = true;
+    if (ws->espWifi_) {
+      ws->espWifi_->log(INFO, "☁️ WS cloud tunnel connected: %s", ws->uri_);
+    }
+    if (ws->onConnect_) {
+      ws->onConnect_(ws, WebSocket::kCloudClientFd, ws->espWifi_);
+    }
+    return;
+  }
+
+  if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
+    ws->cloudTunnelConnected_ = false;
+    if (ws->espWifi_) {
+      ws->espWifi_->log(INFO, "☁️ WS cloud tunnel disconnected: %s", ws->uri_);
+    }
+    if (ws->onDisconnect_) {
+      ws->onDisconnect_(ws, WebSocket::kCloudClientFd, ws->espWifi_);
+    }
+    return;
+  }
+
+  if (event_id == WEBSOCKET_EVENT_DATA) {
+    esp_websocket_event_data_t *d = (esp_websocket_event_data_t *)event_data;
+    if (d == nullptr || ws->onMessage_ == nullptr) {
+      return;
+    }
+    // Only accept whole frames (no fragmentation) to keep RAM bounded.
+    if (d->payload_offset != 0 || d->payload_len != d->data_len) {
+      if (ws->espWifi_) {
+        ws->espWifi_->log(
+            WARNING, "☁️ WS cloud rx fragmented; dropping (uri=%s)", ws->uri_);
+      }
+      return;
+    }
+    if ((size_t)d->data_len > ws->maxMessageLen_) {
+      if (ws->espWifi_) {
+        ws->espWifi_->log(WARNING, "☁️ WS cloud rx too large (%d) (uri=%s)",
+                          (int)d->data_len, ws->uri_);
+      }
+      return;
+    }
+
+    httpd_ws_type_t t = HTTPD_WS_TYPE_BINARY;
+    if (d->op_code == 0x1 /*TEXT*/) {
+      t = HTTPD_WS_TYPE_TEXT;
+    } else if (d->op_code == 0x2 /*BINARY*/) {
+      t = HTTPD_WS_TYPE_BINARY;
+    } else if (d->op_code == 0x8 /*CLOSE*/) {
+      t = HTTPD_WS_TYPE_CLOSE;
+    } else {
+      // Ignore ping/pong/continuation at this layer.
+      return;
+    }
+
+    ws->onMessage_(ws, WebSocket::kCloudClientFd, t,
+                   (const uint8_t *)d->data_ptr, (size_t)d->data_len,
+                   ws->espWifi_);
+    return;
+  }
+}
+
+void WebSocket::startCloudTunnelTask_() {
+  if (cloudTask_ != nullptr) {
+    return;
+  }
+  if (cloudMutex_ == nullptr) {
+    cloudMutex_ = (void *)xSemaphoreCreateMutex();
+  }
+  // Create a small background task that keeps the cloud tunnel connected.
+  TaskHandle_t th = nullptr;
+  const BaseType_t ok = xTaskCreate(&WebSocket::cloudTaskTrampoline_, "wsCloud",
+                                    6144, this, 5, &th);
+  if (ok == pdPASS) {
+    cloudTask_ = (void *)th;
+  } else if (espWifi_) {
+    espWifi_->log(WARNING, "☁️ Failed to start WS cloud task: %s", uri_);
+  }
+}
+
+void WebSocket::stopCloudTunnel_() {
+  cloudTunnelConnected_ = false;
+
+  SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
+  if (mu) {
+    (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
+  }
+
+  esp_websocket_client_handle_t c = (esp_websocket_client_handle_t)cloudClient_;
+  cloudClient_ = nullptr;
+  if (c) {
+    (void)esp_websocket_client_stop(c);
+    esp_websocket_client_destroy(c);
+  }
+
+  if (mu) {
+    (void)xSemaphoreGive(mu);
+  }
+}
+
+void WebSocket::cloudTaskTrampoline_(void *arg) {
+  WebSocket *ws = static_cast<WebSocket *>(arg);
+  if (ws == nullptr) {
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  int backoffMs = 1000;
+  for (;;) {
+    if (!ws->cloudTunnelEnabled_) {
+      break;
+    }
+    if (ws->espWifi_ == nullptr || !ws->espWifi_->isWiFiConnected()) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
+    if (ws->cloudBaseUrl_[0] == '\0' || ws->cloudDeviceId_[0] == '\0') {
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      continue;
+    }
+
+    // Build ws(s) URL:
+    // <base>/ws/device/<deviceId>?announce=1&tunnel=<tunnelKey>&token=<token>
+    char encTunnel[WebSocket::kMaxCloudTunnelKeyLen * 3] = {0};
+    char encToken[WebSocket::kMaxCloudTokenLen * 3] = {0};
+    urlEncode(ws->cloudTunnelKey_, encTunnel, sizeof(encTunnel));
+    urlEncode(ws->cloudToken_, encToken, sizeof(encToken));
+
+    char url[768] = {0};
+    const bool hasTunnel = (encTunnel[0] != '\0');
+    const bool hasToken = (encToken[0] != '\0');
+    safeAppend(url, sizeof(url), ws->cloudBaseUrl_);
+    safeAppend(url, sizeof(url), "/ws/device/");
+    safeAppend(url, sizeof(url), ws->cloudDeviceId_);
+    safeAppend(url, sizeof(url), "?announce=1");
+    if (hasTunnel) {
+      safeAppend(url, sizeof(url), "&tunnel=");
+      safeAppend(url, sizeof(url), encTunnel);
+    }
+    if (hasToken) {
+      safeAppend(url, sizeof(url), "&token=");
+      safeAppend(url, sizeof(url), encToken);
+    }
+    // If truncated, log and skip this attempt (prevents connecting to a broken
+    // URL).
+    if (url[sizeof(url) - 1] != '\0') {
+      if (ws->espWifi_) {
+        ws->espWifi_->log(WARNING, "☁️ WS cloud URL too long; skipping (uri=%s)",
+                          ws->uri_);
+      }
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      continue;
+    }
+
+    esp_websocket_client_config_t cfg = {};
+    cfg.uri = url;
+    // Keep buffers reasonably sized; camera frames may be large.
+    const int buf =
+        (ws->maxBroadcastLen_ > 0 && ws->maxBroadcastLen_ < 256 * 1024)
+            ? (int)ws->maxBroadcastLen_
+            : (64 * 1024);
+    cfg.buffer_size = buf;
+    cfg.disable_auto_reconnect = true;
+
+    SemaphoreHandle_t mu = (SemaphoreHandle_t)ws->cloudMutex_;
+    if (mu) {
+      (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
+    }
+    esp_websocket_client_handle_t c = esp_websocket_client_init(&cfg);
+    if (c) {
+      ws->cloudClient_ = (void *)c;
+      (void)esp_websocket_register_events(c, WEBSOCKET_EVENT_ANY,
+                                          &WebSocket::cloudEventHandler_, ws);
+      (void)esp_websocket_client_start(c);
+    }
+    if (mu) {
+      (void)xSemaphoreGive(mu);
+    }
+
+    // Wait while connected/enabled; reconnect on drop.
+    const int64_t startUs = esp_timer_get_time();
+    while (ws->cloudTunnelEnabled_) {
+      SemaphoreHandle_t mu2 = (SemaphoreHandle_t)ws->cloudMutex_;
+      if (mu2) {
+        (void)xSemaphoreTake(mu2, pdMS_TO_TICKS(25));
+      }
+      esp_websocket_client_handle_t cur =
+          (esp_websocket_client_handle_t)ws->cloudClient_;
+      const bool connected =
+          (cur != nullptr) && esp_websocket_client_is_connected(cur);
+      if (mu2) {
+        (void)xSemaphoreGive(mu2);
+      }
+      if (!connected) {
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(250));
+    }
+
+    // Stop/destroy the current client, but keep enabled=true so we can
+    // reconnect after backoff.
+    ws->cloudTunnelConnected_ = false;
+    SemaphoreHandle_t mu3 = (SemaphoreHandle_t)ws->cloudMutex_;
+    if (mu3) {
+      (void)xSemaphoreTake(mu3, pdMS_TO_TICKS(200));
+    }
+    esp_websocket_client_handle_t c3 =
+        (esp_websocket_client_handle_t)ws->cloudClient_;
+    ws->cloudClient_ = nullptr;
+    if (c3) {
+      (void)esp_websocket_client_stop(c3);
+      esp_websocket_client_destroy(c3);
+    }
+    if (mu3) {
+      (void)xSemaphoreGive(mu3);
+    }
+
+    // Backoff with cap; reset quickly if we stayed connected for a while.
+    const int64_t durMs = (esp_timer_get_time() - startUs) / 1000;
+    if (durMs > 30000) {
+      backoffMs = 1000;
+    } else if (backoffMs < 30000) {
+      backoffMs *= 2;
+      if (backoffMs > 30000) {
+        backoffMs = 30000;
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(backoffMs));
+  }
+
+  ws->cloudTask_ = nullptr;
+  vTaskDelete(nullptr);
 }
 
 esp_err_t WebSocket::textAll(const char *message) {

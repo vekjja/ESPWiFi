@@ -141,9 +141,10 @@ export default function CameraModule({
     // Check if URL already has a protocol
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       if (wsUrl.startsWith("/")) {
-        // For relative paths, use the mDNS hostname from global config
-        const mdnsHostname = globalConfig?.deviceName;
-        wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname);
+        // For relative paths, prefer the device hostname (stable + matches mDNS),
+        // and fall back to deviceName only if hostname isn't available.
+        const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
+        wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname || null);
       } else {
         // URL doesn't have protocol and doesn't start with /, add ws:// protocol
         wsUrl = `ws://${wsUrl}`;
@@ -165,7 +166,7 @@ export default function CameraModule({
     } else {
       setStreamUrl(wsUrl);
     }
-  }, [config?.url, globalConfig?.deviceName]); // Re-run if URL or device name changes
+  }, [config?.url, globalConfig?.hostname, globalConfig?.deviceName]); // Re-run if URL or device identity changes
 
   // Update camera status when global config or device online status changes
   useEffect(() => {

@@ -22,6 +22,7 @@ import (
 
 type deviceInfo struct {
 	DeviceID   string    `json:"device_id"`
+	TunnelKey  string    `json:"tunnel,omitempty"`
 	Connected  bool      `json:"connected"`
 	ConnectedAt time.Time `json:"connected_at,omitempty"`
 	LastSeen   time.Time `json:"last_seen,omitempty"`
@@ -81,15 +82,23 @@ func (h *hub) snapshot(publicBase string) []deviceInfo {
 	out := make([]deviceInfo, 0, len(h.devices))
 	now := time.Now()
 	_ = now
-	for id, dc := range h.devices {
+	for key, dc := range h.devices {
+		devID, tunnel := splitKey(key)
 		last := time.Unix(0, dc.lastSeen.Load())
+		ui := strings.TrimRight(publicBase, "/") + "/ws/ui/" + devID
+		dev := strings.TrimRight(publicBase, "/") + "/ws/device/" + devID
+		if tunnel != "" {
+			ui += "?tunnel=" + urlQueryEscape(tunnel)
+			dev += "?tunnel=" + urlQueryEscape(tunnel)
+		}
 		out = append(out, deviceInfo{
-			DeviceID:    id,
+			DeviceID:    devID,
+			TunnelKey:   tunnel,
 			Connected:   dc.ws != nil,
 			ConnectedAt: dc.connectedAt,
 			LastSeen:    last,
-			UIWSURL:     strings.TrimRight(publicBase, "/") + "/ws/ui/" + id,
-			DeviceWSURL: strings.TrimRight(publicBase, "/") + "/ws/device/" + id,
+			UIWSURL:     ui,
+			DeviceWSURL: dev,
 		})
 	}
 	return out
@@ -184,13 +193,25 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}
+	tunnel := strings.TrimSpace(r.URL.Query().Get("tunnel"))
+	if strings.Contains(tunnel, "/") {
+		http.Error(w, "invalid tunnel", http.StatusBadRequest)
+		return
+	}
 
 	publicBase := s.publicBase(r)
+	ui := strings.TrimRight(publicBase, "/") + "/ws/ui/" + req.DeviceID
+	dev := strings.TrimRight(publicBase, "/") + "/ws/device/" + req.DeviceID
+	if tunnel != "" {
+		ui += "?tunnel=" + urlQueryEscape(tunnel)
+		dev += "?tunnel=" + urlQueryEscape(tunnel)
+	}
 	info := deviceInfo{
 		DeviceID:    req.DeviceID,
-		Connected:   s.h.getDevice(req.DeviceID) != nil,
-		UIWSURL:     strings.TrimRight(publicBase, "/") + "/ws/ui/" + req.DeviceID,
-		DeviceWSURL: strings.TrimRight(publicBase, "/") + "/ws/device/" + req.DeviceID,
+		TunnelKey:   tunnel,
+		Connected:   s.h.getDevice(makeKey(req.DeviceID, tunnel)) != nil,
+		UIWSURL:     ui,
+		DeviceWSURL: dev,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(info)
@@ -209,6 +230,11 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid device id", http.StatusBadRequest)
 		return
 	}
+	tunnel := strings.TrimSpace(r.URL.Query().Get("tunnel"))
+	if strings.Contains(tunnel, "/") {
+		http.Error(w, "invalid tunnel", http.StatusBadRequest)
+		return
+	}
 
 	if s.deviceAuthToken != "" && !authOK(r, s.deviceAuthToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -221,7 +247,7 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dc := &deviceConn{
-		id:          deviceID,
+		id:          makeKey(deviceID, tunnel),
 		ws:          conn,
 		connectedAt: time.Now().UTC(),
 		closed:      make(chan struct{}),
@@ -229,18 +255,26 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	dc.lastSeen.Store(time.Now().UTC().UnixNano())
 
 	// Replace any existing device session.
-	if old := s.h.setDevice(deviceID, dc); old != nil {
+	key := makeKey(deviceID, tunnel)
+	if old := s.h.setDevice(key, dc); old != nil {
 		old.closeWithReason(websocket.ClosePolicyViolation, "replaced by new device connection")
-		s.h.deleteDevice(deviceID, old)
+		s.h.deleteDevice(key, old)
 	}
 
 	publicBase := s.publicBase(r)
 	if r.URL.Query().Get("announce") == "1" {
+		ui := strings.TrimRight(publicBase, "/") + "/ws/ui/" + deviceID
+		dev := strings.TrimRight(publicBase, "/") + "/ws/device/" + deviceID
+		if tunnel != "" {
+			ui += "?tunnel=" + urlQueryEscape(tunnel)
+			dev += "?tunnel=" + urlQueryEscape(tunnel)
+		}
 		_ = dc.ws.WriteMessage(websocket.TextMessage, mustJSON(map[string]any{
 			"type":         "registered",
 			"device_id":    deviceID,
-			"ui_ws_url":    strings.TrimRight(publicBase, "/") + "/ws/ui/" + deviceID,
-			"device_ws_url": strings.TrimRight(publicBase, "/") + "/ws/device/" + deviceID,
+			"tunnel":       tunnel,
+			"ui_ws_url":    ui,
+			"device_ws_url": dev,
 		}))
 	}
 
@@ -287,12 +321,12 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-dc.closed:
-			s.h.deleteDevice(deviceID, dc)
+			s.h.deleteDevice(key, dc)
 			return
 		case err := <-errCh:
 			_ = err
 			dc.closeWithReason(websocket.CloseNormalClosure, "device disconnected")
-			s.h.deleteDevice(deviceID, dc)
+			s.h.deleteDevice(key, dc)
 			return
 		case <-ticker.C:
 			_ = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
@@ -307,13 +341,19 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid device id", http.StatusBadRequest)
 		return
 	}
+	tunnel := strings.TrimSpace(r.URL.Query().Get("tunnel"))
+	if strings.Contains(tunnel, "/") {
+		http.Error(w, "invalid tunnel", http.StatusBadRequest)
+		return
+	}
 
 	if s.uiAuthToken != "" && !authOK(r, s.uiAuthToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	dc := s.h.getDevice(deviceID)
+	key := makeKey(deviceID, tunnel)
+	dc := s.h.getDevice(key)
 	if dc == nil {
 		http.Error(w, "device offline", http.StatusNotFound)
 		return
@@ -335,6 +375,42 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bridge(dc, uiConn)
+}
+
+func makeKey(deviceID, tunnel string) string {
+	deviceID = strings.TrimSpace(deviceID)
+	tunnel = strings.TrimSpace(tunnel)
+	if tunnel == "" {
+		return deviceID
+	}
+	return deviceID + "|" + tunnel
+}
+
+func splitKey(key string) (deviceID, tunnel string) {
+	if i := strings.IndexByte(key, '|'); i >= 0 {
+		return key[:i], key[i+1:]
+	}
+	return key, ""
+}
+
+func urlQueryEscape(s string) string {
+	// Minimal query escaping for tunnel keys; avoid importing net/url just for this.
+	// Safe for alphanumerics, '-', '_', '.', '~'. Everything else is %XX.
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			c == '-' || c == '_' || c == '.' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			const hex = "0123456789ABCDEF"
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&15])
+		}
+	}
+	return b.String()
 }
 
 func bridge(dc *deviceConn, uiConn *websocket.Conn) {

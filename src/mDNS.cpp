@@ -55,7 +55,7 @@ void ESPWiFi::startMDNS() {
   }
 
   // Set hostname for mDNS responder
-  err = mdns_hostname_set(hostname.c_str());
+  err = mdns_hostname_set(deviceName.c_str());
   if (err != ESP_OK) {
     log(ERROR, "🏷️ mDNS: Failed to set hostname: %s", esp_err_to_name(err));
     mdns_free(); // Clean up on critical failure
@@ -63,7 +63,7 @@ void ESPWiFi::startMDNS() {
   }
 
   // Set default instance name (friendly name shown in mDNS browsers)
-  err = mdns_instance_name_set(deviceName.c_str());
+  err = mdns_instance_name_set(hostname.c_str());
   if (err != ESP_OK) {
     log(WARNING, "🏷️ mDNS: Failed to set instance name: %s",
         esp_err_to_name(err));
@@ -129,8 +129,8 @@ void ESPWiFi::startMDNS() {
   }
 
   log(INFO, "🏷️ mDNS: Started successfully");
-  log(INFO, "🏷️\tHostname: %s.local", hostname.c_str());
-  log(INFO, "🏷️\tInstance: %s", deviceName.c_str());
+  log(INFO, "🏷️\tHostname: %s.local", deviceName.c_str());
+  log(INFO, "🏷️\tInstance: %s", hostname.c_str());
   log(INFO, "🏷️\tServices: HTTP (80), WebSocket (80), Arduino OTA (3232)");
 }
 

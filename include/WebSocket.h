@@ -34,6 +34,28 @@ private:
   size_t maxMessageLen_ = 1024;
   size_t maxBroadcastLen_ = 8192;
 
+  // ---- Cloud tunneling (optional)
+  // Implemented in WebSocket.cpp using esp_websocket_client.
+  // Stored as fixed buffers to keep RAM bounded and avoid heap churn.
+  static constexpr int kCloudClientFd = -7777; // synthetic fd for callbacks
+  static constexpr size_t kMaxCloudBaseUrlLen = 160;  // ws(s)://host[:port]
+  static constexpr size_t kMaxCloudDeviceIdLen = 64;  // hostname or custom id
+  static constexpr size_t kMaxCloudTokenLen = 96;     // bearer/token value
+  static constexpr size_t kMaxCloudTunnelKeyLen = 64; // e.g. ws_camera
+
+  char cloudBaseUrl_[kMaxCloudBaseUrlLen] = {0};
+  char cloudDeviceId_[kMaxCloudDeviceIdLen] = {0};
+  char cloudToken_[kMaxCloudTokenLen] = {0};
+  char cloudTunnelKey_[kMaxCloudTunnelKeyLen] = {0};
+
+  volatile bool cloudTunnelEnabled_ = false;
+  volatile bool cloudTunnelConnected_ = false;
+
+  // Opaque handles so this header doesn't pull in FreeRTOS/websocket headers.
+  void *cloudClient_ = nullptr;
+  void *cloudTask_ = nullptr;
+  void *cloudMutex_ = nullptr;
+
 public:
   // Callbacks kept as plain function pointers for low overhead.
   using OnConnectCb = void (*)(WebSocket *ws, int clientFd, ESPWiFi *espWifi);
@@ -62,6 +84,16 @@ private:
   static void broadcastWorkTrampoline(void *arg);
   void broadcastNow_(httpd_ws_type_t type, const uint8_t *payload, size_t len);
 
+  // Cloud tunnel internals
+  void applyCloudTunnelConfigFromESPWiFi_();
+  void startCloudTunnelTask_();
+  void stopCloudTunnel_();
+  static void cloudTaskTrampoline_(void *arg);
+  static void cloudEventHandler_(void *handler_args, esp_event_base_t base,
+                                 int32_t event_id, void *event_data);
+  esp_err_t cloudSendFrame_(httpd_ws_type_t type, const uint8_t *payload,
+                            size_t len);
+
 public:
   WebSocket() = default;
   ~WebSocket();
@@ -75,7 +107,26 @@ public:
 
   operator bool() const { return started_; }
 
-  size_t numClients() const { return clientCount_; }
+  // Total listeners (LAN websocket clients + optional cloud tunnel).
+  size_t numClients() const {
+    return clientCount_ + (cloudTunnelConnected_ ? 1 : 0);
+  }
+  bool cloudTunnelEnabled() const { return cloudTunnelEnabled_; }
+  bool cloudTunnelConnected() const { return cloudTunnelConnected_; }
+
+  // Enable/disable the cloud tunnel for this WebSocket endpoint.
+  // If enabled and configured, it will connect in the background and act as an
+  // additional WS client for inbound/outbound frames.
+  void setCloudTunnelEnabled(bool enabled);
+
+  // Configure cloud tunnel connection details. This does not force-enable it;
+  // call setCloudTunnelEnabled(true) or set config cloudTunnel.enabled.
+  // - baseUrl: e.g. "wss://tunnel.example.com"
+  // - deviceId: if null/empty, uses ESPWiFi hostname
+  // - token: optional, sent as ?token=
+  // - tunnelKey: optional; if null/empty, derived from WS uri
+  void configureCloudTunnel(const char *baseUrl, const char *deviceId,
+                            const char *token, const char *tunnelKey);
 
   // Queue a broadcast into the HTTP server task for thread-safety and to keep
   // callers snappy (user-perceived performance).

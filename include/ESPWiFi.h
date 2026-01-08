@@ -181,6 +181,7 @@ public:
   void startClient();
   int selectBestChannel();
   std::string getHostname();
+  std::string genHostname();
   std::string ipAddress();
   void setHostname(std::string hostname);
 

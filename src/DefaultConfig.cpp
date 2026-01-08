@@ -81,18 +81,18 @@ JsonDocument ESPWiFi::defaultConfig() {
 
   doc["ota"]["enabled"] = isOTAEnabled();
 
-  // SD Card
-  doc["sd"]["initialized"] = false;
+// SD Card
 #if ESPWiFi_HAS_SDCARD
-  doc["sd"]["enabled"] = true;
+  doc["sd"]["installed"] = true;
 #else
-  doc["sd"]["enabled"] = false;
+  doc["sd"]["installed"] = false;
 #endif
+  doc["sd"]["initialized"] = false;
 
 // Camera
 #if ESPWiFi_HAS_CAMERA
   doc["camera"]["installed"] = true;
-  doc["camera"]["enabled"] = true;
+  doc["camera"]["enabled"] = false;
   doc["camera"]["frameRate"] = 10;
   doc["camera"]["rotation"] = 0;
   doc["camera"]["brightness"] = 1;

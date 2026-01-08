@@ -201,14 +201,18 @@ void ESPWiFi::startClient() {
 }
 
 int ESPWiFi::selectBestChannel() {
-  // Select the "best" 2.4GHz channel (1-13) for our AP.
+  // Select the "best" 2.4GHz channel for our AP.
+  //
+  // Note: Many client devices (notably some macOS/iOS regional configs) will
+  // fail to join or will "timeout" when an AP is on channels 12/13. To keep
+  // provisioning reliable across regions, we constrain to channels 1-11.
   //
   // Scoring model:
   // - Stronger nearby APs (higher RSSI) contribute more interference.
   // - Adjacent channels partially overlap, so they also contribute.
   // - If scores tie (or are extremely close), prefer 1/6/11.
   constexpr int kMinChannel = 1;
-  constexpr int kMaxChannel = 13;
+  constexpr int kMaxChannel = 11;
   constexpr int kMaxOverlapDistance =
       4; // beyond this, assume negligible overlap
 
@@ -378,6 +382,11 @@ void ESPWiFi::startAP() {
 
   int bestChannel =
       selectBestChannel(); // Falls back to channel 1 if scan fails
+  // Defensive clamp (selectBestChannel() already constrains to 1-11)
+  if (bestChannel < 1)
+    bestChannel = 1;
+  if (bestChannel > 11)
+    bestChannel = 11;
   log(INFO, "📶\tChannel: %d", bestChannel);
 
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();

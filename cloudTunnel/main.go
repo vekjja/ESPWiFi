@@ -64,8 +64,8 @@ type deviceConn struct {
 
 	// Paired UI websocket. Only one at a time for now.
 	uiMu sync.Mutex
-	ui   *websocket.Conn
-	uiWriteMu sync.Mutex
+	uiConns   map[*websocket.Conn]struct{}
+	uiWriteMu sync.Mutex // serializes writes across all UI conns
 
 	// Device-provided auth token (used to authorize UI connections).
 	// Typically this is the device's auth.token so the UI can connect securely.
@@ -294,6 +294,7 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		connectedAt: time.Now().UTC(),
 		closed:      make(chan struct{}),
 		uiToken:     deviceProvidedToken,
+		uiConns:     make(map[*websocket.Conn]struct{}),
 	}
 	dc.lastSeen.Store(time.Now().UTC().UnixNano())
 
@@ -387,13 +388,18 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel, "err", errMsg)
 			return
 		case m := <-msgCh:
-			// Forward device payload to UI if paired.
+			// Forward device payload to any connected UI clients.
 			dc.uiMu.Lock()
-			uiConn := dc.ui
+			uis := make([]*websocket.Conn, 0, len(dc.uiConns))
+			for c := range dc.uiConns {
+				uis = append(uis, c)
+			}
 			dc.uiMu.Unlock()
-			if uiConn != nil {
+			if len(uis) > 0 {
 				dc.uiWriteMu.Lock()
-				_ = uiConn.WriteMessage(m.mt, m.msg)
+				for _, uiConn := range uis {
+					_ = uiConn.WriteMessage(m.mt, m.msg)
+				}
 				dc.uiWriteMu.Unlock()
 			}
 		case <-ticker.C:
@@ -449,34 +455,34 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enforce a single UI client per device (new connection wins).
-	dc.uiMu.Lock()
-	oldUI := dc.ui
-	dc.ui = uiConn
-	dc.uiMu.Unlock()
-	if oldUI != nil {
-		s.logf(logInfo, "ui_ws_replaced", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
-		_ = oldUI.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "replaced by another ui connection"), time.Now().Add(3*time.Second))
-		_ = oldUI.Close()
-	}
-
 	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 
-	// Tell the device a UI is attached so it can start streaming only when needed.
-	dc.writeMu.Lock()
-	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_connected"}`))
-	dc.writeMu.Unlock()
+	// Register this UI connection. Allow multiple UI clients per device+tunnel
+	// (useful for multiple tabs + CLI tests).
+	dc.uiMu.Lock()
+	wasEmpty := len(dc.uiConns) == 0
+	dc.uiConns[uiConn] = struct{}{}
+	dc.uiMu.Unlock()
+	if wasEmpty {
+		// Tell the device a UI is attached so it can start streaming only when needed.
+		dc.writeMu.Lock()
+		_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_connected"}`))
+		dc.writeMu.Unlock()
+	}
 
 	bridge(dc, uiConn)
 
-	// UI disconnected; mark as unpaired so device keepalive resumes.
+	// UI disconnected; if this was the last UI, tell device it can stop streaming.
 	dc.uiMu.Lock()
-	dc.ui = nil
+	delete(dc.uiConns, uiConn)
+	nowEmpty := len(dc.uiConns) == 0
 	dc.uiMu.Unlock()
 
-	dc.writeMu.Lock()
-	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_disconnected"}`))
-	dc.writeMu.Unlock()
+	if nowEmpty {
+		dc.writeMu.Lock()
+		_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_disconnected"}`))
+		dc.writeMu.Unlock()
+	}
 	s.logf(logInfo, "ui_ws_disconnected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 }
 
@@ -545,16 +551,27 @@ func (dc *deviceConn) closeWithReason(code int, reason string) {
 	default:
 		close(dc.closed)
 	}
+	dc.writeMu.Lock()
 	_ = dc.ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
 	_ = dc.ws.Close()
+	dc.writeMu.Unlock()
 
 	dc.uiMu.Lock()
-	if dc.ui != nil {
-		_ = dc.ui.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
-		_ = dc.ui.Close()
-		dc.ui = nil
+	uis := make([]*websocket.Conn, 0, len(dc.uiConns))
+	for c := range dc.uiConns {
+		uis = append(uis, c)
 	}
+	dc.uiConns = make(map[*websocket.Conn]struct{})
 	dc.uiMu.Unlock()
+
+	if len(uis) > 0 {
+		dc.uiWriteMu.Lock()
+		for _, c := range uis {
+			_ = c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
+			_ = c.Close()
+		}
+		dc.uiWriteMu.Unlock()
+	}
 }
 
 func (s *server) publicBase(r *http.Request) string {

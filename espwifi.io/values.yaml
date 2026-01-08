@@ -21,7 +21,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/vekjja/espwifi
   pullPolicy: Always
-  tag: "frmw-39-enable-websocket-cloud-tunnel-2be6a40"
+  tag: "dev-481e5ad"
 
 imagePullSecrets:
 - name: ghcr-secret
@@ -80,7 +80,7 @@ cloudTunnel:
   image:
     repository: ghcr.io/vekjja/espwifi-cloudtunnel
     pullPolicy: Always
-    tag: "frmw-39-enable-websocket-cloud-tunnel-2be6a40"
+    tag: "dev-481e5ad"
 
   service:
     type: ClusterIP

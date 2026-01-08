@@ -23,6 +23,8 @@ jobs:
   build-and-push-image:
     name: Docker BuildX
     runs-on: ubuntu-latest
+    # Avoid infinite loops if we commit updated Helm values from CI.
+    if: github.actor != 'github-actions[bot]'
     permissions:
       contents: read
       packages: write
@@ -37,8 +39,11 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR images are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
           # For tags, keep tag name as-is
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${REF_NAME}"
           else
             TAG="${REF_NAME}-${SHORT_SHA}"
@@ -54,7 +59,8 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Docker Login
-        if: github.event_name == 'push'
+        # For PRs from forks, secrets are not available; only login/push for same-repo PRs.
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
@@ -80,7 +86,7 @@ jobs:
           build-args: ${{ matrix.build_args }}
           pull: true
           no-cache: true
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
           # platforms: linux/amd64,linux/arm64
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
@@ -115,19 +121,20 @@ jobs:
     name: Deploy (helm upgrade)
     runs-on: ubuntu-latest
     needs: build-and-push-image
-    # There is no "merge" or "tag" event_name.
-    # - PR merge into dev results in a "push" to refs/heads/dev
-    # - Creating/pushing a tag results in a "push" to refs/tags/<tag>
-    #
     # Deploy on:
-    # - push to dev branch, OR
-    # - push of a dev-* tag (e.g. dev-abcdef0)
-    if: github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'dev-'))
+    # - push to main, OR
+    # - push of any tag
+    if: github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/'))
     permissions:
       contents: write
     steps:
-      - name: GitHub Checkout
+      # IMPORTANT: for tag-triggered runs, actions/checkout defaults to detached HEAD.
+      # We want to update values.yaml on main, so explicitly checkout main.
+      - name: GitHub Checkout (main)
         uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Compute tag
         id: vars
@@ -140,26 +147,6 @@ jobs:
             TAG="${GITHUB_REF_NAME}-${SHORT_SHA}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Update Helm values (image tags)
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${{ steps.vars.outputs.tag }}"
-          # Update dashboard image tag
-          perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
-          # Update cloudTunnel image tag
-          perl -0777 -i -pe "s/(^cloudTunnel:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
-
-      - name: Commit updated values.yaml
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add espwifi.io/values.yaml
-          git commit -m "chore(dev): deploy ${GITHUB_REF_NAME}-${GITHUB_SHA::7}" || echo "No changes to commit"
-          git push
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -179,5 +166,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
           helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
-            --namespace espwifi-io --create-namespace
+            --namespace espwifi-io --create-namespace \
+            --set image.tag="${TAG}" \
+            --set cloudTunnel.image.tag="${TAG}"
+
+      - name: Update espwifi.io/values.yaml (record deployed tag)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          # Dashboard image tag
+          perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          # CloudTunnel image tag
+          perl -0777 -i -pe "s/(^cloudTunnel:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+
+      - name: Commit updated espwifi.io/values.yaml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add espwifi.io/values.yaml
+          git commit -m "chore(helm): record deployed tag ${{ steps.vars.outputs.tag }} [skip ci]" || exit 0
+          git push origin main

@@ -7,7 +7,7 @@
 
 import React from "react";
 import { Grid } from "@mui/material";
-import WifiIcon from "@mui/icons-material/Wifi";
+import LeakAddIcon from "@mui/icons-material/LeakAdd";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
 
@@ -20,7 +20,7 @@ import InfoRow from "../common/InfoRow";
  */
 export default function NetworkInfoCard({ deviceInfo }) {
   return (
-    <InfoCard title="Network" icon={WifiIcon}>
+    <InfoCard title="Network" icon={LeakAddIcon}>
       <Grid container spacing={2}>
         <Grid item xs={12} sm={4}>
           <InfoRow label="IP Address:" value={deviceInfo.ip || "N/A"} />

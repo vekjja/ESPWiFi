@@ -14,6 +14,7 @@ import NetworkInfoCard from "./NetworkInfoCard";
 import ChipInfoCard from "./ChipInfoCard";
 import WifiConfigInfoCard from "./WifiConfigInfoCard";
 import AuthInfoCard from "./AuthInfoCard";
+import CloudTunnelInfoCard from "./CloudTunnelInfoCard";
 import MemoryInfoCard from "./MemoryInfoCard";
 import StorageInfoCard from "./StorageInfoCard";
 import WifiPowerInfoCard from "./WifiPowerInfoCard";
@@ -108,6 +109,13 @@ export default function DeviceSettingsInfoTab({
 
       {/* Authentication */}
       <AuthInfoCard config={config} onSave={saveConfigToDevice} />
+
+      {/* Cloud Tunnel */}
+      <CloudTunnelInfoCard
+        config={config}
+        deviceInfo={deviceInfo}
+        onSave={saveConfigToDevice}
+      />
 
       {/* Memory */}
       <MemoryInfoCard deviceInfo={deviceInfo} loading={infoLoading} />

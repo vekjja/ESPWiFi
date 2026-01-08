@@ -53,6 +53,33 @@ void ESPWiFi::srvInfo() {
             espwifi->config["deviceName"].as<std::string>();
         jsonDoc["mdns"] = deviceName + ".local";
 
+        // Cloud tunnel status (config + runtime)
+        {
+          JsonObject ct = jsonDoc["cloudTunnel"].to<JsonObject>();
+          ct["enabled"] =
+              espwifi->config["cloudTunnel"]["enabled"].isNull()
+                  ? false
+                  : espwifi->config["cloudTunnel"]["enabled"].as<bool>();
+          const char *baseUrlC =
+              espwifi->config["cloudTunnel"]["baseUrl"].as<const char *>();
+          ct["baseUrl"] = (baseUrlC != nullptr) ? std::string(baseUrlC) : "";
+          ct["tunnelAll"] =
+              espwifi->config["cloudTunnel"]["tunnelAll"].isNull()
+                  ? false
+                  : espwifi->config["cloudTunnel"]["tunnelAll"].as<bool>();
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+          JsonObject endpoints = ct["endpoints"].to<JsonObject>();
+          // Camera WS is a member of ESPWiFi so we can report real runtime
+          // status.
+          JsonObject cam = endpoints["camera"].to<JsonObject>();
+          cam["uri"] = "/ws/camera";
+          cam["started"] = espwifi->camSocStarted;
+          cam["cloudEnabled"] = espwifi->camSoc.cloudTunnelEnabled();
+          cam["cloudConnected"] = espwifi->camSoc.cloudTunnelConnected();
+#endif
+        }
+
         // Yield to prevent watchdog timeout
         vTaskDelay(pdMS_TO_TICKS(10));
 

@@ -59,9 +59,13 @@ type deviceConn struct {
 	connectedAt time.Time
 	lastSeen   atomic.Int64 // unix nanos
 
+	// Gorilla websocket requires all writes to be serialized per connection.
+	writeMu sync.Mutex
+
 	// Paired UI websocket. Only one at a time for now.
 	uiMu sync.Mutex
 	ui   *websocket.Conn
+	uiWriteMu sync.Mutex
 
 	// Device-provided auth token (used to authorize UI connections).
 	// Typically this is the device's auth.token so the UI can connect securely.
@@ -330,7 +334,8 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Keepalive/read loop: we don't interpret payloads here; we just maintain the device session.
-	// If a UI is connected, forwarding is handled by the pairing bridge.
+	// IMPORTANT: Gorilla websockets do not allow concurrent readers or concurrent writers.
+	// We keep exactly one reader for the device connection here, and forward to the UI if paired.
 	conn.SetReadLimit(8 << 20) // 8MB per message
 	_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 	conn.SetPongHandler(func(string) error {
@@ -342,29 +347,25 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	type wsMsg struct {
+		mt  int
+		msg []byte
+	}
+	msgCh := make(chan wsMsg, 8)
 	errCh := make(chan error, 1)
 	go func() {
 		for {
-			// If we're paired, the bridge goroutine will be doing reads; avoid double-reading.
-			dc.uiMu.Lock()
-			paired := dc.ui != nil
-			dc.uiMu.Unlock()
-			if paired {
-				time.Sleep(200 * time.Millisecond)
-				select {
-				case <-dc.closed:
-					errCh <- nil
-					return
-				default:
-				}
-				continue
-			}
-
-			_, _, err := conn.ReadMessage()
+			mt, msg, err := conn.ReadMessage()
 			dc.lastSeen.Store(time.Now().UTC().UnixNano())
 			if err != nil {
 				errCh <- err
 				return
+			}
+			// Best-effort forward to UI via main loop (single writer there).
+			select {
+			case msgCh <- wsMsg{mt: mt, msg: msg}:
+			default:
+				// Drop if UI can't keep up; avoid blocking device reader.
 			}
 		}
 	}()
@@ -385,8 +386,20 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			s.h.deleteDevice(key, dc)
 			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel, "err", errMsg)
 			return
+		case m := <-msgCh:
+			// Forward device payload to UI if paired.
+			dc.uiMu.Lock()
+			uiConn := dc.ui
+			dc.uiMu.Unlock()
+			if uiConn != nil {
+				dc.uiWriteMu.Lock()
+				_ = uiConn.WriteMessage(m.mt, m.msg)
+				dc.uiWriteMu.Unlock()
+			}
 		case <-ticker.C:
+			dc.writeMu.Lock()
 			_ = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
+			dc.writeMu.Unlock()
 		}
 	}
 }
@@ -450,7 +463,9 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 
 	// Tell the device a UI is attached so it can start streaming only when needed.
+	dc.writeMu.Lock()
 	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_connected"}`))
+	dc.writeMu.Unlock()
 
 	bridge(dc, uiConn)
 
@@ -459,7 +474,9 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	dc.ui = nil
 	dc.uiMu.Unlock()
 
+	dc.writeMu.Lock()
 	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_disconnected"}`))
+	dc.writeMu.Unlock()
 	s.logf(logInfo, "ui_ws_disconnected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 }
 
@@ -502,74 +519,21 @@ func urlQueryEscape(s string) string {
 func bridge(dc *deviceConn, uiConn *websocket.Conn) {
 	deviceConn := dc.ws
 
-	// Configure timeouts.
-	deviceConn.SetReadLimit(8 << 20)
+	// Configure UI read limit. Device reads are handled by handleDeviceWS (single reader).
 	uiConn.SetReadLimit(8 << 20)
 
-	_ = deviceConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-	_ = uiConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-
-	deviceConn.SetPongHandler(func(string) error {
-		dc.lastSeen.Store(time.Now().UTC().UnixNano())
-		_ = deviceConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		return nil
-	})
-	uiConn.SetPongHandler(func(string) error {
-		_ = uiConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		return nil
-	})
-
-	done := make(chan struct{})
-	defer close(done)
-
-	// Forward: UI -> Device
-	go func() {
-		// Do NOT close deviceConn when UI disconnects; keep the device registered.
-		for {
-			mt, msg, err := uiConn.ReadMessage()
-			if err != nil {
-				return
-			}
-			dc.lastSeen.Store(time.Now().UTC().UnixNano())
-			if err := deviceConn.WriteMessage(mt, msg); err != nil {
-				return
-			}
-		}
-	}()
-
-	// Forward: Device -> UI
-	go func() {
-		defer func() { _ = uiConn.Close() }()
-		for {
-			mt, msg, err := deviceConn.ReadMessage()
-			if err != nil {
-				return
-			}
-			dc.lastSeen.Store(time.Now().UTC().UnixNano())
-			if err := uiConn.WriteMessage(mt, msg); err != nil {
-				return
-			}
-		}
-	}()
-
-	// Keepalive until either side closes.
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Forward: UI -> Device (serialize writes to deviceConn).
 	for {
-		select {
-		case <-dc.closed:
+		mt, msg, err := uiConn.ReadMessage()
+		if err != nil {
 			return
-		case <-ticker.C:
-			_ = uiConn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
-			_ = deviceConn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
-		case <-time.After(200 * time.Millisecond):
-			// Poll for closure via connection errors indirectly; goroutines will close sockets.
-			dc.uiMu.Lock()
-			cur := dc.ui
-			dc.uiMu.Unlock()
-			if cur != uiConn {
-				return
-			}
+		}
+		dc.lastSeen.Store(time.Now().UTC().UnixNano())
+		dc.writeMu.Lock()
+		werr := deviceConn.WriteMessage(mt, msg)
+		dc.writeMu.Unlock()
+		if werr != nil {
+			return
 		}
 	}
 }

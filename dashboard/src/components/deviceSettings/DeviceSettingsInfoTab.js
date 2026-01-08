@@ -98,7 +98,11 @@ export default function DeviceSettingsInfoTab({
   return (
     <Grid container spacing={2} sx={{ pb: 4, width: "100%", m: 0 }}>
       {/* Network Information */}
-      <NetworkInfoCard deviceInfo={deviceInfo} />
+      <NetworkInfoCard
+        deviceInfo={deviceInfo}
+        config={config}
+        onSave={saveConfigToDevice}
+      />
 
       {/* WiFi Configuration */}
       <WifiConfigInfoCard

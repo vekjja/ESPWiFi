@@ -679,6 +679,14 @@ func (w *statusCapturingResponseWriter) Write(p []byte) (int, error) {
 
 func loggingMiddleware(next http.Handler, s *server) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// IMPORTANT: Don't wrap ResponseWriter for websocket upgrade requests.
+		// Gorilla's Upgrader requires http.Hijacker (and friends) and will fail
+		// if we hide those interfaces behind a wrapper.
+		if isWebSocketRequest(r) {
+			// Let the handler run; websocket handlers log their own lifecycle events.
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/healthz" && s != nil && !s.logHealthz {
 			next.ServeHTTP(w, r)
 			return
@@ -695,6 +703,18 @@ func loggingMiddleware(next http.Handler, s *server) http.Handler {
 		}
 		log.Printf("%s %s %s %s %d %dB (%s)", remote, r.Method, r.URL.Path, r.Proto, status, sw.bytes, dur)
 	})
+}
+
+func isWebSocketRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	// Header-based detection
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket") {
+		return true
+	}
+	// Path-based fallback for proxies that don't preserve Upgrade header in logs
+	return strings.HasPrefix(r.URL.Path, "/ws/")
 }
 
 func clientIP(r *http.Request) string {

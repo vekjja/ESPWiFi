@@ -1,8 +1,8 @@
 /**
  * @file WifiConfigInfoCard.js
- * @brief WiFi configuration card with editable device name and WiFi settings
+ * @brief WiFi configuration card with WiFi settings
  *
- * Displays and allows editing of device name, WiFi mode, client/AP credentials
+ * Displays and allows editing of WiFi mode, client/AP credentials
  */
 
 import React, { useState, useEffect } from "react";
@@ -10,7 +10,6 @@ import {
   Box,
   Typography,
   Chip,
-  TextField,
   Button,
   FormControl,
   InputLabel,
@@ -19,6 +18,7 @@ import {
   InputAdornment,
   IconButton,
   Grid,
+  TextField,
 } from "@mui/material";
 import WifiIcon from "@mui/icons-material/Wifi";
 import RouterIcon from "@mui/icons-material/Router";
@@ -41,7 +41,6 @@ import { getRSSIChipColor, isValidRssi } from "../../utils/rssiUtils";
  */
 export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [tempDeviceName, setTempDeviceName] = useState("");
   const [tempWifiMode, setTempWifiMode] = useState("client");
   const [tempClientSsid, setTempClientSsid] = useState("");
   const [tempClientPassword, setTempClientPassword] = useState("");
@@ -52,7 +51,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
   useEffect(() => {
     if (config) {
-      setTempDeviceName(config.deviceName || "");
       setTempWifiMode(config.wifi?.mode || "client");
       setTempClientSsid(config.wifi?.client?.ssid || "");
       setTempClientPassword(config.wifi?.client?.password || "");
@@ -63,7 +61,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
   const handleSave = () => {
     const wifiConfig = {
-      deviceName: tempDeviceName.trim(),
       wifi: {
         ...config.wifi,
         mode: tempWifiMode,
@@ -72,7 +69,7 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           password: tempClientPassword,
         },
         accessPoint: {
-          ssid: tempApSsid || `ESP-${tempDeviceName.trim() || "WiFi"}`,
+          ssid: tempApSsid || `ESP-${config?.deviceName || "WiFi"}`,
           password: tempApPassword,
         },
       },
@@ -82,7 +79,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
   };
 
   const handleCancel = () => {
-    setTempDeviceName(config?.deviceName || "");
     setTempWifiMode(config?.wifi?.mode || "client");
     setTempClientSsid(config?.wifi?.client?.ssid || "");
     setTempClientPassword(config?.wifi?.client?.password || "");
@@ -94,13 +90,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
   const viewContent = (
     <>
       <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
-          <InfoRow
-            label="Device Name:"
-            value={config?.deviceName || "ESPWiFi"}
-          />
-        </Grid>
-
         {(config?.wifi?.mode === "client" ||
           config?.wifi?.mode === "apsta") && (
           <Grid item xs={12} sm={6} md={3}>
@@ -172,19 +161,6 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
 
   const editContent = (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <TextField
-        fullWidth
-        size="small"
-        label="Device Name"
-        value={tempDeviceName}
-        onChange={(e) => setTempDeviceName(e.target.value)}
-        placeholder="Device name"
-        helperText="Used as hostname and in AP SSID"
-        error={
-          tempDeviceName && !/^[a-z0-9-]+$/.test(tempDeviceName.toLowerCase())
-        }
-      />
-
       <FormControl fullWidth size="small">
         <InputLabel>WiFi Mode</InputLabel>
         <Select

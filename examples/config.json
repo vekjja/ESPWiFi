@@ -1,12 +1,12 @@
 {
     "deviceName": "ESPWiFi",
+    "hostname": "espwifi-xxxxxx",
     "wifi": {
         "enabled": true,
         "mode": "client",
         "mdns": true,
         "accessPoint": {
-            "ssid": "ESPWiFi",
-            "password": "espw!!f!!"
+            "password": "espW!!F!!"
         },
         "client": {
             "ssid": "YOUR_WIFI_SSID",
@@ -16,9 +16,6 @@
             "txPower": 19.5,
             "powerSave": "none"
         }
-    },
-    "bluetooth": {
-        "enabled": false
     },
     "log": {
         "file": "/espwifi.log",
@@ -32,8 +29,20 @@
     },
     "auth": {
         "enabled": false,
-        "username": "admin",
         "password": "admin",
+        "username": "admin",
+        "cors": {
+            "enabled": true,
+            "origins": [
+                "https://espwifi.io",
+                "*"
+            ],
+            "methods": [
+                "GET",
+                "POST",
+                "PUT"
+            ]
+        },
         "excludePaths": [
             "/",
             "/static/*",
@@ -46,18 +55,6 @@
             "index.html",
             "config.json",
             "asset-manifest.json"
-        ],
-        "cors": {
-            "enabled": true,
-            "origins": [
-                "https://espwifi.io",
-                "*"
-            ],
-            "methods": [
-                "GET",
-                "POST",
-                "PUT"
-            ]
-        }
+        ]
     }
 }

@@ -337,7 +337,8 @@ int ESPWiFi::selectBestChannel() {
 }
 
 void ESPWiFi::startAP() {
-  std::string ssid = config["wifi"]["accessPoint"]["ssid"].as<std::string>();
+  // std::string ssid = config["wifi"]["accessPoint"]["ssid"].as<std::string>();
+  std::string ssid = genHostname();
   std::string password =
       config["wifi"]["accessPoint"]["password"].as<std::string>();
 

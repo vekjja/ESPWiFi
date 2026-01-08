@@ -1,6 +1,5 @@
 {
     "deviceName": "ESPWiFi",
-    "hostname": "espwifi-xxxxxx",
     "wifi": {
         "enabled": true,
         "mode": "client",

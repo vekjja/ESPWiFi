@@ -12,8 +12,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["wifi"]["mode"] = "accessPoint";
 
   // Access Point
-  doc["wifi"]["accessPoint"]["ssid"] = doc["deviceName"];
-  doc["wifi"]["accessPoint"]["password"] = "espwifi!";
+  doc["wifi"]["accessPoint"]["ssid"] = genHostname();
+  doc["wifi"]["accessPoint"]["password"] = "espw!f!!";
 
   // WiFi Client
   doc["wifi"]["client"]["ssid"] = "";

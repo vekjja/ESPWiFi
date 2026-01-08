@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +21,22 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+type logLevel int
+
+const (
+	logInfo logLevel = iota
+	logDebug
+)
+
+func parseLogLevel(s string) logLevel {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return logDebug
+	default:
+		return logInfo
+	}
+}
 
 type deviceInfo struct {
 	DeviceID   string    `json:"device_id"`
@@ -122,6 +140,9 @@ type server struct {
 	publicBaseURL string
 
 	upgrader websocket.Upgrader
+
+	logLevel   logLevel
+	logHealthz bool
 }
 
 func main() {
@@ -136,6 +157,8 @@ func main() {
 		deviceAuthToken: os.Getenv("DEVICE_AUTH_TOKEN"),
 		uiAuthToken:     os.Getenv("UI_AUTH_TOKEN"),
 		publicBaseURL:   *publicBase,
+		logLevel:        parseLogLevel(envOr("LOG_LEVEL", "info")),
+		logHealthz:      envOr("LOG_HEALTHZ", "0") == "1",
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
@@ -155,7 +178,7 @@ func main() {
 
 	httpSrv := &http.Server{
 		Addr:              *listenAddr,
-		Handler:           loggingMiddleware(mux),
+		Handler:           loggingMiddleware(mux, s),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -236,16 +259,19 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	deviceID = strings.Trim(deviceID, "/")
 	if deviceID == "" || strings.Contains(deviceID, "/") {
 		http.Error(w, "invalid device id", http.StatusBadRequest)
+		s.logf(logInfo, "device_ws_invalid_device_id", "remote", clientIP(r), "path", r.URL.Path)
 		return
 	}
 	tunnel := strings.TrimSpace(r.URL.Query().Get("tunnel"))
 	if strings.Contains(tunnel, "/") {
 		http.Error(w, "invalid tunnel", http.StatusBadRequest)
+		s.logf(logInfo, "device_ws_invalid_tunnel", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
 	if s.deviceAuthToken != "" && !authOK(r, s.deviceAuthToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		s.logf(logInfo, "device_ws_unauthorized_global", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
@@ -270,9 +296,17 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	// Replace any existing device session.
 	key := makeKey(deviceID, tunnel)
 	if old := s.h.setDevice(key, dc); old != nil {
+		s.logf(logInfo, "device_ws_replaced", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		old.closeWithReason(websocket.ClosePolicyViolation, "replaced by new device connection")
 		s.h.deleteDevice(key, old)
 	}
+
+	s.logf(logInfo, "device_ws_connected",
+		"remote", clientIP(r),
+		"device_id", deviceID,
+		"tunnel", tunnel,
+		"ui_token_present", dc.uiToken != "",
+	)
 
 	publicBase := s.publicBase(r)
 	if r.URL.Query().Get("announce") == "1" {
@@ -292,6 +326,7 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			// connecting to the tunnel (typically auth.token).
 			"ui_token_required": dc.uiToken != "",
 		}))
+		s.logf(logDebug, "device_ws_registered", "device_id", deviceID, "tunnel", tunnel, "ui_token_required", dc.uiToken != "", "ui_ws_url", ui)
 	}
 
 	// Keepalive/read loop: we don't interpret payloads here; we just maintain the device session.
@@ -338,11 +373,13 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-dc.closed:
 			s.h.deleteDevice(key, dc)
+			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
 			return
 		case err := <-errCh:
 			_ = err
 			dc.closeWithReason(websocket.CloseNormalClosure, "device disconnected")
 			s.h.deleteDevice(key, dc)
+			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
 			return
 		case <-ticker.C:
 			_ = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
@@ -355,16 +392,19 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	deviceID = strings.Trim(deviceID, "/")
 	if deviceID == "" || strings.Contains(deviceID, "/") {
 		http.Error(w, "invalid device id", http.StatusBadRequest)
+		s.logf(logInfo, "ui_ws_invalid_device_id", "remote", clientIP(r), "path", r.URL.Path)
 		return
 	}
 	tunnel := strings.TrimSpace(r.URL.Query().Get("tunnel"))
 	if strings.Contains(tunnel, "/") {
 		http.Error(w, "invalid tunnel", http.StatusBadRequest)
+		s.logf(logInfo, "ui_ws_invalid_tunnel", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
 	if s.uiAuthToken != "" && !authOK(r, s.uiAuthToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		s.logf(logInfo, "ui_ws_unauthorized_global", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
@@ -372,6 +412,7 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	dc := s.h.getDevice(key)
 	if dc == nil {
 		http.Error(w, "device offline", http.StatusNotFound)
+		s.logf(logInfo, "ui_ws_device_offline", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
@@ -381,6 +422,7 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 		got := extractToken(r)
 		if subtle.ConstantTimeCompare([]byte(got), []byte(dc.uiToken)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			s.logf(logInfo, "ui_ws_unauthorized_device", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 			return
 		}
 	}
@@ -396,11 +438,14 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	dc.ui = uiConn
 	dc.uiMu.Unlock()
 	if oldUI != nil {
+		s.logf(logInfo, "ui_ws_replaced", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		_ = oldUI.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "replaced by another ui connection"), time.Now().Add(3*time.Second))
 		_ = oldUI.Close()
 	}
 
+	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 	bridge(dc, uiConn)
+	s.logf(logInfo, "ui_ws_disconnected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 }
 
 func makeKey(deviceID, tunnel string) string {
@@ -612,16 +657,110 @@ func envOr(k, def string) string {
 	return def
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
+type statusCapturingResponseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (w *statusCapturingResponseWriter) WriteHeader(statusCode int) {
+	w.status = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *statusCapturingResponseWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(p)
+	w.bytes += n
+	return n, err
+}
+
+func loggingMiddleware(next http.Handler, s *server) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" && s != nil && !s.logHealthz {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
-		next.ServeHTTP(w, r)
+		sw := &statusCapturingResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
 		dur := time.Since(start)
 
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if host == "" {
-			host = r.RemoteAddr
+		remote := clientIP(r)
+		status := sw.status
+		if status == 0 {
+			status = http.StatusOK
 		}
-		log.Printf("%s %s %s %s (%s)", host, r.Method, r.URL.Path, r.Proto, dur)
+		log.Printf("%s %s %s %s %d %dB (%s)", remote, r.Method, r.URL.Path, r.Proto, status, sw.bytes, dur)
 	})
+}
+
+func clientIP(r *http.Request) string {
+	// Prefer reverse-proxy headers.
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
+		// first is original
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return xff
+	}
+	if xr := strings.TrimSpace(r.Header.Get("X-Real-Ip")); xr != "" {
+		return xr
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func (s *server) logf(level logLevel, event string, kv ...any) {
+	if s == nil {
+		return
+	}
+	if level == logDebug && s.logLevel != logDebug {
+		return
+	}
+	var b strings.Builder
+	b.Grow(128)
+	b.WriteString(event)
+	for i := 0; i+1 < len(kv); i += 2 {
+		k, _ := kv[i].(string)
+		v := kv[i+1]
+		if k == "" {
+			continue
+		}
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(fmtAny(v))
+	}
+	log.Print(b.String())
+}
+
+func fmtAny(v any) string {
+	switch t := v.(type) {
+	case string:
+		if t == "" {
+			return `""`
+		}
+		// avoid logging extremely long values
+		if len(t) > 256 {
+			return t[:256] + "…"
+		}
+		return t
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	case int:
+		return strconv.Itoa(t)
+	case int64:
+		return strconv.FormatInt(t, 10)
+	default:
+		return fmt.Sprint(v)
+	}
 }

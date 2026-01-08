@@ -13,6 +13,9 @@
 #include <sys/socket.h>
 
 #include "esp_websocket_client.h"
+#ifdef CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
+#include "esp_crt_bundle.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -145,9 +148,8 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
 
   // Lock around client handle usage so stop/destroy can't race send.
   SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
-  if (mu) {
-    (void)xSemaphoreTake(mu, pdMS_TO_TICKS(25));
-  }
+  const bool locked =
+      (mu != nullptr) && (xSemaphoreTake(mu, pdMS_TO_TICKS(25)) == pdTRUE);
   esp_websocket_client_handle_t c = (esp_websocket_client_handle_t)cloudClient_;
   const bool connected = (c != nullptr) && esp_websocket_client_is_connected(c);
   int sent = -1;
@@ -161,7 +163,7 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
                                            timeoutMs);
     }
   }
-  if (mu) {
+  if (locked) {
     (void)xSemaphoreGive(mu);
   }
   return (sent >= 0) ? ESP_OK : ESP_FAIL;
@@ -570,9 +572,8 @@ void WebSocket::configureCloudTunnel(const char *baseUrl, const char *deviceId,
     // Stop the current client (keep enabled flag true so the task reconnects).
     cloudTunnelConnected_ = false;
     SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
-    if (mu) {
-      (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
-    }
+    const bool locked =
+        (mu != nullptr) && (xSemaphoreTake(mu, pdMS_TO_TICKS(200)) == pdTRUE);
     esp_websocket_client_handle_t c =
         (esp_websocket_client_handle_t)cloudClient_;
     cloudClient_ = nullptr;
@@ -580,7 +581,7 @@ void WebSocket::configureCloudTunnel(const char *baseUrl, const char *deviceId,
       (void)esp_websocket_client_stop(c);
       esp_websocket_client_destroy(c);
     }
-    if (mu) {
+    if (locked) {
       (void)xSemaphoreGive(mu);
     }
     startCloudTunnelTask_();
@@ -602,9 +603,18 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
           : espWifi_->config["cloudTunnel"]["enabled"].as<bool>();
   const char *baseUrl =
       espWifi_->config["cloudTunnel"]["baseUrl"].as<const char *>();
-  // Use the shared auth token so both device and UI can use the same secret
-  // without duplicating config fields.
-  const char *token = espWifi_->config["auth"]["token"].as<const char *>();
+  // Use the shared auth token so both device and UI can use the same secret.
+  // If cloud tunnel is enabled but token is empty, mint one and persist it so
+  // the dashboard can use it too.
+  const char *tokenC = espWifi_->config["auth"]["token"].as<const char *>();
+  std::string token = (tokenC != nullptr) ? std::string(tokenC) : "";
+  if (enabled && token.empty()) {
+    token = espWifi_->generateToken();
+    espWifi_->config["auth"]["token"] = token;
+    // Defer flash write to the main loop (watchdog-safe) [[memory:12698303]]
+    espWifi_->requestConfigSave();
+    espWifi_->log(INFO, "☁️ Generated auth token for cloud tunnel");
+  }
 
   bool shouldTunnel = enabled;
   const bool tunnelAll =
@@ -630,7 +640,7 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
   }
 
   configureCloudTunnel(baseUrl ? baseUrl : "", /*deviceId*/ nullptr,
-                       token ? token : "", /*tunnelKey*/ nullptr);
+                       token.c_str(), /*tunnelKey*/ nullptr);
   setCloudTunnelEnabled(shouldTunnel && cloudBaseUrl_[0] != '\0');
 }
 
@@ -644,6 +654,7 @@ void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
 
   if (event_id == WEBSOCKET_EVENT_CONNECTED) {
     ws->cloudTunnelConnected_ = true;
+    ws->cloudUIConnected_ = false; // broker UI not yet attached
     if (ws->espWifi_) {
       ws->espWifi_->log(INFO, "☁️ WS cloud tunnel connected: %s", ws->uri_);
     }
@@ -655,6 +666,7 @@ void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
 
   if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     ws->cloudTunnelConnected_ = false;
+    ws->cloudUIConnected_ = false;
     if (ws->espWifi_) {
       ws->espWifi_->log(INFO, "☁️ WS cloud tunnel disconnected: %s", ws->uri_);
     }
@@ -666,7 +678,7 @@ void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
 
   if (event_id == WEBSOCKET_EVENT_DATA) {
     esp_websocket_event_data_t *d = (esp_websocket_event_data_t *)event_data;
-    if (d == nullptr || ws->onMessage_ == nullptr) {
+    if (d == nullptr) {
       return;
     }
     // Only accept whole frames (no fragmentation) to keep RAM bounded.
@@ -697,9 +709,52 @@ void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
       return;
     }
 
-    ws->onMessage_(ws, WebSocket::kCloudClientFd, t,
-                   (const uint8_t *)d->data_ptr, (size_t)d->data_len,
-                   ws->espWifi_);
+    // Intercept broker control messages ("registered", "ui_connected", ...).
+    // IMPORTANT: avoid large stack buffers here; this runs on
+    // esp_websocket_client's internal websocket_task stack.
+    if (t == HTTPD_WS_TYPE_TEXT && d->data_ptr != nullptr && d->data_len > 0) {
+      JsonDocument doc;
+      if (deserializeJson(doc, (const char *)d->data_ptr,
+                          (size_t)d->data_len) == DeserializationError::Ok) {
+        const char *typeC = doc["type"].as<const char *>();
+        if (typeC != nullptr) {
+          if (strcmp(typeC, "registered") == 0) {
+            const char *ui = doc["ui_ws_url"].as<const char *>();
+            const char *dev = doc["device_ws_url"].as<const char *>();
+            if (ui != nullptr) {
+              safeCopy(ws->cloudUIWSURL_, sizeof(ws->cloudUIWSURL_), ui);
+            }
+            if (dev != nullptr) {
+              safeCopy(ws->cloudDeviceWSURL_, sizeof(ws->cloudDeviceWSURL_),
+                       dev);
+            }
+            ws->cloudRegisteredAtMs_ = (uint32_t)millis();
+            if (ws->espWifi_) {
+              ws->espWifi_->log(
+                  INFO, "☁️ WS tunnel registered: %s ui=%s", ws->uri_,
+                  (ws->cloudUIWSURL_[0] ? ws->cloudUIWSURL_ : "—"));
+            }
+          } else if (strcmp(typeC, "ui_connected") == 0) {
+            ws->cloudUIConnected_ = true;
+            if (ws->espWifi_) {
+              ws->espWifi_->log(INFO, "☁️ UI attached to tunnel: %s", ws->uri_);
+            }
+          } else if (strcmp(typeC, "ui_disconnected") == 0) {
+            ws->cloudUIConnected_ = false;
+            if (ws->espWifi_) {
+              ws->espWifi_->log(INFO, "☁️ UI detached from tunnel: %s",
+                                ws->uri_);
+            }
+          }
+        }
+      }
+    }
+
+    if (ws->onMessage_) {
+      ws->onMessage_(ws, WebSocket::kCloudClientFd, t,
+                     (const uint8_t *)d->data_ptr, (size_t)d->data_len,
+                     ws->espWifi_);
+    }
     return;
   }
 }
@@ -714,7 +769,7 @@ void WebSocket::startCloudTunnelTask_() {
   // Create a small background task that keeps the cloud tunnel connected.
   TaskHandle_t th = nullptr;
   const BaseType_t ok = xTaskCreate(&WebSocket::cloudTaskTrampoline_, "wsCloud",
-                                    6144, this, 5, &th);
+                                    8192, this, 5, &th);
   if (ok == pdPASS) {
     cloudTask_ = (void *)th;
   } else if (espWifi_) {
@@ -726,9 +781,8 @@ void WebSocket::stopCloudTunnel_() {
   cloudTunnelConnected_ = false;
 
   SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
-  if (mu) {
-    (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
-  }
+  const bool locked =
+      (mu != nullptr) && (xSemaphoreTake(mu, pdMS_TO_TICKS(200)) == pdTRUE);
 
   esp_websocket_client_handle_t c = (esp_websocket_client_handle_t)cloudClient_;
   cloudClient_ = nullptr;
@@ -737,7 +791,7 @@ void WebSocket::stopCloudTunnel_() {
     esp_websocket_client_destroy(c);
   }
 
-  if (mu) {
+  if (locked) {
     (void)xSemaphoreGive(mu);
   }
 }
@@ -799,17 +853,34 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     esp_websocket_client_config_t cfg = {};
     cfg.uri = url;
     // Keep buffers reasonably sized; camera frames may be large.
-    const int buf =
-        (ws->maxBroadcastLen_ > 0 && ws->maxBroadcastLen_ < 256 * 1024)
-            ? (int)ws->maxBroadcastLen_
-            : (64 * 1024);
+    int buf = (ws->maxBroadcastLen_ > 0 && ws->maxBroadcastLen_ < 256 * 1024)
+                  ? (int)ws->maxBroadcastLen_
+                  : (64 * 1024);
+    // Also ensure RX can receive the "registered" message without
+    // fragmentation.
+    int minBuf = (int)ws->maxMessageLen_;
+    if (minBuf < 512) {
+      minBuf = 512;
+    }
+    if (buf < minBuf) {
+      buf = minBuf;
+    }
     cfg.buffer_size = buf;
+    // esp_websocket_client creates its own internal websocket_task. Raise stack
+    // to avoid overflow when doing TLS + event callbacks.
+    cfg.task_stack = 8192;
+    cfg.task_prio = 5;
+    cfg.network_timeout_ms = 15000;
     cfg.disable_auto_reconnect = true;
 
+#ifdef CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
+    // Enable TLS server verification for wss:// using the ESP-IDF cert bundle.
+    cfg.crt_bundle_attach = esp_crt_bundle_attach;
+#endif
+
     SemaphoreHandle_t mu = (SemaphoreHandle_t)ws->cloudMutex_;
-    if (mu) {
-      (void)xSemaphoreTake(mu, pdMS_TO_TICKS(200));
-    }
+    const bool locked =
+        (mu != nullptr) && (xSemaphoreTake(mu, pdMS_TO_TICKS(200)) == pdTRUE);
     esp_websocket_client_handle_t c = esp_websocket_client_init(&cfg);
     if (c) {
       ws->cloudClient_ = (void *)c;
@@ -817,25 +888,26 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
                                           &WebSocket::cloudEventHandler_, ws);
       (void)esp_websocket_client_start(c);
     }
-    if (mu) {
+    if (locked) {
       (void)xSemaphoreGive(mu);
+    }
+
+    // Give the handshake some time to complete before checking connected
+    // state; otherwise we can race and flap.
+    const int64_t connectStartUs = esp_timer_get_time();
+    while (ws->cloudTunnelEnabled_ && !ws->cloudTunnelConnected_) {
+      const int64_t waitedMs = (esp_timer_get_time() - connectStartUs) / 1000;
+      if (waitedMs > 15000) {
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     // Wait while connected/enabled; reconnect on drop.
     const int64_t startUs = esp_timer_get_time();
     while (ws->cloudTunnelEnabled_) {
-      SemaphoreHandle_t mu2 = (SemaphoreHandle_t)ws->cloudMutex_;
-      if (mu2) {
-        (void)xSemaphoreTake(mu2, pdMS_TO_TICKS(25));
-      }
-      esp_websocket_client_handle_t cur =
-          (esp_websocket_client_handle_t)ws->cloudClient_;
-      const bool connected =
-          (cur != nullptr) && esp_websocket_client_is_connected(cur);
-      if (mu2) {
-        (void)xSemaphoreGive(mu2);
-      }
-      if (!connected) {
+      // Prefer event-driven connected flag; it's stable across internals.
+      if (!ws->cloudTunnelConnected_) {
         break;
       }
       vTaskDelay(pdMS_TO_TICKS(250));
@@ -845,9 +917,8 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     // reconnect after backoff.
     ws->cloudTunnelConnected_ = false;
     SemaphoreHandle_t mu3 = (SemaphoreHandle_t)ws->cloudMutex_;
-    if (mu3) {
-      (void)xSemaphoreTake(mu3, pdMS_TO_TICKS(200));
-    }
+    const bool locked3 =
+        (mu3 != nullptr) && (xSemaphoreTake(mu3, pdMS_TO_TICKS(200)) == pdTRUE);
     esp_websocket_client_handle_t c3 =
         (esp_websocket_client_handle_t)ws->cloudClient_;
     ws->cloudClient_ = nullptr;
@@ -855,7 +926,7 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
       (void)esp_websocket_client_stop(c3);
       esp_websocket_client_destroy(c3);
     }
-    if (mu3) {
+    if (locked3) {
       (void)xSemaphoreGive(mu3);
     }
 

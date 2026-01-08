@@ -48,6 +48,13 @@ private:
   char cloudToken_[kMaxCloudTokenLen] = {0};
   char cloudTunnelKey_[kMaxCloudTunnelKeyLen] = {0};
 
+  // Last registration details received from the tunnel broker (best-effort).
+  static constexpr size_t kMaxCloudRegisteredUrlLen = 220;
+  char cloudUIWSURL_[kMaxCloudRegisteredUrlLen] = {0};
+  char cloudDeviceWSURL_[kMaxCloudRegisteredUrlLen] = {0};
+  volatile uint32_t cloudRegisteredAtMs_ = 0; // millis()
+  volatile bool cloudUIConnected_ = false;    // set by broker messages
+
   volatile bool cloudTunnelEnabled_ = false;
   volatile bool cloudTunnelConnected_ = false;
 
@@ -111,8 +118,18 @@ public:
   size_t numClients() const {
     return clientCount_ + (cloudTunnelConnected_ ? 1 : 0);
   }
+  // LAN listeners only (excludes cloud tunnel transport connection).
+  size_t numLanClients() const { return clientCount_; }
   bool cloudTunnelEnabled() const { return cloudTunnelEnabled_; }
   bool cloudTunnelConnected() const { return cloudTunnelConnected_; }
+  bool cloudUIConnected() const { return cloudUIConnected_; }
+  const char *cloudUIWSURL() const { return cloudUIWSURL_; }
+  const char *cloudDeviceWSURL() const { return cloudDeviceWSURL_; }
+  uint32_t cloudRegisteredAtMs() const { return cloudRegisteredAtMs_; }
+
+  // Re-evaluate config and (re)connect/disconnect cloud tunnel accordingly.
+  // Intended to be called after config changes are applied.
+  void syncCloudTunnelFromConfig() { applyCloudTunnelConfigFromESPWiFi_(); }
 
   // Enable/disable the cloud tunnel for this WebSocket endpoint.
   // If enabled and configured, it will connect in the background and act as an

@@ -608,9 +608,13 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  int clientCount = camSoc.numClients();
-  if (clientCount == 0) {
-    // No clients connected - don't capture or stream
+  // Only stream when there's a real consumer:
+  // - LAN websocket clients, OR
+  // - A cloud UI attached (cloud tunnel transport alone shouldn't trigger
+  // capture)
+  const bool anyConsumer =
+      (camSoc.numLanClients() > 0) || camSoc.cloudUIConnected();
+  if (!anyConsumer) {
     return;
   }
 
@@ -695,7 +699,7 @@ void ESPWiFi::streamCamera() {
 
   // Double-check clients still connected before broadcast
   // (they may have disconnected between the initial check and now)
-  if (camSoc.numClients() == 0) {
+  if (camSoc.numLanClients() == 0 && !camSoc.cloudUIConnected()) {
     esp_camera_fb_return(fb);
     return;
   }
@@ -714,9 +718,8 @@ void ESPWiFi::streamCamera() {
       // Only log memory errors every 5 seconds to avoid spam
       if (now - lastMemErrorMs > 5000) {
         log(WARNING,
-            "📷 Frame broadcast failed (out of memory): frame size %zu bytes, "
-            "%d clients",
-            fb->len, clientCount);
+            "📷 Frame broadcast failed (out of memory): frame size %zu bytes",
+            fb->len);
         lastMemErrorMs = now;
       }
     } else {

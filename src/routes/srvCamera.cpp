@@ -44,7 +44,7 @@ void ESPWiFi::srvCamera() {
                      /*onMessage*/ nullptr,
                      /*onConnect*/ nullptr,
                      /*onDisconnect*/ nullptr,
-                     /*maxMessageLen*/ 32,
+                     /*maxMessageLen*/ 512,
                      /*maxBroadcastLen*/ 128 * 1024,
                      /*requireAuth*/ false); // Disabled auth for testing
 

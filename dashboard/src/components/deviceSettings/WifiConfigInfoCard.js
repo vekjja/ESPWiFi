@@ -28,6 +28,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
+import MaskedValueField from "../common/MaskedValueField";
 import { getRSSIChipColor, isValidRssi } from "../../utils/rssiUtils";
 
 /**
@@ -101,6 +102,22 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           </Grid>
         )}
 
+        {(config?.wifi?.mode === "client" ||
+          config?.wifi?.mode === "apsta") && (
+          <Grid item xs={12} sm={6} md={3}>
+            <InfoRow
+              label="Client Password:"
+              value={
+                <MaskedValueField
+                  value={config?.wifi?.client?.password || "—"}
+                  blur={Boolean(config?.wifi?.client?.password)}
+                  defaultShow={false}
+                />
+              }
+            />
+          </Grid>
+        )}
+
         {(config?.wifi?.mode === "accessPoint" ||
           config?.wifi?.mode === "apsta") && (
           <Grid item xs={12} sm={6} md={3}>
@@ -108,6 +125,23 @@ export default function WifiConfigInfoCard({ config, deviceInfo, onSave }) {
           </Grid>
         )}
 
+        {(config?.wifi?.mode === "accessPoint" ||
+          config?.wifi?.mode === "apsta") && (
+          <Grid item xs={12} sm={6} md={3}>
+            <InfoRow
+              label="AP Password:"
+              value={
+                <MaskedValueField
+                  value={config?.wifi?.accessPoint?.password || "—"}
+                  blur={Boolean(config?.wifi?.accessPoint?.password)}
+                  defaultShow={false}
+                />
+              }
+            />
+          </Grid>
+        )}
+
+        {/* Show mode + signal under SSID/password block */}
         <Grid item xs={12} sm={6} md={3}>
           <InfoRow
             label="Mode:"

@@ -378,7 +378,7 @@ function App() {
       // Don't attempt to save if device is offline
       if (!deviceOnline) {
         console.warn("Device is offline - configuration saved locally only");
-        return;
+        return Promise.resolve(null);
       }
 
       // Then save to device
@@ -389,7 +389,7 @@ function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      fetch(
+      return fetch(
         buildApiUrl("/api/config"),
         getFetchOptions({
           method: "PUT",
@@ -406,10 +406,11 @@ function App() {
           }
           return response.json();
         })
-        .then((savedConfig) => {
-          setSaving(false);
-          // No need to update state - the config was already updated locally before the save
-          // and the periodic polling will sync any server-side changes
+        .then(async () => {
+          // Immediately refetch config so device-generated fields (e.g. auth.token)
+          // show up in the UI without waiting for polling.
+          await fetchConfig(true);
+          return true;
         })
         .catch((error) => {
           clearTimeout(timeoutId);
@@ -419,10 +420,13 @@ function App() {
           );
           logError(error, "Config Save", true);
           alert(`${errorMessage} Configuration saved locally.`);
+          return false;
+        })
+        .finally(() => {
           setSaving(false);
         });
     },
-    [apiURL, deviceOnline]
+    [apiURL, deviceOnline, fetchConfig]
   );
 
   /**

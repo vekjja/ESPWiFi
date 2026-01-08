@@ -77,6 +77,23 @@ void ESPWiFi::srvInfo() {
           cam["started"] = espwifi->camSocStarted;
           cam["cloudEnabled"] = espwifi->camSoc.cloudTunnelEnabled();
           cam["cloudConnected"] = espwifi->camSoc.cloudTunnelConnected();
+          cam["cloudUIConnected"] = espwifi->camSoc.cloudUIConnected();
+          cam["ui_ws_url"] = std::string(espwifi->camSoc.cloudUIWSURL());
+          cam["device_ws_url"] =
+              std::string(espwifi->camSoc.cloudDeviceWSURL());
+          cam["registered_at_ms"] = espwifi->camSoc.cloudRegisteredAtMs();
+
+          // RSSI WS
+          JsonObject rssi = endpoints["rssi"].to<JsonObject>();
+          rssi["uri"] = "/ws/rssi";
+          rssi["started"] = espwifi->rssiSocStarted;
+          rssi["cloudEnabled"] = espwifi->rssiSoc.cloudTunnelEnabled();
+          rssi["cloudConnected"] = espwifi->rssiSoc.cloudTunnelConnected();
+          rssi["cloudUIConnected"] = espwifi->rssiSoc.cloudUIConnected();
+          rssi["ui_ws_url"] = std::string(espwifi->rssiSoc.cloudUIWSURL());
+          rssi["device_ws_url"] =
+              std::string(espwifi->rssiSoc.cloudDeviceWSURL());
+          rssi["registered_at_ms"] = espwifi->rssiSoc.cloudRegisteredAtMs();
 #endif
         }
 

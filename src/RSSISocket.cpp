@@ -3,9 +3,8 @@
 #include "esp_wifi.h"
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
-// Single WS instance shared by startRSSIWebSocket() and streamRSSI()
-static WebSocket s_rssiWs;
-static bool s_rssiStarted = false;
+// RSSI WS is now an ESPWiFi member (rssiSoc/rssiSocStarted) so we can report
+// cloud tunnel state in /api/info and apply config changes live.
 #endif
 
 void ESPWiFi::startRSSIWebSocket() {
@@ -13,23 +12,28 @@ void ESPWiFi::startRSSIWebSocket() {
   log(WARNING, "📶 RSSI WebSocket disabled (CONFIG_HTTPD_WS_SUPPORT is off)");
   return;
 #else
-  if (s_rssiStarted) {
+  if (rssiSocStarted) {
     return;
   }
 
   // Keep handler light: we don't expect inbound frames; we only stream RSSI
   // out. Small max message len keeps RX buffer tiny.
-  s_rssiStarted = s_rssiWs.begin("/ws/rssi", this,
+  rssiSocStarted = rssiSoc.begin("/ws/rssi", this,
                                  /*onMessage*/ nullptr,
                                  /*onConnect*/ nullptr,
                                  /*onDisconnect*/ nullptr,
-                                 /*maxMessageLen*/ 32,
+                                 /*maxMessageLen*/ 512,
                                  /*maxBroadcastLen*/ 32,
                                  /*requireAuth*/ false);
 
-  if (!s_rssiStarted) {
+  if (!rssiSocStarted) {
     log(ERROR, "📶 RSSI WebSocket failed to start");
+    return;
   }
+
+  // Apply cloud tunnel config immediately after creating the endpoint so it can
+  // connect without requiring a reboot.
+  rssiSoc.syncCloudTunnelFromConfig();
 #endif
 }
 
@@ -37,10 +41,11 @@ void ESPWiFi::streamRSSI() {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   return;
 #else
-  if (!s_rssiStarted) {
+  if (!rssiSocStarted) {
     return;
   }
-  if (s_rssiWs.numClients() == 0) {
+  // Only stream when there's a real consumer: LAN clients or cloud UI attached.
+  if (rssiSoc.numLanClients() == 0 && !rssiSoc.cloudUIConnected()) {
     return; // No one is listening; do no work.
   }
 
@@ -81,7 +86,7 @@ void ESPWiFi::streamRSSI() {
     return;
   }
 
-  (void)s_rssiWs.textAll(msg, (size_t)n);
+  (void)rssiSoc.textAll(msg, (size_t)n);
   lastSentRssi = rssi;
   keepAliveTimer.resetAt(nowUs); // extend keep-alive after any successful send
 #endif

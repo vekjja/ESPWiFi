@@ -376,10 +376,14 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
 			return
 		case err := <-errCh:
-			_ = err
+			// Bubble up the disconnect cause to make flapping debuggable.
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
 			dc.closeWithReason(websocket.CloseNormalClosure, "device disconnected")
 			s.h.deleteDevice(key, dc)
-			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
+			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel, "err", errMsg)
 			return
 		case <-ticker.C:
 			_ = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
@@ -444,7 +448,18 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+
+	// Tell the device a UI is attached so it can start streaming only when needed.
+	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_connected"}`))
+
 	bridge(dc, uiConn)
+
+	// UI disconnected; mark as unpaired so device keepalive resumes.
+	dc.uiMu.Lock()
+	dc.ui = nil
+	dc.uiMu.Unlock()
+
+	_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_disconnected"}`))
 	s.logf(logInfo, "ui_ws_disconnected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 }
 
@@ -509,7 +524,7 @@ func bridge(dc *deviceConn, uiConn *websocket.Conn) {
 
 	// Forward: UI -> Device
 	go func() {
-		defer func() { _ = deviceConn.Close() }()
+		// Do NOT close deviceConn when UI disconnects; keep the device registered.
 		for {
 			mt, msg, err := uiConn.ReadMessage()
 			if err != nil {

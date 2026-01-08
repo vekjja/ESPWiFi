@@ -107,6 +107,23 @@ export default function DeviceSettingsModal({
     }
   };
 
+  // Wrap saves so the info tab updates immediately after config changes.
+  const saveConfigToDeviceAndRefresh = useCallback(
+    async (newConfig) => {
+      try {
+        const p = saveConfigToDevice?.(newConfig);
+        // If saveConfigToDevice returns a promise, wait for it.
+        if (p && typeof p.then === "function") {
+          await p;
+        }
+      } finally {
+        // Refresh runtime info (cloud tunnel connected/registered, etc).
+        await fetchDeviceInfo();
+      }
+    },
+    [saveConfigToDevice]
+  );
+
   /**
    * Restart device
    */
@@ -212,7 +229,7 @@ export default function DeviceSettingsModal({
       <DeviceSettingsInfoTab
         deviceInfo={deviceInfo}
         config={config}
-        saveConfigToDevice={saveConfigToDevice}
+        saveConfigToDevice={saveConfigToDeviceAndRefresh}
         infoLoading={infoLoading}
         infoError={infoError}
         mode={config?.wifi?.mode || "client"}

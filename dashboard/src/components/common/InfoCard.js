@@ -37,6 +37,7 @@ import EditIcon from "@mui/icons-material/Edit";
 export default function InfoCard({
   title,
   icon: Icon,
+  headerActions = null,
   editable = false,
   isEditing = false,
   onEdit,
@@ -60,6 +61,7 @@ export default function InfoCard({
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               {Icon && <Icon color="primary" />}
               <Typography variant="h6">{title}</Typography>
+              {headerActions}
             </Box>
             {editable && !isEditing && (
               <Tooltip title={`Edit ${title.toLowerCase()}`}>

@@ -348,6 +348,9 @@ public:
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   WebSocket camSoc;
   bool camSocStarted = false;
+
+  WebSocket rssiSoc;
+  bool rssiSocStarted = false;
 #endif
 
   // Camera API (always declared; stubs compile when camera is disabled)

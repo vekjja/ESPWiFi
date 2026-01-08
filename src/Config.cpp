@@ -256,6 +256,14 @@ void ESPWiFi::handleConfigUpdate() {
 #endif
     config = configUpdate;
     configUpdate.clear();
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+    // Apply cloud tunnel config changes immediately to active websocket
+    // endpoints. This allows UI enable/disable to take effect without
+    // rebooting.
+    camSoc.syncCloudTunnelFromConfig();
+    rssiSoc.syncCloudTunnelFromConfig();
+#endif
   }
 
   if (configNeedsSave) {

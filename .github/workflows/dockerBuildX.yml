@@ -111,11 +111,18 @@ jobs:
             image: ghcr.io/vekjja/espwifi-cloudtunnel
             build_args: ""
 
-  deploy-dev:
+  helm-deploy:
     name: Deploy (helm upgrade)
     runs-on: ubuntu-latest
     needs: build-and-push-image
-    if: github.event_name == 'push' && (github.ref_name == 'frmw-39-enable-websocket-cloud-tunnel')
+    # There is no "merge" or "tag" event_name.
+    # - PR merge into dev results in a "push" to refs/heads/dev
+    # - Creating/pushing a tag results in a "push" to refs/tags/<tag>
+    #
+    # Deploy on:
+    # - push to dev branch, OR
+    # - push of a dev-* tag (e.g. dev-abcdef0)
+    if: github.event_name == 'push' && (github.ref_name == 'dev' || startsWith(github.ref_name, 'dev-'))
     permissions:
       contents: write
     steps:
@@ -127,7 +134,11 @@ jobs:
         shell: bash
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="${GITHUB_REF_NAME}-${SHORT_SHA}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${GITHUB_REF_NAME}-${SHORT_SHA}"
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Update Helm values (image tags)

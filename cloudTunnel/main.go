@@ -59,9 +59,13 @@ type deviceConn struct {
 	connectedAt time.Time
 	lastSeen   atomic.Int64 // unix nanos
 
+	// Gorilla websocket requires all writes to be serialized per connection.
+	writeMu sync.Mutex
+
 	// Paired UI websocket. Only one at a time for now.
 	uiMu sync.Mutex
-	ui   *websocket.Conn
+	uiConns   map[*websocket.Conn]struct{}
+	uiWriteMu sync.Mutex // serializes writes across all UI conns
 
 	// Device-provided auth token (used to authorize UI connections).
 	// Typically this is the device's auth.token so the UI can connect securely.
@@ -290,6 +294,7 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		connectedAt: time.Now().UTC(),
 		closed:      make(chan struct{}),
 		uiToken:     deviceProvidedToken,
+		uiConns:     make(map[*websocket.Conn]struct{}),
 	}
 	dc.lastSeen.Store(time.Now().UTC().UnixNano())
 
@@ -330,7 +335,8 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Keepalive/read loop: we don't interpret payloads here; we just maintain the device session.
-	// If a UI is connected, forwarding is handled by the pairing bridge.
+	// IMPORTANT: Gorilla websockets do not allow concurrent readers or concurrent writers.
+	// We keep exactly one reader for the device connection here, and forward to the UI if paired.
 	conn.SetReadLimit(8 << 20) // 8MB per message
 	_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 	conn.SetPongHandler(func(string) error {
@@ -342,29 +348,25 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	type wsMsg struct {
+		mt  int
+		msg []byte
+	}
+	msgCh := make(chan wsMsg, 8)
 	errCh := make(chan error, 1)
 	go func() {
 		for {
-			// If we're paired, the bridge goroutine will be doing reads; avoid double-reading.
-			dc.uiMu.Lock()
-			paired := dc.ui != nil
-			dc.uiMu.Unlock()
-			if paired {
-				time.Sleep(200 * time.Millisecond)
-				select {
-				case <-dc.closed:
-					errCh <- nil
-					return
-				default:
-				}
-				continue
-			}
-
-			_, _, err := conn.ReadMessage()
+			mt, msg, err := conn.ReadMessage()
 			dc.lastSeen.Store(time.Now().UTC().UnixNano())
 			if err != nil {
 				errCh <- err
 				return
+			}
+			// Best-effort forward to UI via main loop (single writer there).
+			select {
+			case msgCh <- wsMsg{mt: mt, msg: msg}:
+			default:
+				// Drop if UI can't keep up; avoid blocking device reader.
 			}
 		}
 	}()
@@ -376,15 +378,69 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
 			return
 		case err := <-errCh:
-			_ = err
+			// Bubble up the disconnect cause to make flapping debuggable.
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
 			dc.closeWithReason(websocket.CloseNormalClosure, "device disconnected")
 			s.h.deleteDevice(key, dc)
-			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel)
+			s.logf(logInfo, "device_ws_disconnected", "device_id", deviceID, "tunnel", tunnel, "err", errMsg)
 			return
+		case m := <-msgCh:
+			// Forward device payload to any connected UI clients.
+			dc.uiMu.Lock()
+			uis := make([]*websocket.Conn, 0, len(dc.uiConns))
+			for c := range dc.uiConns {
+				uis = append(uis, c)
+			}
+			dc.uiMu.Unlock()
+			if len(uis) > 0 {
+				dc.uiWriteMu.Lock()
+				for _, uiConn := range uis {
+					_ = uiConn.WriteMessage(m.mt, m.msg)
+				}
+				dc.uiWriteMu.Unlock()
+			}
 		case <-ticker.C:
+			dc.writeMu.Lock()
 			_ = conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
+			dc.writeMu.Unlock()
 		}
 	}
+}
+
+func isWSUpgrade(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	// Connection may contain multiple tokens (e.g. "keep-alive, Upgrade")
+	conn := r.Header.Get("Connection")
+	for _, tok := range strings.Split(conn, ",") {
+		if strings.EqualFold(strings.TrimSpace(tok), "upgrade") {
+			return true
+		}
+	}
+	return false
+}
+
+// rejectWS attempts to upgrade so the client receives a proper WebSocket close
+// frame (with reason). If upgrade is not possible, falls back to HTTP error.
+func (s *server) rejectWS(w http.ResponseWriter, r *http.Request, httpStatus int, closeCode int, reason string, logKey string, kv ...any) {
+	if isWSUpgrade(r) {
+		c, err := s.upgrader.Upgrade(w, r, nil)
+		if err == nil && c != nil {
+			_ = c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, reason), time.Now().Add(3*time.Second))
+			_ = c.Close()
+			s.logf(logInfo, logKey, kv...)
+			return
+		}
+	}
+	http.Error(w, reason, httpStatus)
+	s.logf(logInfo, logKey, kv...)
 }
 
 func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
@@ -411,8 +467,8 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	key := makeKey(deviceID, tunnel)
 	dc := s.h.getDevice(key)
 	if dc == nil {
-		http.Error(w, "device offline", http.StatusNotFound)
-		s.logf(logInfo, "ui_ws_device_offline", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+		s.rejectWS(w, r, http.StatusNotFound, websocket.CloseTryAgainLater, "device_offline", "ui_ws_device_offline",
+			"remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
@@ -421,8 +477,9 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	if dc.uiToken != "" {
 		got := extractToken(r)
 		if subtle.ConstantTimeCompare([]byte(got), []byte(dc.uiToken)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			s.logf(logInfo, "ui_ws_unauthorized_device", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+			// Policy: upgrade+close so browsers can surface a reason (otherwise it looks like a generic 1006).
+			s.rejectWS(w, r, http.StatusUnauthorized, websocket.ClosePolicyViolation, "unauthorized_device", "ui_ws_unauthorized_device",
+				"remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 			return
 		}
 	}
@@ -432,19 +489,34 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enforce a single UI client per device (new connection wins).
+	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+
+	// Register this UI connection. Allow multiple UI clients per device+tunnel
+	// (useful for multiple tabs + CLI tests).
 	dc.uiMu.Lock()
-	oldUI := dc.ui
-	dc.ui = uiConn
+	wasEmpty := len(dc.uiConns) == 0
+	dc.uiConns[uiConn] = struct{}{}
 	dc.uiMu.Unlock()
-	if oldUI != nil {
-		s.logf(logInfo, "ui_ws_replaced", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
-		_ = oldUI.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "replaced by another ui connection"), time.Now().Add(3*time.Second))
-		_ = oldUI.Close()
+	if wasEmpty {
+		// Tell the device a UI is attached so it can start streaming only when needed.
+		dc.writeMu.Lock()
+		_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_connected"}`))
+		dc.writeMu.Unlock()
 	}
 
-	s.logf(logInfo, "ui_ws_connected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 	bridge(dc, uiConn)
+
+	// UI disconnected; if this was the last UI, tell device it can stop streaming.
+	dc.uiMu.Lock()
+	delete(dc.uiConns, uiConn)
+	nowEmpty := len(dc.uiConns) == 0
+	dc.uiMu.Unlock()
+
+	if nowEmpty {
+		dc.writeMu.Lock()
+		_ = dc.ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"ui_disconnected"}`))
+		dc.writeMu.Unlock()
+	}
 	s.logf(logInfo, "ui_ws_disconnected", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 }
 
@@ -487,74 +559,21 @@ func urlQueryEscape(s string) string {
 func bridge(dc *deviceConn, uiConn *websocket.Conn) {
 	deviceConn := dc.ws
 
-	// Configure timeouts.
-	deviceConn.SetReadLimit(8 << 20)
+	// Configure UI read limit. Device reads are handled by handleDeviceWS (single reader).
 	uiConn.SetReadLimit(8 << 20)
 
-	_ = deviceConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-	_ = uiConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-
-	deviceConn.SetPongHandler(func(string) error {
-		dc.lastSeen.Store(time.Now().UTC().UnixNano())
-		_ = deviceConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		return nil
-	})
-	uiConn.SetPongHandler(func(string) error {
-		_ = uiConn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		return nil
-	})
-
-	done := make(chan struct{})
-	defer close(done)
-
-	// Forward: UI -> Device
-	go func() {
-		defer func() { _ = deviceConn.Close() }()
-		for {
-			mt, msg, err := uiConn.ReadMessage()
-			if err != nil {
-				return
-			}
-			dc.lastSeen.Store(time.Now().UTC().UnixNano())
-			if err := deviceConn.WriteMessage(mt, msg); err != nil {
-				return
-			}
-		}
-	}()
-
-	// Forward: Device -> UI
-	go func() {
-		defer func() { _ = uiConn.Close() }()
-		for {
-			mt, msg, err := deviceConn.ReadMessage()
-			if err != nil {
-				return
-			}
-			dc.lastSeen.Store(time.Now().UTC().UnixNano())
-			if err := uiConn.WriteMessage(mt, msg); err != nil {
-				return
-			}
-		}
-	}()
-
-	// Keepalive until either side closes.
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Forward: UI -> Device (serialize writes to deviceConn).
 	for {
-		select {
-		case <-dc.closed:
+		mt, msg, err := uiConn.ReadMessage()
+		if err != nil {
 			return
-		case <-ticker.C:
-			_ = uiConn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
-			_ = deviceConn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
-		case <-time.After(200 * time.Millisecond):
-			// Poll for closure via connection errors indirectly; goroutines will close sockets.
-			dc.uiMu.Lock()
-			cur := dc.ui
-			dc.uiMu.Unlock()
-			if cur != uiConn {
-				return
-			}
+		}
+		dc.lastSeen.Store(time.Now().UTC().UnixNano())
+		dc.writeMu.Lock()
+		werr := deviceConn.WriteMessage(mt, msg)
+		dc.writeMu.Unlock()
+		if werr != nil {
+			return
 		}
 	}
 }
@@ -566,16 +585,27 @@ func (dc *deviceConn) closeWithReason(code int, reason string) {
 	default:
 		close(dc.closed)
 	}
+	dc.writeMu.Lock()
 	_ = dc.ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
 	_ = dc.ws.Close()
+	dc.writeMu.Unlock()
 
 	dc.uiMu.Lock()
-	if dc.ui != nil {
-		_ = dc.ui.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
-		_ = dc.ui.Close()
-		dc.ui = nil
+	uis := make([]*websocket.Conn, 0, len(dc.uiConns))
+	for c := range dc.uiConns {
+		uis = append(uis, c)
 	}
+	dc.uiConns = make(map[*websocket.Conn]struct{})
 	dc.uiMu.Unlock()
+
+	if len(uis) > 0 {
+		dc.uiWriteMu.Lock()
+		for _, c := range uis {
+			_ = c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, reason), time.Now().Add(3*time.Second))
+			_ = c.Close()
+		}
+		dc.uiWriteMu.Unlock()
+	}
 }
 
 func (s *server) publicBase(r *http.Request) string {

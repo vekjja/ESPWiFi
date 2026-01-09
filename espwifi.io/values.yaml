@@ -21,7 +21,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/vekjja/espwifi
   pullPolicy: Always
-  tag: "dev-cloudtunnel-0.2.1"
+  tag: "dev-cloudtunnel-0.1.5"
 
 imagePullSecrets:
 - name: ghcr-secret
@@ -80,7 +80,7 @@ cloudTunnel:
   image:
     repository: ghcr.io/vekjja/espwifi-cloudtunnel
     pullPolicy: Always
-    tag: "dev-cloudtunnel-0.2.1"
+    tag: "dev-cloudtunnel-0.1.5"
 
   service:
     type: ClusterIP

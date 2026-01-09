@@ -247,7 +247,6 @@ public:
   void srvRoot();
   void srvGPIO();
   void srvAuth();
-  void srvConfig();
   void srvBLE();
   void srvBluetooth();
   void srvWildcard();

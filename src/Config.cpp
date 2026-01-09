@@ -57,8 +57,6 @@ void ESPWiFi::readConfig() {
   }
 
   corsConfigHandler();
-  // Print config summary instead of full pretty-printed config to reduce stack
-  // usage Full config is available via /api/config endpoint
   if (configLoaded) {
     log(INFO, "⚙️ Config Read from LittleFS (size: %zu bytes)",
         measureJson(config));

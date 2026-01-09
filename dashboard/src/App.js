@@ -12,15 +12,8 @@ import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
-import {
-  getApiUrl,
-  buildApiUrl,
-  getFetchOptions,
-  buildWebSocketUrl,
-} from "./utils/apiUtils";
-import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
+import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
-import { getUserFriendlyErrorMessage } from "./utils/errorUtils";
 // NOTE: control WS URL is constructed from the selected device record to avoid
 // reconnect loops on config changes in paired/tunnel mode.
 import {
@@ -123,8 +116,6 @@ function App() {
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [deviceApiBlocked, setDeviceApiBlocked] = useState(false);
-  const [deviceApiBlockedUrl, setDeviceApiBlockedUrl] = useState("");
   const [needsPairing, setNeedsPairing] = useState(false);
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
@@ -142,7 +133,6 @@ function App() {
   const headerRef = useRef(null);
 
   // Use ref for fetch locking to avoid race conditions with async state updates
-  const isFetchingConfigRef = useRef(false);
   const deviceOnlineRef = useRef(deviceOnline);
 
   useEffect(() => {
@@ -536,312 +526,20 @@ function App() {
     controlReconnectSeq,
   ]);
 
-  /**
-   * Helper to compare two config objects for equality
-   * @param {Object} config1 - First config object
-   * @param {Object} config2 - Second config object
-   * @returns {boolean} True if configs are equal
-   */
-  const configsAreEqual = useCallback((config1, config2) => {
-    return JSON.stringify(config1) === JSON.stringify(config2);
-  }, []);
-
-  /**
-   * Fetch configuration from device
-   * Includes retry logic and offline detection
-   * @param {boolean} forceUpdate - Force update even if config unchanged
-   * @returns {Promise<Object|null>} Configuration object or null on error
-   */
-  const fetchConfig = useCallback(
-    async (forceUpdate = false) => {
-      // Prevent concurrent fetches using ref for synchronous check
-      if (isFetchingConfigRef.current) {
-        return null;
-      }
-
-      isFetchingConfigRef.current = true;
-
-      try {
-        // If we have a control channel URL, config/info comes from /ws/control.
-        if (controlWsUrl) {
-          return null;
-        }
-        const configUrl = buildApiUrl("/api/config");
-
-        // If we're in production and buildApiUrl() is same-origin, we are *not*
-        // pointing at a device. (espwifi.io serves only the static dashboard.)
-        // Don't attempt to parse HTML as JSON; instead mark "needs pairing".
-        if (
-          process.env.NODE_ENV === "production" &&
-          typeof configUrl === "string" &&
-          (configUrl === "/api/config" ||
-            configUrl === `${window.location.origin}/api/config`)
-        ) {
-          setNeedsPairing(true);
-          return null;
-        } else {
-          setNeedsPairing(false);
-        }
-        // On https pages, browsers typically block http:// device API calls as mixed content.
-        // Desktop users can sometimes override this; mobile generally cannot.
-        if (
-          window.location.protocol === "https:" &&
-          typeof configUrl === "string" &&
-          configUrl.startsWith("http://")
-        ) {
-          setDeviceApiBlocked(true);
-          setDeviceApiBlockedUrl(configUrl);
-          setDeviceOnline(false);
-          setAuthenticated(false);
-          return null;
-        } else {
-          setDeviceApiBlocked(false);
-          setDeviceApiBlockedUrl("");
-        }
-
-        // Create an AbortController for timeout
-        const controller = new AbortController();
-        // Timeout set to 20 seconds to handle slow device responses
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-        const response = await fetch(
-          configUrl,
-          getFetchOptions({
-            signal: controller.signal,
-          })
-        );
-
-        clearTimeout(timeoutId);
-
-        // Handle 401 Unauthorized - user needs to login
-        if (response.status === 401) {
-          setAuthenticated(false);
-          clearAuthToken();
-          throw new Error("Unauthorized - please login");
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            `Network response was not ok: ${response.status} ${response.statusText}`
-          );
-        }
-        const ct = response.headers.get("content-type") || "";
-        if (!ct.includes("application/json")) {
-          // Common failure mode: HTML (index.html) or a proxy error page.
-          setNeedsPairing(true);
-          return null;
-        }
-        const data = await response.json();
-        const configWithAPI = { ...data, apiURL };
-
-        // Only update state if config has actually changed
-        setConfig((prevConfig) =>
-          configsAreEqual(prevConfig, configWithAPI)
-            ? prevConfig
-            : configWithAPI
-        );
-
-        // Only update localConfig if there are no unsaved changes or if forced
-        setLocalConfig((prevLocalConfig) => {
-          // Always initialize if localConfig is null (first load)
-          if (prevLocalConfig === null) {
-            return configWithAPI;
-          }
-
-          // If forcing update, check if config changed
-          if (forceUpdate) {
-            return configsAreEqual(prevLocalConfig, configWithAPI)
-              ? prevLocalConfig
-              : configWithAPI;
-          }
-
-          // If not forcing, keep existing local config (preserve unsaved changes)
-          return prevLocalConfig;
-        });
-
-        setDeviceOnline(true); // Device is online
-        setAuthenticated(true); // Successfully authenticated
-        return data;
-      } catch (error) {
-        // Handle authentication errors
-        if (error.message.includes("Unauthorized")) {
-          setAuthenticated(false);
-          return null;
-        }
-
-        // Only log errors if we're not already offline to avoid spam
-        if (deviceOnlineRef.current) {
-          console.warn(
-            getUserFriendlyErrorMessage(error, "fetching configuration")
-          );
-        }
-        setDeviceOnline(false);
-        return null;
-      } finally {
-        isFetchingConfigRef.current = false;
-      }
-    },
-    [apiURL, configsAreEqual]
-  );
-
-  // Keep a stable reference so effects can depend only on networkEnabled and
-  // not re-run due to function identity changes.
-  const fetchConfigRef = useRef(fetchConfig);
-  useEffect(() => {
-    fetchConfigRef.current = fetchConfig;
-  }, [fetchConfig]);
-
-  /**
-   * Check authentication status on application mount
-   * Includes retry logic for device restarts
-   */
+  // No HTTP config endpoint in the dashboard anymore. Config/info are sourced from
+  // /ws/control (LAN) or tunnel /ws/ui/... (cloud) only.
   useEffect(() => {
     if (!networkEnabled) return;
-    // On espwifi.io we operate in pairing/cloud mode; no direct device HTTP auth.
-    if (isCloudDashboard) {
-      setAuthChecked(true);
-      setCheckingAuth(false);
-      return;
-    }
-    // LAN/dev and device-hosted: if we have a control WS target, config/info comes
-    // from /ws/control and we don't need HTTP auth/config bootstrapping.
-    if (controlWsUrl) {
-      setNeedsPairing(false);
-      setAuthenticated(true);
-      setAuthChecked(true);
-      setCheckingAuth(false);
-      return;
-    }
-    const checkAuth = async () => {
-      setCheckingAuth(true);
-
-      try {
-        // Retry logic to handle device restarts
-        const hasToken = isAuthenticated();
-        // If we don't have a token, extra retries just delay showing Login.
-        // If we DO have a token, retries can help survive device restarts.
-        const maxRetries = hasToken ? 5 : 1;
-        const retryDelay = 1000; // 1 second between retries
-        let result = null;
-
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          result = await fetchConfigRef.current?.();
-          if (result) break;
-
-          // If we didn't succeed and there are retries left, wait before retrying
-          if (attempt < maxRetries - 1) {
-            await new Promise((resolve) => setTimeout(resolve, retryDelay));
-          }
-        }
-
-        // If all retries failed, set authenticated to false
-        if (!result) {
-          setAuthenticated(false);
-        }
-      } catch (error) {
-        console.error("Error during auth check:", error);
-        setAuthenticated(false);
-      } finally {
-        setCheckingAuth(false);
-        setAuthChecked(true);
-      }
-    };
-
-    checkAuth();
-  }, [networkEnabled, isCloudDashboard, controlWsUrl]);
-
-  /**
-   * Set up polling for config updates when authenticated
-   * Uses exponential backoff for failed requests to avoid overwhelming the device
-   */
-  useEffect(() => {
-    // Only start polling if authenticated
-    if (!networkEnabled || !authenticated || isCloudDashboard || controlWsUrl) {
-      return;
-    }
-
-    let pollTimeout;
-    let consecutiveFailures = 0;
-    const maxConsecutiveFailures = 5; // Stop polling after 5 consecutive failures
-    const basePollInterval = 30000; // Base: 30 seconds (much more conservative)
-    const maxPollInterval = 120000; // Max: 2 minutes
-    let isActive = true; // Flag to check if effect is still active
-
-    const scheduleNextPoll = (intervalMs) => {
-      if (!isActive) return;
-
-      pollTimeout = setTimeout(async () => {
-        // Skip if a fetch is already in progress
-        if (isFetchingConfigRef.current) {
-          console.log("Skipping poll - fetch already in progress");
-          // Try again after a short delay
-          scheduleNextPoll(5000);
-          return;
-        }
-
-        try {
-          const result = await fetchConfigRef.current?.();
-
-          if (result) {
-            consecutiveFailures = 0; // Reset failure count on success
-            scheduleNextPoll(basePollInterval); // Use base interval
-          } else {
-            consecutiveFailures++;
-
-            // Stop polling after max consecutive failures
-            if (consecutiveFailures >= maxConsecutiveFailures) {
-              console.warn(
-                `Stopping polling after ${maxConsecutiveFailures} consecutive failures. Device appears offline.`
-              );
-              return; // Stop polling
-            }
-
-            // Exponential backoff: double the interval for each failure, up to max
-            const backoffInterval = Math.min(
-              basePollInterval * Math.pow(2, consecutiveFailures - 1),
-              maxPollInterval
-            );
-            console.log(
-              `Poll failed (${consecutiveFailures}/${maxConsecutiveFailures}). Next poll in ${
-                backoffInterval / 1000
-              }s`
-            );
-            scheduleNextPoll(backoffInterval);
-          }
-        } catch (error) {
-          console.error("Error in polling loop:", error);
-          consecutiveFailures++;
-
-          if (consecutiveFailures < maxConsecutiveFailures) {
-            const backoffInterval = Math.min(
-              basePollInterval * Math.pow(2, consecutiveFailures - 1),
-              maxPollInterval
-            );
-            scheduleNextPoll(backoffInterval);
-          }
-        }
-      }, intervalMs);
-    };
-
-    // Start polling
-    scheduleNextPoll(basePollInterval);
-
-    // Cleanup on unmount
-    return () => {
-      isActive = false;
-      if (pollTimeout) {
-        clearTimeout(pollTimeout);
-      }
-    };
-  }, [authenticated, networkEnabled, isCloudDashboard, controlWsUrl]);
-
-  /**
-   * Handle successful login
-   * Fetches initial config and removes loading screen
-   */
-  const handleLoginSuccess = () => {
+    setAuthChecked(true);
+    setCheckingAuth(false);
+    // Do not show login modal; control socket acts as the transport.
     setAuthenticated(true);
-    fetchConfigRef.current?.(true);
+  }, [networkEnabled]);
+
+  const handleLoginSuccess = () => {
+    // Legacy: keep the handler so the Login component can still resolve,
+    // but the app no longer depends on HTTP auth/config.
+    setAuthenticated(true);
   };
 
   /**
@@ -864,7 +562,7 @@ function App() {
    */
   const saveConfigFromButton = useCallback(
     (newConfig) => {
-      // One mode: send config over control WS (no HTTP /api/config).
+      // One mode: send config over control WS (no HTTP config endpoint).
       // Optimistically update local UI config.
       setLocalConfig((prevConfig) => ({
         ...prevConfig,
@@ -983,44 +681,7 @@ function App() {
         </Box>
       </Container>
 
-      {deviceApiBlocked && (
-        <Container sx={{ mt: 2 }}>
-          <Box
-            sx={{
-              border: "1px solid",
-              borderColor: "warning.main",
-              bgcolor: "rgba(255, 167, 38, 0.12)",
-              p: 2,
-              borderRadius: 2,
-              maxWidth: 920,
-              mx: "auto",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-              Device API blocked on HTTPS
-            </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.9 }}>
-              This page is loaded over HTTPS, but the device API target is HTTP
-              (mixed content). Mobile browsers usually block this.
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, opacity: 0.9 }}>
-              Try opening the device UI directly on your LAN (e.g.{" "}
-              <code>http://espwifi.local</code> or the device IP), or enable the
-              cloud tunnel for WebSocket features.
-            </Typography>
-            {deviceApiBlockedUrl ? (
-              <Typography
-                variant="caption"
-                sx={{ display: "block", mt: 1, opacity: 0.75 }}
-              >
-                Blocked URL: {deviceApiBlockedUrl}
-              </Typography>
-            ) : null}
-          </Box>
-        </Container>
-      )}
-
-      {needsPairing && !deviceApiBlocked && (
+      {needsPairing && (
         <Container sx={{ mt: 2 }}>
           <Box
             sx={{
@@ -1138,15 +799,11 @@ function App() {
       </Container>
 
       {/* Show login modal when not authenticated */}
-      {!authenticated &&
-        !deviceApiBlocked &&
-        !needsPairing &&
-        authChecked &&
-        !checkingAuth && (
-          <Suspense fallback={null}>
-            <Login onLoginSuccess={handleLoginSuccess} />
-          </Suspense>
-        )}
+      {!authenticated && !needsPairing && authChecked && !checkingAuth && (
+        <Suspense fallback={null}>
+          <Login onLoginSuccess={handleLoginSuccess} />
+        </Suspense>
+      )}
     </ThemeProvider>
   );
 }

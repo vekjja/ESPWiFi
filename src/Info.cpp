@@ -87,6 +87,13 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
 #endif
   }
 
+  // Pairing / claim code (for iOS flows)
+  {
+    JsonObject p = jsonDoc["pairing"].to<JsonObject>();
+    p["claim_code"] = getClaimCode(false);
+    p["claim_expires_in_ms"] = claimExpiresInMs();
+  }
+
   maybeYield();
 
   // Chip model and SDK version

@@ -30,10 +30,12 @@ import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
 import MaskedValueField from "../common/MaskedValueField";
 import { safeGetItem } from "../../utils/storageUtils";
+import QRCode from "qrcode";
 
 export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const [tempEnabled, setTempEnabled] = useState(false);
   const [tempMaxFps, setTempMaxFps] = useState(0);
 
@@ -45,6 +47,33 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
 
   const info = deviceInfo?.cloudTunnel || {};
   const endpoints = info?.endpoints || {};
+  const pairing = deviceInfo?.pairing || {};
+  const claimCode = String(pairing?.claim_code || "").trim();
+  const claimUrl = claimCode ? `https://espwifi.io/?claim=${claimCode}` : "";
+  const [qrDataUrl, setQrDataUrl] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    if (!qrOpen || !claimUrl) {
+      setQrDataUrl("");
+      return () => {};
+    }
+    QRCode.toDataURL(
+      claimUrl,
+      { width: 240, margin: 1, errorCorrectionLevel: "M" },
+      (err, url) => {
+        if (!alive) return;
+        if (err) {
+          setQrDataUrl("");
+          return;
+        }
+        setQrDataUrl(url || "");
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [qrOpen, claimUrl]);
 
   const anyConnected = useMemo(() => {
     const vals = Object.values(endpoints || {});
@@ -117,6 +146,38 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
       <InfoRow
         label="Base URL:"
         value={info?.baseUrl || config?.cloudTunnel?.baseUrl || "—"}
+      />
+      <InfoRow
+        label="iPhone pairing:"
+        value={
+          claimCode ? (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <MaskedValueField value={claimCode} blur={false} defaultShow />
+              <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      navigator.clipboard.writeText(claimCode);
+                    }
+                  }}
+                >
+                  Copy code
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => setQrOpen(true)}
+                >
+                  Show QR
+                </Button>
+              </Box>
+            </Box>
+          ) : (
+            "—"
+          )
+        }
       />
       {(info?.enabled || config?.cloudTunnel?.enabled) && (
         <InfoRow
@@ -278,6 +339,38 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
       >
         {viewContent}
       </InfoCard>
+
+      <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Pair (iPhone)</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+            Scan this QR on iPhone to open <code>espwifi.io</code> and claim the
+            device.
+          </Typography>
+          {qrDataUrl ? (
+            <Box sx={{ display: "flex", justifyContent: "center", my: 1 }}>
+              <img
+                src={qrDataUrl}
+                alt="Pairing QR"
+                style={{ width: 240, height: 240 }}
+              />
+            </Box>
+          ) : (
+            <Typography variant="body2" sx={{ opacity: 0.75 }}>
+              Generating QR…
+            </Typography>
+          )}
+          <Typography
+            variant="caption"
+            sx={{ display: "block", mt: 1, opacity: 0.75 }}
+          >
+            Claim URL: {claimUrl || "—"}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQrOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={aboutOpen}

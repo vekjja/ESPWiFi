@@ -107,6 +107,18 @@ static void setControlRespJson(const JsonDocument &doc) {
   }
 }
 
+static void notifyControlResp(uint16_t conn_handle, uint16_t attr_handle) {
+  // Best-effort: only works if the client subscribed.
+  if (conn_handle == 0 || attr_handle == 0) {
+    return;
+  }
+  struct os_mbuf *om = ble_hs_mbuf_from_flat(s_controlResp, s_controlRespLen);
+  if (!om) {
+    return;
+  }
+  (void)ble_gatts_notify_custom(conn_handle, attr_handle, om);
+}
+
 static bool readOmToBuf(struct os_mbuf *om, char *out, size_t outCap,
                         size_t *outLen) {
   if (!out || outCap == 0)
@@ -226,7 +238,7 @@ void ESPWiFi::startBLEServices() {
   // Optional: keep a custom control characteristic under DIS for provisioning.
   (void)registerBleCharacteristic16(
       0x180A, GattServices::controlCharUUID.value,
-      BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+      BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
       [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
          struct ble_gatt_access_ctxt *ctxt) -> int {
         (void)espwifi;
@@ -360,12 +372,19 @@ void ESPWiFi::startBLEServices() {
                 espwifi->config["wifi"]["mode"].as<std::string>();
             resp["ip"] = espwifi->ipAddress();
             resp["bleStatus"] = espwifi->getBLEStatus();
+            resp["claim_code"] = espwifi->getClaimCode(false);
+            resp["claim_expires_in_ms"] = espwifi->claimExpiresInMs();
+          } else if (strcmp(cmd, "get_claim") == 0) {
+            const bool rotate = req["rotate"] | false;
+            resp["code"] = espwifi->getClaimCode(rotate);
+            resp["expires_in_ms"] = espwifi->claimExpiresInMs();
           } else {
             resp["ok"] = false;
             resp["error"] = "unknown_cmd";
           }
 
           setControlRespJson(resp);
+          notifyControlResp(conn_handle, attr_handle);
           return 0;
         }
 

@@ -120,6 +120,7 @@ function App() {
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [pairingOpen, setPairingOpen] = useState(false);
+  const claimHandledRef = useRef(false);
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
   const [controlConnected, setControlConnected] = useState(false);
@@ -285,6 +286,81 @@ function App() {
       setDeviceOnline(false);
     }
   }, [isCloudDashboard, makeCloudConfigFromDevice]);
+
+  // Claim-code pairing flow (iPhone):
+  // - QR opens espwifi.io/?claim=CODE
+  // - dashboard exchanges CODE -> token via cloudTunnel, then saves the device.
+  useEffect(() => {
+    if (!networkEnabled) return;
+    if (!isCloudDashboard) return;
+    if (claimHandledRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const claim = (params.get("claim") || "").trim();
+    if (!claim) return;
+
+    claimHandledRef.current = true;
+
+    const cleanupUrl = () => {
+      try {
+        params.delete("claim");
+        const next =
+          window.location.pathname +
+          (params.toString() ? `?${params.toString()}` : "") +
+          window.location.hash;
+        window.history.replaceState(null, "", next);
+      } catch {
+        // ignore
+      }
+    };
+
+    const run = async () => {
+      try {
+        const res = await fetch("https://tnl.espwifi.io/api/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: claim, tunnel: "ws_control" }),
+        });
+        if (!res.ok) {
+          throw new Error(`claim_exchange_http_${res.status}`);
+        }
+        const data = await res.json();
+        if (!data?.ok || !data?.device_id || !data?.token) {
+          throw new Error("claim_exchange_bad_response");
+        }
+
+        const record = {
+          id: String(data.device_id),
+          name: String(data.device_id),
+          hostname: String(data.device_id),
+          authToken: String(data.token),
+          cloudBaseUrl: "https://tnl.espwifi.io",
+          deviceId: String(data.device_id),
+        };
+
+        setDevices((prev) => {
+          const next = upsertDevice(prev, record);
+          saveDevices(next);
+          return next;
+        });
+        setSelectedDeviceId(record.id);
+        saveSelectedDeviceId(record.id);
+        setNeedsPairing(false);
+
+        const cc = makeCloudConfigFromDevice(record);
+        setConfig(cc);
+        setLocalConfig(cc);
+        // Wait for boot phase before connecting sockets.
+        setDeviceOnline(false);
+      } catch (e) {
+        console.warn("Claim exchange failed:", e);
+      } finally {
+        cleanupUrl();
+      }
+    };
+
+    run();
+  }, [networkEnabled, isCloudDashboard, makeCloudConfigFromDevice]);
 
   const handleSelectDevice = useCallback(
     (d) => {

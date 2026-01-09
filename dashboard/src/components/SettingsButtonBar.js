@@ -101,17 +101,30 @@ function insertAfter(list, id, afterId) {
 /**
  * Ensure non-removable buttons are in preferred positions
  * @param {string[]} list - Current button list
+ * @param {boolean} showDevicePicker - If false, do NOT force the Devices button
  * @returns {string[]} List with non-removables positioned correctly
  */
-function ensureNonRemovablesInPreferredPositions(list) {
+function ensureNonRemovablesInPreferredPositions(
+  list,
+  showDevicePicker = true
+) {
   let next = Array.isArray(list) ? [...list] : [];
-  // Devices button should lead when possible
-  if (!next.includes("devicePicker")) {
-    next = ["devicePicker", ...next];
-  }
-  // RSSI next (when available)
-  if (!next.includes("rssi")) {
-    next = insertAfter(next, "rssi", "devicePicker");
+  if (showDevicePicker) {
+    // Devices button should lead when possible
+    if (!next.includes("devicePicker")) {
+      next = ["devicePicker", ...next];
+    }
+    // RSSI next (when available)
+    if (!next.includes("rssi")) {
+      next = insertAfter(next, "rssi", "devicePicker");
+    }
+  } else {
+    // If persisted state included it, strip it.
+    next = next.filter((id) => id !== "devicePicker");
+    // If no device picker, prefer RSSI at the front.
+    if (!next.includes("rssi")) {
+      next = ["rssi", ...next];
+    }
   }
   // Settings after RSSI when possible
   if (!next.includes("deviceSettings")) {
@@ -243,6 +256,7 @@ export default function SettingsButtonBar({
   onSelectDevice,
   onRemoveDevice,
   onPairNewDevice,
+  showDevicePicker = true,
   cloudMode = false,
   controlConnected = false,
   deviceInfoOverride = null,
@@ -262,18 +276,20 @@ export default function SettingsButtonBar({
     const httpCapable = deviceOnline && !cloudMode;
     const logsCapable = (cloudMode && controlConnected) || deviceOnline;
 
-    items.push({
-      id: "devicePicker",
-      render: () => (
-        <DevicePickerButton
-          devices={devices}
-          selectedId={selectedDeviceId}
-          onSelectDevice={onSelectDevice}
-          onRemoveDevice={onRemoveDevice}
-          onPairNew={onPairNewDevice}
-        />
-      ),
-    });
+    if (showDevicePicker) {
+      items.push({
+        id: "devicePicker",
+        render: () => (
+          <DevicePickerButton
+            devices={devices}
+            selectedId={selectedDeviceId}
+            onSelectDevice={onSelectDevice}
+            onRemoveDevice={onRemoveDevice}
+            onPairNew={onPairNewDevice}
+          />
+        ),
+      });
+    }
 
     items.push({
       id: "deviceSettings",
@@ -380,6 +396,11 @@ export default function SettingsButtonBar({
     saveConfigToDevice,
     getRSSIColor,
     getRSSIIcon,
+    controlRssi,
+    onRequestRssi,
+    logsText,
+    logsError,
+    onRequestLogs,
     cameraEnabled,
     getCameraColor,
     devices,
@@ -388,6 +409,9 @@ export default function SettingsButtonBar({
     onRemoveDevice,
     onPairNewDevice,
     cloudMode,
+    controlConnected,
+    deviceInfoOverride,
+    showDevicePicker,
   ]);
 
   const visibleIds = useMemo(
@@ -458,9 +482,9 @@ export default function SettingsButtonBar({
         if (enabledSet.has(id) && !next.includes(id)) next.push(id);
       }
       // Ensure required ids are present without forcing them to the front.
-      return ensureNonRemovablesInPreferredPositions(next);
+      return ensureNonRemovablesInPreferredPositions(next, showDevicePicker);
     });
-  }, [enabledIds, visibleIds]);
+  }, [enabledIds, visibleIds, showDevicePicker]);
 
   /**
    * Persist button order to localStorage

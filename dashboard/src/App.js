@@ -181,8 +181,96 @@ function App() {
     };
   }, []);
 
-  const isCloudDashboard =
-    process.env.NODE_ENV === "production" && !process.env.REACT_APP_API_HOST;
+  const host = window.location.hostname || "";
+  const isDevHost =
+    host === "localhost" || host === "127.0.0.1" || host === "::1";
+  // Cloud dashboard is ONLY espwifi.io (or subdomains). Device-hosted .local must
+  // behave as LAN and should never show pairing UI by default.
+  let isCloudDashboard = host === "espwifi.io" || host.endsWith(".espwifi.io");
+  let isDeviceHosted = !isCloudDashboard && !isDevHost;
+  let devHostMode = "";
+  let devLanHost = "";
+
+  // Dev-only: allow localhost:3000 to "pretend" it's cloud-hosted or device-hosted.
+  // Usage:
+  // - http://localhost:3000/?mode=cloud  -> behave like espwifi.io
+  // - http://localhost:3000/?mode=device -> behave like espwifi.local (device-hosted)
+  // - http://localhost:3000/?mode=dev    -> normal localhost behavior
+  // The choice is persisted in localStorage so refreshes keep the mode.
+  if (isDevHost) {
+    const MODE_KEY = "espwifi.devHostMode";
+    const LAN_HOST_KEY = "espwifi.devLanHost";
+
+    const normalizeMode = (v) =>
+      String(v || "")
+        .trim()
+        .toLowerCase();
+    const isAllowed = (v) => v === "cloud" || v === "device" || v === "dev";
+
+    const readStored = () => {
+      try {
+        return normalizeMode(window.localStorage?.getItem(MODE_KEY));
+      } catch {
+        return "";
+      }
+    };
+
+    const writeStored = (v) => {
+      try {
+        window.localStorage?.setItem(MODE_KEY, v);
+      } catch {
+        // ignore
+      }
+    };
+
+    const params = new URLSearchParams(window.location.search || "");
+    const modeParam = normalizeMode(params.get("mode"));
+    const lanHostParam = normalizeMode(params.get("lanHost"));
+
+    const readLanHost = () => {
+      try {
+        return normalizeMode(window.localStorage?.getItem(LAN_HOST_KEY));
+      } catch {
+        return "";
+      }
+    };
+    const writeLanHost = (v) => {
+      try {
+        window.localStorage?.setItem(LAN_HOST_KEY, v);
+      } catch {
+        // ignore
+      }
+    };
+
+    if (isAllowed(modeParam)) {
+      devHostMode = modeParam;
+      writeStored(modeParam);
+    } else {
+      const stored = readStored();
+      if (isAllowed(stored)) devHostMode = stored;
+    }
+
+    // Optional in device-mode: which LAN host to use for /ws/control.
+    // Defaults to espwifi.local.
+    if (lanHostParam) {
+      devLanHost = lanHostParam;
+      writeLanHost(lanHostParam);
+    } else {
+      devLanHost = readLanHost();
+    }
+    if (!devLanHost) devLanHost = "espwifi.local";
+
+    if (devHostMode === "cloud") {
+      isCloudDashboard = true;
+      isDeviceHosted = false;
+    } else if (devHostMode === "device") {
+      isCloudDashboard = false;
+      isDeviceHosted = true;
+    } else if (devHostMode === "dev") {
+      isCloudDashboard = false;
+      isDeviceHosted = false;
+    }
+  }
 
   // Note: localhost can still operate fully via /ws/control (LAN mode), or via
   // tunnel if a device record is selected that contains tunnel details.
@@ -255,6 +343,14 @@ function App() {
 
   // Bootstrap device registry early (before any network calls).
   useEffect(() => {
+    // Device-hosted UI (espwifi.local / *.local): do not show pairing UI.
+    // Always connect to same-origin /ws/control.
+    if (isDeviceHosted) {
+      setNeedsPairing(false);
+      setAuthChecked(true);
+      return;
+    }
+
     const loaded = loadDevices();
     const sel = loadSelectedDeviceId();
     setDevices(loaded);
@@ -273,7 +369,7 @@ function App() {
     }
 
     // Show "Select a device" banner when there are saved devices but none selected,
-    // and "No device paired" when there are none. This applies on both local + cloud.
+    // and "No device paired" when there are none. This applies on localhost dev + cloud.
     setNeedsPairing(loaded.length === 0 || !chosen);
     setAuthChecked(true);
 
@@ -287,7 +383,7 @@ function App() {
       // websocket connects before the page is fully loaded.
       setDeviceOnline(false);
     }
-  }, [isCloudDashboard, makeCloudConfigFromDevice]);
+  }, [isCloudDashboard, isDeviceHosted, makeCloudConfigFromDevice]);
 
   // Claim-code pairing flow (iPhone):
   // - QR opens espwifi.io/?claim=CODE
@@ -459,6 +555,9 @@ function App() {
   const lanTargetHost = useMemo(() => {
     // Prefer explicit override.
     if (process.env.REACT_APP_API_HOST) return process.env.REACT_APP_API_HOST;
+    // When simulating "device-hosted" on localhost, target the LAN device by default.
+    if (isDevHost && devHostMode === "device")
+      return devLanHost || "espwifi.local";
     // If a device is selected, use it as the LAN target.
     const selHost =
       selectedDevice?.hostname ||
@@ -470,13 +569,24 @@ function App() {
     if (config?.hostname) return config.hostname;
     // No selection yet.
     return null;
-  }, [config?.hostname, localConfig?.hostname, selectedDevice]);
+  }, [
+    config?.hostname,
+    devHostMode,
+    devLanHost,
+    isDevHost,
+    localConfig?.hostname,
+    selectedDevice,
+  ]);
 
   const lanControlUrl = useMemo(() => {
+    // True device-hosted UI (espwifi.local / *.local) always connects to same-origin /ws/control.
+    // When *spoofing* device-hosted mode on localhost (dev override), do NOT force
+    // same-origin because localhost won't have /ws/control unless a proxy is set up.
+    if (isDeviceHosted && !isDevHost) return buildWebSocketUrl("/ws/control");
     // If no target host yet, don't connect.
     if (!lanTargetHost) return null;
     return buildWebSocketUrl("/ws/control", lanTargetHost);
-  }, [lanTargetHost]);
+  }, [isDeviceHosted, isDevHost, lanTargetHost]);
 
   const controlWsUrl = useMemo(() => {
     // Tunnel when a selected device provides tunnel connection details.
@@ -831,6 +941,7 @@ function App() {
           controlRssi={cloudRssi}
           logsText={cloudLogs}
           logsError={cloudLogsError}
+          showDevicePicker={!isDeviceHosted}
           onRequestRssi={() => {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;

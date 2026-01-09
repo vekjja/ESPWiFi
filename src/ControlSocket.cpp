@@ -43,6 +43,10 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     } else if (strcmp(cmd, "get_info") == 0) {
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
       resp["info"] = infoDoc.as<JsonVariantConst>();
+    } else if (strcmp(cmd, "get_claim") == 0) {
+      const bool rotate = req["rotate"] | false;
+      resp["code"] = espwifi->getClaimCode(rotate);
+      resp["expires_in_ms"] = espwifi->claimExpiresInMs();
     } else if (strcmp(cmd, "get_rssi") == 0) {
       // Return current RSSI (and SSID if available) as a simple control cmd.
       wifi_ap_record_t ap_info;

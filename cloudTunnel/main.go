@@ -147,6 +147,19 @@ type server struct {
 
 	logLevel   logLevel
 	logHealthz bool
+
+	// Claim codes: short-lived one-time codes used to exchange for the device's
+	// long auth token (so iOS users can pair without handling the token in BLE tools).
+	claimMu sync.Mutex
+	claims  map[string]claimEntry
+}
+
+type claimEntry struct {
+	DeviceID   string
+	TunnelKey  string
+	Token      string
+	ExpiresAt  time.Time
+	Registered time.Time
 }
 
 func main() {
@@ -163,6 +176,7 @@ func main() {
 		publicBaseURL:   *publicBase,
 		logLevel:        parseLogLevel(envOr("LOG_LEVEL", "info")),
 		logHealthz:      envOr("LOG_HEALTHZ", "0") == "1",
+		claims:          make(map[string]claimEntry),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  32 * 1024,
 			WriteBufferSize: 32 * 1024,
@@ -177,6 +191,7 @@ func main() {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/register", s.handleRegister)
 	mux.HandleFunc("/api/devices", s.handleDevices)
+	mux.HandleFunc("/api/claim", s.handleClaim)
 	mux.HandleFunc("/ws/device/", s.handleDeviceWS)
 	mux.HandleFunc("/ws/ui/", s.handleUIWS)
 
@@ -205,6 +220,96 @@ func main() {
 func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func (s *server) setCORS(w http.ResponseWriter, r *http.Request) {
+	// This service is intended to be called by espwifi.io and local dashboards.
+	// Keep this permissive for now; origin enforcement should happen at ingress.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	// Avoid caching claim responses.
+	w.Header().Set("Cache-Control", "no-store")
+}
+
+type claimRequest struct {
+	Code   string `json:"code"`
+	Tunnel string `json:"tunnel,omitempty"`
+}
+
+func (s *server) handleClaim(w http.ResponseWriter, r *http.Request) {
+	s.setCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req claimRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	code := strings.ToUpper(strings.TrimSpace(req.Code))
+	if code == "" || len(code) > 32 {
+		http.Error(w, "invalid code", http.StatusBadRequest)
+		return
+	}
+	tunnel := strings.TrimSpace(req.Tunnel)
+	if tunnel == "" {
+		tunnel = "ws_control"
+	}
+
+	now := time.Now().UTC()
+
+	s.claimMu.Lock()
+	ce, ok := s.claims[code]
+	if ok {
+		// Enforce tunnel match if provided. (Allows future per-tunnel claims.)
+		if ce.TunnelKey != "" && tunnel != "" && ce.TunnelKey != tunnel {
+			ok = false
+		}
+		if ok && now.After(ce.ExpiresAt) {
+			delete(s.claims, code)
+			ok = false
+		}
+	}
+	if ok {
+		// One-time use: consume immediately.
+		delete(s.claims, code)
+	}
+	s.claimMu.Unlock()
+
+	if !ok || ce.DeviceID == "" || ce.Token == "" {
+		http.Error(w, "invalid or expired code", http.StatusNotFound)
+		s.logf(logInfo, "claim_invalid", "remote", clientIP(r), "code", code)
+		return
+	}
+
+	publicBase := s.publicBase(r)
+	ui := strings.TrimRight(publicBase, "/") + "/ws/ui/" + ce.DeviceID + "?tunnel=" + urlQueryEscape(tunnel)
+	// Provide token as both a field and embedded in the url for convenience.
+	uiWithToken := ui + "&token=" + urlQueryEscape(ce.Token)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":          true,
+		"code":        code,
+		"device_id":   ce.DeviceID,
+		"tunnel":      tunnel,
+		"ui_ws_url":   ui,
+		"token":       ce.Token,
+		"ui_ws_token": uiWithToken,
+	})
+
+	s.logf(logInfo, "claim_redeemed",
+		"remote", clientIP(r),
+		"device_id", ce.DeviceID,
+		"tunnel", tunnel,
+	)
 }
 
 type registerRequest struct {
@@ -273,6 +378,13 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claim := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("claim")))
+	if len(claim) > 0 && len(claim) > 32 {
+		http.Error(w, "invalid claim", http.StatusBadRequest)
+		s.logf(logInfo, "device_ws_invalid_claim", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+		return
+	}
+
 	if s.deviceAuthToken != "" && !authOK(r, s.deviceAuthToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		s.logf(logInfo, "device_ws_unauthorized_global", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
@@ -332,6 +444,21 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 			"ui_token_required": dc.uiToken != "",
 		}))
 		s.logf(logDebug, "device_ws_registered", "device_id", deviceID, "tunnel", tunnel, "ui_token_required", dc.uiToken != "", "ui_ws_url", ui)
+	}
+
+	// If device presented a claim code, store it as short-lived one-time.
+	if claim != "" && dc.uiToken != "" {
+		now := time.Now().UTC()
+		s.claimMu.Lock()
+		s.claims[claim] = claimEntry{
+			DeviceID:   deviceID,
+			TunnelKey:  tunnel,
+			Token:      dc.uiToken,
+			ExpiresAt:  now.Add(10 * time.Minute),
+			Registered: now,
+		}
+		s.claimMu.Unlock()
+		s.logf(logInfo, "device_claim_registered", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel, "claim", claim)
 	}
 
 	// Keepalive/read loop: we don't interpret payloads here; we just maintain the device session.

@@ -120,6 +120,9 @@ function App() {
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [pairingOpen, setPairingOpen] = useState(false);
+  const claimHandledRef = useRef(false);
+  const [claimInProgress, setClaimInProgress] = useState(false);
+  const [claimError, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
   const [controlConnected, setControlConnected] = useState(false);
@@ -285,6 +288,93 @@ function App() {
       setDeviceOnline(false);
     }
   }, [isCloudDashboard, makeCloudConfigFromDevice]);
+
+  // Claim-code pairing flow (iPhone):
+  // - QR opens espwifi.io/?claim=CODE
+  // - dashboard exchanges CODE -> token via cloudTunnel, then saves the device.
+  useEffect(() => {
+    if (!networkEnabled) return;
+    if (!isCloudDashboard) return;
+    if (claimHandledRef.current || claimInProgress) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const claim = (params.get("claim") || "").trim();
+    if (!claim) return;
+
+    setClaimInProgress(true);
+    setClaimError("");
+
+    const cleanupUrl = () => {
+      try {
+        params.delete("claim");
+        const next =
+          window.location.pathname +
+          (params.toString() ? `?${params.toString()}` : "") +
+          window.location.hash;
+        window.history.replaceState(null, "", next);
+      } catch {
+        // ignore
+      }
+    };
+
+    const run = async () => {
+      try {
+        const res = await fetch("https://tnl.espwifi.io/api/claim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: claim, tunnel: "ws_control" }),
+        });
+        if (!res.ok) {
+          // 404 is common for expired / not-yet-registered claim codes.
+          throw new Error(`claim_exchange_http_${res.status}`);
+        }
+        const data = await res.json();
+        if (!data?.ok || !data?.device_id || !data?.token) {
+          throw new Error("claim_exchange_bad_response");
+        }
+
+        const record = {
+          id: String(data.device_id),
+          name: String(data.device_id),
+          hostname: String(data.device_id),
+          authToken: String(data.token),
+          cloudBaseUrl: "https://tnl.espwifi.io",
+          deviceId: String(data.device_id),
+        };
+
+        setDevices((prev) => {
+          const next = upsertDevice(prev, record);
+          saveDevices(next);
+          return next;
+        });
+        setSelectedDeviceId(record.id);
+        saveSelectedDeviceId(record.id);
+        setNeedsPairing(false);
+
+        const cc = makeCloudConfigFromDevice(record);
+        setConfig(cc);
+        setLocalConfig(cc);
+        // Wait for boot phase before connecting sockets.
+        setDeviceOnline(false);
+
+        claimHandledRef.current = true;
+        cleanupUrl();
+      } catch (e) {
+        console.warn("Claim exchange failed:", e);
+        setClaimError(String(e?.message || "claim_exchange_failed"));
+        // Leave ?claim=... in the URL so the user can retry by refreshing.
+      } finally {
+        setClaimInProgress(false);
+      }
+    };
+
+    run();
+  }, [
+    networkEnabled,
+    isCloudDashboard,
+    makeCloudConfigFromDevice,
+    claimInProgress,
+  ]);
 
   const handleSelectDevice = useCallback(
     (d) => {
@@ -697,6 +787,17 @@ function App() {
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
               {devices.length > 0 ? "Select a device" : "No device paired"}
             </Typography>
+            {isCloudDashboard && claimInProgress && (
+              <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+                Claiming device…
+              </Typography>
+            )}
+            {isCloudDashboard && claimError && (
+              <Typography variant="body2" sx={{ color: "warning.main", mb: 1 }}>
+                Claim failed: {claimError}. Make sure the device is online and
+                the claim code is fresh, then refresh this page.
+              </Typography>
+            )}
             <Typography variant="body2" sx={{ opacity: 0.9 }}>
               {isCloudDashboard ? (
                 <>

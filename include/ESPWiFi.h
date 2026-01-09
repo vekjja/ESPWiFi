@@ -226,6 +226,13 @@ public:
   bool authEnabled();
   std::string generateToken();
 
+  // ---- Pairing / claim code (short-lived, one-time)
+  // Used to pair iOS devices without exposing the long auth token in tools like
+  // nRF Connect. The claim code is exchanged server-side for a tunnel
+  // URL/token.
+  std::string getClaimCode(bool rotate = false);
+  uint32_t claimExpiresInMs();
+
   // Response helpers
   const char *getMethodString(int method);
   std::string getClientInfo(httpd_req_t *req);

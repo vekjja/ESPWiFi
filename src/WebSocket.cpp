@@ -961,11 +961,17 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     }
 
     // Build ws(s) URL:
-    // <base>/ws/device/<deviceId>?announce=1&tunnel=<tunnelKey>&token=<token>
+    // <base>/ws/device/<deviceId>?announce=1&tunnel=<tunnelKey>&token=<token>&claim=<claim>
     char encTunnel[WebSocket::kMaxCloudTunnelKeyLen * 3] = {0};
     char encToken[WebSocket::kMaxCloudTokenLen * 3] = {0};
+    char encClaim[32] = {0};
     urlEncode(ws->cloudTunnelKey_, encTunnel, sizeof(encTunnel));
     urlEncode(ws->cloudToken_, encToken, sizeof(encToken));
+    const std::string claim =
+        (ws->espWifi_ != nullptr) ? ws->espWifi_->getClaimCode(false) : "";
+    if (!claim.empty()) {
+      urlEncode(claim.c_str(), encClaim, sizeof(encClaim));
+    }
 
     char url[768] = {0};
     const bool hasTunnel = (encTunnel[0] != '\0');
@@ -981,6 +987,10 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     if (hasToken) {
       safeAppend(url, sizeof(url), "&token=");
       safeAppend(url, sizeof(url), encToken);
+    }
+    if (encClaim[0] != '\0') {
+      safeAppend(url, sizeof(url), "&claim=");
+      safeAppend(url, sizeof(url), encClaim);
     }
     // If truncated, log and skip this attempt (prevents connecting to a broken
     // URL).

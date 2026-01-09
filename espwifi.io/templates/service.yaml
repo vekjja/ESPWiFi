@@ -4,6 +4,7 @@ metadata:
   name: {{ include "espwifi.io.fullname" . }}
   labels:
     {{- include "espwifi.io.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -13,3 +14,4 @@ spec:
       name: http
   selector:
     {{- include "espwifi.io.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard

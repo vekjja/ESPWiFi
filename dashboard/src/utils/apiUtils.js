@@ -23,6 +23,12 @@ export const getApiUrl = () => {
         // even when the dashboard is served over HTTPS (espwifi.io).
         "http:"
     );
+    // If the page is HTTPS but the forced API protocol is HTTP, browsers will
+    // block it as mixed content (especially on mobile). In that case, fall back
+    // to same-origin URLs (which our App can then handle gracefully).
+    if (window.location.protocol === "https:" && forcedProtocol === "http:") {
+      return "";
+    }
     return `${forcedProtocol}//${forcedHost}:${forcedPort}`;
   }
 
@@ -64,12 +70,28 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
   // served from a different origin (e.g. espwifi.io).
   const forcedHost = process.env.REACT_APP_API_HOST;
 
+  // Same rationale as getApiUrl(): on HTTPS pages, do not attempt ws:// to a
+  // forced host (it will be blocked). Prefer same-origin wss:// instead.
+  const canUseForcedHost =
+    Boolean(forcedHost) &&
+    !(
+      window.location.protocol === "https:" &&
+      normalizeProtocol(process.env.REACT_APP_WS_PROTOCOL || "ws:") === "ws:"
+    );
+
   // Use provided hostname as-is (do NOT force ".local"; firmware may not run mDNS
   // and callers may already pass a full hostname like "espwifi.local").
   // Otherwise use environment variables, falling back to the current page host.
-  const hostname = forcedHost || mdnsHostname || window.location.hostname;
-  const port = process.env.REACT_APP_API_PORT || 80;
+  const hostname =
+    (canUseForcedHost ? forcedHost : null) || mdnsHostname || null;
 
+  // If we're not forcing a host, use window.location.host so port matches the
+  // current origin (important for https :443).
+  if (!hostname) {
+    return `${protocol}//${window.location.host}`;
+  }
+
+  const port = process.env.REACT_APP_API_PORT || 80;
   return `${protocol}//${hostname}:${port}`;
 };
 

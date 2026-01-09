@@ -10,6 +10,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
+import Typography from "@mui/material/Typography";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
@@ -103,6 +104,9 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [deviceApiBlocked, setDeviceApiBlocked] = useState(false);
+  const [deviceApiBlockedUrl, setDeviceApiBlockedUrl] = useState("");
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
@@ -154,19 +158,27 @@ function App() {
     };
   }, []);
 
-  // Defer any network activity until after the first paint, so the page loads cleanly.
+  // Defer any network activity until the page is fully loaded.
+  // This avoids "blank screen on mobile" scenarios where the app immediately
+  // starts hitting device endpoints / websockets before the UI is visible.
   useEffect(() => {
-    let raf1 = 0;
-    let raf2 = 0;
-    raf1 = window.requestAnimationFrame(() => {
-      raf2 = window.requestAnimationFrame(() => {
-        setNetworkEnabled(true);
-      });
-    });
-    return () => {
-      if (raf2) window.cancelAnimationFrame(raf2);
-      if (raf1) window.cancelAnimationFrame(raf1);
+    const enable = () => {
+      const run = () => setNetworkEnabled(true);
+      // Prefer idle time so render/layout settles before network work begins.
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(run, { timeout: 1500 });
+      } else {
+        setTimeout(run, 750);
+      }
     };
+
+    if (document.readyState === "complete") {
+      enable();
+      return;
+    }
+
+    window.addEventListener("load", enable, { once: true });
+    return () => window.removeEventListener("load", enable);
   }, []);
 
   /**
@@ -195,13 +207,31 @@ function App() {
       isFetchingConfigRef.current = true;
 
       try {
+        const configUrl = buildApiUrl("/api/config");
+        // On https pages, browsers typically block http:// device API calls as mixed content.
+        // Desktop users can sometimes override this; mobile generally cannot.
+        if (
+          window.location.protocol === "https:" &&
+          typeof configUrl === "string" &&
+          configUrl.startsWith("http://")
+        ) {
+          setDeviceApiBlocked(true);
+          setDeviceApiBlockedUrl(configUrl);
+          setDeviceOnline(false);
+          setAuthenticated(false);
+          return null;
+        } else {
+          setDeviceApiBlocked(false);
+          setDeviceApiBlockedUrl("");
+        }
+
         // Create an AbortController for timeout
         const controller = new AbortController();
         // Timeout set to 20 seconds to handle slow device responses
         const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         const response = await fetch(
-          buildApiUrl("/api/config"),
+          configUrl,
           getFetchOptions({
             signal: controller.signal,
           })
@@ -318,6 +348,7 @@ function App() {
         setAuthenticated(false);
       } finally {
         setCheckingAuth(false);
+        setAuthChecked(true);
       }
     };
 
@@ -568,6 +599,43 @@ function App() {
         </Box>
       </Container>
 
+      {deviceApiBlocked && (
+        <Container sx={{ mt: 2 }}>
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: "warning.main",
+              bgcolor: "rgba(255, 167, 38, 0.12)",
+              p: 2,
+              borderRadius: 2,
+              maxWidth: 920,
+              mx: "auto",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Device API blocked on HTTPS
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              This page is loaded over HTTPS, but the device API target is HTTP
+              (mixed content). Mobile browsers usually block this.
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1, opacity: 0.9 }}>
+              Try opening the device UI directly on your LAN (e.g.{" "}
+              <code>http://espwifi.local</code> or the device IP), or enable the
+              cloud tunnel for WebSocket features.
+            </Typography>
+            {deviceApiBlockedUrl ? (
+              <Typography
+                variant="caption"
+                sx={{ display: "block", mt: 1, opacity: 0.75 }}
+              >
+                Blocked URL: {deviceApiBlockedUrl}
+              </Typography>
+            ) : null}
+          </Box>
+        </Container>
+      )}
+
       {/* Settings Button Bar */}
       <Suspense fallback={null}>
         <SettingsButtonBar
@@ -596,7 +664,7 @@ function App() {
       </Container>
 
       {/* Show login modal when not authenticated */}
-      {!authenticated && !checkingAuth && (
+      {!authenticated && !deviceApiBlocked && authChecked && !checkingAuth && (
         <Suspense fallback={null}>
           <Login onLoginSuccess={handleLoginSuccess} />
         </Suspense>

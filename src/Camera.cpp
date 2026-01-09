@@ -142,7 +142,10 @@ bool ESPWiFi::initCamera() {
   log(INFO, "📷 Initializing Camera");
 
   // Check PSRAM availability and free space before init
-  const bool usingPSRAM = esp_psram_is_initialized();
+  bool usingPSRAM = false;
+#ifdef CONFIG_SPIRAM
+  usingPSRAM = esp_psram_is_initialized();
+#endif
   if (usingPSRAM) {
     size_t freePSRAM = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t totalPSRAM = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
@@ -362,7 +365,11 @@ void ESPWiFi::deinitCamera() {
   feedWatchDog(200);
 
   // Log memory status after deinit
-  if (esp_psram_is_initialized()) {
+  bool psramAvailable = false;
+#ifdef CONFIG_SPIRAM
+  psramAvailable = esp_psram_is_initialized();
+#endif
+  if (psramAvailable) {
     size_t freePSRAM = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     size_t totalPSRAM = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
     log(DEBUG, "📷 PSRAM after deinit: %u / %u bytes free", freePSRAM,
@@ -612,26 +619,32 @@ void ESPWiFi::streamCamera() {
   // - LAN websocket clients, OR
   // - A cloud UI attached (cloud tunnel transport alone shouldn't trigger
   // capture)
-  const bool anyConsumer =
-      (camSoc.numLanClients() > 0) || camSoc.cloudUIConnected();
+  const bool cloudTunnelEnabled = !config["cloudTunnel"]["enabled"].isNull() &&
+                                  config["cloudTunnel"]["enabled"].as<bool>();
+  const bool hasCloudUI = cloudTunnelEnabled && camSoc.cloudUIConnected();
+  const size_t lanClients = camSoc.numLanClients();
+
+  // Stream only when there's a real consumer:
+  // - LAN websocket clients, OR
+  // - A cloud UI attached (cloud tunnel transport alone shouldn't trigger
+  // capture)
+  const bool anyConsumer = (lanClients > 0) || hasCloudUI;
+
+  // If the camera was previously initialized (e.g., a client disconnected),
+  // deinit it after a short grace period to avoid cam_hal FB-OVF spam while
+  // idle.
   static IntervalTimer noConsumerGrace(3000);
   static bool noConsumerGraceArmed = false;
   const int64_t nowUs0 = esp_timer_get_time();
   if (!anyConsumer) {
-    // If the camera was previously initialized (e.g., a client disconnected),
-    // deinit it after a short grace period to avoid cam_hal FB-OVF spam while
-    // idle.
     if (camera != nullptr) {
-      // Start the grace period on the first no-consumer observation.
-      // We intentionally avoid calling shouldRunAt() on the first tick because
-      // IntervalTimer returns true when lastRunUs_ == 0.
+      // Arm the grace timer on the first no-consumer observation.
+      // Avoid IntervalTimer's "first call returns true" behavior.
       if (!noConsumerGraceArmed) {
         noConsumerGrace.resetAt(nowUs0);
         noConsumerGraceArmed = true;
         return;
       }
-
-      // Once armed, deinit after the grace interval elapses.
       if (noConsumerGrace.shouldRunAt(nowUs0)) {
         log(INFO, "📷 No consumers; deinitializing camera to avoid overflow");
         deinitCamera();
@@ -639,7 +652,6 @@ void ESPWiFi::streamCamera() {
         noConsumerGrace.resetAt(nowUs0);
       }
     } else {
-      // Camera already off; reset the timer baseline.
       noConsumerGraceArmed = false;
       noConsumerGrace.resetAt(nowUs0);
     }
@@ -670,10 +682,7 @@ void ESPWiFi::streamCamera() {
   // Optional cloud-only FPS cap, configurable via cloudTunnel.maxFps.
   // Applies only when cloud UI is attached and there are no LAN clients.
   // 0 = disabled (no cap).
-  const bool cloudTunnelEnabled = !config["cloudTunnel"]["enabled"].isNull() &&
-                                  config["cloudTunnel"]["enabled"].as<bool>();
-  if (cloudTunnelEnabled && camSoc.numLanClients() == 0 &&
-      camSoc.cloudUIConnected()) {
+  if (hasCloudUI && lanClients == 0) {
     int maxCloudFps = config["cloudTunnel"]["maxFps"].isNull()
                           ? 0
                           : config["cloudTunnel"]["maxFps"].as<int>();
@@ -748,9 +757,9 @@ void ESPWiFi::streamCamera() {
   // Success - reset failure counter
   consecutiveFailures = 0;
 
-  // Double-check clients still connected before broadcast
+  // Double-check consumers still connected before broadcast
   // (they may have disconnected between the initial check and now)
-  if (camSoc.numLanClients() == 0 && !camSoc.cloudUIConnected()) {
+  if (camSoc.numLanClients() == 0 && !hasCloudUI) {
     esp_camera_fb_return(fb);
     return;
   }

@@ -137,11 +137,18 @@ void ESPWiFi::srvCamera() {
               espwifi->config["camera"]["saturation"].as<int>();
         }
 
-        // PSRAM status (ESP-IDF function)
-        bool psramAvailable = esp_psram_is_initialized();
+        // PSRAM status (may be unavailable if PSRAM support is not enabled)
+        bool psramAvailable = false;
+#ifdef CONFIG_SPIRAM
+        psramAvailable = esp_psram_is_initialized();
+#endif
         statusDoc["psram"]["available"] = psramAvailable;
         if (psramAvailable) {
-          statusDoc["psram"]["size"] = esp_psram_get_size();
+          size_t psramSize = 0;
+#ifdef CONFIG_SPIRAM
+          psramSize = esp_psram_get_size();
+#endif
+          statusDoc["psram"]["size"] = psramSize;
           statusDoc["psram"]["free"] =
               heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
         }

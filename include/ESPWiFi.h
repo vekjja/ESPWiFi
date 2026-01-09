@@ -245,10 +245,6 @@ public:
   void srvBluetooth();
   void srvWildcard();
 
-  // ---- RSSI (stub)
-  void startRSSIWebSocket();
-  void streamRSSI();
-
   // ---- Control WebSocket (for cloud/pairing control channel)
   void startControlWebSocket();
 
@@ -360,9 +356,6 @@ public:
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   WebSocket camSoc;
   bool camSocStarted = false;
-
-  WebSocket rssiSoc;
-  bool rssiSocStarted = false;
 
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;

@@ -15,7 +15,7 @@ import Typography from "@mui/material/Typography";
 import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
-import { getUserFriendlyErrorMessage, logError } from "./utils/errorUtils";
+import { getUserFriendlyErrorMessage } from "./utils/errorUtils";
 // NOTE: control WS URL is constructed from the selected device record to avoid
 // reconnect loops on config changes in paired/tunnel mode.
 import {
@@ -112,7 +112,7 @@ const theme = createTheme({
 function App() {
   const [config, setConfig] = useState(null);
   const [localConfig, setLocalConfig] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(false);
@@ -129,6 +129,7 @@ function App() {
   const [controlConnected, setControlConnected] = useState(false);
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
+  const [cloudRssi, setCloudRssi] = useState(null);
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
@@ -368,12 +369,24 @@ function App() {
     return () => window.removeEventListener("load", enable);
   }, []);
 
-  // In cloud dashboard mode, once boot phase is complete and a device is selected,
-  // mark "online" and connect the control socket via the tunnel.
+  const lanControlUrl = useMemo(() => {
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProto}//${window.location.host}/ws/control`;
+  }, []);
+
+  const controlWsUrl = useMemo(() => {
+    // Paired/cloud: connect via the tunnel UI URL
+    if (allowPairedTunnelMode) return controlUiUrl || null;
+    // LAN: connect to the device directly
+    return lanControlUrl;
+  }, [allowPairedTunnelMode, controlUiUrl, lanControlUrl]);
+
+  // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
 
-    if (!pairedTunnelReady || !controlUiUrl) {
+    // In paired/tunnel mode, we need a selected device (controlUiUrl).
+    if (allowPairedTunnelMode && (!pairedTunnelReady || !controlWsUrl)) {
       setDeviceOnline(false);
       setControlConnected(false);
       if (controlRetryRef.current) {
@@ -395,7 +408,7 @@ function App() {
 
     const connect = () => {
       if (!networkEnabled) return;
-      const uiUrl = controlUiUrl;
+      const uiUrl = controlWsUrl;
       if (!uiUrl) return;
 
       // Tear down any existing socket before reconnect.
@@ -416,6 +429,8 @@ function App() {
           setControlConnected(true);
           try {
             ws.send(JSON.stringify({ cmd: "ping" }));
+            ws.send(JSON.stringify({ cmd: "get_config" }));
+            ws.send(JSON.stringify({ cmd: "get_info" }));
           } catch {
             // ignore
           }
@@ -424,10 +439,19 @@ function App() {
           try {
             const msg = JSON.parse(evt?.data || "{}");
             if (msg?.cmd === "get_config" && msg?.config) {
+              setConfig(msg.config);
+              setLocalConfig(msg.config);
               setCloudDeviceConfig(msg.config);
             }
             if (msg?.cmd === "get_info" && msg?.info) {
               setCloudDeviceInfo(msg.info);
+            }
+            if (msg?.cmd === "get_rssi") {
+              if (typeof msg?.rssi === "number") {
+                setCloudRssi(msg.rssi);
+              } else {
+                setCloudRssi(null);
+              }
             }
           } catch {
             // ignore
@@ -472,25 +496,12 @@ function App() {
     };
   }, [
     networkEnabled,
+    allowPairedTunnelMode,
     pairedTunnelReady,
-    controlUiUrl,
+    controlWsUrl,
     selectedDeviceId,
     controlReconnectSeq,
   ]);
-
-  // In paired/tunnel mode, fetch config/info over the control socket (no HTTP).
-  useEffect(() => {
-    if (!pairedTunnelReady) return;
-    if (!controlConnected) return;
-    const ws = controlWsRef.current;
-    if (!ws || ws.readyState !== 1) return;
-    try {
-      ws.send(JSON.stringify({ cmd: "get_config" }));
-      ws.send(JSON.stringify({ cmd: "get_info" }));
-    } catch {
-      // ignore
-    }
-  }, [pairedTunnelReady, controlConnected, selectedDeviceId]);
 
   /**
    * Helper to compare two config objects for equality
@@ -518,6 +529,10 @@ function App() {
       isFetchingConfigRef.current = true;
 
       try {
+        // If we have a control channel URL, config/info comes from /ws/control.
+        if (controlWsUrl) {
+          return null;
+        }
         // In paired/tunnel mode, we do not use /api/config at all.
         if (
           allowPairedTunnelMode &&
@@ -842,60 +857,39 @@ function App() {
         }
       }
 
-      // First update local config by merging with existing config
-      // This handles both full and partial config updates
-      setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
-
-      // Don't attempt to save if device is offline
-      if (!deviceOnline) {
-        console.warn("Device is offline - configuration saved locally only");
-        return Promise.resolve(null);
+      // LAN mode: also use control WS for config (no /api/config).
+      {
+        // Optimistically update local UI config.
+        setLocalConfig((prevConfig) => ({
+          ...prevConfig,
+          ...newConfig,
+          apiURL,
+        }));
+        const ws = controlWsRef.current;
+        if (!ws || ws.readyState !== 1) {
+          console.warn("Control WS not connected; config saved locally only.");
+          return Promise.resolve(null);
+        }
+        try {
+          ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
+          setTimeout(() => {
+            try {
+              ws.send(JSON.stringify({ cmd: "get_config" }));
+              ws.send(JSON.stringify({ cmd: "get_info" }));
+            } catch {
+              // ignore
+            }
+          }, 750);
+          return Promise.resolve(true);
+        } catch (e) {
+          console.warn("Failed to send set_config over control WS:", e);
+          return Promise.resolve(false);
+        }
       }
 
-      // Then save to device
-      setSaving(true);
-      const configToSave = { ...newConfig };
-
-      // Create an AbortController for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-      return fetch(
-        buildApiUrl("/api/config"),
-        getFetchOptions({
-          method: "PUT",
-          body: JSON.stringify(configToSave),
-          signal: controller.signal,
-        })
-      )
-        .then((response) => {
-          clearTimeout(timeoutId);
-          if (!response.ok) {
-            throw new Error(
-              `Failed to save configuration to Device: ${response.status} ${response.statusText}`
-            );
-          }
-          return response.json();
-        })
-        .then(async () => {
-          // Immediately refetch config so device-generated fields (e.g. auth.token)
-          // show up in the UI without waiting for polling.
-          await fetchConfig(true);
-          return true;
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          const errorMessage = getUserFriendlyErrorMessage(
-            error,
-            "saving configuration"
-          );
-          logError(error, "Config Save", true);
-          alert(`${errorMessage} Configuration saved locally.`);
-          return false;
-        })
-        .finally(() => {
-          setSaving(false);
-        });
+      // Should never reach here: LAN and paired mode both use the control WS.
+      // eslint-disable-next-line no-unreachable
+      return Promise.resolve(null);
     },
     [
       apiURL,
@@ -1078,6 +1072,16 @@ function App() {
           saveConfigToDevice={saveConfigFromButton}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
+          controlRssi={cloudRssi}
+          onRequestRssi={() => {
+            const ws = controlWsRef.current;
+            if (!ws || ws.readyState !== 1) return;
+            try {
+              ws.send(JSON.stringify({ cmd: "get_rssi" }));
+            } catch {
+              // ignore
+            }
+          }}
           cameraEnabled={effectiveConfig?.camera?.enabled || false}
           getCameraColor={() =>
             effectiveConfig?.camera?.enabled ? "primary.main" : "text.disabled"

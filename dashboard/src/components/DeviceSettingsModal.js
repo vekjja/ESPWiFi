@@ -15,7 +15,6 @@ import SettingsModal from "./SettingsModal";
 import DeviceSettingsInfoTab from "./deviceSettings/DeviceSettingsInfoTab";
 import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 import { clearAuthToken } from "../utils/authUtils";
-import { getUserFriendlyErrorMessage, logError } from "../utils/errorUtils";
 
 export default function DeviceSettingsModal({
   config,
@@ -30,7 +29,6 @@ export default function DeviceSettingsModal({
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState("");
-  const [retryCount, setRetryCount] = useState(0);
 
   /**
    * Initialize state from config when it changes
@@ -45,9 +43,15 @@ export default function DeviceSettingsModal({
    * Handle modal open - fetch device info
    */
   const handleOpenModal = useCallback(() => {
-    if (cloudMode) {
+    if (deviceInfoOverride) {
       setDeviceInfo(deviceInfoOverride || null);
-      setInfoError(deviceInfoOverride ? "" : "Control tunnel not connected");
+      setInfoError("");
+      setInfoLoading(false);
+      return;
+    }
+    if (cloudMode) {
+      setDeviceInfo(null);
+      setInfoError("Control tunnel not connected");
       setInfoLoading(false);
       return;
     }
@@ -62,58 +66,22 @@ export default function DeviceSettingsModal({
   }, [onClose]);
 
   /**
-   * Fetch device information from /api/info endpoint
-   * Includes automatic retry logic for transient failures
-   * @param {boolean} isRetry - Whether this is a retry attempt
+   * Device info is sourced from the control WebSocket (cmd=get_info) and passed
+   * in via deviceInfoOverride.
    */
-  const fetchDeviceInfo = async (isRetry = false) => {
-    if (cloudMode) {
-      setDeviceInfo(deviceInfoOverride || null);
-      setInfoLoading(false);
-      return;
-    }
-    const fetchUrl = buildApiUrl("/api/info");
+  const fetchDeviceInfo = async () => {
     setInfoLoading(true);
-    if (!isRetry) {
-      setInfoError("");
-    }
-
-    // Add timeout handling similar to main config fetch
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 second timeout
-
     try {
-      const response = await fetch(
-        fetchUrl,
-        getFetchOptions({
-          signal: controller.signal,
-        })
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setDeviceInfo(data);
-      setRetryCount(0); // Reset retry count on success
-    } catch (error) {
-      clearTimeout(timeoutId);
-      const errorMessage = getUserFriendlyErrorMessage(
-        error,
-        "fetching device info"
-      );
-      setInfoError(errorMessage);
-      logError(error, "Device Info Fetch");
-      setDeviceInfo(null);
-
-      // Auto-retry once after a short delay
-      if (!isRetry && retryCount < 1) {
-        setTimeout(() => {
-          setRetryCount((prev) => prev + 1);
-          fetchDeviceInfo(true);
-        }, 2000);
+      if (deviceInfoOverride) {
+        setDeviceInfo(deviceInfoOverride);
+        setInfoError("");
+      } else {
+        setDeviceInfo(null);
+        setInfoError(
+          cloudMode
+            ? "Control tunnel not connected"
+            : "Control WebSocket not connected"
+        );
       }
     } finally {
       setInfoLoading(false);

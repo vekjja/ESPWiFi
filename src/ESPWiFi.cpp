@@ -12,14 +12,12 @@ void ESPWiFi::start() {
   startMDNS();
   startWebServer();
   startControlWebSocket();
-  startRSSIWebSocket();
   srvAll();
 }
 
 void ESPWiFi::runSystem() {
   handleConfigUpdate();
   checkSDCard();
-  streamRSSI();
 #if ESPWiFi_HAS_CAMERA
   streamCamera();
 #endif

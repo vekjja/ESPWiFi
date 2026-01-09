@@ -3,6 +3,9 @@
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 
+// For get_rssi
+#include "esp_wifi.h"
+
 static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                           const uint8_t *data, size_t len, ESPWiFi *espwifi) {
   (void)clientFd;
@@ -44,6 +47,20 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       // data in paired/tunnel mode (no HTTP).
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
       resp["info"] = infoDoc.as<JsonVariantConst>();
+    } else if (strcmp(cmd, "get_rssi") == 0) {
+      // Return current RSSI (and SSID if available) as a simple control cmd.
+      wifi_ap_record_t ap_info;
+      if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        char ssid_str[33];
+        memcpy(ssid_str, ap_info.ssid, 32);
+        ssid_str[32] = '\0';
+        resp["connected"] = true;
+        resp["ssid"] = std::string(ssid_str);
+        resp["rssi"] = ap_info.rssi;
+      } else {
+        resp["connected"] = false;
+        resp["rssi"] = 0;
+      }
     } else if (strcmp(cmd, "set_config") == 0) {
       // Merge and apply config updates on the main loop.
       if (!req["config"].is<JsonObject>() && !req["config"].is<JsonArray>()) {

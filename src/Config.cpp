@@ -274,7 +274,6 @@ void ESPWiFi::handleConfigUpdate() {
     // endpoints. This allows UI enable/disable to take effect without
     // rebooting.
     camSoc.syncCloudTunnelFromConfig();
-    rssiSoc.syncCloudTunnelFromConfig();
     ctrlSoc.syncCloudTunnelFromConfig();
 #endif
 

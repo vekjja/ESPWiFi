@@ -99,7 +99,7 @@ void ESPWiFi::startMDNS() {
         esp_err_to_name(err));
     // Non-critical
   } else {
-    mdns_txt_item_t wsTxt[] = {{"path", "/ws/rssi"}};
+    mdns_txt_item_t wsTxt[] = {{"path", "/ws/control"}};
     err = mdns_service_txt_set("_ws", "_tcp", wsTxt,
                                sizeof(wsTxt) / sizeof(wsTxt[0]));
     if (err != ESP_OK) {

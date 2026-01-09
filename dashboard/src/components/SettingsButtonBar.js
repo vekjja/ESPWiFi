@@ -32,6 +32,8 @@ const ENABLED_KEY = "settingsButtonEnabled.v1";
 // Button IDs that cannot be removed from the bar
 const NON_REMOVABLE_IDS = new Set([
   "devicePicker",
+  // RSSI is a core status signal; keep it visible by default.
+  "rssi",
   "deviceSettings",
   "addModule",
 ]);
@@ -106,6 +108,10 @@ function ensureNonRemovablesInPreferredPositions(list) {
   // Devices button should lead when possible
   if (!next.includes("devicePicker")) {
     next = ["devicePicker", ...next];
+  }
+  // RSSI next (when available)
+  if (!next.includes("rssi")) {
+    next = insertAfter(next, "rssi", "devicePicker");
   }
   // Settings after RSSI when possible
   if (!next.includes("deviceSettings")) {
@@ -225,6 +231,8 @@ export default function SettingsButtonBar({
   saveConfigToDevice,
   getRSSIColor,
   getRSSIIcon,
+  controlRssi = null,
+  onRequestRssi = null,
   cameraEnabled,
   getCameraColor,
   devices,
@@ -288,6 +296,8 @@ export default function SettingsButtonBar({
             saveConfigToDevice={saveConfigToDevice}
             getRSSIColor={getRSSIColor}
             getRSSIIcon={getRSSIIcon}
+            controlRssi={controlRssi}
+            onRequestRssi={onRequestRssi}
           />
         ),
       });

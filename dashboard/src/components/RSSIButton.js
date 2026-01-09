@@ -4,7 +4,6 @@ import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SignalCellularAlt1BarIcon from "@mui/icons-material/SignalCellularAlt1Bar";
 import SignalCellularAlt2BarIcon from "@mui/icons-material/SignalCellularAlt2Bar";
 import RSSISettingsModal from "./RSSISettingsModal";
-import { resolveWebSocketUrl } from "../utils/connectionUtils";
 
 export default function RSSIButton({
   config,
@@ -13,180 +12,60 @@ export default function RSSIButton({
   saveConfigToDevice,
   onRSSIDataChange,
   getRSSIColor,
+  controlRssi = null,
+  onRequestRssi = null,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [rssiValue, setRssiValue] = useState(null);
-  const wsRef = useRef(null);
-  const connectTimeoutRef = useRef(null);
-  const retryTimeoutRef = useRef(null);
-  const deviceOnlineRef = useRef(deviceOnline);
-  const shouldReconnectRef = useRef(true);
+  const pollRef = useRef(null);
 
-  // WebSocket connection for RSSI data - always connect when device is online
-  useEffect(() => {
-    deviceOnlineRef.current = deviceOnline;
-  }, [deviceOnline]);
-
-  // Stop all reconnect attempts when the component unmounts (e.g. button removed)
+  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      shouldReconnectRef.current = false;
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-        connectTimeoutRef.current = null;
-      }
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
-      if (wsRef.current) {
-        try {
-          wsRef.current.close(1000, "RSSI button removed");
-        } catch {
-          // ignore
-        }
-        wsRef.current = null;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
     };
   }, []);
 
-  // WebSocket connection for RSSI data - always connect when device is online
+  // RSSI comes from /ws/control via {cmd:"get_rssi"}.
+  // Poll while device is online (lightweight; no extra websocket).
   useEffect(() => {
-    if (deviceOnline) {
-      // Add a delay to allow the backend to start the RSSI service
-      connectTimeoutRef.current = setTimeout(() => {
-        const wsUrl = resolveWebSocketUrl("rssi", config);
-
-        // Connect to RSSI WebSocket
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, true);
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            // RSSI data comes as plain text (just the number)
-            const rssiValue = parseInt(event.data);
-            if (!isNaN(rssiValue)) {
-              setRssiValue(rssiValue);
-              if (onRSSIDataChange) {
-                onRSSIDataChange(rssiValue, true);
-              }
-            }
-          } catch (error) {
-            console.error("Error parsing RSSI data:", error);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error("RSSI WebSocket error:", error);
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, false);
-          }
-        };
-
-        ws.onclose = (event) => {
-          wsRef.current = null;
-          if (onRSSIDataChange) {
-            onRSSIDataChange(rssiValue, false);
-          }
-
-          // Only retry if device is still online
-          if (
-            shouldReconnectRef.current &&
-            event.code !== 1000 &&
-            deviceOnlineRef.current
-          ) {
-            retryTimeoutRef.current = setTimeout(() => {
-              // Double-check that device is still online before retrying
-              if (
-                shouldReconnectRef.current &&
-                deviceOnlineRef.current &&
-                !wsRef.current
-              ) {
-                // Retry connection
-                const retryWs = new WebSocket(wsUrl);
-                wsRef.current = retryWs;
-
-                retryWs.onopen = () => {
-                  // WebSocket retry connected
-                };
-
-                retryWs.onmessage = (event) => {
-                  try {
-                    // RSSI data comes as plain text (just the number)
-                    const rssiValue = parseInt(event.data);
-                    if (!isNaN(rssiValue)) {
-                      setRssiValue(rssiValue);
-                      if (onRSSIDataChange) {
-                        onRSSIDataChange(rssiValue, true);
-                      }
-                    }
-                  } catch (error) {
-                    console.error("Error parsing RSSI data:", error);
-                  }
-                };
-
-                retryWs.onerror = (error) => {
-                  console.error("RSSI WebSocket retry error:", error);
-                  if (onRSSIDataChange) {
-                    onRSSIDataChange(rssiValue, false);
-                  }
-                };
-
-                retryWs.onclose = (event) => {
-                  wsRef.current = null;
-                  if (onRSSIDataChange) {
-                    onRSSIDataChange(rssiValue, false);
-                  }
-                };
-              }
-            }, 2000); // 2 second retry delay
-          }
-        };
-      }, 300); // 300ms delay
-
-      return () => {
-        if (connectTimeoutRef.current) {
-          clearTimeout(connectTimeoutRef.current);
-          connectTimeoutRef.current = null;
-        }
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = null;
-        }
-        if (wsRef.current) {
-          wsRef.current.close(1000, "RSSI effect cleanup");
-          wsRef.current = null;
-        }
-      };
-    } else if (!deviceOnline) {
-      // Disconnect if device offline
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close(1000, "Device offline");
-        wsRef.current = null;
+    if (!deviceOnline) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
       setRssiValue(null);
+      if (onRSSIDataChange) onRSSIDataChange(null, false);
+      return;
     }
-  }, [deviceOnline, config]);
 
-  // Cleanup WebSocket on unmount
-  useEffect(() => {
+    // Kick once immediately, then poll.
+    if (typeof onRequestRssi === "function") {
+      onRequestRssi();
+    }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => {
+      if (typeof onRequestRssi === "function") onRequestRssi();
+    }, 1000);
+
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close(1000, "RSSI unmount");
-        wsRef.current = null;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
     };
-  }, []);
+  }, [deviceOnline, onRequestRssi, onRSSIDataChange]);
+
+  // Consume latest RSSI from control channel
+  useEffect(() => {
+    if (typeof controlRssi === "number") {
+      setRssiValue(controlRssi);
+      if (onRSSIDataChange) onRSSIDataChange(controlRssi, true);
+    }
+  }, [controlRssi, onRSSIDataChange]);
 
   // Get the appropriate signal icon based on RSSI value
   const getRSSIIconComponent = (rssiValue) => {

@@ -102,13 +102,12 @@ jobs:
             context: ./dashboard
             dockerfile: ./dashboard/Dockerfile
             image: ghcr.io/vekjja/espwifi
-            # These are baked into the React bundle at build time (CRA).
-            # They make the UI served from espwifi.io call the device at espwifi.local.
-            build_args: |
-              REACT_APP_API_HOST=espwifi.local
-              REACT_APP_API_PORT=80
-              REACT_APP_API_PROTOCOL=http:
-              REACT_APP_WS_PROTOCOL=ws:
+            build_args: ""
+            # build_args: |
+            #   REACT_APP_API_HOST=espwifi.local
+            #   REACT_APP_API_PORT=80
+            #   REACT_APP_API_PROTOCOL=http:
+            #   REACT_APP_WS_PROTOCOL=ws:
 
           # Cloud tunnel broker
           - name: cloudtunnel

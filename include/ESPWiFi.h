@@ -172,6 +172,14 @@ public:
   JsonDocument defaultConfig();
   void maskSensitiveFields(JsonVariant variant);
   JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
+  // Queue a config update to be applied on the main loop (watchdog-safe).
+  // The update is deep-merged into the current config and persisted.
+  bool queueConfigUpdate(JsonVariantConst updates);
+
+  // ---- Info
+  // Build the same JSON payload returned by /api/info.
+  // When yieldForWatchdog is true, yields briefly between heavier sections.
+  JsonDocument buildInfoJson(bool yieldForWatchdog = true);
 
   // ---- WiFi
   void initNVS();

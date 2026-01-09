@@ -23,6 +23,8 @@ export default function DeviceSettingsModal({
   saveConfigToDevice,
   open = false,
   onClose,
+  cloudMode = false,
+  deviceInfoOverride = null,
 }) {
   // Device info state
   const [deviceInfo, setDeviceInfo] = useState(null);
@@ -43,8 +45,14 @@ export default function DeviceSettingsModal({
    * Handle modal open - fetch device info
    */
   const handleOpenModal = useCallback(() => {
+    if (cloudMode) {
+      setDeviceInfo(deviceInfoOverride || null);
+      setInfoError(deviceInfoOverride ? "" : "Control tunnel not connected");
+      setInfoLoading(false);
+      return;
+    }
     fetchDeviceInfo();
-  }, []);
+  }, [cloudMode, deviceInfoOverride]);
 
   /**
    * Handle modal close
@@ -59,6 +67,11 @@ export default function DeviceSettingsModal({
    * @param {boolean} isRetry - Whether this is a retry attempt
    */
   const fetchDeviceInfo = async (isRetry = false) => {
+    if (cloudMode) {
+      setDeviceInfo(deviceInfoOverride || null);
+      setInfoLoading(false);
+      return;
+    }
     const fetchUrl = buildApiUrl("/api/info");
     setInfoLoading(true);
     if (!isRetry) {
@@ -118,10 +131,14 @@ export default function DeviceSettingsModal({
         }
       } finally {
         // Refresh runtime info (cloud tunnel connected/registered, etc).
-        await fetchDeviceInfo();
+        if (cloudMode) {
+          setDeviceInfo(deviceInfoOverride || null);
+        } else {
+          await fetchDeviceInfo();
+        }
       }
     },
-    [saveConfigToDevice]
+    [saveConfigToDevice, cloudMode, deviceInfoOverride]
   );
 
   /**

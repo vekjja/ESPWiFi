@@ -243,6 +243,17 @@ JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
 
 void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 
+bool ESPWiFi::queueConfigUpdate(JsonVariantConst updates) {
+  if (updates.isNull()) {
+    return false;
+  }
+  JsonDocument upd;
+  upd.set(updates);
+  configUpdate = mergeJson(config, upd);
+  requestConfigSave();
+  return configUpdate.size() > 0;
+}
+
 void ESPWiFi::handleConfigUpdate() {
 
   if (configUpdate.size() > 0) {

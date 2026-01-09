@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
   Suspense,
   lazy,
 } from "react";
@@ -15,7 +16,8 @@ import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
 import { getUserFriendlyErrorMessage, logError } from "./utils/errorUtils";
-import { resolveWebSocketUrl } from "./utils/connectionUtils";
+// NOTE: control WS URL is constructed from the selected device record to avoid
+// reconnect loops on config changes in paired/tunnel mode.
 import {
   loadDevices,
   loadSelectedDeviceId,
@@ -125,6 +127,8 @@ function App() {
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
   const [controlConnected, setControlConnected] = useState(false);
+  const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
+  const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
@@ -190,13 +194,42 @@ function App() {
     !process.env.REACT_APP_API_HOST && (isCloudDashboard || isDevHost);
 
   // Tunnel-ready means we have enough info to operate without LAN HTTP.
+  const selectedDevice = useMemo(() => {
+    const id = String(selectedDeviceId || "");
+    if (!id) return null;
+    return devices.find((d) => String(d?.id) === id) || null;
+  }, [devices, selectedDeviceId]);
+
+  // NOTE: We intentionally compute these without referencing makeCloudConfigFromDevice
+  // (defined later) to keep ESLint happy and to avoid reconnecting control WS
+  // when config objects change.
   const pairedTunnelReady = Boolean(
     allowPairedTunnelMode &&
-      localConfig?.cloudTunnel?.enabled &&
-      localConfig?.cloudTunnel?.baseUrl &&
-      localConfig?.auth?.token &&
-      (localConfig?.hostname || localConfig?.deviceName)
+      selectedDevice &&
+      (selectedDevice.authToken || "").length > 0 &&
+      (selectedDevice.cloudBaseUrl || "").length > 0 &&
+      (selectedDevice.hostname || selectedDevice.id)
   );
+
+  const controlUiUrl = useMemo(() => {
+    if (!allowPairedTunnelMode || !selectedDevice) return null;
+    const base = selectedDevice.cloudBaseUrl || "https://tnl.espwifi.io";
+    const id = selectedDevice.hostname || selectedDevice.id;
+    const token = selectedDevice.authToken || "";
+    if (!id || !token) return null;
+    // Always use wss on https pages
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const baseUrl =
+      base.startsWith("ws:") || base.startsWith("wss:")
+        ? base
+        : base.replace(/^https?:/i, wsProto);
+    const sep = baseUrl.endsWith("/") ? "" : "/";
+    return `${baseUrl}${sep}ws/ui/${encodeURIComponent(
+      id
+    )}?tunnel=ws_control&token=${encodeURIComponent(token)}`;
+  }, [allowPairedTunnelMode, selectedDevice]);
+
+  const [controlReconnectSeq, setControlReconnectSeq] = useState(0);
 
   const makeCloudConfigFromDevice = useCallback((d) => {
     if (!d) return null;
@@ -261,6 +294,8 @@ function App() {
       const id = String(d.id);
       setSelectedDeviceId(id);
       saveSelectedDeviceId(id);
+      // Even if selecting the same device again, force a control reconnect.
+      setControlReconnectSeq((n) => n + 1);
 
       // Touch + persist registry
       setDevices((prev) => {
@@ -338,7 +373,7 @@ function App() {
   useEffect(() => {
     if (!networkEnabled) return;
 
-    if (!pairedTunnelReady) {
+    if (!pairedTunnelReady || !controlUiUrl) {
       setDeviceOnline(false);
       setControlConnected(false);
       if (controlRetryRef.current) {
@@ -360,7 +395,7 @@ function App() {
 
     const connect = () => {
       if (!networkEnabled) return;
-      const uiUrl = resolveWebSocketUrl("control", localConfig);
+      const uiUrl = controlUiUrl;
       if (!uiUrl) return;
 
       // Tear down any existing socket before reconnect.
@@ -385,8 +420,18 @@ function App() {
             // ignore
           }
         };
-        ws.onmessage = () => {
-          // Keep for future: proxy API requests / config over this channel.
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt?.data || "{}");
+            if (msg?.cmd === "get_config" && msg?.config) {
+              setCloudDeviceConfig(msg.config);
+            }
+            if (msg?.cmd === "get_info" && msg?.info) {
+              setCloudDeviceInfo(msg.info);
+            }
+          } catch {
+            // ignore
+          }
         };
         ws.onerror = () => {
           setControlConnected(false);
@@ -395,6 +440,8 @@ function App() {
         ws.onclose = (evt) => {
           controlWsRef.current = null;
           setControlConnected(false);
+          setCloudDeviceConfig(null);
+          setCloudDeviceInfo(null);
           console.warn(
             "Control WS closed:",
             { code: evt?.code, reason: evt?.reason },
@@ -423,7 +470,27 @@ function App() {
         controlWsRef.current = null;
       }
     };
-  }, [networkEnabled, pairedTunnelReady, localConfig, selectedDeviceId]);
+  }, [
+    networkEnabled,
+    pairedTunnelReady,
+    controlUiUrl,
+    selectedDeviceId,
+    controlReconnectSeq,
+  ]);
+
+  // In paired/tunnel mode, fetch config/info over the control socket (no HTTP).
+  useEffect(() => {
+    if (!pairedTunnelReady) return;
+    if (!controlConnected) return;
+    const ws = controlWsRef.current;
+    if (!ws || ws.readyState !== 1) return;
+    try {
+      ws.send(JSON.stringify({ cmd: "get_config" }));
+      ws.send(JSON.stringify({ cmd: "get_info" }));
+    } catch {
+      // ignore
+    }
+  }, [pairedTunnelReady, controlConnected, selectedDeviceId]);
 
   /**
    * Helper to compare two config objects for equality
@@ -733,7 +800,11 @@ function App() {
    * @param {Object} newConfig - The new configuration object (can be partial)
    */
   const updateLocalConfig = (newConfig) => {
-    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
+    if (allowPairedTunnelMode && pairedTunnelReady) {
+      setCloudDeviceConfig((prev) => ({ ...(prev || {}), ...newConfig }));
+    } else {
+      setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
+    }
   };
 
   /**
@@ -744,13 +815,33 @@ function App() {
    */
   const saveConfigFromButton = useCallback(
     (newConfig) => {
-      // Cloud dashboard mode (espwifi.io) can't PUT /api/config directly.
-      if (isCloudDashboard) {
-        console.warn(
-          "Cloud mode: config changes require control tunnel (not yet implemented)."
-        );
-        return Promise.resolve(null);
+      // Paired/tunnel mode: send config over control WS (no HTTP /api/config).
+      if (allowPairedTunnelMode && pairedTunnelReady) {
+        // Optimistically update local UI config.
+        setCloudDeviceConfig((prev) => ({ ...(prev || {}), ...newConfig }));
+        const ws = controlWsRef.current;
+        if (!ws || ws.readyState !== 1) {
+          console.warn("Control WS not connected; config saved locally only.");
+          return Promise.resolve(null);
+        }
+        try {
+          ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
+          // Ask for a refresh shortly after the device applies & saves.
+          setTimeout(() => {
+            try {
+              ws.send(JSON.stringify({ cmd: "get_config" }));
+              ws.send(JSON.stringify({ cmd: "get_info" }));
+            } catch {
+              // ignore
+            }
+          }, 750);
+          return Promise.resolve(true);
+        } catch (e) {
+          console.warn("Failed to send set_config over control WS:", e);
+          return Promise.resolve(false);
+        }
       }
+
       // First update local config by merging with existing config
       // This handles both full and partial config updates
       setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
@@ -806,7 +897,13 @@ function App() {
           setSaving(false);
         });
     },
-    [apiURL, deviceOnline, fetchConfig]
+    [
+      apiURL,
+      deviceOnline,
+      fetchConfig,
+      allowPairedTunnelMode,
+      pairedTunnelReady,
+    ]
   );
 
   /**
@@ -829,6 +926,11 @@ function App() {
     if (rssi >= -80) return "SignalCellular1Bar";
     return "SignalCellular0Bar";
   };
+
+  const effectiveConfig =
+    allowPairedTunnelMode && pairedTunnelReady
+      ? cloudDeviceConfig || localConfig
+      : localConfig;
 
   return (
     <ThemeProvider theme={theme}>
@@ -970,15 +1072,15 @@ function App() {
       {/* Settings Button Bar */}
       <Suspense fallback={null}>
         <SettingsButtonBar
-          config={localConfig}
+          config={effectiveConfig}
           deviceOnline={deviceOnline}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
-          cameraEnabled={localConfig?.camera?.enabled || false}
+          cameraEnabled={effectiveConfig?.camera?.enabled || false}
           getCameraColor={() =>
-            localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
+            effectiveConfig?.camera?.enabled ? "primary.main" : "text.disabled"
           }
           devices={devices}
           selectedDeviceId={selectedDeviceId}
@@ -986,6 +1088,8 @@ function App() {
           onRemoveDevice={handleRemoveDevice}
           onPairNewDevice={handlePairNewDevice}
           cloudMode={allowPairedTunnelMode && pairedTunnelReady}
+          controlConnected={controlConnected}
+          deviceInfoOverride={cloudDeviceInfo}
         />
       </Suspense>
 
@@ -1009,7 +1113,7 @@ function App() {
       <Container>
         <Suspense fallback={<LinearProgress color="inherit" />}>
           <Modules
-            config={localConfig}
+            config={effectiveConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={deviceOnline}

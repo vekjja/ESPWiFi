@@ -8,12 +8,14 @@ export default function DeviceSettingsButton({
   deviceOnline,
   saveConfigToDevice,
   cloudMode = false,
+  controlConnected = false,
+  deviceInfoOverride = null,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleClick = () => {
     // Only open modal if device is online AND config is loaded
-    if (!cloudMode && deviceOnline && config) {
+    if ((cloudMode ? controlConnected : deviceOnline) && config) {
       setModalOpen(true);
     }
   };
@@ -27,7 +29,11 @@ export default function DeviceSettingsButton({
       <Tooltip
         title={
           cloudMode
-            ? "Device Settings via cloud tunnel is not available yet"
+            ? !controlConnected
+              ? "Control tunnel not connected"
+              : !config
+              ? "Loading configuration..."
+              : "Device Settings"
             : !deviceOnline
             ? "Device Offline"
             : !config
@@ -40,19 +46,19 @@ export default function DeviceSettingsButton({
             size="medium"
             color="primary"
             onClick={handleClick}
-            disabled={cloudMode || !deviceOnline || !config}
+            disabled={(cloudMode ? !controlConnected : !deviceOnline) || !config}
             sx={{
               color:
-                cloudMode || !deviceOnline || !config
+                (cloudMode ? !controlConnected : !deviceOnline) || !config
                   ? "text.disabled"
                   : "primary.main",
               backgroundColor:
-                cloudMode || !deviceOnline || !config
+                (cloudMode ? !controlConnected : !deviceOnline) || !config
                   ? "action.disabled"
                   : "action.hover",
               "&:hover": {
                 backgroundColor:
-                  cloudMode || !deviceOnline || !config
+                  (cloudMode ? !controlConnected : !deviceOnline) || !config
                     ? "action.disabled"
                     : "action.selected",
               },
@@ -69,6 +75,8 @@ export default function DeviceSettingsButton({
           onClose={handleCloseModal}
           config={config}
           saveConfigToDevice={saveConfigToDevice}
+          cloudMode={cloudMode}
+          deviceInfoOverride={deviceInfoOverride}
         />
       )}
     </>

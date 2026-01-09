@@ -11,8 +11,8 @@ void ESPWiFi::start() {
   startWiFi();
   startMDNS();
   startWebServer();
-  startRSSIWebSocket();
   startControlWebSocket();
+  startRSSIWebSocket();
   srvAll();
 }
 

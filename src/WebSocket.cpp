@@ -33,6 +33,93 @@ struct WebSocket::BroadcastJob {
 // Cloud tunnel helpers
 // -------------------------
 
+// Global dial mutex to avoid multiple TLS handshakes starting simultaneously.
+// TLS setup can have a high transient heap cost; parallel handshakes can cause
+// MBEDTLS_ERR_SSL_ALLOC_FAILED (-0x7F00) even though each tunnel would succeed
+// on its own.
+static SemaphoreHandle_t s_cloudDialMu = nullptr;
+static portMUX_TYPE s_cloudDialMux = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t cloudDialMu() {
+  if (s_cloudDialMu == nullptr) {
+    // Guard creation against races across multiple wsCloud tasks.
+    portENTER_CRITICAL(&s_cloudDialMux);
+    if (s_cloudDialMu == nullptr) {
+      s_cloudDialMu = xSemaphoreCreateMutex();
+    }
+    portEXIT_CRITICAL(&s_cloudDialMux);
+  }
+  return s_cloudDialMu;
+}
+
+// Extract a JSON string field from a small, trusted broker message without
+// pulling in ArduinoJson on the esp_websocket_client internal task stack.
+// This is a minimal parser that looks for: "<key>" : "<value>"
+static bool jsonGetStringField(const char *json, size_t jsonLen,
+                               const char *key, char *out, size_t outLen) {
+  if (out == nullptr || outLen == 0) {
+    return false;
+  }
+  out[0] = '\0';
+  if (json == nullptr || key == nullptr || key[0] == '\0') {
+    return false;
+  }
+  // Build needle: "<key>"
+  char needle[64];
+  const size_t keyLen = strnlen(key, sizeof(needle));
+  // Need: '"' + key + '"' + '\0'
+  if (keyLen + 3 > sizeof(needle)) {
+    return false;
+  }
+  needle[0] = '"';
+  memcpy(&needle[1], key, keyLen);
+  needle[1 + keyLen] = '"';
+  needle[2 + keyLen] = '\0';
+
+  const char *hay = json;
+  const char *end = json + jsonLen;
+  const size_t needleLen = strlen(needle);
+  if (needleLen == 0) {
+    return false;
+  }
+  for (const char *p = hay; p + needleLen < end; p++) {
+    if (memcmp(p, needle, needleLen) != 0) {
+      continue;
+    }
+    p += needleLen;
+    // skip whitespace
+    while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) {
+      p++;
+    }
+    if (p >= end || *p != ':') {
+      continue;
+    }
+    p++; // skip ':'
+    while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) {
+      p++;
+    }
+    if (p >= end || *p != '"') {
+      continue;
+    }
+    p++; // start of value
+    size_t oi = 0;
+    while (p < end && *p != '"' && oi + 1 < outLen) {
+      const char c = *p++;
+      // Broker-controlled values are plain URLs/tokens/types (no escapes).
+      if (c == '\\') {
+        // Skip basic escape sequences defensively.
+        if (p < end) {
+          out[oi++] = *p++;
+        }
+      } else {
+        out[oi++] = c;
+      }
+    }
+    out[oi] = '\0';
+    return (oi > 0);
+  }
+  return false;
+}
+
 static size_t safeCopy(char *dst, size_t dstLen, const char *src) {
   if (dst == nullptr || dstLen == 0) {
     return 0;
@@ -154,7 +241,11 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
   const bool connected = (c != nullptr) && esp_websocket_client_is_connected(c);
   int sent = -1;
   if (connected) {
-    const int timeoutMs = 0; // never block in broadcast path
+    // Default: never block in broadcast path.
+    // For camera binary frames, allow a small timeout to reduce disconnects due
+    // to transient backpressure over the internet tunnel.
+    const bool isCamera = (strcmp(uri_, "/ws/camera") == 0);
+    const int timeoutMs = (isCamera && type != HTTPD_WS_TYPE_TEXT) ? 200 : 0;
     if (type == HTTPD_WS_TYPE_TEXT) {
       sent = esp_websocket_client_send_text(c, (const char *)payload, (int)len,
                                             timeoutMs);
@@ -547,28 +638,39 @@ void WebSocket::setCloudTunnelEnabled(bool enabled) {
 
 void WebSocket::configureCloudTunnel(const char *baseUrl, const char *deviceId,
                                      const char *token, const char *tunnelKey) {
-  safeCopy(cloudBaseUrl_, sizeof(cloudBaseUrl_), baseUrl ? baseUrl : "");
+  // Build candidate values first so we can detect no-op updates.
+  char nextBase[sizeof(cloudBaseUrl_)] = {0};
+  char nextDev[sizeof(cloudDeviceId_)] = {0};
+  char nextTok[sizeof(cloudToken_)] = {0};
+  char nextKey[sizeof(cloudTunnelKey_)] = {0};
+
+  safeCopy(nextBase, sizeof(nextBase), baseUrl ? baseUrl : "");
   if (deviceId != nullptr && deviceId[0] != '\0') {
-    safeCopy(cloudDeviceId_, sizeof(cloudDeviceId_), deviceId);
-  } else {
-    // Use hostname as stable device id.
-    if (espWifi_ != nullptr) {
-      const std::string h = espWifi_->getHostname();
-      safeCopy(cloudDeviceId_, sizeof(cloudDeviceId_), h.c_str());
-    } else {
-      cloudDeviceId_[0] = '\0';
-    }
+    safeCopy(nextDev, sizeof(nextDev), deviceId);
+  } else if (espWifi_ != nullptr) {
+    const std::string h = espWifi_->getHostname();
+    safeCopy(nextDev, sizeof(nextDev), h.c_str());
   }
-  safeCopy(cloudToken_, sizeof(cloudToken_), token ? token : "");
-
+  safeCopy(nextTok, sizeof(nextTok), token ? token : "");
   if (tunnelKey != nullptr && tunnelKey[0] != '\0') {
-    safeCopy(cloudTunnelKey_, sizeof(cloudTunnelKey_), tunnelKey);
+    safeCopy(nextKey, sizeof(nextKey), tunnelKey);
   } else {
-    deriveTunnelKeyFromUri(uri_, cloudTunnelKey_, sizeof(cloudTunnelKey_));
+    deriveTunnelKeyFromUri(uri_, nextKey, sizeof(nextKey));
   }
 
-  // If already enabled, restart quickly to apply new settings.
-  if (cloudTunnelEnabled_) {
+  const bool unchanged = (strcmp(nextBase, cloudBaseUrl_) == 0) &&
+                         (strcmp(nextDev, cloudDeviceId_) == 0) &&
+                         (strcmp(nextTok, cloudToken_) == 0) &&
+                         (strcmp(nextKey, cloudTunnelKey_) == 0);
+
+  // Apply values (even if unchanged, safeCopy is cheap; but avoid restarting).
+  safeCopy(cloudBaseUrl_, sizeof(cloudBaseUrl_), nextBase);
+  safeCopy(cloudDeviceId_, sizeof(cloudDeviceId_), nextDev);
+  safeCopy(cloudToken_, sizeof(cloudToken_), nextTok);
+  safeCopy(cloudTunnelKey_, sizeof(cloudTunnelKey_), nextKey);
+
+  // If already enabled, restart only when settings actually changed.
+  if (cloudTunnelEnabled_ && !unchanged) {
     // Stop the current client (keep enabled flag true so the task reconnects).
     cloudTunnelConnected_ = false;
     SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
@@ -621,6 +723,10 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
       espWifi_->config["cloudTunnel"]["tunnelAll"].isNull()
           ? false
           : espWifi_->config["cloudTunnel"]["tunnelAll"].as<bool>();
+  const bool allowSecondary =
+      espWifi_->config["cloudTunnel"]["allowSecondary"].isNull()
+          ? false
+          : espWifi_->config["cloudTunnel"]["allowSecondary"].as<bool>();
   if (shouldTunnel && !tunnelAll) {
     // If uris array exists and is non-empty, require uri_ to be in it.
     if (espWifi_->config["cloudTunnel"]["uris"].is<JsonArray>()) {
@@ -636,6 +742,27 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
         }
         shouldTunnel = found;
       }
+    }
+  }
+
+  // Stability guard: by default, only tunnel the control channel.
+  // Multiple simultaneous TLS websocket clients can exceed internal heap on
+  // some builds and cause MBEDTLS_ERR_SSL_ALLOC_FAILED (-0x7F00).
+  if (shouldTunnel && strcmp(uri_, "/ws/control") != 0 && !allowSecondary) {
+    shouldTunnel = false;
+  }
+
+  // Resource guard: camera tunneling is expensive (TLS + websocket client).
+  // If the camera isn't enabled, don't keep an always-on tunnel for it.
+  // This keeps heap pressure lower and avoids TLS allocation failures when
+  // multiple tunnels are enabled.
+  if (shouldTunnel && strcmp(uri_, "/ws/camera") == 0) {
+    const bool camEnabled =
+        espWifi_->config["camera"]["enabled"].isNull()
+            ? false
+            : espWifi_->config["camera"]["enabled"].as<bool>();
+    if (!camEnabled) {
+      shouldTunnel = false;
     }
   }
 
@@ -713,39 +840,50 @@ void WebSocket::cloudEventHandler_(void *handler_args, esp_event_base_t base,
     // IMPORTANT: avoid large stack buffers here; this runs on
     // esp_websocket_client's internal websocket_task stack.
     if (t == HTTPD_WS_TYPE_TEXT && d->data_ptr != nullptr && d->data_len > 0) {
-      JsonDocument doc;
-      if (deserializeJson(doc, (const char *)d->data_ptr,
-                          (size_t)d->data_len) == DeserializationError::Ok) {
-        const char *typeC = doc["type"].as<const char *>();
-        if (typeC != nullptr) {
-          if (strcmp(typeC, "registered") == 0) {
-            const char *ui = doc["ui_ws_url"].as<const char *>();
-            const char *dev = doc["device_ws_url"].as<const char *>();
-            if (ui != nullptr) {
-              safeCopy(ws->cloudUIWSURL_, sizeof(ws->cloudUIWSURL_), ui);
-            }
-            if (dev != nullptr) {
-              safeCopy(ws->cloudDeviceWSURL_, sizeof(ws->cloudDeviceWSURL_),
-                       dev);
-            }
-            ws->cloudRegisteredAtMs_ = (uint32_t)millis();
-            if (ws->espWifi_) {
-              ws->espWifi_->log(
-                  INFO, "☁️ WS tunnel registered: %s ui=%s", ws->uri_,
-                  (ws->cloudUIWSURL_[0] ? ws->cloudUIWSURL_ : "—"));
-            }
-          } else if (strcmp(typeC, "ui_connected") == 0) {
-            ws->cloudUIConnected_ = true;
-            if (ws->espWifi_) {
-              ws->espWifi_->log(INFO, "☁️ UI attached to tunnel: %s", ws->uri_);
-            }
-          } else if (strcmp(typeC, "ui_disconnected") == 0) {
-            ws->cloudUIConnected_ = false;
-            if (ws->espWifi_) {
-              ws->espWifi_->log(INFO, "☁️ UI detached from tunnel: %s",
-                                ws->uri_);
-            }
+      char typeC[32] = {0};
+      if (jsonGetStringField((const char *)d->data_ptr, (size_t)d->data_len,
+                             "type", typeC, sizeof(typeC))) {
+        bool handledBrokerMeta = false;
+        if (strcmp(typeC, "registered") == 0) {
+          char ui[sizeof(ws->cloudUIWSURL_)] = {0};
+          char dev[sizeof(ws->cloudDeviceWSURL_)] = {0};
+          (void)jsonGetStringField((const char *)d->data_ptr,
+                                   (size_t)d->data_len, "ui_ws_url", ui,
+                                   sizeof(ui));
+          (void)jsonGetStringField((const char *)d->data_ptr,
+                                   (size_t)d->data_len, "device_ws_url", dev,
+                                   sizeof(dev));
+          if (ui[0]) {
+            safeCopy(ws->cloudUIWSURL_, sizeof(ws->cloudUIWSURL_), ui);
           }
+          if (dev[0]) {
+            safeCopy(ws->cloudDeviceWSURL_, sizeof(ws->cloudDeviceWSURL_), dev);
+          }
+          ws->cloudRegisteredAtMs_ = (uint32_t)millis();
+          if (ws->espWifi_) {
+            ws->espWifi_->log(INFO, "☁️ WS tunnel registered: %s ui=%s",
+                              ws->uri_,
+                              (ws->cloudUIWSURL_[0] ? ws->cloudUIWSURL_ : "—"));
+          }
+          handledBrokerMeta = true;
+        } else if (strcmp(typeC, "ui_connected") == 0) {
+          ws->cloudUIConnected_ = true;
+          if (ws->espWifi_) {
+            ws->espWifi_->log(INFO, "☁️ UI attached to tunnel: %s", ws->uri_);
+          }
+          handledBrokerMeta = true;
+        } else if (strcmp(typeC, "ui_disconnected") == 0) {
+          ws->cloudUIConnected_ = false;
+          if (ws->espWifi_) {
+            ws->espWifi_->log(INFO, "☁️ UI detached from tunnel: %s", ws->uri_);
+          }
+          handledBrokerMeta = true;
+        }
+
+        // Don't feed broker meta-messages into endpoint handlers (especially
+        // /ws/control). Those handlers should only see frames from the UI.
+        if (handledBrokerMeta) {
+          return;
         }
       }
     }
@@ -768,6 +906,9 @@ void WebSocket::startCloudTunnelTask_() {
   }
   // Create a small background task that keeps the cloud tunnel connected.
   TaskHandle_t th = nullptr;
+  // Note: this task builds URLs and calls into esp_websocket_client_init/start,
+  // which can use non-trivial stack. If this overflows, it can corrupt heap and
+  // cause spurious FreeRTOS asserts (e.g. xQueueSemaphoreTake).
   const BaseType_t ok = xTaskCreate(&WebSocket::cloudTaskTrampoline_, "wsCloud",
                                     8192, this, 5, &th);
   if (ok == pdPASS) {
@@ -868,9 +1009,11 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
       buf = 8192;
     }
     cfg.buffer_size = buf;
-    // esp_websocket_client creates its own internal websocket_task. Raise stack
-    // to avoid overflow when doing TLS + event callbacks.
-    cfg.task_stack = 8192;
+    // esp_websocket_client creates its own internal websocket_task.
+    // Use smaller stacks for non-camera tunnels to preserve heap for TLS.
+    // 4096 is too small for esp_websocket_client's websocket_task on this
+    // build (it overflows immediately after connect). Use a safer default.
+    cfg.task_stack = (strcmp(ws->uri_, "/ws/camera") == 0) ? 6144 : 6144;
     cfg.task_prio = 5;
     cfg.network_timeout_ms = 15000;
     cfg.disable_auto_reconnect = true;
@@ -879,6 +1022,12 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     // Enable TLS server verification for wss:// using the ESP-IDF cert bundle.
     cfg.crt_bundle_attach = esp_crt_bundle_attach;
 #endif
+
+    // Serialize dial attempts across endpoints to reduce transient TLS heap.
+    SemaphoreHandle_t dial = cloudDialMu();
+    const bool dialLocked =
+        (dial != nullptr) &&
+        (xSemaphoreTake(dial, pdMS_TO_TICKS(15000)) == pdTRUE);
 
     SemaphoreHandle_t mu = (SemaphoreHandle_t)ws->cloudMutex_;
     const bool locked =
@@ -892,6 +1041,19 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     }
     if (locked) {
       (void)xSemaphoreGive(mu);
+    }
+
+    // Hold the dial mutex briefly while TLS setup is most memory-hungry.
+    if (dialLocked) {
+      const int64_t holdStartUs = esp_timer_get_time();
+      while (ws->cloudTunnelEnabled_ && !ws->cloudTunnelConnected_) {
+        const int64_t heldMs = (esp_timer_get_time() - holdStartUs) / 1000;
+        if (heldMs > 2000) {
+          break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+      }
+      (void)xSemaphoreGive(dial);
     }
 
     // Give the handshake some time to complete before checking connected

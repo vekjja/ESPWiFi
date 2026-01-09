@@ -35,6 +35,28 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["wifiMode"] = espwifi->config["wifi"]["mode"].as<std::string>();
       resp["cloudTunnelEnabled"] =
           espwifi->config["cloudTunnel"]["enabled"].as<bool>();
+    } else if (strcmp(cmd, "get_config") == 0) {
+      // Return full config over the tunnel so the dashboard can operate in
+      // paired/cloud mode without making mixed-content HTTP calls.
+      resp["config"] = espwifi->config;
+    } else if (strcmp(cmd, "get_info") == 0) {
+      // Return the same payload as /api/info so the dashboard sees consistent
+      // data in paired/tunnel mode (no HTTP).
+      JsonDocument infoDoc = espwifi->buildInfoJson(false);
+      resp["info"] = infoDoc.as<JsonVariantConst>();
+    } else if (strcmp(cmd, "set_config") == 0) {
+      // Merge and apply config updates on the main loop.
+      if (!req["config"].is<JsonObject>() && !req["config"].is<JsonArray>()) {
+        resp["ok"] = false;
+        resp["error"] = "missing_config";
+      } else {
+        const bool queued = espwifi->queueConfigUpdate(req["config"]);
+        resp["queued"] = queued;
+        if (!queued) {
+          resp["ok"] = false;
+          resp["error"] = "queue_failed";
+        }
+      }
     } else {
       resp["ok"] = false;
       resp["error"] = "unknown_cmd";
@@ -82,8 +104,10 @@ void ESPWiFi::startControlWebSocket() {
                                  /*onMessage*/ ctrlOnMessage,
                                  /*onConnect*/ ctrlOnConnect,
                                  /*onDisconnect*/ ctrlOnDisconnect,
-                                 /*maxMessageLen*/ 512,
-                                 /*maxBroadcastLen*/ 512,
+                                 /*maxMessageLen*/ 2048,
+                                 // Must be large enough to return full config
+                                 // over the tunnel (get_config).
+                                 /*maxBroadcastLen*/ 32 * 1024,
                                  /*requireAuth*/ false);
   if (!ctrlSocStarted) {
     log(ERROR, "🎛️ Control WebSocket failed to start");

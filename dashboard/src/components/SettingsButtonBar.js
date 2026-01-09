@@ -233,6 +233,8 @@ export default function SettingsButtonBar({
   onRemoveDevice,
   onPairNewDevice,
   cloudMode = false,
+  controlConnected = false,
+  deviceInfoOverride = null,
 }) {
   /**
    * Build list of available buttons based on device capabilities
@@ -243,8 +245,9 @@ export default function SettingsButtonBar({
     const wifiMode = config?.wifi?.mode || "client";
     // Don't mount RSSIButton until we have config; it auto-connects a WS.
     const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
-    // In paired/tunnel mode we currently only support WS features (RSSI/Camera/Control).
-    // Disable HTTP-backed features (settings/logs/files/modules) until control-proxy lands.
+    // In paired/tunnel mode, use the control socket to support settings.
+    // Keep other HTTP-backed features disabled for now.
+    const canCloudConfigure = cloudMode && controlConnected;
     const httpCapable = deviceOnline && !cloudMode;
 
     items.push({
@@ -265,9 +268,11 @@ export default function SettingsButtonBar({
       render: () => (
         <DeviceSettingsButton
           config={config}
-          deviceOnline={httpCapable}
+          deviceOnline={httpCapable || canCloudConfigure}
           saveConfigToDevice={saveConfigToDevice}
           cloudMode={cloudMode}
+          controlConnected={controlConnected}
+          deviceInfoOverride={deviceInfoOverride}
         />
       ),
     });

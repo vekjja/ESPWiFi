@@ -5,23 +5,6 @@
 #include "esp_mac.h"
 #include "esp_wifi.h"
 
-void ESPWiFi::srvInfo() {
-  // Info endpoint
-  (void)registerRoute("/api/info", HTTP_GET,
-                      [](ESPWiFi *espwifi, httpd_req_t *req,
-                         const std::string &clientInfo) -> esp_err_t {
-                        JsonDocument jsonDoc = espwifi->buildInfoJson(true);
-
-                        // Serialize JSON to string
-                        std::string jsonResponse;
-                        serializeJson(jsonDoc, jsonResponse);
-
-                        (void)espwifi->sendJsonResponse(req, 200, jsonResponse,
-                                                        &clientInfo);
-                        return ESP_OK;
-                      });
-}
-
 JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
   JsonDocument jsonDoc;
 

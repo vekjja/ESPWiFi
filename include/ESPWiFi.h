@@ -184,7 +184,6 @@ public:
   bool queueConfigUpdate(JsonVariantConst updates);
 
   // ---- Info
-  // Build the same JSON payload returned by /api/info.
   // When yieldForWatchdog is true, yields briefly between heavier sections.
   JsonDocument buildInfoJson(bool yieldForWatchdog = true);
 
@@ -243,7 +242,6 @@ public:
   void srvFiles();
   void srvAll();
   void srvLog();
-  void srvInfo();
   void srvRoot();
   void srvGPIO();
   void srvAuth();

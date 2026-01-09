@@ -41,8 +41,6 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       // paired/cloud mode without making mixed-content HTTP calls.
       resp["config"] = espwifi->config;
     } else if (strcmp(cmd, "get_info") == 0) {
-      // Return the same payload as /api/info so the dashboard sees consistent
-      // data in paired/tunnel mode (no HTTP).
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
       resp["info"] = infoDoc.as<JsonVariantConst>();
     } else if (strcmp(cmd, "get_rssi") == 0) {

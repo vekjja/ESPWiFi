@@ -12,7 +12,12 @@ import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
-import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
+import {
+  getApiUrl,
+  buildApiUrl,
+  getFetchOptions,
+  buildWebSocketUrl,
+} from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
 import { getUserFriendlyErrorMessage } from "./utils/errorUtils";
@@ -130,6 +135,8 @@ function App() {
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
   const [cloudRssi, setCloudRssi] = useState(null);
+  const [cloudLogs, setCloudLogs] = useState("");
+  const [cloudLogsError, setCloudLogsError] = useState("");
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
@@ -184,15 +191,13 @@ function App() {
   const isCloudDashboard =
     process.env.NODE_ENV === "production" && !process.env.REACT_APP_API_HOST;
 
-  const isDevHost =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "::1";
+  // Note: localhost can still operate fully via /ws/control (LAN mode), or via
+  // tunnel if a device record is selected that contains tunnel details.
 
-  // When developing on localhost (or when hosted on espwifi.io), we can run in
-  // "paired/tunnel" mode where we don't use device HTTP at all.
-  const allowPairedTunnelMode =
-    !process.env.REACT_APP_API_HOST && (isCloudDashboard || isDevHost);
+  // One mode: always talk over /ws/control.
+  // The only difference between "LAN" and "paired/tunnel" is the control WS URL:
+  // - LAN: ws(s)://<device>/ws/control
+  // - Tunnel: wss://tnl.../ws/ui/<id>?tunnel=ws_control&token=...
 
   // Tunnel-ready means we have enough info to operate without LAN HTTP.
   const selectedDevice = useMemo(() => {
@@ -204,16 +209,15 @@ function App() {
   // NOTE: We intentionally compute these without referencing makeCloudConfigFromDevice
   // (defined later) to keep ESLint happy and to avoid reconnecting control WS
   // when config objects change.
-  const pairedTunnelReady = Boolean(
-    allowPairedTunnelMode &&
-      selectedDevice &&
+  const tunnelReady = Boolean(
+    selectedDevice &&
       (selectedDevice.authToken || "").length > 0 &&
       (selectedDevice.cloudBaseUrl || "").length > 0 &&
       (selectedDevice.hostname || selectedDevice.id)
   );
 
   const controlUiUrl = useMemo(() => {
-    if (!allowPairedTunnelMode || !selectedDevice) return null;
+    if (!tunnelReady || !selectedDevice) return null;
     const base = selectedDevice.cloudBaseUrl || "https://tnl.espwifi.io";
     const id = selectedDevice.hostname || selectedDevice.id;
     const token = selectedDevice.authToken || "";
@@ -228,7 +232,7 @@ function App() {
     return `${baseUrl}${sep}ws/ui/${encodeURIComponent(
       id
     )}?tunnel=ws_control&token=${encodeURIComponent(token)}`;
-  }, [allowPairedTunnelMode, selectedDevice]);
+  }, [tunnelReady, selectedDevice]);
 
   const [controlReconnectSeq, setControlReconnectSeq] = useState(0);
 
@@ -263,31 +267,34 @@ function App() {
     setDevices(loaded);
     setSelectedDeviceId(sel);
 
-    if (allowPairedTunnelMode) {
-      const chosen =
-        loaded.find((d) => String(d?.id) === String(sel)) || loaded[0] || null;
-      if (chosen) {
-        // In paired/tunnel mode, treat "needs pairing" as "no saved devices".
-        setNeedsPairing(false);
-        const cc = makeCloudConfigFromDevice(chosen);
-        setConfig(cc);
-        setLocalConfig(cc);
-        setAuthenticated(true);
-        setAuthChecked(true);
-        // Defer marking "online" until boot phase completes so we don't start
-        // websocket connects before the page is fully loaded.
-        setDeviceOnline(false);
+    const chosen =
+      loaded.find((d) => String(d?.id) === String(sel)) || loaded[0] || null;
 
-        // Auto-select the chosen device so we don't fall back to /api/config on localhost.
-        const chosenId = String(chosen.id);
-        setSelectedDeviceId(chosenId);
-        saveSelectedDeviceId(chosenId);
-      } else {
-        setNeedsPairing(true);
-        setAuthChecked(true);
-      }
+    // If we have saved devices, default-select the last selected (or first)
+    // so LAN dev has a deterministic target, but still show "Select a device"
+    // if nothing is selected (user can unselect via UI in the future).
+    if (chosen) {
+      const chosenId = String(chosen.id);
+      setSelectedDeviceId(chosenId);
+      saveSelectedDeviceId(chosenId);
     }
-  }, [allowPairedTunnelMode, makeCloudConfigFromDevice]);
+
+    // Show "Select a device" banner when there are saved devices but none selected,
+    // and "No device paired" when there are none. This applies on both local + cloud.
+    setNeedsPairing(loaded.length === 0 || !chosen);
+    setAuthChecked(true);
+
+    // If we're cloud-hosted and have a chosen device, build the virtual config.
+    if (isCloudDashboard && chosen) {
+      const cc = makeCloudConfigFromDevice(chosen);
+      setConfig(cc);
+      setLocalConfig(cc);
+      setAuthenticated(true);
+      // Defer marking "online" until boot phase completes so we don't start
+      // websocket connects before the page is fully loaded.
+      setDeviceOnline(false);
+    }
+  }, [isCloudDashboard, makeCloudConfigFromDevice]);
 
   const handleSelectDevice = useCallback(
     (d) => {
@@ -305,7 +312,7 @@ function App() {
         return next;
       });
 
-      if (allowPairedTunnelMode) {
+      if (isCloudDashboard) {
         const cc = makeCloudConfigFromDevice(d);
         setConfig(cc);
         setLocalConfig(cc);
@@ -316,7 +323,7 @@ function App() {
         setDeviceOnline(false);
       }
     },
-    [allowPairedTunnelMode, makeCloudConfigFromDevice]
+    [isCloudDashboard, makeCloudConfigFromDevice]
   );
 
   const handleRemoveDevice = useCallback(
@@ -331,14 +338,14 @@ function App() {
       if (String(selectedDeviceId) === id) {
         setSelectedDeviceId(null);
         saveSelectedDeviceId(null);
-        setNeedsPairing(true);
-        if (allowPairedTunnelMode) {
+        setNeedsPairing(isCloudDashboard);
+        if (isCloudDashboard) {
           setConfig(null);
           setLocalConfig(null);
         }
       }
     },
-    [allowPairedTunnelMode, selectedDeviceId]
+    [isCloudDashboard, selectedDeviceId]
   );
 
   const handlePairNewDevice = useCallback(() => {
@@ -369,24 +376,41 @@ function App() {
     return () => window.removeEventListener("load", enable);
   }, []);
 
+  const lanTargetHost = useMemo(() => {
+    // Prefer explicit override.
+    if (process.env.REACT_APP_API_HOST) return process.env.REACT_APP_API_HOST;
+    // If a device is selected, use it as the LAN target.
+    const selHost =
+      selectedDevice?.hostname ||
+      selectedDevice?.deviceId ||
+      selectedDevice?.id;
+    if (selHost) return selHost;
+    // If we already have a config, prefer its hostname.
+    if (localConfig?.hostname) return localConfig.hostname;
+    if (config?.hostname) return config.hostname;
+    // No selection yet.
+    return null;
+  }, [config?.hostname, localConfig?.hostname, selectedDevice]);
+
   const lanControlUrl = useMemo(() => {
-    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProto}//${window.location.host}/ws/control`;
-  }, []);
+    // If no target host yet, don't connect.
+    if (!lanTargetHost) return null;
+    return buildWebSocketUrl("/ws/control", lanTargetHost);
+  }, [lanTargetHost]);
 
   const controlWsUrl = useMemo(() => {
-    // Paired/cloud: connect via the tunnel UI URL
-    if (allowPairedTunnelMode) return controlUiUrl || null;
-    // LAN: connect to the device directly
-    return lanControlUrl;
-  }, [allowPairedTunnelMode, controlUiUrl, lanControlUrl]);
+    // Tunnel when a selected device provides tunnel connection details.
+    if (tunnelReady) return controlUiUrl || null;
+    // Otherwise, always use LAN control WS.
+    return lanControlUrl || null;
+  }, [tunnelReady, controlUiUrl, lanControlUrl]);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
 
-    // In paired/tunnel mode, we need a selected device (controlUiUrl).
-    if (allowPairedTunnelMode && (!pairedTunnelReady || !controlWsUrl)) {
+    // On espwifi.io, we require a selected tunneled device.
+    if (isCloudDashboard && !controlWsUrl) {
       setDeviceOnline(false);
       setControlConnected(false);
       if (controlRetryRef.current) {
@@ -453,6 +477,16 @@ function App() {
                 setCloudRssi(null);
               }
             }
+            if (msg?.cmd === "get_logs") {
+              if (msg?.ok === false) {
+                setCloudLogsError(msg?.error || "get_logs_failed");
+              } else {
+                setCloudLogsError("");
+              }
+              if (typeof msg?.logs === "string") {
+                setCloudLogs(msg.logs);
+              }
+            }
           } catch {
             // ignore
           }
@@ -496,8 +530,7 @@ function App() {
     };
   }, [
     networkEnabled,
-    allowPairedTunnelMode,
-    pairedTunnelReady,
+    isCloudDashboard,
     controlWsUrl,
     selectedDeviceId,
     controlReconnectSeq,
@@ -531,13 +564,6 @@ function App() {
       try {
         // If we have a control channel URL, config/info comes from /ws/control.
         if (controlWsUrl) {
-          return null;
-        }
-        // In paired/tunnel mode, we do not use /api/config at all.
-        if (
-          allowPairedTunnelMode &&
-          (pairedTunnelReady || devices.length > 0)
-        ) {
           return null;
         }
         const configUrl = buildApiUrl("/api/config");
@@ -677,6 +703,15 @@ function App() {
       setCheckingAuth(false);
       return;
     }
+    // LAN/dev and device-hosted: if we have a control WS target, config/info comes
+    // from /ws/control and we don't need HTTP auth/config bootstrapping.
+    if (controlWsUrl) {
+      setNeedsPairing(false);
+      setAuthenticated(true);
+      setAuthChecked(true);
+      setCheckingAuth(false);
+      return;
+    }
     const checkAuth = async () => {
       setCheckingAuth(true);
 
@@ -713,7 +748,7 @@ function App() {
     };
 
     checkAuth();
-  }, [networkEnabled, isCloudDashboard]);
+  }, [networkEnabled, isCloudDashboard, controlWsUrl]);
 
   /**
    * Set up polling for config updates when authenticated
@@ -721,7 +756,7 @@ function App() {
    */
   useEffect(() => {
     // Only start polling if authenticated
-    if (!networkEnabled || !authenticated || isCloudDashboard) {
+    if (!networkEnabled || !authenticated || isCloudDashboard || controlWsUrl) {
       return;
     }
 
@@ -798,7 +833,7 @@ function App() {
         clearTimeout(pollTimeout);
       }
     };
-  }, [authenticated, networkEnabled, isCloudDashboard]);
+  }, [authenticated, networkEnabled, isCloudDashboard, controlWsUrl]);
 
   /**
    * Handle successful login
@@ -815,11 +850,10 @@ function App() {
    * @param {Object} newConfig - The new configuration object (can be partial)
    */
   const updateLocalConfig = (newConfig) => {
-    if (allowPairedTunnelMode && pairedTunnelReady) {
-      setCloudDeviceConfig((prev) => ({ ...(prev || {}), ...newConfig }));
-    } else {
-      setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
-    }
+    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
+    // If we're operating from a tunneled device config, keep it in sync for
+    // immediate UI updates.
+    setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
   };
 
   /**
@@ -830,74 +864,37 @@ function App() {
    */
   const saveConfigFromButton = useCallback(
     (newConfig) => {
-      // Paired/tunnel mode: send config over control WS (no HTTP /api/config).
-      if (allowPairedTunnelMode && pairedTunnelReady) {
-        // Optimistically update local UI config.
-        setCloudDeviceConfig((prev) => ({ ...(prev || {}), ...newConfig }));
-        const ws = controlWsRef.current;
-        if (!ws || ws.readyState !== 1) {
-          console.warn("Control WS not connected; config saved locally only.");
-          return Promise.resolve(null);
-        }
-        try {
-          ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
-          // Ask for a refresh shortly after the device applies & saves.
-          setTimeout(() => {
-            try {
-              ws.send(JSON.stringify({ cmd: "get_config" }));
-              ws.send(JSON.stringify({ cmd: "get_info" }));
-            } catch {
-              // ignore
-            }
-          }, 750);
-          return Promise.resolve(true);
-        } catch (e) {
-          console.warn("Failed to send set_config over control WS:", e);
-          return Promise.resolve(false);
-        }
-      }
+      // One mode: send config over control WS (no HTTP /api/config).
+      // Optimistically update local UI config.
+      setLocalConfig((prevConfig) => ({
+        ...prevConfig,
+        ...newConfig,
+        apiURL,
+      }));
+      setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
 
-      // LAN mode: also use control WS for config (no /api/config).
-      {
-        // Optimistically update local UI config.
-        setLocalConfig((prevConfig) => ({
-          ...prevConfig,
-          ...newConfig,
-          apiURL,
-        }));
-        const ws = controlWsRef.current;
-        if (!ws || ws.readyState !== 1) {
-          console.warn("Control WS not connected; config saved locally only.");
-          return Promise.resolve(null);
-        }
-        try {
-          ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
-          setTimeout(() => {
-            try {
-              ws.send(JSON.stringify({ cmd: "get_config" }));
-              ws.send(JSON.stringify({ cmd: "get_info" }));
-            } catch {
-              // ignore
-            }
-          }, 750);
-          return Promise.resolve(true);
-        } catch (e) {
-          console.warn("Failed to send set_config over control WS:", e);
-          return Promise.resolve(false);
-        }
+      const ws = controlWsRef.current;
+      if (!ws || ws.readyState !== 1) {
+        console.warn("Control WS not connected; config saved locally only.");
+        return Promise.resolve(null);
       }
-
-      // Should never reach here: LAN and paired mode both use the control WS.
-      // eslint-disable-next-line no-unreachable
-      return Promise.resolve(null);
+      try {
+        ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
+        setTimeout(() => {
+          try {
+            ws.send(JSON.stringify({ cmd: "get_config" }));
+            ws.send(JSON.stringify({ cmd: "get_info" }));
+          } catch {
+            // ignore
+          }
+        }, 750);
+        return Promise.resolve(true);
+      } catch (e) {
+        console.warn("Failed to send set_config over control WS:", e);
+        return Promise.resolve(false);
+      }
     },
-    [
-      apiURL,
-      deviceOnline,
-      fetchConfig,
-      allowPairedTunnelMode,
-      pairedTunnelReady,
-    ]
+    [apiURL]
   );
 
   /**
@@ -921,10 +918,7 @@ function App() {
     return "SignalCellular0Bar";
   };
 
-  const effectiveConfig =
-    allowPairedTunnelMode && pairedTunnelReady
-      ? cloudDeviceConfig || localConfig
-      : localConfig;
+  const effectiveConfig = cloudDeviceConfig || localConfig;
 
   return (
     <ThemeProvider theme={theme}>
@@ -1073,11 +1067,29 @@ function App() {
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
           controlRssi={cloudRssi}
+          logsText={cloudLogs}
+          logsError={cloudLogsError}
           onRequestRssi={() => {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;
             try {
               ws.send(JSON.stringify({ cmd: "get_rssi" }));
+            } catch {
+              // ignore
+            }
+          }}
+          onRequestLogs={() => {
+            const ws = controlWsRef.current;
+            if (!ws || ws.readyState !== 1) return;
+            try {
+              ws.send(
+                JSON.stringify({
+                  cmd: "get_logs",
+                  tailBytes: 256 * 1024,
+                  // Keep small by default; tunnel JSON escaping can expand.
+                  maxBytes: 2 * 1024,
+                })
+              );
             } catch {
               // ignore
             }
@@ -1091,7 +1103,7 @@ function App() {
           onSelectDevice={handleSelectDevice}
           onRemoveDevice={handleRemoveDevice}
           onPairNewDevice={handlePairNewDevice}
-          cloudMode={allowPairedTunnelMode && pairedTunnelReady}
+          cloudMode={Boolean(controlUiUrl)}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
         />

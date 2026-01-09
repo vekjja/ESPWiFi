@@ -91,6 +91,13 @@ public:
   void start();
   void runSystem();
 
+  // ---- Chunked file helper (used by control socket commands like get_logs)
+  // Populates a response JSON with a chunk/tail of a file.
+  void fillChunkedDataResponse(JsonDocument &resp, const std::string &fullPath,
+                               const std::string &virtualPath,
+                               const std::string &source, int64_t offset,
+                               int tailBytes, int maxBytes);
+
   // ---- Filesystem
   void initSDCard();
   void initLittleFS();

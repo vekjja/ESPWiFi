@@ -149,6 +149,10 @@ public:
   // callers snappy (user-perceived performance).
   esp_err_t textAll(const char *message);
   esp_err_t textAll(const char *message, size_t len);
+  // Send to a specific client fd. If fd == cloud synthetic fd, routes via
+  // cloud.
+  esp_err_t textTo(int clientFd, const char *message);
+  esp_err_t textTo(int clientFd, const char *message, size_t len);
 
   esp_err_t binaryAll(const uint8_t *data, size_t len);
 

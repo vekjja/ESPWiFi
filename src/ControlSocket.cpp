@@ -5,10 +5,8 @@
 
 // For get_rssi
 #include "esp_wifi.h"
-
 static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                           const uint8_t *data, size_t len, ESPWiFi *espwifi) {
-  (void)clientFd;
   if (!ws || !espwifi || !data || len == 0) {
     return;
   }
@@ -61,6 +59,48 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         resp["connected"] = false;
         resp["rssi"] = 0;
       }
+    } else if (strcmp(cmd, "get_logs") == 0) {
+      // Return a chunk of the log file over control WS.
+      // Params:
+      // - offset: byte offset to start reading (default: tail)
+      // - tailBytes: when offset is omitted, start at max(0, size-tailBytes)
+      // - maxBytes: max bytes to return (capped to keep WS payload small)
+      int64_t offset = -1;
+      if (!req["offset"].isNull()) {
+        offset = req["offset"].as<int64_t>();
+      }
+      int tailBytes =
+          req["tailBytes"].isNull() ? (64 * 1024) : req["tailBytes"].as<int>();
+      // Cloud tunnel responses are forwarded to the UI and must fit the tunnel
+      // buffer (and JSON escaping can grow payload). Use a smaller default for
+      // cloud.
+      const bool isCloud = (clientFd == -7777);
+      const int defaultMaxBytes = isCloud ? (2 * 1024) : (8 * 1024);
+      int maxBytes = req["maxBytes"].isNull() ? defaultMaxBytes
+                                              : req["maxBytes"].as<int>();
+
+      bool useSD = false, useLFS = false;
+      if (!espwifi->getLogFilesystem(useSD, useLFS)) {
+        resp["ok"] = false;
+        resp["error"] = "fs_unavailable";
+      } else {
+        const std::string &base =
+            useSD ? espwifi->sdMountPoint : espwifi->lfsMountPoint;
+        const std::string source = useSD ? "sd" : "lfs";
+        const std::string virtualPath = espwifi->logFilePath;
+        const std::string fullPath = base + espwifi->logFilePath;
+        espwifi->fillChunkedDataResponse(resp, fullPath, virtualPath, source,
+                                         offset, tailBytes, maxBytes);
+
+        // Back-compat with existing UI expectations.
+        if (resp["ok"] == false && resp["error"] == "file_not_found") {
+          resp["error"] = "log_not_found";
+        }
+        if (!resp["data"].isNull()) {
+          resp["logs"] = resp["data"];
+          resp.remove("data");
+        }
+      }
     } else if (strcmp(cmd, "set_config") == 0) {
       // Merge and apply config updates on the main loop.
       if (!req["config"].is<JsonObject>() && !req["config"].is<JsonArray>()) {
@@ -82,9 +122,15 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
 
   std::string out;
   serializeJson(resp, out);
-  // Note: WebSocket helper currently broadcasts; control frames are small/low
-  // rate.
-  ws->textAll(out.c_str(), out.size());
+  // Default: reply only to the requesting client (prevents cross-UI leakage).
+  //
+  // Exception: `get_rssi` is intentionally broadcast so a CLI `wscat` session
+  // can see it as a simple heartbeat while the UI is polling RSSI.
+  if (resp["cmd"] == "get_rssi") {
+    (void)ws->textAll(out.c_str(), out.size());
+  } else {
+    (void)ws->textTo(clientFd, out.c_str(), out.size());
+  }
 }
 
 static void ctrlOnConnect(WebSocket *ws, int clientFd, ESPWiFi *espwifi) {
@@ -97,7 +143,7 @@ static void ctrlOnConnect(WebSocket *ws, int clientFd, ESPWiFi *espwifi) {
   hello["hostname"] = espwifi->config["hostname"].as<std::string>();
   std::string out;
   serializeJson(hello, out);
-  ws->textAll(out.c_str(), out.size());
+  (void)ws->textTo(clientFd, out.c_str(), out.size());
 }
 
 static void ctrlOnDisconnect(WebSocket *ws, int clientFd, ESPWiFi *espwifi) {

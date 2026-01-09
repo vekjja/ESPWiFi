@@ -245,7 +245,9 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
     // For camera binary frames, allow a small timeout to reduce disconnects due
     // to transient backpressure over the internet tunnel.
     const bool isCamera = (strcmp(uri_, "/ws/camera") == 0);
-    const int timeoutMs = (isCamera && type != HTTPD_WS_TYPE_TEXT) ? 200 : 0;
+    const bool isControl = (strcmp(uri_, "/ws/control") == 0);
+    const int timeoutMs =
+        (isCamera && type != HTTPD_WS_TYPE_TEXT) ? 200 : (isControl ? 200 : 0);
     if (type == HTTPD_WS_TYPE_TEXT) {
       sent = esp_websocket_client_send_text(c, (const char *)payload, (int)len,
                                             timeoutMs);
@@ -1001,7 +1003,17 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
     //
     // We cap the websocket client buffer aggressively. TX of large binary
     // frames (camera) does not require a giant RX buffer.
+    // Buffer sizing: use the larger of maxMessageLen_ and a capped
+    // maxBroadcastLen_ to keep control payloads (e.g. logs/config) stable over
+    // the tunnel, without allowing camera-sized buffers.
     int buf = (int)ws->maxMessageLen_;
+    int cappedBroadcast = (int)ws->maxBroadcastLen_;
+    if (cappedBroadcast > 8192) {
+      cappedBroadcast = 8192;
+    }
+    if (cappedBroadcast > buf) {
+      buf = cappedBroadcast;
+    }
     if (buf < 1024) {
       buf = 1024;
     }
@@ -1149,6 +1161,52 @@ esp_err_t WebSocket::textAll(const char *message, size_t len) {
 
   return httpd_queue_work(espWifi_->webServer,
                           &WebSocket::broadcastWorkTrampoline, job);
+#endif
+}
+
+esp_err_t WebSocket::textTo(int clientFd, const char *message) {
+  if (message == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  return textTo(clientFd, message, strlen(message));
+}
+
+esp_err_t WebSocket::textTo(int clientFd, const char *message, size_t len) {
+  if (message == nullptr && len > 0) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (len == 0) {
+    return ESP_OK;
+  }
+  if (len > maxBroadcastLen_) {
+    return ESP_ERR_INVALID_SIZE;
+  }
+
+  // Cloud synthetic "fd"
+  if (clientFd == kCloudClientFd) {
+    if (cloudTunnelEnabled_ && cloudTunnelConnected_) {
+      return cloudSendFrame_(HTTPD_WS_TYPE_TEXT, (const uint8_t *)message, len);
+    }
+    return ESP_ERR_INVALID_STATE;
+  }
+
+#ifndef CONFIG_HTTPD_WS_SUPPORT
+  (void)clientFd;
+  (void)message;
+  (void)len;
+  return ESP_ERR_NOT_SUPPORTED;
+#else
+  if (!started_ || espWifi_ == nullptr || espWifi_->webServer == nullptr) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_TEXT;
+  frame.payload = (uint8_t *)message;
+  frame.len = len;
+
+  return httpd_ws_send_frame_async(espWifi_->webServer, clientFd, &frame);
 #endif
 }
 

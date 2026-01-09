@@ -233,6 +233,9 @@ export default function SettingsButtonBar({
   getRSSIIcon,
   controlRssi = null,
   onRequestRssi = null,
+  logsText = "",
+  logsError = "",
+  onRequestLogs = null,
   cameraEnabled,
   getCameraColor,
   devices,
@@ -253,10 +256,11 @@ export default function SettingsButtonBar({
     const wifiMode = config?.wifi?.mode || "client";
     // Don't mount RSSIButton until we have config; it auto-connects a WS.
     const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
-    // In paired/tunnel mode, use the control socket to support settings.
-    // Keep other HTTP-backed features disabled for now.
+    // In paired/tunnel mode, use the control socket to support settings/logs.
+    // Keep other HTTP-backed features (files/modules) disabled for now.
     const canCloudConfigure = cloudMode && controlConnected;
     const httpCapable = deviceOnline && !cloudMode;
+    const logsCapable = (cloudMode && controlConnected) || deviceOnline;
 
     items.push({
       id: "devicePicker",
@@ -337,8 +341,12 @@ export default function SettingsButtonBar({
       render: () => (
         <LogsButton
           config={config}
-          deviceOnline={httpCapable}
+          deviceOnline={logsCapable}
           saveConfigToDevice={saveConfigToDevice}
+          controlConnected={controlConnected}
+          logsText={logsText}
+          logsError={logsError}
+          onRequestLogs={onRequestLogs}
         />
       ),
     });

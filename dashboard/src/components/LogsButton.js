@@ -7,6 +7,10 @@ export default function LogsButton({
   config,
   deviceOnline,
   saveConfigToDevice,
+  controlConnected = false,
+  logsText = "",
+  logsError = "",
+  onRequestLogs = null,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -53,6 +57,10 @@ export default function LogsButton({
           onClose={handleCloseModal}
           config={config}
           saveConfigToDevice={saveConfigToDevice}
+          controlConnected={controlConnected}
+          logsText={logsText}
+          logsError={logsError}
+          onRequestLogs={onRequestLogs}
         />
       )}
     </>

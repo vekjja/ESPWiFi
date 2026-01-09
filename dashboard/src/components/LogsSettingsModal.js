@@ -31,6 +31,10 @@ export default function LogsSettingsModal({
   saveConfigToDevice,
   open = false,
   onClose,
+  controlConnected = false,
+  logsText = "",
+  logsError = "",
+  onRequestLogs = null,
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -190,6 +194,13 @@ export default function LogsSettingsModal({
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
+      // Prefer control socket (works in cloud tunnel mode).
+      if (typeof onRequestLogs === "function") {
+        await onRequestLogs();
+        clearTimeout(timeoutId);
+        return;
+      }
+
       // The device serves logs as a normal file:
       // - SD:  /sd/<logFilePath>
       // - LFS: /lfs/<logFilePath>
@@ -282,6 +293,17 @@ export default function LogsSettingsModal({
       setLogLoading(false);
     }
   };
+
+  // When logs are provided via control socket, mirror them into local state.
+  useEffect(() => {
+    if (!controlConnected) return;
+    if (typeof logsText === "string") {
+      setLogs(logsText);
+    }
+    if (typeof logsError === "string" && logsError) {
+      setLogError(logsError);
+    }
+  }, [controlConnected, logsText, logsError]);
 
   // Scroll to bottom of log container
   const scrollToBottom = useCallback(() => {

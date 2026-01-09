@@ -24,23 +24,28 @@ export default function FileBrowserButton({
   return (
     <>
       <Tooltip title="File Browser - Browse device files">
-        <Fab
-          size="medium"
-          color="primary"
-          onClick={handleClick}
-          disabled={!deviceOnline}
-          sx={{
-            color: !deviceOnline ? "text.disabled" : "primary.main",
-            backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
-            "&:hover": {
+        {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
+        <span>
+          <Fab
+            size="medium"
+            color="primary"
+            onClick={handleClick}
+            disabled={!deviceOnline}
+            sx={{
+              color: !deviceOnline ? "text.disabled" : "primary.main",
               backgroundColor: !deviceOnline
                 ? "action.disabled"
-                : "action.selected",
-            },
-          }}
-        >
-          <FolderOpenIcon />
-        </Fab>
+                : "action.hover",
+              "&:hover": {
+                backgroundColor: !deviceOnline
+                  ? "action.disabled"
+                  : "action.selected",
+              },
+            }}
+          >
+            <FolderOpenIcon />
+          </Fab>
+        </span>
       </Tooltip>
 
       {modalOpen && (

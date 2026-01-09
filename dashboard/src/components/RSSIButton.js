@@ -4,8 +4,7 @@ import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SignalCellularAlt1BarIcon from "@mui/icons-material/SignalCellularAlt1Bar";
 import SignalCellularAlt2BarIcon from "@mui/icons-material/SignalCellularAlt2Bar";
 import RSSISettingsModal from "./RSSISettingsModal";
-import { buildWebSocketUrl } from "../utils/apiUtils";
-import { getAuthToken } from "../utils/authUtils";
+import { resolveWebSocketUrl } from "../utils/connectionUtils";
 
 export default function RSSIButton({
   config,
@@ -56,46 +55,7 @@ export default function RSSIButton({
     if (deviceOnline) {
       // Add a delay to allow the backend to start the RSSI service
       connectTimeoutRef.current = setTimeout(() => {
-        // Construct WebSocket URL
-        // Prefer explicit hostname (usually DNS/mDNS-safe) over display name.
-        // e.g. deviceName may be "espWiFi" while hostname is "espwifi".
-        const mdnsHostname = config?.hostname || config?.deviceName;
-
-        // Prefer cloud tunnel when enabled (required when dashboard is served over HTTPS).
-        let wsUrl = "";
-        const cloudEnabled = Boolean(config?.cloudTunnel?.enabled);
-        const cloudBaseUrl = config?.cloudTunnel?.baseUrl || "";
-        const deviceId = config?.hostname || config?.deviceName || "";
-        if (cloudEnabled && cloudBaseUrl && deviceId) {
-          const base = cloudBaseUrl.replace(/\/+$/, "");
-          const scheme =
-            base.startsWith("ws://") || base.startsWith("wss://")
-              ? ""
-              : base.startsWith("https://")
-              ? "wss://"
-              : base.startsWith("http://")
-              ? "ws://"
-              : "";
-          let uiUrl = scheme
-            ? `${scheme}${base.replace(/^https?:\/\//, "")}`
-            : base;
-          uiUrl = `${uiUrl}/ws/ui/${deviceId}?tunnel=ws_rssi`;
-          const tok = config?.auth?.token || getAuthToken() || "";
-          if (tok && tok !== "null" && tok !== "undefined" && tok.trim() !== "") {
-            uiUrl = `${uiUrl}&token=${encodeURIComponent(tok)}`;
-          }
-          wsUrl = uiUrl;
-        } else {
-          wsUrl = buildWebSocketUrl("/ws/rssi", mdnsHostname);
-          // If we're on https and this ends up as ws://, the browser will block it.
-          if (window.location.protocol === "https:" && wsUrl.startsWith("ws://")) {
-            console.warn(
-              "RSSI WebSocket blocked on HTTPS page (ws://). Enable Cloud Tunnel or open device UI directly."
-            );
-            if (onRSSIDataChange) onRSSIDataChange(rssiValue, false);
-            return;
-          }
-        }
+        const wsUrl = resolveWebSocketUrl("rssi", config);
 
         // Connect to RSSI WebSocket
         const ws = new WebSocket(wsUrl);
@@ -216,7 +176,7 @@ export default function RSSIButton({
       }
       setRssiValue(null);
     }
-  }, [deviceOnline, config?.hostname, config?.deviceName]);
+  }, [deviceOnline, config]);
 
   // Cleanup WebSocket on unmount
   useEffect(() => {

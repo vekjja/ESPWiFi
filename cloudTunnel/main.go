@@ -410,6 +410,39 @@ func (s *server) handleDeviceWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func isWSUpgrade(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return false
+	}
+	// Connection may contain multiple tokens (e.g. "keep-alive, Upgrade")
+	conn := r.Header.Get("Connection")
+	for _, tok := range strings.Split(conn, ",") {
+		if strings.EqualFold(strings.TrimSpace(tok), "upgrade") {
+			return true
+		}
+	}
+	return false
+}
+
+// rejectWS attempts to upgrade so the client receives a proper WebSocket close
+// frame (with reason). If upgrade is not possible, falls back to HTTP error.
+func (s *server) rejectWS(w http.ResponseWriter, r *http.Request, httpStatus int, closeCode int, reason string, logKey string, kv ...any) {
+	if isWSUpgrade(r) {
+		c, err := s.upgrader.Upgrade(w, r, nil)
+		if err == nil && c != nil {
+			_ = c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, reason), time.Now().Add(3*time.Second))
+			_ = c.Close()
+			s.logf(logInfo, logKey, kv...)
+			return
+		}
+	}
+	http.Error(w, reason, httpStatus)
+	s.logf(logInfo, logKey, kv...)
+}
+
 func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	deviceID := strings.TrimPrefix(r.URL.Path, "/ws/ui/")
 	deviceID = strings.Trim(deviceID, "/")
@@ -434,8 +467,8 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	key := makeKey(deviceID, tunnel)
 	dc := s.h.getDevice(key)
 	if dc == nil {
-		http.Error(w, "device offline", http.StatusNotFound)
-		s.logf(logInfo, "ui_ws_device_offline", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+		s.rejectWS(w, r, http.StatusNotFound, websocket.CloseTryAgainLater, "device_offline", "ui_ws_device_offline",
+			"remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 		return
 	}
 
@@ -444,8 +477,9 @@ func (s *server) handleUIWS(w http.ResponseWriter, r *http.Request) {
 	if dc.uiToken != "" {
 		got := extractToken(r)
 		if subtle.ConstantTimeCompare([]byte(got), []byte(dc.uiToken)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			s.logf(logInfo, "ui_ws_unauthorized_device", "remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
+			// Policy: upgrade+close so browsers can surface a reason (otherwise it looks like a generic 1006).
+			s.rejectWS(w, r, http.StatusUnauthorized, websocket.ClosePolicyViolation, "unauthorized_device", "ui_ws_unauthorized_device",
+				"remote", clientIP(r), "device_id", deviceID, "tunnel", tunnel)
 			return
 		}
 	}

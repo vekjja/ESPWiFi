@@ -15,11 +15,22 @@ import { getApiUrl, buildApiUrl, getFetchOptions } from "./utils/apiUtils";
 import { isAuthenticated, clearAuthToken } from "./utils/authUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
 import { getUserFriendlyErrorMessage, logError } from "./utils/errorUtils";
+import { resolveWebSocketUrl } from "./utils/connectionUtils";
+import {
+  loadDevices,
+  loadSelectedDeviceId,
+  upsertDevice,
+  removeDevice,
+  saveDevices,
+  saveSelectedDeviceId,
+  touchSelected,
+} from "./utils/deviceRegistry";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
 const Login = lazy(() => import("./components/Login"));
 const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
+const BlePairingDialog = lazy(() => import("./components/BlePairingDialog"));
 
 // Define the theme
 const theme = createTheme({
@@ -107,6 +118,13 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [deviceApiBlocked, setDeviceApiBlocked] = useState(false);
   const [deviceApiBlockedUrl, setDeviceApiBlockedUrl] = useState("");
+  const [needsPairing, setNeedsPairing] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const controlWsRef = useRef(null);
+  const controlRetryRef = useRef(null);
+  const [controlConnected, setControlConnected] = useState(false);
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
@@ -158,6 +176,140 @@ function App() {
     };
   }, []);
 
+  const isCloudDashboard =
+    process.env.NODE_ENV === "production" && !process.env.REACT_APP_API_HOST;
+
+  const isDevHost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "::1";
+
+  // When developing on localhost (or when hosted on espwifi.io), we can run in
+  // "paired/tunnel" mode where we don't use device HTTP at all.
+  const allowPairedTunnelMode =
+    !process.env.REACT_APP_API_HOST && (isCloudDashboard || isDevHost);
+
+  // Tunnel-ready means we have enough info to operate without LAN HTTP.
+  const pairedTunnelReady = Boolean(
+    allowPairedTunnelMode &&
+      localConfig?.cloudTunnel?.enabled &&
+      localConfig?.cloudTunnel?.baseUrl &&
+      localConfig?.auth?.token &&
+      (localConfig?.hostname || localConfig?.deviceName)
+  );
+
+  const makeCloudConfigFromDevice = useCallback((d) => {
+    if (!d) return null;
+    const deviceId = d.deviceId || d.hostname || d.id;
+    return {
+      deviceName: d.name || d.id,
+      hostname: d.hostname || d.id,
+      auth: { token: d.authToken || "" },
+      wifi: { mode: "client", enabled: true },
+      cloudTunnel: {
+        enabled: true,
+        baseUrl: d.cloudBaseUrl || "https://tnl.espwifi.io",
+        tunnelAll: true,
+        uris: ["ws_camera", "ws_rssi", "ws_control"],
+      },
+      // Keep Modules/Settings bar happy
+      pins: [],
+      webSockets: [],
+      modules: [],
+      camera: { installed: true, enabled: true },
+      bluetooth: { installed: true },
+      deviceId,
+    };
+  }, []);
+
+  // Bootstrap device registry early (before any network calls).
+  useEffect(() => {
+    const loaded = loadDevices();
+    const sel = loadSelectedDeviceId();
+    setDevices(loaded);
+    setSelectedDeviceId(sel);
+
+    if (allowPairedTunnelMode) {
+      const chosen =
+        loaded.find((d) => String(d?.id) === String(sel)) || loaded[0] || null;
+      if (chosen) {
+        // In paired/tunnel mode, treat "needs pairing" as "no saved devices".
+        setNeedsPairing(false);
+        const cc = makeCloudConfigFromDevice(chosen);
+        setConfig(cc);
+        setLocalConfig(cc);
+        setAuthenticated(true);
+        setAuthChecked(true);
+        // Defer marking "online" until boot phase completes so we don't start
+        // websocket connects before the page is fully loaded.
+        setDeviceOnline(false);
+
+        // Auto-select the chosen device so we don't fall back to /api/config on localhost.
+        const chosenId = String(chosen.id);
+        setSelectedDeviceId(chosenId);
+        saveSelectedDeviceId(chosenId);
+      } else {
+        setNeedsPairing(true);
+        setAuthChecked(true);
+      }
+    }
+  }, [allowPairedTunnelMode, makeCloudConfigFromDevice]);
+
+  const handleSelectDevice = useCallback(
+    (d) => {
+      if (!d?.id) return;
+      const id = String(d.id);
+      setSelectedDeviceId(id);
+      saveSelectedDeviceId(id);
+
+      // Touch + persist registry
+      setDevices((prev) => {
+        const next = touchSelected(prev, id);
+        saveDevices(next);
+        return next;
+      });
+
+      if (allowPairedTunnelMode) {
+        const cc = makeCloudConfigFromDevice(d);
+        setConfig(cc);
+        setLocalConfig(cc);
+        setNeedsPairing(false);
+        setAuthenticated(true);
+        setAuthChecked(true);
+        // Don't connect sockets until boot phase (networkEnabled).
+        setDeviceOnline(false);
+      }
+    },
+    [allowPairedTunnelMode, makeCloudConfigFromDevice]
+  );
+
+  const handleRemoveDevice = useCallback(
+    (d) => {
+      const id = String(d?.id || "");
+      if (!id) return;
+      setDevices((prev) => {
+        const next = removeDevice(prev, id);
+        saveDevices(next);
+        return next;
+      });
+      if (String(selectedDeviceId) === id) {
+        setSelectedDeviceId(null);
+        saveSelectedDeviceId(null);
+        setNeedsPairing(true);
+        if (allowPairedTunnelMode) {
+          setConfig(null);
+          setLocalConfig(null);
+        }
+      }
+    },
+    [allowPairedTunnelMode, selectedDeviceId]
+  );
+
+  const handlePairNewDevice = useCallback(() => {
+    // Web Bluetooth requires a user gesture; this is triggered from the Devices dialog.
+    setPairingOpen(true);
+  }, []);
+
   // Defer any network activity until the page is fully loaded.
   // This avoids "blank screen on mobile" scenarios where the app immediately
   // starts hitting device endpoints / websockets before the UI is visible.
@@ -180,6 +332,98 @@ function App() {
     window.addEventListener("load", enable, { once: true });
     return () => window.removeEventListener("load", enable);
   }, []);
+
+  // In cloud dashboard mode, once boot phase is complete and a device is selected,
+  // mark "online" and connect the control socket via the tunnel.
+  useEffect(() => {
+    if (!networkEnabled) return;
+
+    if (!pairedTunnelReady) {
+      setDeviceOnline(false);
+      setControlConnected(false);
+      if (controlRetryRef.current) {
+        clearTimeout(controlRetryRef.current);
+        controlRetryRef.current = null;
+      }
+      if (controlWsRef.current) {
+        try {
+          controlWsRef.current.close(1000, "No device selected");
+        } catch {
+          // ignore
+        }
+        controlWsRef.current = null;
+      }
+      return;
+    }
+
+    setDeviceOnline(true);
+
+    const connect = () => {
+      if (!networkEnabled) return;
+      const uiUrl = resolveWebSocketUrl("control", localConfig);
+      if (!uiUrl) return;
+
+      // Tear down any existing socket before reconnect.
+      if (controlWsRef.current) {
+        try {
+          controlWsRef.current.close(1000, "Reconnecting");
+        } catch {
+          // ignore
+        }
+        controlWsRef.current = null;
+      }
+
+      try {
+        const ws = new WebSocket(uiUrl);
+        controlWsRef.current = ws;
+
+        ws.onopen = () => {
+          setControlConnected(true);
+          try {
+            ws.send(JSON.stringify({ cmd: "ping" }));
+          } catch {
+            // ignore
+          }
+        };
+        ws.onmessage = () => {
+          // Keep for future: proxy API requests / config over this channel.
+        };
+        ws.onerror = () => {
+          setControlConnected(false);
+          console.warn("Control WS error:", uiUrl);
+        };
+        ws.onclose = (evt) => {
+          controlWsRef.current = null;
+          setControlConnected(false);
+          console.warn(
+            "Control WS closed:",
+            { code: evt?.code, reason: evt?.reason },
+            uiUrl
+          );
+          if (evt?.code === 1000) return;
+          controlRetryRef.current = setTimeout(connect, 2000);
+        };
+      } catch {
+        setControlConnected(false);
+      }
+    };
+
+    connect();
+    return () => {
+      if (controlRetryRef.current) {
+        clearTimeout(controlRetryRef.current);
+        controlRetryRef.current = null;
+      }
+      if (controlWsRef.current) {
+        try {
+          controlWsRef.current.close(1000, "Cleanup");
+        } catch {
+          // ignore
+        }
+        controlWsRef.current = null;
+      }
+    };
+  }, [networkEnabled, pairedTunnelReady, localConfig, selectedDeviceId]);
 
   /**
    * Helper to compare two config objects for equality
@@ -207,7 +451,29 @@ function App() {
       isFetchingConfigRef.current = true;
 
       try {
+        // In paired/tunnel mode, we do not use /api/config at all.
+        if (
+          allowPairedTunnelMode &&
+          (pairedTunnelReady || devices.length > 0)
+        ) {
+          return null;
+        }
         const configUrl = buildApiUrl("/api/config");
+
+        // If we're in production and buildApiUrl() is same-origin, we are *not*
+        // pointing at a device. (espwifi.io serves only the static dashboard.)
+        // Don't attempt to parse HTML as JSON; instead mark "needs pairing".
+        if (
+          process.env.NODE_ENV === "production" &&
+          typeof configUrl === "string" &&
+          (configUrl === "/api/config" ||
+            configUrl === `${window.location.origin}/api/config`)
+        ) {
+          setNeedsPairing(true);
+          return null;
+        } else {
+          setNeedsPairing(false);
+        }
         // On https pages, browsers typically block http:// device API calls as mixed content.
         // Desktop users can sometimes override this; mobile generally cannot.
         if (
@@ -250,6 +516,12 @@ function App() {
           throw new Error(
             `Network response was not ok: ${response.status} ${response.statusText}`
           );
+        }
+        const ct = response.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          // Common failure mode: HTML (index.html) or a proxy error page.
+          setNeedsPairing(true);
+          return null;
         }
         const data = await response.json();
         const configWithAPI = { ...data, apiURL };
@@ -317,6 +589,12 @@ function App() {
    */
   useEffect(() => {
     if (!networkEnabled) return;
+    // On espwifi.io we operate in pairing/cloud mode; no direct device HTTP auth.
+    if (isCloudDashboard) {
+      setAuthChecked(true);
+      setCheckingAuth(false);
+      return;
+    }
     const checkAuth = async () => {
       setCheckingAuth(true);
 
@@ -353,7 +631,7 @@ function App() {
     };
 
     checkAuth();
-  }, [networkEnabled]);
+  }, [networkEnabled, isCloudDashboard]);
 
   /**
    * Set up polling for config updates when authenticated
@@ -361,7 +639,7 @@ function App() {
    */
   useEffect(() => {
     // Only start polling if authenticated
-    if (!networkEnabled || !authenticated) {
+    if (!networkEnabled || !authenticated || isCloudDashboard) {
       return;
     }
 
@@ -438,7 +716,7 @@ function App() {
         clearTimeout(pollTimeout);
       }
     };
-  }, [authenticated, networkEnabled]);
+  }, [authenticated, networkEnabled, isCloudDashboard]);
 
   /**
    * Handle successful login
@@ -466,6 +744,13 @@ function App() {
    */
   const saveConfigFromButton = useCallback(
     (newConfig) => {
+      // Cloud dashboard mode (espwifi.io) can't PUT /api/config directly.
+      if (isCloudDashboard) {
+        console.warn(
+          "Cloud mode: config changes require control tunnel (not yet implemented)."
+        );
+        return Promise.resolve(null);
+      }
       // First update local config by merging with existing config
       // This handles both full and partial config updates
       setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
@@ -579,8 +864,9 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: deviceOnline ? "secondary.light" : "error.main",
-          color: deviceOnline ? "primary.main" : "white",
+          backgroundColor:
+            needsPairing || deviceOnline ? "secondary.light" : "error.main",
+          color: needsPairing || deviceOnline ? "primary.main" : "white",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -596,6 +882,14 @@ function App() {
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
+          {selectedDeviceId ? (
+            <Typography
+              variant="caption"
+              sx={{ opacity: 0.75, fontFamily: "inherit" }}
+            >
+              Control: {controlConnected ? "connected" : "disconnected"}
+            </Typography>
+          ) : null}
         </Box>
       </Container>
 
@@ -636,6 +930,43 @@ function App() {
         </Container>
       )}
 
+      {needsPairing && !deviceApiBlocked && (
+        <Container sx={{ mt: 2 }}>
+          <Box
+            sx={{
+              border: "1px solid",
+              borderColor: "info.main",
+              bgcolor: "rgba(2, 136, 209, 0.12)",
+              p: 2,
+              borderRadius: 2,
+              maxWidth: 920,
+              mx: "auto",
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+              {devices.length > 0 ? "Select a device" : "No device paired"}
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {isCloudDashboard ? (
+                <>
+                  You’re on <code>espwifi.io</code>, which can’t directly reach
+                  a LAN device at <code>espwifi.local</code> from a
+                  phone/desktop browser. Tap <b>Devices</b> below to select a
+                  saved device or pair a new one.
+                </>
+              ) : (
+                <>
+                  You’re running the dashboard at{" "}
+                  <code>{window.location.host}</code>. Tap <b>Devices</b> below
+                  to select a saved device (paired tunnel mode) or pair a new
+                  one.
+                </>
+              )}
+            </Typography>
+          </Box>
+        </Container>
+      )}
+
       {/* Settings Button Bar */}
       <Suspense fallback={null}>
         <SettingsButtonBar
@@ -649,8 +980,31 @@ function App() {
           getCameraColor={() =>
             localConfig?.camera?.enabled ? "primary.main" : "text.disabled"
           }
+          devices={devices}
+          selectedDeviceId={selectedDeviceId}
+          onSelectDevice={handleSelectDevice}
+          onRemoveDevice={handleRemoveDevice}
+          onPairNewDevice={handlePairNewDevice}
+          cloudMode={allowPairedTunnelMode && pairedTunnelReady}
         />
       </Suspense>
+
+      {pairingOpen && (
+        <Suspense fallback={null}>
+          <BlePairingDialog
+            open={pairingOpen}
+            onClose={() => setPairingOpen(false)}
+            onPaired={(record) => {
+              setDevices((prev) => {
+                const next = upsertDevice(prev, record);
+                saveDevices(next);
+                return next;
+              });
+              handleSelectDevice(record);
+            }}
+          />
+        </Suspense>
+      )}
 
       <Container>
         <Suspense fallback={<LinearProgress color="inherit" />}>
@@ -664,11 +1018,15 @@ function App() {
       </Container>
 
       {/* Show login modal when not authenticated */}
-      {!authenticated && !deviceApiBlocked && authChecked && !checkingAuth && (
-        <Suspense fallback={null}>
-          <Login onLoginSuccess={handleLoginSuccess} />
-        </Suspense>
-      )}
+      {!authenticated &&
+        !deviceApiBlocked &&
+        !needsPairing &&
+        authChecked &&
+        !checkingAuth && (
+          <Suspense fallback={null}>
+            <Login onLoginSuccess={handleLoginSuccess} />
+          </Suspense>
+        )}
     </ThemeProvider>
   );
 }

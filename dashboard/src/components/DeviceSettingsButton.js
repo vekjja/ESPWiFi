@@ -7,12 +7,13 @@ export default function DeviceSettingsButton({
   config,
   deviceOnline,
   saveConfigToDevice,
+  cloudMode = false,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleClick = () => {
     // Only open modal if device is online AND config is loaded
-    if (deviceOnline && config) {
+    if (!cloudMode && deviceOnline && config) {
       setModalOpen(true);
     }
   };
@@ -25,7 +26,9 @@ export default function DeviceSettingsButton({
     <>
       <Tooltip
         title={
-          !deviceOnline
+          cloudMode
+            ? "Device Settings via cloud tunnel is not available yet"
+            : !deviceOnline
             ? "Device Offline"
             : !config
             ? "Loading configuration..."
@@ -37,15 +40,19 @@ export default function DeviceSettingsButton({
             size="medium"
             color="primary"
             onClick={handleClick}
-            disabled={!deviceOnline || !config}
+            disabled={cloudMode || !deviceOnline || !config}
             sx={{
               color:
-                !deviceOnline || !config ? "text.disabled" : "primary.main",
+                cloudMode || !deviceOnline || !config
+                  ? "text.disabled"
+                  : "primary.main",
               backgroundColor:
-                !deviceOnline || !config ? "action.disabled" : "action.hover",
+                cloudMode || !deviceOnline || !config
+                  ? "action.disabled"
+                  : "action.hover",
               "&:hover": {
                 backgroundColor:
-                  !deviceOnline || !config
+                  cloudMode || !deviceOnline || !config
                     ? "action.disabled"
                     : "action.selected",
               },

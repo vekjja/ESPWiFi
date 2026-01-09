@@ -246,6 +246,7 @@ void ESPWiFi::requestConfigSave() { configNeedsSave = true; }
 void ESPWiFi::handleConfigUpdate() {
 
   if (configUpdate.size() > 0) {
+    wifiConfigHandler();
     cameraConfigHandler();
     powerConfigHandler();
     corsConfigHandler();
@@ -263,7 +264,14 @@ void ESPWiFi::handleConfigUpdate() {
     // rebooting.
     camSoc.syncCloudTunnelFromConfig();
     rssiSoc.syncCloudTunnelFromConfig();
+    ctrlSoc.syncCloudTunnelFromConfig();
 #endif
+
+    if (wifiRestartRequested_) {
+      wifiRestartRequested_ = false;
+      log(INFO, "📶 WiFi config changed; restarting WiFi");
+      startWiFi();
+    }
   }
 
   if (configNeedsSave) {

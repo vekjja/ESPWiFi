@@ -16,6 +16,9 @@
             "powerSave": "none"
         }
     },
+    "ble": {
+        "enabled": true
+    },
     "log": {
         "file": "/espwifi.log",
         "level": "debug",

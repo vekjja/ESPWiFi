@@ -36,6 +36,10 @@
 
 #include "esp_app_desc.h"
 
+#include <ArduinoJson.h>
+
+#include "os/os_mbuf.h"
+
 #include "GattServiceDef.h"
 #include "GattServices.h"
 
@@ -65,6 +69,69 @@ static int bleReadString(struct ble_gatt_access_ctxt *ctxt, const char *s) {
   return os_mbuf_append(ctxt->om, s, strlen(s)) == 0
              ? 0
              : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+// ---- ESPWiFi control characteristic request/response
+//
+// We keep a small last-response buffer that the client can read after writing a
+// JSON command. This avoids adding another notify characteristic for now.
+static char s_controlResp[512] = "ok";
+static size_t s_controlRespLen = 2;
+
+static void setControlRespStr(const char *s) {
+  if (!s) {
+    s_controlResp[0] = '\0';
+    s_controlRespLen = 0;
+    return;
+  }
+  const size_t n = strnlen(s, sizeof(s_controlResp) - 1);
+  memcpy(s_controlResp, s, n);
+  s_controlResp[n] = '\0';
+  s_controlRespLen = n;
+}
+
+static void setControlRespJson(const JsonDocument &doc) {
+  const size_t cap = sizeof(s_controlResp);
+  size_t written = serializeJson(doc, s_controlResp, cap);
+  if (written == 0) {
+    setControlRespStr("{\"ok\":false,\"error\":\"resp_too_large\"}");
+    return;
+  }
+  // serializeJson does not NUL-terminate if it exactly fills.
+  if (written >= cap) {
+    s_controlResp[cap - 1] = '\0';
+    s_controlRespLen = cap - 1;
+  } else {
+    s_controlResp[written] = '\0';
+    s_controlRespLen = written;
+  }
+}
+
+static bool readOmToBuf(struct os_mbuf *om, char *out, size_t outCap,
+                        size_t *outLen) {
+  if (!out || outCap == 0)
+    return false;
+  if (!om) {
+    out[0] = '\0';
+    if (outLen)
+      *outLen = 0;
+    return true;
+  }
+  uint16_t pktLen = OS_MBUF_PKTLEN(om);
+  if (pktLen >= outCap) {
+    pktLen = static_cast<uint16_t>(outCap - 1);
+  }
+  int rc = os_mbuf_copydata(om, 0, pktLen, out);
+  if (rc != 0) {
+    out[0] = '\0';
+    if (outLen)
+      *outLen = 0;
+    return false;
+  }
+  out[pktLen] = '\0';
+  if (outLen)
+    *outLen = pktLen;
+  return true;
 }
 
 } // namespace
@@ -170,10 +237,135 @@ void ESPWiFi::startBLEServices() {
         }
 
         if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-          return bleReadString(ctxt, "ok");
+          if (s_controlRespLen == 0) {
+            return bleReadString(ctxt, "ok");
+          }
+          return os_mbuf_append(ctxt->om, s_controlResp, s_controlRespLen) == 0
+                     ? 0
+                     : BLE_ATT_ERR_INSUFFICIENT_RES;
         }
 
         if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+          // Parse a small JSON request and stage config updates to be applied
+          // by runSystem() (handleConfigUpdate), not in this BLE stack
+          // callback.
+          char reqBuf[320];
+          size_t reqLen = 0;
+          if (!readOmToBuf(ctxt->om, reqBuf, sizeof(reqBuf), &reqLen) ||
+              reqLen == 0) {
+            setControlRespStr("{\"ok\":false,\"error\":\"empty\"}");
+            return 0;
+          }
+
+          JsonDocument req;
+          DeserializationError err = deserializeJson(req, reqBuf, reqLen);
+          if (err) {
+            JsonDocument resp;
+            resp["ok"] = false;
+            resp["error"] = "bad_json";
+            resp["detail"] = err.c_str();
+            setControlRespJson(resp);
+            return 0;
+          }
+
+          const char *cmd = req["cmd"] | "";
+          JsonDocument resp;
+          resp["ok"] = true;
+          resp["cmd"] = cmd;
+
+          if (strcmp(cmd, "get_identity") == 0) {
+            resp["deviceName"] =
+                espwifi->config["deviceName"].as<std::string>();
+            std::string hostname =
+                espwifi->config["hostname"].as<std::string>();
+            if (hostname.empty()) {
+              hostname = espwifi->genHostname();
+            }
+            resp["hostname"] = hostname;
+            resp["bleAddress"] = espwifi->getBLEAddress();
+            const esp_app_desc_t *app = esp_app_get_description();
+            resp["fw"] = (app && app->version[0] != '\0') ? app->version
+                                                          : espwifi->version();
+          } else if (strcmp(cmd, "get_cloud") == 0) {
+            std::string token =
+                espwifi->config["auth"]["token"].as<std::string>();
+            if (token.empty()) {
+              token = espwifi->generateToken();
+              espwifi->config["auth"]["token"] = token;
+              espwifi->requestConfigSave();
+            }
+            resp["enabled"] =
+                espwifi->config["cloudTunnel"]["enabled"].as<bool>();
+            resp["baseUrl"] =
+                espwifi->config["cloudTunnel"]["baseUrl"].as<std::string>();
+            resp["token"] = token;
+            std::string deviceId =
+                espwifi->config["hostname"].as<std::string>();
+            if (deviceId.empty()) {
+              deviceId = espwifi->genHostname();
+            }
+            resp["deviceId"] = deviceId;
+          } else if (strcmp(cmd, "set_cloud") == 0) {
+            const bool enabled = req["enabled"] | true;
+            const char *baseUrl = req["baseUrl"] | nullptr;
+
+            // Ensure auth token exists (shared token for device registration +
+            // UI auth)
+            std::string token =
+                espwifi->config["auth"]["token"].as<std::string>();
+            if (token.empty()) {
+              token = espwifi->generateToken();
+              espwifi->config["auth"]["token"] = token;
+            }
+
+            // Build an update document and stage it
+            JsonDocument updates;
+            updates["cloudTunnel"]["enabled"] = enabled;
+            if (baseUrl && baseUrl[0] != '\0') {
+              updates["cloudTunnel"]["baseUrl"] = baseUrl;
+            }
+            updates["cloudTunnel"]["tunnelAll"] = true;
+
+            JsonDocument next = espwifi->mergeJson(espwifi->config, updates);
+            espwifi->configUpdate = next;
+            espwifi->requestConfigSave();
+
+            resp["enabled"] = enabled;
+            resp["baseUrl"] = (baseUrl && baseUrl[0] != '\0')
+                                  ? std::string(baseUrl)
+                                  : espwifi->config["cloudTunnel"]["baseUrl"]
+                                        .as<std::string>();
+            resp["token"] = token;
+          } else if (strcmp(cmd, "set_wifi") == 0) {
+            const char *ssid = req["ssid"] | nullptr;
+            const char *password = req["password"] | "";
+            if (!ssid || ssid[0] == '\0') {
+              resp["ok"] = false;
+              resp["error"] = "ssid_required";
+            } else {
+              JsonDocument updates;
+              updates["wifi"]["enabled"] = true;
+              updates["wifi"]["mode"] = "client";
+              updates["wifi"]["client"]["ssid"] = ssid;
+              updates["wifi"]["client"]["password"] = password;
+
+              JsonDocument next = espwifi->mergeJson(espwifi->config, updates);
+              espwifi->configUpdate = next;
+              espwifi->requestConfigSave();
+
+              resp["wifi_restart_queued"] = true;
+            }
+          } else if (strcmp(cmd, "get_status") == 0) {
+            resp["wifiMode"] =
+                espwifi->config["wifi"]["mode"].as<std::string>();
+            resp["ip"] = espwifi->ipAddress();
+            resp["bleStatus"] = espwifi->getBLEStatus();
+          } else {
+            resp["ok"] = false;
+            resp["error"] = "unknown_cmd";
+          }
+
+          setControlRespJson(resp);
           return 0;
         }
 
@@ -545,19 +737,11 @@ std::string ESPWiFi::getBLEAddress() {
  */
 void ESPWiFi::bleConfigHandler() {
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-
-  static bool lastEnabled = config["ble"]["enabled"].as<bool>();
-  bool currentEnabled = configUpdate["ble"]["enabled"].isNull()
-                            ? lastEnabled
-                            : configUpdate["ble"]["enabled"].as<bool>();
-
-  if (currentEnabled != lastEnabled) {
-    if (currentEnabled) {
-      startBLE();
-    } else {
-      deinitBLE();
-    }
-    lastEnabled = currentEnabled;
+  // For now, BLE should start every boot and remain available for pairing /
+  // provisioning, regardless of config changes. So we ignore config.ble.enabled
+  // here and simply ensure BLE is running.
+  if (getBLEStatus() == 0) {
+    startBLE();
   }
   feedWatchDog();
 #endif

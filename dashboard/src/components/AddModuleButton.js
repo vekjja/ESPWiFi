@@ -27,23 +27,28 @@ export default function AddModuleButton({
   return (
     <>
       <Tooltip title="Add Module">
-        <Fab
-          size="medium"
-          color="primary"
-          onClick={handleClick}
-          disabled={!deviceOnline}
-          sx={{
-            color: !deviceOnline ? "text.disabled" : "primary.main",
-            backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
-            "&:hover": {
+        {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
+        <span>
+          <Fab
+            size="medium"
+            color="primary"
+            onClick={handleClick}
+            disabled={!deviceOnline}
+            sx={{
+              color: !deviceOnline ? "text.disabled" : "primary.main",
               backgroundColor: !deviceOnline
                 ? "action.disabled"
-                : "action.selected",
-            },
-          }}
-        >
-          <AddIcon />
-        </Fab>
+                : "action.hover",
+              "&:hover": {
+                backgroundColor: !deviceOnline
+                  ? "action.disabled"
+                  : "action.selected",
+              },
+            }}
+          >
+            <AddIcon />
+          </Fab>
+        </span>
       </Tooltip>
 
       {modalOpen && (

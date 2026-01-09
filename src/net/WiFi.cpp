@@ -25,6 +25,59 @@ static esp_netif_t *current_netif = nullptr;
 
 bool ESPWiFi::isWiFiInitialized() const { return wifi_initialized; }
 
+void ESPWiFi::wifiConfigHandler() {
+  // Determine whether WiFi needs a restart based on changed settings.
+  //
+  // Convention: config handlers read from configUpdate (staged config) and may
+  // enqueue runtime work. We only *schedule* a restart here;
+  // handleConfigUpdate() performs it after `config = configUpdate` so
+  // startWiFi() uses the new config.
+  //
+  // Important: treat missing fields in configUpdate as "unchanged" to avoid
+  // spurious restarts on unrelated config writes.
+  bool wifiNeedsRestart = false;
+
+  const bool oldEnabled = config["wifi"]["enabled"].as<bool>();
+  const bool newEnabled = configUpdate["wifi"]["enabled"].isNull()
+                              ? oldEnabled
+                              : configUpdate["wifi"]["enabled"].as<bool>();
+  if (oldEnabled != newEnabled) {
+    wifiNeedsRestart = true;
+  }
+
+  std::string oldMode = config["wifi"]["mode"].as<std::string>();
+  std::string newMode = configUpdate["wifi"]["mode"].isNull()
+                            ? oldMode
+                            : configUpdate["wifi"]["mode"].as<std::string>();
+  toLowerCase(oldMode);
+  toLowerCase(newMode);
+  if (oldMode != newMode) {
+    wifiNeedsRestart = true;
+  }
+
+  std::string oldSsid = config["wifi"]["client"]["ssid"].as<std::string>();
+  std::string newSsid =
+      configUpdate["wifi"]["client"]["ssid"].isNull()
+          ? oldSsid
+          : configUpdate["wifi"]["client"]["ssid"].as<std::string>();
+  if (oldSsid != newSsid) {
+    wifiNeedsRestart = true;
+  }
+
+  std::string oldPw = config["wifi"]["client"]["password"].as<std::string>();
+  std::string newPw =
+      configUpdate["wifi"]["client"]["password"].isNull()
+          ? oldPw
+          : configUpdate["wifi"]["client"]["password"].as<std::string>();
+  if (oldPw != newPw) {
+    wifiNeedsRestart = true;
+  }
+
+  if (wifiNeedsRestart) {
+    wifiRestartRequested_ = true;
+  }
+}
+
 void ESPWiFi::initNVS() {
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
@@ -39,6 +92,11 @@ void ESPWiFi::initNVS() {
 void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "📶 WiFi Disabled");
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+    // For now, BLE should start every boot (even if WiFi is disabled) so the UI
+    // can always pair / provision.
+    startBLE();
+#endif
     return;
   }
   initNVS();
@@ -168,9 +226,13 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  // WiFi connected successfully - stop BLE provisioning if running
+  // WiFi connected successfully.
+  // For now, BLE should start every boot (client or AP) so the UI can always
+  // pair / provision / enable cloud tunnel.
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-  deinitBLE();
+  // Give WiFi a moment to stabilize before enabling BLE (coexistence).
+  vTaskDelay(pdMS_TO_TICKS(200));
+  startBLE();
 #endif
 
   std::string hostname = getHostname();
@@ -438,11 +500,10 @@ void ESPWiFi::startAP() {
   // MUST be done after WiFi is fully initialized to avoid BT/WiFi coexistence
   // issues
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-  if (config["ble"]["enabled"].as<bool>()) {
-    // Give WiFi a moment to stabilize before enabling BLE
-    vTaskDelay(pdMS_TO_TICKS(200));
-    startBLE();
-  }
+  // For now, BLE should start every boot (AP mode included) so the UI can
+  // always pair / provision.
+  vTaskDelay(pdMS_TO_TICKS(200));
+  startBLE();
 #endif
 
 #ifdef LED_BUILTIN

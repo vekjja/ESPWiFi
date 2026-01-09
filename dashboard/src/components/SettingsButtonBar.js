@@ -19,6 +19,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
+import DevicePickerButton from "./DevicePickerButton";
 import LogsButton from "./LogsButton";
 import FileBrowserButton from "./FileBrowserButton";
 import BluetoothButton from "./BluetoothButton";
@@ -29,10 +30,15 @@ const STORAGE_KEY = "settingsButtonOrder.v1";
 const ENABLED_KEY = "settingsButtonEnabled.v1";
 
 // Button IDs that cannot be removed from the bar
-const NON_REMOVABLE_IDS = new Set(["deviceSettings", "addModule"]);
+const NON_REMOVABLE_IDS = new Set([
+  "devicePicker",
+  "deviceSettings",
+  "addModule",
+]);
 
 // Default button order priority for initial setup
 const DEFAULT_ORDER_PRIORITY = [
+  "devicePicker",
   "rssi",
   "deviceSettings",
   "addModule",
@@ -42,6 +48,7 @@ const DEFAULT_ORDER_PRIORITY = [
 
 // Button label mapping for display
 const BUTTON_LABELS = {
+  devicePicker: "Devices",
   deviceSettings: "Device Settings",
   rssi: "RSSI",
   bluetooth: "Bluetooth",
@@ -96,6 +103,10 @@ function insertAfter(list, id, afterId) {
  */
 function ensureNonRemovablesInPreferredPositions(list) {
   let next = Array.isArray(list) ? [...list] : [];
+  // Devices button should lead when possible
+  if (!next.includes("devicePicker")) {
+    next = ["devicePicker", ...next];
+  }
   // Settings after RSSI when possible
   if (!next.includes("deviceSettings")) {
     next = next.includes("rssi")
@@ -216,6 +227,12 @@ export default function SettingsButtonBar({
   getRSSIIcon,
   cameraEnabled,
   getCameraColor,
+  devices,
+  selectedDeviceId,
+  onSelectDevice,
+  onRemoveDevice,
+  onPairNewDevice,
+  cloudMode = false,
 }) {
   /**
    * Build list of available buttons based on device capabilities
@@ -226,14 +243,31 @@ export default function SettingsButtonBar({
     const wifiMode = config?.wifi?.mode || "client";
     // Don't mount RSSIButton until we have config; it auto-connects a WS.
     const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
+    // In paired/tunnel mode we currently only support WS features (RSSI/Camera/Control).
+    // Disable HTTP-backed features (settings/logs/files/modules) until control-proxy lands.
+    const httpCapable = deviceOnline && !cloudMode;
+
+    items.push({
+      id: "devicePicker",
+      render: () => (
+        <DevicePickerButton
+          devices={devices}
+          selectedId={selectedDeviceId}
+          onSelectDevice={onSelectDevice}
+          onRemoveDevice={onRemoveDevice}
+          onPairNew={onPairNewDevice}
+        />
+      ),
+    });
 
     items.push({
       id: "deviceSettings",
       render: () => (
         <DeviceSettingsButton
           config={config}
-          deviceOnline={deviceOnline}
+          deviceOnline={httpCapable}
           saveConfigToDevice={saveConfigToDevice}
+          cloudMode={cloudMode}
         />
       ),
     });
@@ -260,7 +294,7 @@ export default function SettingsButtonBar({
         render: () => (
           <BluetoothButton
             config={config}
-            deviceOnline={deviceOnline}
+            deviceOnline={httpCapable}
             saveConfig={saveConfig}
             saveConfigToDevice={saveConfigToDevice}
           />
@@ -288,7 +322,7 @@ export default function SettingsButtonBar({
       render: () => (
         <LogsButton
           config={config}
-          deviceOnline={deviceOnline}
+          deviceOnline={httpCapable}
           saveConfigToDevice={saveConfigToDevice}
         />
       ),
@@ -297,7 +331,7 @@ export default function SettingsButtonBar({
     items.push({
       id: "files",
       render: () => (
-        <FileBrowserButton config={config} deviceOnline={deviceOnline} />
+        <FileBrowserButton config={config} deviceOnline={httpCapable} />
       ),
     });
 
@@ -306,7 +340,7 @@ export default function SettingsButtonBar({
       render: () => (
         <AddModuleButton
           config={config}
-          deviceOnline={deviceOnline}
+          deviceOnline={httpCapable}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           missingSettingsButtons={[]}
@@ -325,6 +359,12 @@ export default function SettingsButtonBar({
     getRSSIIcon,
     cameraEnabled,
     getCameraColor,
+    devices,
+    selectedDeviceId,
+    onSelectDevice,
+    onRemoveDevice,
+    onPairNewDevice,
+    cloudMode,
   ]);
 
   const visibleIds = useMemo(

@@ -12,7 +12,7 @@ import {
   buildWebSocketUrl,
   getFetchOptions,
 } from "../utils/apiUtils";
-import { getAuthToken } from "../utils/authUtils";
+import { resolveWebSocketUrl } from "../utils/connectionUtils";
 
 export default function CameraModule({
   config,
@@ -139,46 +139,19 @@ export default function CameraModule({
     // Convert relative path to absolute URL
     let wsUrl = config?.url || "/ws/camera";
 
-    // If cloud tunnel is enabled, prefer connecting via the tunnel.
-    // This allows the dashboard served from espwifi.io to reach devices over
-    // public internet without LAN access.
-    const cloudEnabled = Boolean(globalConfig?.cloudTunnel?.enabled);
-    const cloudBaseUrl = globalConfig?.cloudTunnel?.baseUrl || "";
-    const deviceId = globalConfig?.hostname || globalConfig?.deviceName || "";
-    if (cloudEnabled && cloudBaseUrl && wsUrl === "/ws/camera" && deviceId) {
-      // Build UI websocket URL: <base>/ws/ui/<deviceId>?tunnel=ws_camera
-      // Note: auth token will be appended by buildWebSocketUrl only for local.
-      // We include token via apiUtils buildWebSocketUrl only if it's device ws.
-      // Here we rely on the existing authUtils token injection used elsewhere:
-      // CameraModule creates WebSocket(streamUrl) directly, so include token here.
-      const base = cloudBaseUrl.replace(/\/+$/, "");
-      const scheme =
-        base.startsWith("ws://") || base.startsWith("wss://")
-          ? ""
-          : base.startsWith("https://")
-          ? "wss://"
-          : base.startsWith("http://")
-          ? "ws://"
-          : "";
-      let uiUrl = scheme
-        ? `${scheme}${base.replace(/^https?:\/\//, "")}`
-        : base;
-      uiUrl = `${uiUrl}/ws/ui/${deviceId}?tunnel=ws_camera`;
-      // Add token query param (UI must present the device token).
-      const tok = globalConfig?.auth?.token || getAuthToken() || "";
-      if (tok && tok !== "null" && tok !== "undefined" && tok.trim() !== "") {
-        uiUrl = `${uiUrl}&token=${encodeURIComponent(tok)}`;
-      }
-      wsUrl = uiUrl;
-    }
-
     // Check if URL already has a protocol
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       if (wsUrl.startsWith("/")) {
-        // For relative paths, prefer the device hostname (stable + matches mDNS),
-        // and fall back to deviceName only if hostname isn't available.
-        const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
-        wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname || null);
+        // If this is our local camera endpoint, use the shared connection logic
+        // (tunnel vs LAN) from connectionUtils.
+        if (wsUrl === "/ws/camera") {
+          wsUrl = resolveWebSocketUrl("camera", globalConfig);
+        } else {
+          // Otherwise, keep existing behavior for custom endpoints.
+          const mdnsHostname =
+            globalConfig?.hostname || globalConfig?.deviceName;
+          wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname || null);
+        }
       } else {
         // URL doesn't have protocol and doesn't start with /, add ws:// protocol
         wsUrl = `ws://${wsUrl}`;
@@ -206,6 +179,7 @@ export default function CameraModule({
     globalConfig?.deviceName,
     globalConfig?.cloudTunnel?.enabled,
     globalConfig?.cloudTunnel?.baseUrl,
+    globalConfig?.auth?.token,
   ]); // Re-run if URL/device identity/cloud tunnel changes
 
   // Update camera status when global config or device online status changes

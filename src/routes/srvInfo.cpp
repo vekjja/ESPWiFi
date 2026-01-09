@@ -98,6 +98,18 @@ void ESPWiFi::srvInfo() {
           rssi["device_ws_url"] =
               std::string(espwifi->rssiSoc.cloudDeviceWSURL());
           rssi["registered_at_ms"] = espwifi->rssiSoc.cloudRegisteredAtMs();
+
+          // Control WS (control channel for cloud/pairing)
+          JsonObject control = endpoints["control"].to<JsonObject>();
+          control["uri"] = "/ws/control";
+          control["started"] = espwifi->ctrlSocStarted;
+          control["cloudEnabled"] = espwifi->ctrlSoc.cloudTunnelEnabled();
+          control["cloudConnected"] = espwifi->ctrlSoc.cloudTunnelConnected();
+          control["cloudUIConnected"] = espwifi->ctrlSoc.cloudUIConnected();
+          control["ui_ws_url"] = std::string(espwifi->ctrlSoc.cloudUIWSURL());
+          control["device_ws_url"] =
+              std::string(espwifi->ctrlSoc.cloudDeviceWSURL());
+          control["registered_at_ms"] = espwifi->ctrlSoc.cloudRegisteredAtMs();
 #endif
         }
 

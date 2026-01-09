@@ -175,6 +175,7 @@ public:
 
   // ---- WiFi
   void initNVS();
+  void wifiConfigHandler();
   void startAP();
   void startWiFi();
   void startMDNS();
@@ -239,6 +240,9 @@ public:
   // ---- RSSI (stub)
   void startRSSIWebSocket();
   void streamRSSI();
+
+  // ---- Control WebSocket (for cloud/pairing control channel)
+  void startControlWebSocket();
 
   // ---- Power Management
   void powerConfigHandler();
@@ -351,6 +355,9 @@ public:
 
   WebSocket rssiSoc;
   bool rssiSocStarted = false;
+
+  WebSocket ctrlSoc;
+  bool ctrlSocStarted = false;
 #endif
 
   // Camera API (always declared; stubs compile when camera is disabled)
@@ -406,6 +413,7 @@ private:
   bool configNeedsSave = false;
   JsonDocument configUpdate; // Temporary storage for config updates
                              // from HTTP handler
+  bool wifiRestartRequested_ = false;
 
   // ---- CORS cache (minimize per-request work/allocations)
   void corsConfigHandler();

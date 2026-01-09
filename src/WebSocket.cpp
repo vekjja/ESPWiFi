@@ -852,18 +852,20 @@ void WebSocket::cloudTaskTrampoline_(void *arg) {
 
     esp_websocket_client_config_t cfg = {};
     cfg.uri = url;
-    // Keep buffers reasonably sized; camera frames may be large.
-    int buf = (ws->maxBroadcastLen_ > 0 && ws->maxBroadcastLen_ < 256 * 1024)
-                  ? (int)ws->maxBroadcastLen_
-                  : (64 * 1024);
-    // Also ensure RX can receive the "registered" message without
-    // fragmentation.
-    int minBuf = (int)ws->maxMessageLen_;
-    if (minBuf < 512) {
-      minBuf = 512;
+    // Cloud broker → device traffic is tiny (control JSON + broker status).
+    // Using the WS endpoint's broadcast size here is dangerous: `/ws/camera`
+    // sets maxBroadcastLen_ to 128KB, which can cause large allocations in
+    // esp_websocket_client and lead to TLS alloc failures / task creation
+    // failures over time.
+    //
+    // We cap the websocket client buffer aggressively. TX of large binary
+    // frames (camera) does not require a giant RX buffer.
+    int buf = (int)ws->maxMessageLen_;
+    if (buf < 1024) {
+      buf = 1024;
     }
-    if (buf < minBuf) {
-      buf = minBuf;
+    if (buf > 8192) {
+      buf = 8192;
     }
     cfg.buffer_size = buf;
     // esp_websocket_client creates its own internal websocket_task. Raise stack

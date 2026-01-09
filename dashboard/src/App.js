@@ -122,9 +122,18 @@ function App() {
   const [pairingOpen, setPairingOpen] = useState(false);
   const claimHandledRef = useRef(false);
   const [claimInProgress, setClaimInProgress] = useState(false);
-  const [claimError, setClaimError] = useState("");
+  // Claim errors are kept for debugging in console/logs; no UI banner is shown.
+  const [, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
+  const logsFetchRef = useRef({
+    inProgress: false,
+    expectOffset: null,
+    buffer: "",
+    chunks: 0,
+    maxBytes: 0,
+    tailBytes: 0,
+  });
   const [controlConnected, setControlConnected] = useState(false);
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
@@ -670,11 +679,58 @@ function App() {
             if (msg?.cmd === "get_logs") {
               if (msg?.ok === false) {
                 setCloudLogsError(msg?.error || "get_logs_failed");
+                logsFetchRef.current.inProgress = false;
+                logsFetchRef.current.expectOffset = null;
+                logsFetchRef.current.buffer = "";
+                logsFetchRef.current.chunks = 0;
               } else {
                 setCloudLogsError("");
               }
               if (typeof msg?.logs === "string") {
-                setCloudLogs(msg.logs);
+                const lf = logsFetchRef.current;
+                if (!lf.inProgress) {
+                  // Back-compat: if logs weren't requested via the chunk fetcher,
+                  // still show the payload.
+                  setCloudLogs(msg.logs);
+                } else {
+                  // Enforce sequential offsets so stale responses don't corrupt
+                  // the buffer if the user re-triggers a fetch.
+                  const off = Number.isFinite(msg?.offset)
+                    ? Number(msg.offset)
+                    : null;
+                  if (lf.expectOffset !== null && off !== lf.expectOffset) {
+                    return;
+                  }
+
+                  lf.buffer += msg.logs;
+                  lf.chunks += 1;
+                  lf.expectOffset = Number.isFinite(msg?.next)
+                    ? Number(msg.next)
+                    : null;
+
+                  // Update UI every few chunks to avoid excessive rerenders.
+                  if (msg?.eof || lf.chunks % 4 === 0) {
+                    setCloudLogs(lf.buffer);
+                  }
+
+                  if (!msg?.eof && lf.expectOffset !== null) {
+                    try {
+                      ws.send(
+                        JSON.stringify({
+                          cmd: "get_logs",
+                          offset: lf.expectOffset,
+                          maxBytes: lf.maxBytes,
+                          tailBytes: lf.tailBytes,
+                        })
+                      );
+                    } catch {
+                      lf.inProgress = false;
+                    }
+                  } else {
+                    lf.inProgress = false;
+                    lf.expectOffset = null;
+                  }
+                }
               }
             }
           } catch {
@@ -881,54 +937,6 @@ function App() {
         </Box>
       </Container>
 
-      {needsPairing && (
-        <Container sx={{ mt: 2 }}>
-          <Box
-            sx={{
-              border: "1px solid",
-              borderColor: "info.main",
-              bgcolor: "rgba(2, 136, 209, 0.12)",
-              p: 2,
-              borderRadius: 2,
-              maxWidth: 920,
-              mx: "auto",
-            }}
-          >
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-              {devices.length > 0 ? "Select a device" : "No device paired"}
-            </Typography>
-            {isCloudDashboard && claimInProgress && (
-              <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
-                Claiming device…
-              </Typography>
-            )}
-            {isCloudDashboard && claimError && (
-              <Typography variant="body2" sx={{ color: "warning.main", mb: 1 }}>
-                Claim failed: {claimError}. Make sure the device is online and
-                the claim code is fresh, then refresh this page.
-              </Typography>
-            )}
-            <Typography variant="body2" sx={{ opacity: 0.9 }}>
-              {isCloudDashboard ? (
-                <>
-                  You’re on <code>espwifi.io</code>, which can’t directly reach
-                  a LAN device at <code>espwifi.local</code> from a
-                  phone/desktop browser. Tap <b>Devices</b> below to select a
-                  saved device or pair a new one.
-                </>
-              ) : (
-                <>
-                  You’re running the dashboard at{" "}
-                  <code>{window.location.host}</code>. Tap <b>Devices</b> below
-                  to select a saved device (paired tunnel mode) or pair a new
-                  one.
-                </>
-              )}
-            </Typography>
-          </Box>
-        </Container>
-      )}
-
       {/* Settings Button Bar */}
       <Suspense fallback={null}>
         <SettingsButtonBar
@@ -955,14 +963,23 @@ function App() {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;
             try {
-              ws.send(
-                JSON.stringify({
-                  cmd: "get_logs",
-                  tailBytes: 256 * 1024,
-                  // Keep small by default; tunnel JSON escaping can expand.
-                  maxBytes: 2 * 1024,
-                })
-              );
+              const lf = logsFetchRef.current;
+              if (lf.inProgress) return;
+
+              const tailBytes = 256 * 1024;
+              const maxBytes = Boolean(controlUiUrl) ? 2 * 1024 : 8 * 1024;
+
+              lf.inProgress = true;
+              lf.expectOffset = null;
+              lf.buffer = "";
+              lf.chunks = 0;
+              lf.maxBytes = maxBytes;
+              lf.tailBytes = tailBytes;
+
+              setCloudLogs("");
+              setCloudLogsError("");
+
+              ws.send(JSON.stringify({ cmd: "get_logs", tailBytes, maxBytes }));
             } catch {
               // ignore
             }

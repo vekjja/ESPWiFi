@@ -87,6 +87,8 @@ function SortableCameraModule({
   onDelete,
   deviceOnline,
   saveConfigToDevice,
+  controlWsRef,
+  registerControlBinaryHandler,
 }) {
   const {
     attributes,
@@ -113,6 +115,8 @@ function SortableCameraModule({
         onDelete={onDelete}
         deviceOnline={deviceOnline}
         saveConfigToDevice={saveConfigToDevice}
+        controlWsRef={controlWsRef}
+        registerControlBinaryHandler={registerControlBinaryHandler}
       />
     </div>
   );
@@ -123,6 +127,8 @@ export default function Modules({
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
+  controlWsRef = null,
+  registerControlBinaryHandler = null,
 }) {
   const [modules, setModules] = useState([]);
 
@@ -374,6 +380,8 @@ export default function Modules({
                     onDelete={deleteModule}
                     deviceOnline={deviceOnline}
                     saveConfigToDevice={saveConfigToDevice}
+                    controlWsRef={controlWsRef}
+                    registerControlBinaryHandler={registerControlBinaryHandler}
                   />
                 );
               }

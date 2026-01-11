@@ -21,6 +21,11 @@ static constexpr httpd_ws_type_t HTTPD_WS_TYPE_CLOSE = 2;
 #endif
 
 class WebSocket {
+public:
+  // Synthetic fd used to represent the cloud tunnel transport connection inside
+  // callbacks and per-client send helpers (textTo/binaryTo).
+  static constexpr int kCloudClientFd = -7777;
+
 private:
   ESPWiFi *espWifi_ = nullptr;
 
@@ -37,7 +42,6 @@ private:
   // ---- Cloud tunneling (optional)
   // Implemented in WebSocket.cpp using esp_websocket_client.
   // Stored as fixed buffers to keep RAM bounded and avoid heap churn.
-  static constexpr int kCloudClientFd = -7777; // synthetic fd for callbacks
   static constexpr size_t kMaxCloudBaseUrlLen = 160;  // ws(s)://host[:port]
   static constexpr size_t kMaxCloudDeviceIdLen = 64;  // hostname or custom id
   static constexpr size_t kMaxCloudTokenLen = 96;     // bearer/token value
@@ -88,7 +92,9 @@ private:
   esp_err_t handleWsRequest(httpd_req_t *req);
 
   struct BroadcastJob;
+  struct SendJob;
   static void broadcastWorkTrampoline(void *arg);
+  static void sendToWorkTrampoline(void *arg);
   void broadcastNow_(httpd_ws_type_t type, const uint8_t *payload, size_t len);
 
   // Cloud tunnel internals
@@ -155,6 +161,7 @@ public:
   esp_err_t textTo(int clientFd, const char *message, size_t len);
 
   esp_err_t binaryAll(const uint8_t *data, size_t len);
+  esp_err_t binaryTo(int clientFd, const uint8_t *data, size_t len);
 
   void closeAll();
 };

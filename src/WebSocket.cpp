@@ -29,6 +29,69 @@ struct WebSocket::BroadcastJob {
   // payload bytes follow
 };
 
+struct WebSocket::SendJob {
+  WebSocket *ws;
+  int fd;
+  httpd_ws_type_t type;
+  size_t len;
+  // payload bytes follow
+};
+
+void WebSocket::sendToWorkTrampoline(void *arg) {
+  if (arg == nullptr) {
+    return;
+  }
+  WebSocket::SendJob *job = static_cast<WebSocket::SendJob *>(arg);
+  WebSocket *ws = job->ws;
+  const uint8_t *payload = (const uint8_t *)(job + 1);
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+  // Cloud synthetic "fd": route through the cloud websocket client (not httpd).
+  if (ws != nullptr && job->fd == WebSocket::kCloudClientFd) {
+    if (ws->cloudTunnelEnabled_ && ws->cloudTunnelConnected_) {
+      (void)ws->cloudSendFrame_(job->type, payload, job->len);
+    }
+    free(job);
+    return;
+  }
+
+  if (ws != nullptr && ws->espWifi_ != nullptr &&
+      ws->espWifi_->webServer != nullptr) {
+    httpd_handle_t hd = ws->espWifi_->webServer;
+
+    httpd_ws_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
+    frame.type = job->type;
+    frame.payload = (uint8_t *)payload;
+    frame.len = job->len;
+
+    esp_err_t err = httpd_ws_send_frame_async(hd, job->fd, &frame);
+    if (err != ESP_OK) {
+      // Drop the fd from our tracked list if present.
+      for (size_t i = 0; i < ws->clientCount_;) {
+        if (ws->clientFds_[i] == job->fd) {
+          ws->espWifi_->log(
+              INFO,
+              "🕸️ WebSocket Client Disconnected: %s (fd=%d) ⛓️‍💥",
+              ws->uri_, job->fd);
+          if (ws->onDisconnect_) {
+            ws->onDisconnect_(ws, job->fd, ws->espWifi_);
+          }
+          ws->removeClient_(job->fd);
+          break;
+        }
+        ++i;
+      }
+    }
+  }
+#else
+  (void)ws;
+  (void)payload;
+#endif
+
+  free(job);
+}
+
 // -------------------------
 // Cloud tunnel helpers
 // -------------------------
@@ -237,17 +300,28 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
   SemaphoreHandle_t mu = (SemaphoreHandle_t)cloudMutex_;
   const bool locked =
       (mu != nullptr) && (xSemaphoreTake(mu, pdMS_TO_TICKS(25)) == pdTRUE);
+  // If we can't acquire the mutex, drop the frame to avoid concurrent sends on
+  // esp_websocket_client (which causes lock contention + disconnects).
+  if (mu != nullptr && !locked) {
+    return ESP_ERR_TIMEOUT;
+  }
   esp_websocket_client_handle_t c = (esp_websocket_client_handle_t)cloudClient_;
   const bool connected = (c != nullptr) && esp_websocket_client_is_connected(c);
   int sent = -1;
   if (connected) {
     // Default: never block in broadcast path.
-    // For camera binary frames, allow a small timeout to reduce disconnects due
-    // to transient backpressure over the internet tunnel.
-    const bool isCamera = (strcmp(uri_, "/ws/camera") == 0);
     const bool isControl = (strcmp(uri_, "/ws/control") == 0);
+    // /ws/control carries both control JSON and camera JPEG frames (binary).
+    // For camera frames over the cloud tunnel, prefer dropping frames under
+    // backpressure rather than blocking tasks and risking disconnects.
+    // For binary frames over the tunnel (camera JPEG), avoid "timeout_ms=0"
+    // writes: they tend to return 0 immediately and can cascade into transport
+    // errors/disconnects. Use a modest timeout and rely on upstream FPS/frame
+    // capping to avoid long blocking.
+    // Keep binary (camera JPEG) sends short: if the tunnel can't accept data,
+    // drop frames rather than blocking camera capture.
     const int timeoutMs =
-        (isCamera && type != HTTPD_WS_TYPE_TEXT) ? 200 : (isControl ? 200 : 0);
+        isControl ? ((type == HTTPD_WS_TYPE_TEXT) ? 200 : 10) : 0;
     if (type == HTTPD_WS_TYPE_TEXT) {
       sent = esp_websocket_client_send_text(c, (const char *)payload, (int)len,
                                             timeoutMs);
@@ -259,7 +333,13 @@ esp_err_t WebSocket::cloudSendFrame_(httpd_ws_type_t type,
   if (locked) {
     (void)xSemaphoreGive(mu);
   }
-  return (sent >= 0) ? ESP_OK : ESP_FAIL;
+  if (sent > 0 || len == 0) {
+    return ESP_OK;
+  }
+  if (sent == 0) {
+    return ESP_ERR_TIMEOUT;
+  }
+  return ESP_FAIL;
 }
 
 void WebSocket::getRemoteInfo_(int fd, char *outIp, size_t outIpLen,
@@ -699,8 +779,6 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
   // Config schema:
   // cloudTunnel.enabled (bool)
   // cloudTunnel.baseUrl (string)
-  // cloudTunnel.tunnelAll (bool)
-  // cloudTunnel.uris (array<string>) - if non-empty, only these URIs tunnel
   const bool enabled =
       espWifi_->config["cloudTunnel"]["enabled"].isNull()
           ? false
@@ -720,53 +798,9 @@ void WebSocket::applyCloudTunnelConfigFromESPWiFi_() {
     espWifi_->log(INFO, "☁️ Generated auth token for cloud tunnel");
   }
 
-  bool shouldTunnel = enabled;
-  const bool tunnelAll =
-      espWifi_->config["cloudTunnel"]["tunnelAll"].isNull()
-          ? false
-          : espWifi_->config["cloudTunnel"]["tunnelAll"].as<bool>();
-  const bool allowSecondary =
-      espWifi_->config["cloudTunnel"]["allowSecondary"].isNull()
-          ? false
-          : espWifi_->config["cloudTunnel"]["allowSecondary"].as<bool>();
-  if (shouldTunnel && !tunnelAll) {
-    // If uris array exists and is non-empty, require uri_ to be in it.
-    if (espWifi_->config["cloudTunnel"]["uris"].is<JsonArray>()) {
-      JsonArray arr = espWifi_->config["cloudTunnel"]["uris"].as<JsonArray>();
-      if (arr.size() > 0) {
-        bool found = false;
-        for (JsonVariant v : arr) {
-          const char *u = v.as<const char *>();
-          if (u != nullptr && uri_[0] != '\0' && strcmp(u, uri_) == 0) {
-            found = true;
-            break;
-          }
-        }
-        shouldTunnel = found;
-      }
-    }
-  }
-
-  // Stability guard: by default, only tunnel the control channel.
-  // Multiple simultaneous TLS websocket clients can exceed internal heap on
-  // some builds and cause MBEDTLS_ERR_SSL_ALLOC_FAILED (-0x7F00).
-  if (shouldTunnel && strcmp(uri_, "/ws/control") != 0 && !allowSecondary) {
-    shouldTunnel = false;
-  }
-
-  // Resource guard: camera tunneling is expensive (TLS + websocket client).
-  // If the camera isn't enabled, don't keep an always-on tunnel for it.
-  // This keeps heap pressure lower and avoids TLS allocation failures when
-  // multiple tunnels are enabled.
-  if (shouldTunnel && strcmp(uri_, "/ws/camera") == 0) {
-    const bool camEnabled =
-        espWifi_->config["camera"]["enabled"].isNull()
-            ? false
-            : espWifi_->config["camera"]["enabled"].as<bool>();
-    if (!camEnabled) {
-      shouldTunnel = false;
-    }
-  }
+  // Single-tunnel architecture: ONLY /ws/control is ever cloud-tunneled.
+  // (Camera streaming and all other UI interaction are multiplexed on control.)
+  const bool shouldTunnel = enabled && (strcmp(uri_, "/ws/control") == 0);
 
   configureCloudTunnel(baseUrl ? baseUrl : "", /*deviceId*/ nullptr,
                        token.c_str(), /*tunnelKey*/ nullptr);
@@ -1210,13 +1244,18 @@ esp_err_t WebSocket::textTo(int clientFd, const char *message, size_t len) {
     return ESP_ERR_INVALID_STATE;
   }
 
-  httpd_ws_frame_t frame;
-  memset(&frame, 0, sizeof(frame));
-  frame.type = HTTPD_WS_TYPE_TEXT;
-  frame.payload = (uint8_t *)message;
-  frame.len = len;
+  SendJob *job = (SendJob *)malloc(sizeof(SendJob) + len);
+  if (job == nullptr) {
+    return ESP_ERR_NO_MEM;
+  }
+  job->ws = this;
+  job->fd = clientFd;
+  job->type = HTTPD_WS_TYPE_TEXT;
+  job->len = len;
+  memcpy((uint8_t *)(job + 1), message, len);
 
-  return httpd_ws_send_frame_async(espWifi_->webServer, clientFd, &frame);
+  return httpd_queue_work(espWifi_->webServer, &WebSocket::sendToWorkTrampoline,
+                          job);
 #endif
 }
 
@@ -1250,6 +1289,51 @@ esp_err_t WebSocket::binaryAll(const uint8_t *data, size_t len) {
 
   return httpd_queue_work(espWifi_->webServer,
                           &WebSocket::broadcastWorkTrampoline, job);
+#endif
+}
+
+esp_err_t WebSocket::binaryTo(int clientFd, const uint8_t *data, size_t len) {
+  if (data == nullptr && len > 0) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  if (len == 0) {
+    return ESP_OK;
+  }
+  if (len > maxBroadcastLen_) {
+    return ESP_ERR_INVALID_SIZE;
+  }
+
+  // Cloud synthetic "fd": send directly via the cloud websocket client.
+  // Do NOT queue/copy huge camera frames; prefer dropping under backpressure.
+  if (clientFd == kCloudClientFd) {
+    if (cloudTunnelEnabled_ && cloudTunnelConnected_) {
+      return cloudSendFrame_(HTTPD_WS_TYPE_BINARY, data, len);
+    }
+    return ESP_ERR_INVALID_STATE;
+  }
+
+#ifndef CONFIG_HTTPD_WS_SUPPORT
+  (void)clientFd;
+  (void)data;
+  (void)len;
+  return ESP_ERR_NOT_SUPPORTED;
+#else
+  if (!started_ || espWifi_ == nullptr || espWifi_->webServer == nullptr) {
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  SendJob *job = (SendJob *)malloc(sizeof(SendJob) + len);
+  if (job == nullptr) {
+    return ESP_ERR_NO_MEM;
+  }
+  job->ws = this;
+  job->fd = clientFd;
+  job->type = HTTPD_WS_TYPE_BINARY;
+  job->len = len;
+  memcpy((uint8_t *)(job + 1), data, len);
+
+  return httpd_queue_work(espWifi_->webServer, &WebSocket::sendToWorkTrampoline,
+                          job);
 #endif
 }
 

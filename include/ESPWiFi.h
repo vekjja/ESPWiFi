@@ -357,19 +357,32 @@ public:
   void UnregisterBluetoothHandlers();
 #endif
 
-  // ---- Camera
-  void srvCamera();
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+  WebSocket ctrlSoc;
+  bool ctrlSocStarted = false;
+
+// ---- Camera
 #if ESPWiFi_HAS_CAMERA
   sensor_t *camera = nullptr;
   void printCameraSettings();
+  // When true, camera init uses a low-bandwidth profile intended for cloud
+  // streaming over /ws/control (smaller frames, lower memory/throughput).
+  volatile bool cameraCloudMode_ = false;
+  // Camera streaming over /ws/control
+  //
+  // The camera stream is gated by an explicit subscription command so control
+  // JSON traffic isn't flooded with binary JPEG frames.
+  static constexpr size_t kMaxCameraStreamSubscribers = 8;
+  int cameraStreamSubFds_[kMaxCameraStreamSubscribers] = {0};
+  volatile size_t cameraStreamSubCount_ = 0;
+  volatile bool cameraStreamCloudSubscribed_ = false;
+  volatile int cameraSnapshotFd_ =
+      0; // 0 = none, else fd (or WebSocket::kCloudClientFd)
+
+  void setCameraStreamSubscribed(int clientFd, bool enable);
+  void clearCameraStreamSubscribed(int clientFd);
+  void requestCameraSnapshot(int clientFd);
 #endif
-
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  WebSocket camSoc;
-  bool camSocStarted = false;
-
-  WebSocket ctrlSoc;
-  bool ctrlSocStarted = false;
 #endif
 
   // Camera API (always declared; stubs compile when camera is disabled)

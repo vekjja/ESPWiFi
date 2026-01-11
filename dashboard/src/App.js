@@ -126,6 +126,7 @@ function App() {
   const [, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
+  const controlBinaryHandlersRef = useRef(new Set());
   const logsFetchRef = useRef({
     inProgress: false,
     expectOffset: null,
@@ -338,7 +339,7 @@ function App() {
         enabled: true,
         baseUrl: d.cloudBaseUrl || "https://tnl.espwifi.io",
         tunnelAll: true,
-        uris: ["ws_camera", "ws_rssi", "ws_control"],
+        uris: ["ws_control"],
       },
       // Keep Modules/Settings bar happy
       pins: [],
@@ -646,6 +647,8 @@ function App() {
 
       try {
         const ws = new WebSocket(uiUrl);
+        // Needed for camera streaming over /ws/control.
+        ws.binaryType = "arraybuffer";
         controlWsRef.current = ws;
 
         ws.onopen = () => {
@@ -660,6 +663,17 @@ function App() {
         };
         ws.onmessage = (evt) => {
           try {
+            if (evt?.data instanceof ArrayBuffer) {
+              // Fan out binary frames (camera JPEG) to listeners.
+              controlBinaryHandlersRef.current.forEach((fn) => {
+                try {
+                  fn(evt.data);
+                } catch {
+                  // ignore
+                }
+              });
+              return;
+            }
             const msg = JSON.parse(evt?.data || "{}");
             if (msg?.cmd === "get_config" && msg?.config) {
               setConfig(msg.config);
@@ -851,6 +865,18 @@ function App() {
     [apiURL]
   );
 
+  const registerControlBinaryHandler = useCallback((fn) => {
+    if (typeof fn !== "function") return () => {};
+    controlBinaryHandlersRef.current.add(fn);
+    return () => {
+      try {
+        controlBinaryHandlersRef.current.delete(fn);
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
+
   /**
    * Get RSSI color based on signal strength
    * @param {number} rssi - The RSSI value in dBm
@@ -1023,6 +1049,8 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={deviceOnline}
+            controlWsRef={controlWsRef}
+            registerControlBinaryHandler={registerControlBinaryHandler}
           />
         </Suspense>
       </Container>

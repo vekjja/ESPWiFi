@@ -90,17 +90,11 @@ JsonDocument ESPWiFi::defaultConfig() {
   // ["/ws/camera"])
   doc["cloudTunnel"]["enabled"] = false;
   doc["cloudTunnel"]["baseUrl"] = "wss://tnl.espwifi.io";
-  // IMPORTANT: keep the device stable by default.
-  // Maintaining multiple simultaneous TLS websocket clients can exceed
-  // internal heap on some builds (MBEDTLS_ERR_SSL_ALLOC_FAILED -0x7F00).
-  // Default to tunneling only the control channel; the UI can opt-in to
-  // additional tunnels if desired.
-  doc["cloudTunnel"]["tunnelAll"] = false;
-  doc["cloudTunnel"]["allowSecondary"] = false;
   // Max FPS to use when streaming camera over the cloud tunnel (applies only
   // when a cloud UI is attached and there are no LAN clients).
   // 0 = no cap (use camera.frameRate as-is).
-  doc["cloudTunnel"]["maxFps"] = 9;
+  // Default to a low FPS for cloud streaming to avoid tunnel backpressure.
+  doc["cloudTunnel"]["maxFps"] = 3;
   JsonArray ctUris = doc["cloudTunnel"]["uris"].to<JsonArray>();
   ctUris.add("/ws/control");
 
@@ -115,7 +109,6 @@ JsonDocument ESPWiFi::defaultConfig() {
 // Camera
 #if ESPWiFi_HAS_CAMERA
   doc["camera"]["installed"] = true;
-  doc["camera"]["enabled"] = false;
   doc["camera"]["frameRate"] = 10;
   doc["camera"]["rotation"] = 0;
   doc["camera"]["brightness"] = 1;

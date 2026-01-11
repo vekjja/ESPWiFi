@@ -10,7 +10,6 @@ void ESPWiFi::srvAll() {
   srvFiles();
   srvGPIO();
   srvBLE();
-  srvCamera();
   srvBluetooth();
   srvWildcard();
 }

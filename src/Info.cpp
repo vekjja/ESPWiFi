@@ -65,16 +65,6 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     JsonObject endpoints = ct["endpoints"].to<JsonObject>();
 
-    JsonObject cam = endpoints["camera"].to<JsonObject>();
-    cam["uri"] = "/ws/camera";
-    cam["started"] = camSocStarted;
-    cam["cloudEnabled"] = camSoc.cloudTunnelEnabled();
-    cam["cloudConnected"] = camSoc.cloudTunnelConnected();
-    cam["cloudUIConnected"] = camSoc.cloudUIConnected();
-    cam["ui_ws_url"] = std::string(camSoc.cloudUIWSURL());
-    cam["device_ws_url"] = std::string(camSoc.cloudDeviceWSURL());
-    cam["registered_at_ms"] = camSoc.cloudRegisteredAtMs();
-
     JsonObject control = endpoints["control"].to<JsonObject>();
     control["uri"] = "/ws/control";
     control["started"] = ctrlSocStarted;

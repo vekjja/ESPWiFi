@@ -7,11 +7,7 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
-import {
-  buildApiUrl,
-  buildWebSocketUrl,
-  getFetchOptions,
-} from "../utils/apiUtils";
+import { buildWebSocketUrl, getFetchOptions } from "../utils/apiUtils";
 import { resolveWebSocketUrl } from "../utils/connectionUtils";
 
 export default function CameraModule({
@@ -21,6 +17,8 @@ export default function CameraModule({
   onDelete,
   deviceOnline = true,
   saveConfigToDevice,
+  controlWsRef = null,
+  registerControlBinaryHandler = null,
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
@@ -28,124 +26,37 @@ export default function CameraModule({
   const [streamUrl, setStreamUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [cameraStatus, setCameraStatus] = useState("unknown"); // "enabled", "disabled", or "unknown"
   const [settingsData, setSettingsData] = useState({
     name: config?.name || "",
     url: config?.url || "/ws/camera",
   });
 
+  // Local websocket for non-default/custom camera endpoints only.
   const wsRef = useRef(null);
+  const controlCameraModeRef = useRef(false);
+  const controlUnsubRef = useRef(null);
+  const controlStreamOnRef = useRef(false);
+  const pendingSnapshotRef = useRef(false);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
 
-  // Function to check if camera URL is for a remote device
-  const isRemoteCamera = () => {
-    const cameraUrl = config?.url || "/ws/camera";
-    // If URL starts with http://, https://, or contains a hostname (not just a path)
-    return (
-      cameraUrl.startsWith("http://") ||
-      cameraUrl.startsWith("https://") ||
-      (!cameraUrl.startsWith("/") && cameraUrl.includes("."))
-    );
-  };
-
-  // Function to get the remote device's config endpoint URL
-  const getRemoteConfigUrl = () => {
-    const cameraUrl = config?.url || "/ws/camera";
-
-    if (cameraUrl.startsWith("ws://")) {
-      // Convert ws://hostname:port/path to http://hostname:port/config
-      const url = new URL(cameraUrl);
-      return `${url.protocol.replace("ws", "http")}//${url.host}/config`;
-    } else if (cameraUrl.startsWith("wss://")) {
-      // Convert wss://hostname:port/path to https://hostname:port/config
-      const url = new URL(cameraUrl);
-      return `${url.protocol.replace("wss", "https")}//${url.host}/config`;
-    } else if (
-      cameraUrl.startsWith("http://") ||
-      cameraUrl.startsWith("https://")
-    ) {
-      // Extract hostname and port from HTTP URL
-      const url = new URL(cameraUrl);
-      return `${url.protocol}//${url.host}/config`;
-    } else if (!cameraUrl.startsWith("/") && cameraUrl.includes(".")) {
-      // Handle hostname without protocol
-      return `http://${cameraUrl.split("/")[0]}/config`;
-    }
-
-    return null;
-  };
-
-  // Function to poll remote camera status
-  const pollRemoteCameraStatus = async () => {
-    // Don't poll if component is unmounted
-    if (!isMountedRef.current) return;
-
-    const remoteConfigUrl = getRemoteConfigUrl();
-    if (!remoteConfigUrl) return;
-
-    try {
-      const response = await fetch(
-        remoteConfigUrl,
-        getFetchOptions({
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-          signal: AbortSignal.timeout(3000), // 3 second timeout
-        })
-      );
-
-      // Check if still mounted before updating state
-      if (!isMountedRef.current) return;
-
-      if (response.ok) {
-        const data = await response.json();
-        setCameraStatus(data.camera?.enabled ? "enabled" : "disabled");
-      } else {
-        setCameraStatus("unknown");
-      }
-    } catch (error) {
-      // Only log error if component is still mounted
-      if (isMountedRef.current) {
-        console.error("Error polling remote camera status:", error);
-        setCameraStatus("unknown");
-      }
-    }
-  };
-
-  // Function to update camera status based on global config and device online status
-  const updateCameraStatus = () => {
-    // Don't update if component is unmounted
-    if (!isMountedRef.current) return;
-
-    if (isRemoteCamera()) {
-      // For remote cameras, poll their status
-      pollRemoteCameraStatus();
-    } else {
-      // For local cameras, use global config
-      if (!deviceOnline) {
-        setCameraStatus("unknown");
-      } else if (globalConfig?.camera?.enabled) {
-        setCameraStatus("enabled");
-      } else {
-        setCameraStatus("disabled");
-      }
-    }
-  };
+  // We intentionally avoid "online/status" polling/derivation here.
+  // Start/stop is driven purely by `camera_subscribe` on the shared control WS.
 
   useEffect(() => {
     // Convert relative path to absolute URL
     let wsUrl = config?.url || "/ws/camera";
+    const isDefaultCamera = wsUrl === "/ws/camera";
 
     // Check if URL already has a protocol
     if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
       if (wsUrl.startsWith("/")) {
-        // If this is our local camera endpoint, use the shared connection logic
-        // (tunnel vs LAN) from connectionUtils.
-        if (wsUrl === "/ws/camera") {
-          wsUrl = resolveWebSocketUrl("camera", globalConfig);
+        // Camera now streams over /ws/control (binary frames) gated by a
+        // camera_subscribe command. Keep /ws/camera as a logical default for
+        // modules, but route it to control under the hood.
+        if (isDefaultCamera) {
+          wsUrl = resolveWebSocketUrl("control", globalConfig);
         } else {
           // Otherwise, keep existing behavior for custom endpoints.
           const mdnsHostname =
@@ -173,6 +84,10 @@ export default function CameraModule({
     } else {
       setStreamUrl(wsUrl);
     }
+
+    // Track whether this stream uses /ws/control camera_subscribe semantics.
+    // (Used by start/stop to send subscribe/unsubscribe commands.)
+    controlCameraModeRef.current = isDefaultCamera;
   }, [
     config?.url,
     globalConfig?.hostname,
@@ -181,11 +96,6 @@ export default function CameraModule({
     globalConfig?.cloudTunnel?.baseUrl,
     globalConfig?.auth?.token,
   ]); // Re-run if URL/device identity/cloud tunnel changes
-
-  // Update camera status when global config or device online status changes
-  useEffect(() => {
-    updateCameraStatus();
-  }, [globalConfig?.camera?.enabled, deviceOnline]); // Re-run when camera enabled status or device online status changes
 
   // Listen for camera disable events and disconnect WebSocket
   useEffect(() => {
@@ -218,30 +128,60 @@ export default function CameraModule({
     });
   }, [config?.name, config?.url]);
 
-  // Set up polling for remote cameras
-  useEffect(() => {
-    if (!isRemoteCamera()) return;
-
-    // Initial status check
-    updateCameraStatus();
-
-    // Set up polling every 10 seconds for remote cameras (frequent but smart)
-    const pollInterval = setInterval(() => {
-      // Only poll if component is still mounted
-      if (isMountedRef.current) {
-        updateCameraStatus();
-      }
-    }, 10000);
-
-    // Cleanup interval on unmount
-    return () => {
-      clearInterval(pollInterval);
-    };
-  }, [config?.url]); // Re-run when camera URL changes
-
   const handleStartStream = () => {
     if (!streamUrl) {
       console.error("No stream URL available");
+      return;
+    }
+
+    // Default camera uses the shared /ws/control socket (no second WS).
+    if (controlCameraModeRef.current) {
+      const ws = controlWsRef?.current || null;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.error(
+          "Control socket not connected; cannot start camera stream"
+        );
+        setIsStreaming(false);
+        return;
+      }
+
+      // Register binary handler (camera frames)
+      if (typeof registerControlBinaryHandler === "function") {
+        if (!controlUnsubRef.current) {
+          controlUnsubRef.current = registerControlBinaryHandler((ab) => {
+            if (!(ab instanceof ArrayBuffer)) return;
+            // If this was a one-shot snapshot request, consume one frame and clear.
+            if (pendingSnapshotRef.current) {
+              pendingSnapshotRef.current = false;
+              const blob = new Blob([ab], { type: "image/jpeg" });
+              const objectUrl = URL.createObjectURL(blob);
+              window.open(objectUrl, "_blank");
+              setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+              return;
+            }
+
+            if (!controlStreamOnRef.current) return;
+            const blob = new Blob([ab], { type: "image/jpeg" });
+            const objectURL = URL.createObjectURL(blob);
+            if (
+              imageUrlRef.current &&
+              imageUrlRef.current.startsWith("blob:")
+            ) {
+              URL.revokeObjectURL(imageUrlRef.current);
+            }
+            imageUrlRef.current = objectURL;
+            setImageUrl(objectURL);
+          });
+        }
+      }
+
+      try {
+        ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: true }));
+      } catch {
+        // ignore
+      }
+      controlStreamOnRef.current = true;
+      setIsStreaming(true);
       return;
     }
 
@@ -273,6 +213,14 @@ export default function CameraModule({
       window.cameraWebSockets.push(ws);
 
       ws.onopen = () => {
+        // Camera streams over /ws/control via a subscribe command.
+        if (controlCameraModeRef.current) {
+          try {
+            ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: true }));
+          } catch {
+            // ignore
+          }
+        }
         setIsStreaming(true);
       };
 
@@ -288,6 +236,8 @@ export default function CameraModule({
 
           imageUrlRef.current = objectURL;
           setImageUrl(objectURL);
+        } else if (typeof event.data === "string") {
+          // Control socket may send JSON responses; ignore for camera rendering.
         }
       };
 
@@ -306,17 +256,27 @@ export default function CameraModule({
   };
 
   const handleStopStream = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-
-      // Remove from global tracking
-      if (window.cameraWebSockets) {
-        const index = window.cameraWebSockets.indexOf(wsRef.current);
-        if (index > -1) {
-          window.cameraWebSockets.splice(index, 1);
+    // Default camera: unsubscribe but do NOT close the shared control socket.
+    if (controlCameraModeRef.current) {
+      const ws = controlWsRef?.current || null;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: false }));
+        } catch {
+          // ignore
         }
       }
-
+      controlStreamOnRef.current = false;
+      if (controlUnsubRef.current) {
+        try {
+          controlUnsubRef.current();
+        } catch {
+          // ignore
+        }
+        controlUnsubRef.current = null;
+      }
+    } else if (wsRef.current) {
+      wsRef.current.close();
       wsRef.current = null;
     }
     setIsStreaming(false);
@@ -376,38 +336,32 @@ export default function CameraModule({
   };
 
   const handleSnapshot = async () => {
-    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
-    const baseUrl = buildApiUrl("/api/camera/snapshot", mdnsHostname);
-    const snapshotUrl = `${baseUrl}?save=true`; // Always save to SD
-
     try {
-      const response = await fetch(
-        snapshotUrl,
-        getFetchOptions({
-          method: "GET",
-          headers: {
-            Accept: "image/jpeg",
-          },
-          signal: AbortSignal.timeout(10000),
-        })
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Snapshot is requested over /ws/control and returned as a binary JPEG frame.
+      const ws = controlWsRef?.current || null;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("control_ws_not_connected");
       }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-
-      console.log("📷 Snapshot saved to SD card: /snap");
-      window.open(objectUrl, "_blank");
-
-      // Best-effort cleanup after a bit (the new tab will have loaded it by then).
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+      // Ensure we can receive the next binary frame.
+      if (typeof registerControlBinaryHandler !== "function") {
+        throw new Error("no_binary_handler");
+      }
+      if (!controlUnsubRef.current) {
+        // Register handler so snapshot can be consumed even if not streaming.
+        controlUnsubRef.current = registerControlBinaryHandler((ab) => {
+          if (!(ab instanceof ArrayBuffer)) return;
+          if (!pendingSnapshotRef.current) return;
+          pendingSnapshotRef.current = false;
+          const blob = new Blob([ab], { type: "image/jpeg" });
+          const objectUrl = URL.createObjectURL(blob);
+          window.open(objectUrl, "_blank");
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+        });
+      }
+      pendingSnapshotRef.current = true;
+      ws.send(JSON.stringify({ cmd: "camera_snapshot" }));
     } catch (err) {
-      console.error("Failed to fetch snapshot:", err);
-      // fallback: attempt direct open (may still work if auth disabled)
-      window.open(snapshotUrl, "_blank");
+      console.error("Failed to request snapshot:", err);
     }
   };
 
@@ -496,9 +450,9 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
-        settingsDisabled={!deviceOnline}
-        settingsTooltip={!deviceOnline ? "Device is offline" : "Settings"}
-        errorOutline={!deviceOnline}
+        settingsDisabled={false}
+        settingsTooltip={"Settings"}
+        errorOutline={false}
         data-camera-module="true"
         sx={{
           minWidth: "300px",
@@ -552,27 +506,10 @@ export default function CameraModule({
               }}
             >
               <Typography variant="h6" gutterBottom>
-                📷 Camera {isRemoteCamera() && "🌐 "}
-                {isStreaming
-                  ? "Live"
-                  : cameraStatus === "enabled"
-                  ? "Ready"
-                  : cameraStatus === "disabled"
-                  ? "Disabled"
-                  : "Offline"}
+                📷 Camera {isStreaming ? "Live" : "Ready"}
               </Typography>
               <Typography variant="body2">
-                {isStreaming
-                  ? "Streaming in progress"
-                  : cameraStatus === "enabled"
-                  ? "Click play to start streaming"
-                  : cameraStatus === "disabled"
-                  ? isRemoteCamera()
-                    ? "Camera disabled on remote device"
-                    : "Enable from the device's control panel"
-                  : isRemoteCamera()
-                  ? "Remote camera is not available"
-                  : "Camera is not available"}
+                {isStreaming ? "Streaming in progress" : "Click play to start"}
               </Typography>
             </Box>
           )}
@@ -596,29 +533,11 @@ export default function CameraModule({
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                backgroundColor: isStreaming
-                  ? "success.main"
-                  : cameraStatus === "unknown"
-                  ? "error.main"
-                  : cameraStatus === "disabled"
-                  ? "warning.main"
-                  : "primary.main",
+                backgroundColor: isStreaming ? "success.main" : "primary.main",
               }}
             />
             <Typography variant="caption" sx={{ color: "white" }}>
-              {isStreaming
-                ? "Live"
-                : cameraStatus === "unknown"
-                ? isRemoteCamera()
-                  ? "Remote Offline"
-                  : "Offline"
-                : cameraStatus === "disabled"
-                ? isRemoteCamera()
-                  ? "Remote Disabled"
-                  : "Disabled"
-                : isRemoteCamera()
-                ? "Remote Online"
-                : "Online"}
+              {isStreaming ? "Live" : "Idle"}
             </Typography>
           </Box>
         </Box>
@@ -637,23 +556,13 @@ export default function CameraModule({
           }}
         >
           <Tooltip
-            title={
-              !deviceOnline
-                ? "Device is offline"
-                : isStreaming
-                ? "Stop Stream"
-                : "Start Stream"
-            }
+            title={isStreaming ? "Stop Stream" : "Start Stream"}
           >
             <span>
               <IconButton
                 onClick={isStreaming ? handleStopStream : handleStartStream}
-                disabled={!deviceOnline || cameraStatus !== "enabled"}
                 sx={{
-                  color:
-                    !deviceOnline || cameraStatus !== "enabled"
-                      ? "text.disabled"
-                      : "primary.main",
+                  color: "primary.main",
                 }}
               >
                 {isStreaming ? <PauseIcon /> : <PlayArrowIcon />}
@@ -661,15 +570,12 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
-          <Tooltip
-            title={!deviceOnline ? "Device is offline" : "Take Snapshot"}
-          >
+          <Tooltip title={"Take Snapshot"}>
             <span>
               <IconButton
                 onClick={handleSnapshot}
-                disabled={!deviceOnline}
                 sx={{
-                  color: !deviceOnline ? "text.disabled" : "primary.main",
+                  color: "primary.main",
                 }}
               >
                 <CameraAltIcon />
@@ -678,20 +584,13 @@ export default function CameraModule({
           </Tooltip>
 
           <Tooltip
-            title={
-              !deviceOnline
-                ? "Device is offline"
-                : isFullscreen
-                ? "Exit Fullscreen"
-                : "Fullscreen"
-            }
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
           >
             <span>
               <IconButton
                 onClick={handleFullscreen}
-                disabled={!deviceOnline}
                 sx={{
-                  color: !deviceOnline ? "text.disabled" : "primary.main",
+                  color: "primary.main",
                 }}
               >
                 {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}

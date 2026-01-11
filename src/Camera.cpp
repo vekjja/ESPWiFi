@@ -155,12 +155,14 @@ bool ESPWiFi::initCamera() {
     // Each SVGA frame buffer is ~96KB, we need at least 2 buffers
     const size_t minRequiredPSRAM = 200 * 1024; // 200KB safety margin
     if (freePSRAM < minRequiredPSRAM) {
-      log(ERROR, "📷 Insufficient PSRAM: %u bytes free, need at least %u bytes",
+      // With SCT enabled (TLS tunnels), PSRAM can be tight. Don't hard-fail:
+      // fall back to DRAM settings (lower resolution, single buffer) so the
+      // camera can still function.
+      log(WARNING,
+          "📷 Low PSRAM for camera (%u bytes free; need %u). Falling back to "
+          "DRAM mode.",
           freePSRAM, minRequiredPSRAM);
-      log(ERROR, "📷 Camera initialization aborted due to low memory");
-      giveCamMutex_();
-      initInProgress = false;
-      return false;
+      usingPSRAM = false;
     }
   }
 
@@ -235,6 +237,16 @@ bool ESPWiFi::initCamera() {
     cam.grab_mode = CAMERA_GRAB_LATEST;
 
     log(INFO, "📷 No PSRAM: frame_size=QVGA, quality=25, buffers=1");
+  }
+
+  // Cloud mode profile: reduce bandwidth/latency to keep the tunnel stable.
+  if (cameraCloudMode_) {
+    cam.frame_size = FRAMESIZE_QVGA; // 320x240 (much smaller frames)
+    cam.jpeg_quality = 30;           // more compression (smaller)
+    cam.fb_count = 1;                // single buffer to reduce memory
+    cam.fb_location = usingPSRAM ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+    cam.grab_mode = CAMERA_GRAB_LATEST;
+    log(INFO, "📷 Cloud mode: frame_size=QVGA, quality=30, buffers=1");
   }
 
   // Extract frame rate from configuration (with bounds checking)
@@ -348,13 +360,8 @@ void ESPWiFi::deinitCamera() {
 
   camera = nullptr; // Clear the cached sensor pointer
 
-  // Close WebSocket connections before completing deinit
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  if (camSocStarted) {
-    log(DEBUG, "📷 Closing all WebSocket connections");
-    camSoc.closeAll();
-  }
-#endif
+  // Note: Camera streaming runs over /ws/control; do not close control sockets
+  // as part of camera deinit.
 
   log(INFO, "📷 Camera Deinitialized");
 
@@ -532,6 +539,20 @@ void ESPWiFi::updateCameraSettings() {
   int wb_mode = getInt("wb_mode", 0, 0, 4);
   int rotation = getInt("rotation", 0, 0, 270);
 
+  // Cloud mode profile: ensure sensor-level settings don't undo our
+  // low-bandwidth init profile (initCamera sets QVGA/quality=30, but sensor
+  // setters can override it back to config values).
+  if (cameraCloudMode_) {
+    // Force smaller frames over cloud tunnel.
+    if (camera->set_framesize) {
+      camera->set_framesize(camera, FRAMESIZE_QVGA);
+    }
+    // Increase compression (larger number = lower quality / smaller frames).
+    if (quality < 30) {
+      quality = 30;
+    }
+  }
+
   // Set sensor parameters
   camera->set_brightness(camera, brightness);
   camera->set_contrast(camera, contrast);
@@ -604,31 +625,30 @@ void ESPWiFi::streamCamera() {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   return;
 #else
-  // Quick exit if streaming not enabled
-  if (!config["camera"]["enabled"].as<bool>()) {
-    return;
-  }
+  // Camera is subscription-driven; do not gate streaming on
+  // config.camera.enabled.
 
-  // Check if WebSocket is active and has clients
-  // Don't waste resources capturing frames if no one is watching
-  if (!camSocStarted) {
+  // Camera frames are streamed over /ws/control (binary frames), gated by an
+  // explicit subscription command. If control socket isn't up, there's nowhere
+  // to send frames.
+  if (!ctrlSocStarted) {
     return;
   }
 
   // Only stream when there's a real consumer:
-  // - LAN websocket clients, OR
-  // - A cloud UI attached (cloud tunnel transport alone shouldn't trigger
-  // capture)
+  // - LAN subscribers on /ws/control, OR
+  // - Cloud subscriber + cloud UI attached (cloud tunnel transport alone
+  // shouldn't trigger capture)
   const bool cloudTunnelEnabled = !config["cloudTunnel"]["enabled"].isNull() &&
                                   config["cloudTunnel"]["enabled"].as<bool>();
-  const bool hasCloudUI = cloudTunnelEnabled && camSoc.cloudUIConnected();
-  const size_t lanClients = camSoc.numLanClients();
+  const bool hasCloudUI = cloudTunnelEnabled && ctrlSoc.cloudUIConnected();
+  const size_t lanSubs = (size_t)cameraStreamSubCount_;
+  const bool cloudSub = cameraStreamCloudSubscribed_ && hasCloudUI;
+  const int snapFd = cameraSnapshotFd_;
+  const bool snapPending = (snapFd != 0);
 
   // Stream only when there's a real consumer:
-  // - LAN websocket clients, OR
-  // - A cloud UI attached (cloud tunnel transport alone shouldn't trigger
-  // capture)
-  const bool anyConsumer = (lanClients > 0) || hasCloudUI;
+  const bool anyConsumer = (lanSubs > 0) || cloudSub || snapPending;
 
   // If the camera was previously initialized (e.g., a client disconnected),
   // deinit it after a short grace period to avoid cam_hal FB-OVF spam while
@@ -682,10 +702,13 @@ void ESPWiFi::streamCamera() {
   // Optional cloud-only FPS cap, configurable via cloudTunnel.maxFps.
   // Applies only when cloud UI is attached and there are no LAN clients.
   // 0 = disabled (no cap).
-  if (hasCloudUI && lanClients == 0) {
+  if (cloudSub && lanSubs == 0) {
     int maxCloudFps = config["cloudTunnel"]["maxFps"].isNull()
                           ? 0
                           : config["cloudTunnel"]["maxFps"].as<int>();
+    // Default to 3 FPS if not set or set to 0.
+    if (maxCloudFps <= 0)
+      maxCloudFps = 3;
     if (maxCloudFps > 0) {
       if (maxCloudFps < 1)
         maxCloudFps = 1;
@@ -759,7 +782,11 @@ void ESPWiFi::streamCamera() {
 
   // Double-check consumers still connected before broadcast
   // (they may have disconnected between the initial check and now)
-  if (camSoc.numLanClients() == 0 && !hasCloudUI) {
+  const size_t lanSubs2 = (size_t)cameraStreamSubCount_;
+  const bool cloudSub2 = cameraStreamCloudSubscribed_ && hasCloudUI;
+  const int snapFd2 = cameraSnapshotFd_;
+  const bool snapPending2 = (snapFd2 != 0);
+  if (lanSubs2 == 0 && !cloudSub2 && !snapPending2) {
     esp_camera_fb_return(fb);
     return;
   }
@@ -769,28 +796,127 @@ void ESPWiFi::streamCamera() {
   // log(VERBOSE, "📷 Broadcasting frame: %zu bytes to %d clients", fb->len,
   //     clientCount);
 
-  esp_err_t err = camSoc.binaryAll((const uint8_t *)fb->buf, fb->len);
-  if (err != ESP_OK) {
-    // Handle memory errors gracefully - log but don't spam
-    static unsigned long lastMemErrorMs = 0;
-    unsigned long now = millis();
-    if (err == ESP_ERR_NO_MEM) {
-      // Only log memory errors every 5 seconds to avoid spam
-      if (now - lastMemErrorMs > 5000) {
-        log(WARNING,
-            "📷 Frame broadcast failed (out of memory): frame size %zu bytes",
-            fb->len);
-        lastMemErrorMs = now;
-      }
-    } else {
-      // Log other errors normally
-      log(WARNING, "📷 Frame broadcast failed: %s", esp_err_to_name(err));
+  // Send to LAN subscribers (binary JPEG frames on /ws/control)
+  for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
+    const int fd = cameraStreamSubFds_[i];
+    if (fd <= 0)
+      continue;
+    (void)ctrlSoc.binaryTo(fd, (const uint8_t *)fb->buf, fb->len);
+  }
+
+  // Send to cloud tunnel (broker fans out to UI clients)
+  if (cameraStreamCloudSubscribed_ && hasCloudUI) {
+    // Cloud tunnel: keep frames bounded; prefer dropping large frames under
+    // backpressure to keep the tunnel alive.
+    if (fb->len <= 60 * 1024) {
+      (void)ctrlSoc.binaryTo(WebSocket::kCloudClientFd,
+                             (const uint8_t *)fb->buf, fb->len);
+    }
+  }
+
+  // One-shot snapshot: send to the requesting client only, then clear.
+  if (snapPending2) {
+    cameraSnapshotFd_ = 0;
+    (void)ctrlSoc.binaryTo(snapFd2, (const uint8_t *)fb->buf, fb->len);
+    // If no one is streaming, snapshot completes the "need" for the camera.
+    if ((size_t)cameraStreamSubCount_ == 0 && !cameraStreamCloudSubscribed_) {
+      log(INFO, "📷 Snapshot complete; deinitializing camera");
+      deinitCamera();
     }
   }
 
   esp_camera_fb_return(fb);
 #endif
 }
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
+  if (clientFd == WebSocket::kCloudClientFd) {
+    cameraStreamCloudSubscribed_ = enable;
+    // When cloud streaming is active and there are no LAN subs, enable cloud
+    // mode profile (low bandwidth). Reinit if needed.
+    const bool nextCloudMode = enable && ((size_t)cameraStreamSubCount_ == 0);
+    if (cameraCloudMode_ != nextCloudMode) {
+      cameraCloudMode_ = nextCloudMode;
+      if (camera != nullptr) {
+        log(INFO, "📷 Switching camera profile (cloudMode=%d); reinitializing",
+            (int)cameraCloudMode_);
+        deinitCamera();
+      }
+    }
+    // If the last consumer unsubscribed, stop immediately and deinit camera.
+    if (!enable && (size_t)cameraStreamSubCount_ == 0 &&
+        cameraSnapshotFd_ == 0) {
+      if (camera != nullptr) {
+        log(INFO, "📷 No subscribers; deinitializing camera");
+        deinitCamera();
+      }
+    }
+    return;
+  }
+  if (clientFd <= 0) {
+    return;
+  }
+
+  // Remove if disabling
+  if (!enable) {
+    for (size_t i = 0; i < (size_t)cameraStreamSubCount_;) {
+      if (cameraStreamSubFds_[i] == clientFd) {
+        // swap-remove
+        const size_t last = (size_t)cameraStreamSubCount_ - 1;
+        cameraStreamSubFds_[i] = cameraStreamSubFds_[last];
+        cameraStreamSubFds_[last] = 0;
+        // Avoid -- on volatile (deprecated): use explicit assignment.
+        cameraStreamSubCount_ = (size_t)cameraStreamSubCount_ - 1;
+        continue;
+      }
+      i++;
+    }
+    // If the last consumer unsubscribed, stop immediately and deinit camera.
+    if ((size_t)cameraStreamSubCount_ == 0 && !cameraStreamCloudSubscribed_ &&
+        cameraSnapshotFd_ == 0) {
+      if (camera != nullptr) {
+        log(INFO, "📷 No subscribers; deinitializing camera");
+        deinitCamera();
+      }
+    }
+    return;
+  }
+
+  // Add if not present
+  for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
+    if (cameraStreamSubFds_[i] == clientFd) {
+      return;
+    }
+  }
+  if ((size_t)cameraStreamSubCount_ >= kMaxCameraStreamSubscribers) {
+    log(WARNING, "📷 Camera stream subscriber limit reached; ignoring fd=%d",
+        clientFd);
+    return;
+  }
+  // Avoid ++ on volatile (deprecated): use explicit assignment.
+  const size_t idx = (size_t)cameraStreamSubCount_;
+  cameraStreamSubFds_[idx] = clientFd;
+  cameraStreamSubCount_ = idx + 1;
+
+  // Any LAN subscriber means we should NOT use cloud profile.
+  if (cameraCloudMode_) {
+    cameraCloudMode_ = false;
+    if (camera != nullptr) {
+      log(INFO, "📷 Switching camera profile (cloudMode=0); reinitializing");
+      deinitCamera();
+    }
+  }
+}
+
+void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
+  setCameraStreamSubscribed(clientFd, false);
+}
+
+void ESPWiFi::requestCameraSnapshot(int clientFd) {
+  cameraSnapshotFd_ = clientFd;
+}
+#endif
 
 // ============================================================================
 // HTTP Response Helpers

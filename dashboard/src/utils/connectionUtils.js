@@ -10,8 +10,9 @@ import { getAuthToken } from "./authUtils";
 // we prefer tunnel WS for camera/rssi/control. Otherwise use LAN WS.
 
 const ENDPOINTS = {
-  rssi: { localPath: "/ws/rssi", tunnelKey: "ws_rssi" },
-  camera: { localPath: "/ws/camera", tunnelKey: "ws_camera" },
+  // RSSI + camera are both carried over the control socket now.
+  rssi: { localPath: "/ws/control", tunnelKey: "ws_control" },
+  camera: { localPath: "/ws/control", tunnelKey: "ws_control" },
   control: { localPath: "/ws/control", tunnelKey: "ws_control" },
 };
 

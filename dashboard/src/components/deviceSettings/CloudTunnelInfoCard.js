@@ -86,8 +86,17 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         ...(config?.cloudTunnel || {}),
         enabled: tempEnabled,
         maxFps: Number.isFinite(tempMaxFps) ? tempMaxFps : 0,
+        // SCT toggle = tunnel all available websockets.
+        tunnelAll: tempEnabled ? true : false,
+        // Allow non-control tunnels when SCT is enabled.
       },
     };
+
+    // If SCT is enabled and the device has a camera, enable it so /ws/camera can tunnel.
+    if (tempEnabled && config?.camera?.installed !== false) {
+      next.camera = { ...(config?.camera || {}), enabled: true };
+    }
+
     onSave(next);
     setIsEditing(false);
   };
@@ -340,7 +349,12 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         {viewContent}
       </InfoCard>
 
-      <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Pair (iPhone)</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>

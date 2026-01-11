@@ -76,7 +76,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       // Cloud tunnel responses are forwarded to the UI and must fit the tunnel
       // buffer (and JSON escaping can grow payload). Use a smaller default for
       // cloud.
-      const bool isCloud = (clientFd == -7777);
+      const bool isCloud = (clientFd == WebSocket::kCloudClientFd);
       const int defaultMaxBytes = isCloud ? (2 * 1024) : (8 * 1024);
       int maxBytes = req["maxBytes"].isNull() ? defaultMaxBytes
                                               : req["maxBytes"].as<int>();
@@ -103,6 +103,34 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
           resp.remove("data");
         }
       }
+    } else if (strcmp(cmd, "camera_subscribe") == 0 ||
+               strcmp(cmd, "camera_snapshot") == 0 ||
+               strcmp(cmd, "camera_status") == 0) {
+#if ESPWiFi_HAS_CAMERA
+      if (strcmp(cmd, "camera_subscribe") == 0) {
+        // Subscribe/unsubscribe this control WS client to the camera stream.
+        // When enabled, camera frames are sent as *binary* websocket frames on
+        // /ws/control.
+        const bool enable =
+            req["enable"].isNull() ? true : req["enable"].as<bool>();
+        espwifi->setCameraStreamSubscribed(clientFd, enable);
+        resp["enabled"] = enable;
+      } else if (strcmp(cmd, "camera_snapshot") == 0) {
+        // Request a single JPEG frame; it will be delivered as a binary WS
+        // frame on /ws/control.
+        espwifi->requestCameraSnapshot(clientFd);
+        resp["queued"] = true;
+      } else {
+        // camera_status
+        resp["installed"] = true;
+        resp["initialized"] = (espwifi->camera != nullptr);
+        resp["subscribers"] = (int)espwifi->cameraStreamSubCount_;
+        resp["cloudSubscribed"] = (bool)espwifi->cameraStreamCloudSubscribed_;
+      }
+#else
+      resp["ok"] = false;
+      resp["error"] = "camera_disabled_in_build";
+#endif
     } else if (strcmp(cmd, "set_config") == 0) {
       // Merge and apply config updates on the main loop.
       if (!req["config"].is<JsonObject>() && !req["config"].is<JsonArray>()) {
@@ -150,8 +178,11 @@ static void ctrlOnConnect(WebSocket *ws, int clientFd, ESPWiFi *espwifi) {
 
 static void ctrlOnDisconnect(WebSocket *ws, int clientFd, ESPWiFi *espwifi) {
   (void)ws;
-  (void)clientFd;
-  (void)espwifi;
+  if (!espwifi)
+    return;
+#if ESPWiFi_HAS_CAMERA
+  espwifi->clearCameraStreamSubscribed(clientFd);
+#endif
 }
 
 #endif
@@ -172,7 +203,9 @@ void ESPWiFi::startControlWebSocket() {
                                  /*maxMessageLen*/ 2048,
                                  // Must be large enough to return full config
                                  // over the tunnel (get_config).
-                                 /*maxBroadcastLen*/ 32 * 1024,
+                                 // Also used for camera JPEG frames (binary),
+                                 // so allow larger payloads.
+                                 /*maxBroadcastLen*/ 160 * 1024,
                                  /*requireAuth*/ false);
   if (!ctrlSocStarted) {
     log(ERROR, "🎛️ Control WebSocket failed to start");

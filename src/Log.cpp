@@ -139,68 +139,67 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
 
     if (n > 0) {
       // Ensure newline termination (best effort).
-      const size_t len = strnlen(line, sizeof(line));
-      const bool hasNl = (len > 0 && line[len - 1] == '\n');
+      // const size_t len = strnlen(line, sizeof(line));
+      // const bool hasNl = (len > 0 && line[len - 1] == '\n');
 
-      // Infer log level from the formatted line prefix. Avoid allocations.
-      LogLevel lvl = s_lastIdfLevel;
-      const char *p = skipAnsiAndWhitespace(line);
-      if (p != nullptr) {
-        switch (*p) {
-        case 'E':
-          lvl = ERROR;
-          break;
-        case 'W':
-          lvl = WARNING;
-          break;
-        case 'I':
-          lvl = DEBUG;
-          break;
-        case 'D':
-          lvl = DEBUG;
-          break;
-        case 'V':
-          lvl = VERBOSE;
-          break;
-        default:
-          break;
-        }
-      }
-      s_lastIdfLevel = lvl;
+      // // Infer log level from the formatted line prefix. Avoid allocations.
+      // LogLevel lvl = s_lastIdfLevel;
+      // const char *p = skipAnsiAndWhitespace(line);
+      // if (p != nullptr) {
+      //   switch (*p) {
+      //   case 'E':
+      //     lvl = ERROR;
+      //     break;
+      //   case 'W':
+      //     lvl = WARNING;
+      //     break;
+      //   case 'I':
+      //     lvl = DEBUG;
+      //     break;
+      //   case 'D':
+      //     lvl = DEBUG;
+      //     break;
+      //   case 'V':
+      //     lvl = VERBOSE;
+      //     break;
+      //   default:
+      //     break;
+      //   }
+      // }
+      // s_lastIdfLevel = lvl;
 
-      if (espwifi->shouldLog(lvl)) {
-        // Extract ESP-IDF tag for icon mapping:
-        // [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' ...
-        const char *icon = "";
-        if (p != nullptr) {
-          const char *closeParen = std::strstr(p, ") ");
-          if (closeParen != nullptr) {
-            const char *tagStart = closeParen + 2;
-            const char *colon = std::strchr(tagStart, ':');
-            if (colon != nullptr && colon > tagStart) {
-              icon = espwifiIconForIdfTagView(tagStart,
-                                              (size_t)(colon - tagStart));
-            }
-          }
-        }
+      // if (espwifi->shouldLog(lvl)) {
+      // Extract ESP-IDF tag for icon mapping:
+      // [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' ...
+      // const char *icon = "";
+      // if (p != nullptr) {
+      //   const char *closeParen = std::strstr(p, ") ");
+      //   if (closeParen != nullptr) {
+      //     const char *tagStart = closeParen + 2;
+      //     const char *colon = std::strchr(tagStart, ':');
+      //     if (colon != nullptr && colon > tagStart) {
+      //       icon = espwifiIconForIdfTagView(tagStart,
+      //                                       (size_t)(colon - tagStart));
+      //     }
+      //   }
 
-        // NOTE: Keep this concatenation minimal. We accept that the IDF line
-        // already includes its own timestamp/tag; we just prepend our own.
-        std::string out;
-        out.reserve(64 + len);
-        out.append(espwifi->timestamp());
-        out.append(espwifi->logLevelToString(lvl));
-        out.push_back(' ');
-        if (icon[0] != '\0') {
-          out.append(icon);
-          out.push_back(' ');
-        }
-        out.append(line, len);
-        if (!hasNl) {
-          out.push_back('\n');
-        }
-        espwifi->writeLog(out);
-      }
+      // NOTE: Keep this concatenation minimal. We accept that the IDF line
+      // already includes its own timestamp/tag; we just prepend our own.
+      // std::string out;
+      // out.reserve(64 + len);
+      // out.append(espwifi->timestamp());
+      // out.append(espwifi->logLevelToString(lvl));
+      // out.push_back(' ');
+      // if (icon[0] != '\0') {
+      //   out.append(icon);
+      //   out.push_back(' ');
+      // }
+      // out.append(line, len);
+      // if (!hasNl) {
+      //   out.push_back('\n');
+      // }
+      // espwifi->writeLog(out);
+      // }
     }
   }
   s_inEspLogHook = false;
@@ -340,7 +339,8 @@ void ESPWiFi::writeLog(std::string message) {
       if (written == len && fflush(f) == 0) {
         success = true;
         // Note: Don't log the switch here to avoid any potential recursion
-        // The switch will be logged on the next log message via normal logging
+        // The switch will be logged on the next log message via normal
+        // logging
       }
       fclose(f);
     }

@@ -79,25 +79,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectedFiles"].add("/config.json");
   doc["auth"]["protectedFiles"].add("/asset-manifest.json");
 
-  doc["ota"]["enabled"] = isOTAEnabled();
-
-  // CloudTunnel (WebSocket cloud tunneling)
-  // - enabled: global enable switch
-  // - baseUrl: ws(s) base URL of the tunnel broker (e.g.
-  // "wss://tnl.espwifi.io")
-  // - tunnelAll: if true, all websocket URIs are tunneled
-  // - uris: optional allowlist of websocket URIs to tunnel (e.g.
-  // ["/ws/camera"])
-  doc["cloudTunnel"]["enabled"] = false;
-  doc["cloudTunnel"]["baseUrl"] = "wss://tnl.espwifi.io";
-  // Max FPS to use when streaming camera over the cloud tunnel (applies only
-  // when a cloud UI is attached and there are no LAN clients).
-  // 0 = no cap (use camera.frameRate as-is).
-  // Default to a low FPS for cloud streaming to avoid tunnel backpressure.
-  doc["cloudTunnel"]["maxFps"] = 3;
-  JsonArray ctUris = doc["cloudTunnel"]["uris"].to<JsonArray>();
-  ctUris.add("/ws/control");
-
 // SD Card
 #if ESPWiFi_HAS_SDCARD
   doc["sd"]["installed"] = true;
@@ -128,6 +109,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["installed"] = false;
 #endif
 
+  doc["ota"]["enabled"] = isOTAEnabled();
   return doc;
 }
 

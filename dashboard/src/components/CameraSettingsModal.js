@@ -9,7 +9,6 @@ import {
   Card,
   CardContent,
   Stack,
-  Tooltip,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -23,7 +22,6 @@ import ContrastIcon from "@mui/icons-material/Contrast";
 import TimerIcon from "@mui/icons-material/Timer";
 import ExposureIcon from "@mui/icons-material/WbSunny";
 import RotateIcon from "@mui/icons-material/Rotate90DegreesCcw";
-import NoPhotographyIcon from "@mui/icons-material/NoPhotography";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
 import DeleteButton from "./DeleteButton";
@@ -47,7 +45,6 @@ export default function CameraSettingsModal({
   const [localData, setLocalData] = useState(cameraData);
   const isInitialLoad = useRef(true);
   const [loading, setLoading] = useState(false);
-  const [enabled, setEnabled] = useState(config?.camera?.enabled || false);
   const initializedRef = useRef(false);
 
   const [cameraSettings, setCameraSettings] = useState({
@@ -92,9 +89,6 @@ export default function CameraSettingsModal({
   // Only initialize once when modal opens, don't sync while modal is open
   useEffect(() => {
     if (open && !initializedRef.current) {
-      if (isDeviceLevel) {
-        setEnabled(config?.camera?.enabled || false);
-      }
       loadCameraSettings();
       initializedRef.current = true;
     } else if (!open) {
@@ -104,12 +98,9 @@ export default function CameraSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Update enabled state and camera settings when config changes (while modal is open)
+  // Update camera settings when config changes (while modal is open)
   useEffect(() => {
     if (open && initializedRef.current) {
-      if (isDeviceLevel && config?.camera?.enabled !== undefined) {
-        setEnabled(config.camera.enabled);
-      }
       loadCameraSettings();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,115 +130,56 @@ export default function CameraSettingsModal({
     }
   };
 
-  const handleToggleEnabled = async () => {
-    if (
-      loading ||
-      !deviceOnline ||
-      !config ||
-      !saveConfigToDevice ||
-      !isDeviceLevel
-    ) {
+  const handleSave = async () => {
+    console.log("CameraSettingsModal handleSave");
+    console.log("Current camera settings:", cameraSettings);
+    console.log("localData:", localData);
+
+    if (!config || !saveConfigToDevice) {
+      console.warn("No config or saveConfigToDevice function");
       return;
     }
 
-    const newEnabled = !enabled;
-    const previousEnabled = enabled;
-    setEnabled(newEnabled);
     setLoading(true);
 
-    // If disabling camera, disconnect any active WebSocket connections
-    if (!newEnabled) {
-      // Find and disconnect any active camera WebSocket connections
-      const cameraModules = document.querySelectorAll("[data-camera-module]");
-      cameraModules.forEach((module) => {
-        // Trigger WebSocket disconnection in camera modules
-        const event = new CustomEvent("cameraDisable");
-        module.dispatchEvent(event);
-      });
-
-      // Also disconnect any global WebSocket connections
-      if (window.cameraWebSockets) {
-        window.cameraWebSockets.forEach((ws) => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.close();
-          }
-        });
-        window.cameraWebSockets = [];
-      }
-    }
-
     try {
-      const configToSave = {
+      const updatedConfig = {
         ...config,
         camera: {
           ...config.camera,
-          enabled: newEnabled,
-          frameRate: config.camera?.frameRate || 10,
+          frameRate: cameraSettings.frameRate,
+          rotation: cameraSettings.rotation,
+          brightness: cameraSettings.brightness,
+          contrast: cameraSettings.contrast,
+          saturation: cameraSettings.saturation,
+          sharpness: cameraSettings.sharpness,
+          denoise: cameraSettings.denoise,
+          quality: cameraSettings.quality,
+          exposure_level: cameraSettings.exposure_level,
+          exposure_value: cameraSettings.exposure_value,
+          agc_gain: cameraSettings.agc_gain,
+          gain_ceiling: cameraSettings.gain_ceiling,
+          white_balance: cameraSettings.white_balance,
+          awb_gain: cameraSettings.awb_gain,
+          wb_mode: cameraSettings.wb_mode,
         },
       };
 
-      // Save to device immediately
-      saveConfigToDevice(configToSave);
+      console.log("Saving camera config to device:", updatedConfig.camera);
+      await saveConfigToDevice(updatedConfig);
+      console.log("Camera settings saved successfully");
+
+      // Call onSave callback if provided (for module-level name update)
+      if (onSave && !isDeviceLevel) {
+        console.log("Calling onSave callback with localData:", localData);
+        onSave(localData);
+      }
+
+      onClose();
     } catch (err) {
-      console.error("Error toggling Camera:", err);
-      // Revert on error
-      setEnabled(previousEnabled);
+      console.error("Error saving camera settings:", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    // Save camera settings
-    // Rotation can be both global and per-module
-    if (config && saveConfigToDevice) {
-      setLoading(true);
-
-      try {
-        const updatedConfig = {
-          ...config,
-          camera: {
-            ...config.camera,
-            // Save global camera settings (including rotation)
-            frameRate: cameraSettings.frameRate,
-            rotation: cameraSettings.rotation,
-            brightness: cameraSettings.brightness,
-            contrast: cameraSettings.contrast,
-            saturation: cameraSettings.saturation,
-            sharpness: cameraSettings.sharpness,
-            denoise: cameraSettings.denoise,
-            quality: cameraSettings.quality,
-            exposure_level: cameraSettings.exposure_level,
-            exposure_value: cameraSettings.exposure_value,
-            agc_gain: cameraSettings.agc_gain,
-            gain_ceiling: cameraSettings.gain_ceiling,
-            white_balance: cameraSettings.white_balance,
-            awb_gain: cameraSettings.awb_gain,
-            wb_mode: cameraSettings.wb_mode,
-          },
-        };
-
-        // Also save rotation to module config if module update function is provided
-        if (onModuleUpdate && moduleConfig?.key) {
-          onModuleUpdate(moduleConfig.key, {
-            rotation: cameraSettings.rotation,
-          });
-        }
-
-        await saveConfigToDevice(updatedConfig);
-        // Close modal after successful save
-        onClose();
-      } catch (err) {
-        console.error("Error saving camera settings:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    if (onSave) {
-      onSave();
-      // Close modal after module-level save
-      onClose();
     }
   };
 
@@ -261,9 +193,13 @@ export default function CameraSettingsModal({
   };
 
   const handleDelete = () => {
+    console.log("CameraSettingsModal handleDelete called");
     if (onDelete) {
+      console.log("Calling onDelete callback");
       onDelete();
       onClose();
+    } else {
+      console.warn("No onDelete callback provided");
     }
   };
 
@@ -272,63 +208,35 @@ export default function CameraSettingsModal({
       open={open}
       onClose={onClose}
       title={
-        <Tooltip
-          title={
-            isDeviceLevel
-              ? enabled
-                ? "Click to disable Camera"
-                : "Click to enable Camera"
-              : ""
-          }
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+          }}
         >
-          <Box
-            onClick={isDeviceLevel ? handleToggleEnabled : undefined}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              cursor: isDeviceLevel ? "pointer" : "default",
-              "&:hover": isDeviceLevel
-                ? {
-                    opacity: 0.8,
-                  }
-                : {},
-            }}
-          >
-            {isDeviceLevel && !enabled ? (
-              <NoPhotographyIcon
-                sx={{
-                  color: "text.disabled",
-                }}
-              />
-            ) : (
-              <CameraAltIcon
-                sx={{
-                  color:
-                    isDeviceLevel && enabled ? "primary.main" : "primary.main",
-                }}
-              />
-            )}
-            Camera
-          </Box>
-        </Tooltip>
+          <CameraAltIcon sx={{ color: "primary.main" }} />
+          Camera
+        </Box>
       }
       actions={
-        isDeviceLevel ? (
+        <>
+          {onDelete && !isDeviceLevel && (
+            <DeleteButton onClick={handleDelete} tooltip="Delete Camera" />
+          )}
           <SaveButton
             onClick={handleSave}
-            tooltip={loading ? "Saving..." : "Save camera settings to device"}
-            disabled={loading || !deviceOnline || !enabled}
+            tooltip={
+              loading
+                ? "Saving..."
+                : isDeviceLevel
+                ? "Save camera settings"
+                : "Save Camera Module"
+            }
+            disabled={loading}
           />
-        ) : (
-          <>
-            {onDelete && (
-              <DeleteButton onClick={handleDelete} tooltip="Delete Camera" />
-            )}
-            <SaveButton onClick={handleSave} tooltip="Add Camera Module" />
-          </>
-        )
+        </>
       }
       maxWidth="md"
     >
@@ -406,7 +314,7 @@ export default function CameraSettingsModal({
                           { value: 30, label: "30" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Higher frame rates provide smoother video but use more
@@ -456,7 +364,7 @@ export default function CameraSettingsModal({
                           { value: 270, label: "270°" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Rotate the camera image by 90° increments
@@ -518,7 +426,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                     </Box>
 
@@ -552,7 +460,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                     </Box>
 
@@ -586,7 +494,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                     </Box>
 
@@ -622,7 +530,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Edge enhancement (-2 = soft, +2 = sharp)
@@ -661,7 +569,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Noise reduction (0 = off, 8 = maximum)
@@ -704,7 +612,7 @@ export default function CameraSettingsModal({
                           { value: 63, label: "Fast" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Lower values = better quality, higher file size
@@ -761,7 +669,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Adjust automatic exposure compensation
@@ -803,7 +711,7 @@ export default function CameraSettingsModal({
                           { value: 1200, label: "1200" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Manual exposure time control (0 = auto)
@@ -847,7 +755,7 @@ export default function CameraSettingsModal({
                           { value: 30, label: "30" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Automatic gain control (0 = auto)
@@ -884,7 +792,7 @@ export default function CameraSettingsModal({
                         step={1}
                         marks
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Maximum gain amplification
@@ -921,7 +829,7 @@ export default function CameraSettingsModal({
                               e.target.checked ? 1 : 0
                             )
                           }
-                          disabled={!enabled}
+                          disabled={loading}
                         />
                       }
                       label={
@@ -946,7 +854,7 @@ export default function CameraSettingsModal({
                               e.target.checked ? 1 : 0
                             )
                           }
-                          disabled={!enabled}
+                          disabled={loading}
                         />
                       }
                       label={
@@ -1002,7 +910,7 @@ export default function CameraSettingsModal({
                           { value: 4, label: "Home" },
                         ]}
                         valueLabelDisplay="auto"
-                        disabled={!enabled}
+                        disabled={loading}
                       />
                       <Typography variant="caption" color="text.secondary">
                         Preset white balance for different lighting conditions

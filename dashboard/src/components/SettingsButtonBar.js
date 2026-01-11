@@ -337,7 +337,17 @@ export default function SettingsButtonBar({
       });
     }
 
-    if (config && config?.camera?.installed !== false) {
+    // Show camera button if camera is installed and there's at least one camera module
+    const hasCameraModule = config?.modules?.some((m) => m.type === "camera");
+    console.log(
+      "Camera button check - installed:",
+      config?.camera?.installed,
+      "hasCameraModule:",
+      hasCameraModule,
+      "modules:",
+      config?.modules
+    );
+    if (config && config?.camera?.installed !== false && hasCameraModule) {
       items.push({
         id: "camera",
         render: () => (
@@ -459,6 +469,24 @@ export default function SettingsButtonBar({
     setEnabledIds((prev) => {
       const prevList = Array.isArray(prev) ? prev : [];
       const next = prevList.filter((id) => visibleIds.includes(id));
+
+      // Auto-enable camera button when camera module is added
+      const hasCameraModule = config?.modules?.some((m) => m.type === "camera");
+      if (
+        hasCameraModule &&
+        visibleIds.includes("camera") &&
+        !next.includes("camera")
+      ) {
+        console.log("Auto-enabling camera button");
+        next.push("camera");
+      }
+
+      // Auto-disable camera button when no camera modules exist
+      if (!hasCameraModule && next.includes("camera")) {
+        console.log("Auto-disabling camera button");
+        return next.filter((id) => id !== "camera");
+      }
+
       for (const id of NON_REMOVABLE_IDS) {
         if (visibleIds.includes(id) && !next.includes(id)) next.push(id);
       }
@@ -466,7 +494,7 @@ export default function SettingsButtonBar({
       if (next.length === 0) return visibleIds;
       return next;
     });
-  }, [visibleIds]);
+  }, [visibleIds, config?.modules]);
 
   /**
    * Keep button order in sync with enabled and available buttons

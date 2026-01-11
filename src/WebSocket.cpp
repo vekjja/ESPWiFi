@@ -12,108 +12,6 @@
 #include "freertos/task.h"
 
 // ============================================================================
-// Internal job structures for async operations
-// ============================================================================
-
-struct WebSocket::BroadcastJob {
-  WebSocket *ws;
-  httpd_ws_type_t type;
-  size_t len;
-  // payload bytes follow
-};
-
-struct WebSocket::SendJob {
-  WebSocket *ws;
-  int fd;
-  httpd_ws_type_t type;
-  size_t len;
-  // payload bytes follow
-};
-
-// ============================================================================
-// Async send helpers (queued via httpd_queue_work)
-// ============================================================================
-
-void WebSocket::sendToWorkTrampoline(void *arg) {
-  if (arg == nullptr) {
-    return;
-  }
-  WebSocket::SendJob *job = static_cast<WebSocket::SendJob *>(arg);
-  WebSocket *ws = job->ws;
-  const uint8_t *payload = (const uint8_t *)(job + 1);
-
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  if (ws != nullptr && ws->server_ != nullptr) {
-    httpd_ws_frame_t frame;
-    memset(&frame, 0, sizeof(frame));
-    frame.type = job->type;
-    frame.payload = (uint8_t *)payload;
-    frame.len = job->len;
-
-    esp_err_t err = httpd_ws_send_frame_async(ws->server_, job->fd, &frame);
-    if (err != ESP_OK) {
-      // Client disconnected; remove from tracked list
-      ws->removeClient_(job->fd);
-      if (ws->onDisconnect_) {
-        ws->onDisconnect_(ws, job->fd, ws->userCtx_);
-      }
-    }
-  }
-#else
-  (void)ws;
-  (void)payload;
-#endif
-
-  free(job);
-}
-
-void WebSocket::broadcastWorkTrampoline(void *arg) {
-  if (arg == nullptr) {
-    return;
-  }
-  BroadcastJob *job = static_cast<BroadcastJob *>(arg);
-  WebSocket *ws = job->ws;
-  const uint8_t *payload = (const uint8_t *)(job + 1);
-  if (ws != nullptr) {
-    ws->broadcastNow_(job->type, payload, job->len);
-  }
-  free(job);
-}
-
-void WebSocket::broadcastNow_(httpd_ws_type_t type, const uint8_t *payload,
-                              size_t len) {
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  if (server_ == nullptr) {
-    return;
-  }
-
-  httpd_ws_frame_t frame;
-  memset(&frame, 0, sizeof(frame));
-  frame.type = type;
-  frame.payload = (uint8_t *)payload;
-  frame.len = len;
-
-  // Send to all tracked clients; remove dead ones
-  for (size_t i = 0; i < clientCount_;) {
-    int fd = clientFds_[i];
-    esp_err_t err = httpd_ws_send_frame_async(server_, fd, &frame);
-    if (err != ESP_OK) {
-      if (onDisconnect_) {
-        onDisconnect_(this, fd, userCtx_);
-      }
-      removeClient_(fd);
-      continue; // don't increment i
-    }
-    ++i;
-  }
-#else
-  (void)type;
-  (void)payload;
-  (void)len;
-#endif
-}
-
-// ============================================================================
 // Helper: Get remote peer info
 // ============================================================================
 
@@ -405,6 +303,15 @@ esp_err_t WebSocket::sendText(int clientFd, const char *message) {
 }
 
 esp_err_t WebSocket::sendText(int clientFd, const char *message, size_t len) {
+#ifndef CONFIG_HTTPD_WS_SUPPORT
+  (void)clientFd;
+  (void)message;
+  (void)len;
+  return ESP_ERR_NOT_SUPPORTED;
+#else
+  if (!started_ || server_ == nullptr) {
+    return ESP_ERR_INVALID_STATE;
+  }
   if (message == nullptr && len > 0) {
     return ESP_ERR_INVALID_ARG;
   }
@@ -415,31 +322,34 @@ esp_err_t WebSocket::sendText(int clientFd, const char *message, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
+  // Direct async send - no job queue, no memcpy
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_TEXT;
+  frame.payload = (uint8_t *)message;
+  frame.len = len;
+
+  esp_err_t err = httpd_ws_send_frame_async(server_, clientFd, &frame);
+  if (err != ESP_OK) {
+    removeClient_(clientFd);
+    if (onDisconnect_) {
+      onDisconnect_(this, clientFd, userCtx_);
+    }
+  }
+  return err;
+#endif
+}
+
+esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)clientFd;
-  (void)message;
+  (void)data;
   (void)len;
   return ESP_ERR_NOT_SUPPORTED;
 #else
   if (!started_ || server_ == nullptr) {
     return ESP_ERR_INVALID_STATE;
   }
-
-  SendJob *job = (SendJob *)malloc(sizeof(SendJob) + len);
-  if (job == nullptr) {
-    return ESP_ERR_NO_MEM;
-  }
-  job->ws = this;
-  job->fd = clientFd;
-  job->type = HTTPD_WS_TYPE_TEXT;
-  job->len = len;
-  memcpy((uint8_t *)(job + 1), message, len);
-
-  return httpd_queue_work(server_, &WebSocket::sendToWorkTrampoline, job);
-#endif
-}
-
-esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
   if (data == nullptr && len > 0) {
     return ESP_ERR_INVALID_ARG;
   }
@@ -450,27 +360,21 @@ esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  (void)clientFd;
-  (void)data;
-  (void)len;
-  return ESP_ERR_NOT_SUPPORTED;
-#else
-  if (!started_ || server_ == nullptr) {
-    return ESP_ERR_INVALID_STATE;
-  }
+  // Direct async send - no job queue, no memcpy
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_BINARY;
+  frame.payload = (uint8_t *)data;
+  frame.len = len;
 
-  SendJob *job = (SendJob *)malloc(sizeof(SendJob) + len);
-  if (job == nullptr) {
-    return ESP_ERR_NO_MEM;
+  esp_err_t err = httpd_ws_send_frame_async(server_, clientFd, &frame);
+  if (err != ESP_OK) {
+    removeClient_(clientFd);
+    if (onDisconnect_) {
+      onDisconnect_(this, clientFd, userCtx_);
+    }
   }
-  job->ws = this;
-  job->fd = clientFd;
-  job->type = HTTPD_WS_TYPE_BINARY;
-  job->len = len;
-  memcpy((uint8_t *)(job + 1), data, len);
-
-  return httpd_queue_work(server_, &WebSocket::sendToWorkTrampoline, job);
+  return err;
 #endif
 }
 
@@ -500,16 +404,28 @@ esp_err_t WebSocket::broadcastText(const char *message, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  BroadcastJob *job = (BroadcastJob *)malloc(sizeof(BroadcastJob) + len);
-  if (job == nullptr) {
-    return ESP_ERR_NO_MEM;
-  }
-  job->ws = this;
-  job->type = HTTPD_WS_TYPE_TEXT;
-  job->len = len;
-  memcpy((uint8_t *)(job + 1), message, len);
+  // Direct broadcast - no job queue
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_TEXT;
+  frame.payload = (uint8_t *)message;
+  frame.len = len;
 
-  return httpd_queue_work(server_, &WebSocket::broadcastWorkTrampoline, job);
+  // Send to all clients
+  for (size_t i = 0; i < clientCount_;) {
+    int fd = clientFds_[i];
+    esp_err_t err = httpd_ws_send_frame_async(server_, fd, &frame);
+    if (err != ESP_OK) {
+      if (onDisconnect_) {
+        onDisconnect_(this, fd, userCtx_);
+      }
+      removeClient_(fd);
+      continue;
+    }
+    ++i;
+  }
+
+  return ESP_OK;
 #endif
 }
 
@@ -532,16 +448,28 @@ esp_err_t WebSocket::broadcastBinary(const uint8_t *data, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  BroadcastJob *job = (BroadcastJob *)malloc(sizeof(BroadcastJob) + len);
-  if (job == nullptr) {
-    return ESP_ERR_NO_MEM;
-  }
-  job->ws = this;
-  job->type = HTTPD_WS_TYPE_BINARY;
-  job->len = len;
-  memcpy((uint8_t *)(job + 1), data, len);
+  // Direct broadcast - no job queue
+  httpd_ws_frame_t frame;
+  memset(&frame, 0, sizeof(frame));
+  frame.type = HTTPD_WS_TYPE_BINARY;
+  frame.payload = (uint8_t *)data;
+  frame.len = len;
 
-  return httpd_queue_work(server_, &WebSocket::broadcastWorkTrampoline, job);
+  // Send to all clients
+  for (size_t i = 0; i < clientCount_;) {
+    int fd = clientFds_[i];
+    esp_err_t err = httpd_ws_send_frame_async(server_, fd, &frame);
+    if (err != ESP_OK) {
+      if (onDisconnect_) {
+        onDisconnect_(this, fd, userCtx_);
+      }
+      removeClient_(fd);
+      continue;
+    }
+    ++i;
+  }
+
+  return ESP_OK;
 #endif
 }
 

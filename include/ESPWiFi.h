@@ -264,21 +264,6 @@ public:
   void startCameraWebSocket();
 #endif
 
-  // Send binary data to cloud tunnel (if connected)
-  // Returns true if sent, false if cloud not available
-  bool sendToCloudTunnel(const uint8_t *data, size_t len);
-
-  // Cloud tunnel status queries
-  bool cloudTunnelEnabled() const;
-  bool cloudTunnelConnected() const;
-  bool cloudUIConnected() const;
-  const char *cloudUIWSURL() const;
-  const char *cloudDeviceWSURL() const;
-  uint32_t cloudRegisteredAtMs() const;
-
-  // Re-sync cloud tunnel from config (called after config changes)
-  void syncCloudTunnelFromConfig();
-
   // ---- Power Management
   void powerConfigHandler();
   void applyWiFiPowerSettings();
@@ -381,37 +366,23 @@ public:
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;
 
+// ---- Camera
 #if ESPWiFi_HAS_CAMERA
   WebSocket cameraSoc;
   bool cameraSocStarted = false;
-#endif
 
-  // CloudTunnel is managed internally by ControlSocket.cpp
-  // (declared as static to avoid exposing CloudTunnel.h in this header)
-
-// ---- Camera
-#if ESPWiFi_HAS_CAMERA
   sensor_t *camera = nullptr;
   void printCameraSettings();
-  // When true, camera init uses a low-bandwidth profile intended for cloud
-  // streaming over /ws/control (smaller frames, lower memory/throughput).
-  volatile bool cameraCloudMode_ = false;
-  // Camera streaming over /ws/control
-  //
-  // The camera stream is gated by an explicit subscription command so control
-  // JSON traffic isn't flooded with binary JPEG frames.
+
+  // Camera streaming subscribers
   static constexpr size_t kMaxCameraStreamSubscribers = 8;
   int cameraStreamSubFds_[kMaxCameraStreamSubscribers] = {0};
   volatile size_t cameraStreamSubCount_ = 0;
-  volatile bool cameraStreamCloudSubscribed_ = false;
-  volatile int cameraSnapshotFd_ =
-      0; // 0 = none, else fd (or WebSocket::kCloudClientFd)
 
   void setCameraStreamSubscribed(int clientFd, bool enable);
   void clearCameraStreamSubscribed(int clientFd);
-  void requestCameraSnapshot(int clientFd);
-#endif
-#endif
+#endif // ESPWiFi_HAS_CAMERA
+#endif // CONFIG_HTTPD_WS_SUPPORT
 
   // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();

@@ -68,12 +68,6 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
     JsonObject control = endpoints["control"].to<JsonObject>();
     control["uri"] = "/ws/control";
     control["started"] = ctrlSocStarted;
-    control["cloudEnabled"] = cloudTunnelEnabled();
-    control["cloudConnected"] = cloudTunnelConnected();
-    control["cloudUIConnected"] = cloudUIConnected();
-    control["ui_ws_url"] = std::string(cloudUIWSURL());
-    control["device_ws_url"] = std::string(cloudDeviceWSURL());
-    control["registered_at_ms"] = cloudRegisteredAtMs();
 #endif
   }
 

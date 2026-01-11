@@ -267,10 +267,6 @@ void ESPWiFi::handleConfigUpdate() {
     config = configUpdate;
     configUpdate.clear();
 
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-    syncCloudTunnelFromConfig();
-#endif
-
     if (wifiRestartRequested_) {
       wifiRestartRequested_ = false;
       log(INFO, "📶 WiFi config changed; restarting WiFi");

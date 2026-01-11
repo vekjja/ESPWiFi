@@ -59,12 +59,6 @@ private:
   void removeClient_(int fd);
   esp_err_t handleWsRequest(httpd_req_t *req);
 
-  struct BroadcastJob;
-  struct SendJob;
-  static void broadcastWorkTrampoline(void *arg);
-  static void sendToWorkTrampoline(void *arg);
-  void broadcastNow_(httpd_ws_type_t type, const uint8_t *payload, size_t len);
-
 public:
   WebSocket() = default;
   ~WebSocket();

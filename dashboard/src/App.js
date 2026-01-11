@@ -126,7 +126,6 @@ function App() {
   const [, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
-  const controlBinaryHandlersRef = useRef(new Set()); // For cloud tunnel camera snapshots
   const logsFetchRef = useRef({
     inProgress: false,
     expectOffset: null,
@@ -605,13 +604,6 @@ function App() {
     return lanControlUrl || null;
   }, [tunnelReady, controlUiUrl, lanControlUrl]);
 
-  // Determine if we're using cloud tunnel (for camera streaming)
-  const usingCloudTunnel = useMemo(() => {
-    return (
-      tunnelReady && controlWsUrl && controlWsUrl.includes("tnl.espwifi.io")
-    );
-  }, [tunnelReady, controlWsUrl]);
-
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
@@ -670,18 +662,6 @@ function App() {
         };
         ws.onmessage = (evt) => {
           try {
-            // Binary frames (camera snapshots for cloud tunnel only)
-            if (evt?.data instanceof ArrayBuffer) {
-              controlBinaryHandlersRef.current.forEach((fn) => {
-                try {
-                  fn(evt.data);
-                } catch {
-                  // ignore
-                }
-              });
-              return;
-            }
-
             const msg = JSON.parse(evt?.data || "{}");
             if (msg?.cmd === "get_config" && msg?.config) {
               setConfig(msg.config);
@@ -873,18 +853,6 @@ function App() {
     [apiURL]
   );
 
-  const registerControlBinaryHandler = useCallback((fn) => {
-    if (typeof fn !== "function") return () => {};
-    controlBinaryHandlersRef.current.add(fn);
-    return () => {
-      try {
-        controlBinaryHandlersRef.current.delete(fn);
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
   /**
    * Get RSSI color based on signal strength
    * @param {number} rssi - The RSSI value in dBm
@@ -1057,9 +1025,6 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={deviceOnline}
-            usingCloudTunnel={usingCloudTunnel}
-            cloudTunnelWsRef={controlWsRef}
-            registerCloudBinaryHandler={registerControlBinaryHandler}
           />
         </Suspense>
       </Container>

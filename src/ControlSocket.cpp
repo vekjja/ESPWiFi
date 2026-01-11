@@ -1,14 +1,10 @@
-// ControlSocket.cpp - Control WebSocket endpoint for cloud/pairing
+// ControlSocket.cpp - Control WebSocket endpoint for LAN
 #include "ESPWiFi.h"
-#include <CloudTunnel.h>
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 
 // For get_rssi
 #include "esp_wifi.h"
-
-// Cloud tunnel instance for /ws/control endpoint
-static CloudTunnel *s_controlCloudTunnel = nullptr;
 
 static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                           const uint8_t *data, size_t len, void *userCtx) {
@@ -40,11 +36,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["ip"] = espwifi->ipAddress();
       resp["hostname"] = espwifi->config["hostname"].as<std::string>();
       resp["wifiMode"] = espwifi->config["wifi"]["mode"].as<std::string>();
-      resp["cloudTunnelEnabled"] =
-          espwifi->config["cloudTunnel"]["enabled"].as<bool>();
     } else if (strcmp(cmd, "get_config") == 0) {
-      // Return full config over the tunnel so the dashboard can operate in
-      // paired/cloud mode without making mixed-content HTTP calls.
       resp["config"] = espwifi->config;
     } else if (strcmp(cmd, "get_info") == 0) {
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
@@ -54,7 +46,6 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["code"] = espwifi->getClaimCode(rotate);
       resp["expires_in_ms"] = espwifi->claimExpiresInMs();
     } else if (strcmp(cmd, "get_rssi") == 0) {
-      // Return current RSSI (and SSID if available) as a simple control cmd.
       wifi_ap_record_t ap_info;
       if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
         char ssid_str[33];
@@ -96,27 +87,6 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
           resp.remove("data");
         }
       }
-    } else if (strcmp(cmd, "camera_subscribe") == 0 ||
-               strcmp(cmd, "camera_snapshot") == 0) {
-      // Camera commands for cloud tunnel only (LAN uses /ws/camera)
-#if ESPWiFi_HAS_CAMERA
-      if (clientFd != CloudTunnel::kCloudClientFd) {
-        resp["ok"] = false;
-        resp["error"] = "use_ws_camera_for_lan";
-      } else if (strcmp(cmd, "camera_subscribe") == 0) {
-        const bool enable =
-            req["enable"].isNull() ? true : req["enable"].as<bool>();
-        espwifi->setCameraStreamSubscribed(clientFd, enable);
-        resp["enabled"] = enable;
-      } else {
-        // camera_snapshot
-        espwifi->requestCameraSnapshot(clientFd);
-        resp["queued"] = true;
-      }
-#else
-      resp["ok"] = false;
-      resp["error"] = "camera_not_available";
-#endif
     } else if (strcmp(cmd, "set_config") == 0) {
       // Merge and apply config updates on the main loop.
       if (!req["config"].is<JsonObject>() && !req["config"].is<JsonArray>()) {
@@ -139,22 +109,12 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
   std::string out;
   serializeJson(resp, out);
 
-  // Send response to the appropriate destination
-  if (clientFd == CloudTunnel::kCloudClientFd) {
-    // Cloud request - send back via cloud tunnel
-    if (s_controlCloudTunnel && s_controlCloudTunnel->connected()) {
-      s_controlCloudTunnel->sendText(out.c_str(), out.size());
-    }
+  // Send response back to client
+  // Broadcast RSSI for heartbeat visibility, otherwise send to requester only
+  if (resp["cmd"] == "get_rssi") {
+    (void)ws->broadcastText(out.c_str(), out.size());
   } else {
-    // LAN request - send back via WebSocket
-    // Default: reply only to the requesting client (prevents cross-UI leakage).
-    // Exception: `get_rssi` is intentionally broadcast so a CLI `wscat` session
-    // can see it as a simple heartbeat while the UI is polling RSSI.
-    if (resp["cmd"] == "get_rssi") {
-      (void)ws->broadcastText(out.c_str(), out.size());
-    } else {
-      (void)ws->sendText(clientFd, out.c_str(), out.size());
-    }
+    (void)ws->sendText(clientFd, out.c_str(), out.size());
   }
 }
 
@@ -175,36 +135,7 @@ static void ctrlOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
   (void)ws;
   (void)clientFd;
   (void)userCtx;
-  // No cleanup needed - camera has its own socket
-}
-
-// Cloud tunnel callbacks - simple forwarding
-static void cloudOnMessage(httpd_ws_type_t type, const uint8_t *data,
-                           size_t len, void *userCtx) {
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!espwifi) {
-    return;
-  }
-  ctrlOnMessage(&espwifi->ctrlSoc, CloudTunnel::kCloudClientFd, type, data, len,
-                userCtx);
-}
-
-static void cloudOnConnect(void *userCtx) {
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!espwifi) {
-    return;
-  }
-  espwifi->log(INFO, "☁️ Control tunnel connected");
-  ctrlOnConnect(&espwifi->ctrlSoc, CloudTunnel::kCloudClientFd, userCtx);
-}
-
-static void cloudOnDisconnect(void *userCtx) {
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!espwifi) {
-    return;
-  }
-  espwifi->log(INFO, "☁️ Control tunnel disconnected");
-  ctrlOnDisconnect(&espwifi->ctrlSoc, CloudTunnel::kCloudClientFd, userCtx);
+  // No cleanup needed
 }
 
 // Auth check helper for WebSocket
@@ -251,132 +182,6 @@ void ESPWiFi::startControlWebSocket() {
     return;
   }
 
-  // Setup cloud tunnel if configured
-  const bool enabled = config["cloudTunnel"]["enabled"].isNull()
-                           ? false
-                           : config["cloudTunnel"]["enabled"].as<bool>();
-  const char *baseUrl = config["cloudTunnel"]["baseUrl"].as<const char *>();
-  const char *tokenC = config["auth"]["token"].as<const char *>();
-  std::string token = (tokenC != nullptr) ? std::string(tokenC) : "";
-
-  // Generate token if needed for cloud tunnel
-  if (enabled && token.empty()) {
-    token = generateToken();
-    config["auth"]["token"] = token;
-    requestConfigSave();
-    log(INFO, "☁️ Generated auth token for cloud tunnel");
-  }
-
-  // Single-tunnel architecture: ONLY /ws/control is cloud-tunneled
-  const bool shouldTunnel = enabled;
-
-  if (shouldTunnel && baseUrl != nullptr && baseUrl[0] != '\0') {
-    if (s_controlCloudTunnel == nullptr) {
-      s_controlCloudTunnel = new CloudTunnel();
-    }
-
-    const std::string hostname = getHostname();
-    s_controlCloudTunnel->configure(baseUrl, hostname.c_str(), token.c_str(),
-                                    "ws_control");
-    s_controlCloudTunnel->setCallbacks(cloudOnMessage, cloudOnConnect,
-                                       cloudOnDisconnect, this);
-    s_controlCloudTunnel->setEnabled(true);
-
-    log(INFO, "☁️ Control tunnel configured: %s", baseUrl);
-  }
-#endif
-}
-
-// Helper to send binary data to cloud tunnel
-bool ESPWiFi::sendToCloudTunnel(const uint8_t *data, size_t len) {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  (void)data;
-  (void)len;
-  return false;
-#else
-  if (s_controlCloudTunnel && s_controlCloudTunnel->connected()) {
-    return s_controlCloudTunnel->sendBinary(data, len) == ESP_OK;
-  }
-  return false;
-#endif
-}
-
-// Cloud tunnel status queries
-bool ESPWiFi::cloudTunnelEnabled() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return false;
-#else
-  return s_controlCloudTunnel && s_controlCloudTunnel->enabled();
-#endif
-}
-
-bool ESPWiFi::cloudTunnelConnected() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return false;
-#else
-  return s_controlCloudTunnel && s_controlCloudTunnel->connected();
-#endif
-}
-
-bool ESPWiFi::cloudUIConnected() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return false;
-#else
-  return s_controlCloudTunnel && s_controlCloudTunnel->uiConnected();
-#endif
-}
-
-const char *ESPWiFi::cloudUIWSURL() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return "";
-#else
-  return s_controlCloudTunnel ? s_controlCloudTunnel->uiWSURL() : "";
-#endif
-}
-
-const char *ESPWiFi::cloudDeviceWSURL() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return "";
-#else
-  return s_controlCloudTunnel ? s_controlCloudTunnel->deviceWSURL() : "";
-#endif
-}
-
-uint32_t ESPWiFi::cloudRegisteredAtMs() const {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return 0;
-#else
-  return s_controlCloudTunnel ? s_controlCloudTunnel->registeredAtMs() : 0;
-#endif
-}
-
-void ESPWiFi::syncCloudTunnelFromConfig() {
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  if (!ctrlSocStarted || !s_controlCloudTunnel) {
-    return;
-  }
-
-  const bool enabled = config["cloudTunnel"]["enabled"].isNull()
-                           ? false
-                           : config["cloudTunnel"]["enabled"].as<bool>();
-  const char *baseUrl = config["cloudTunnel"]["baseUrl"].as<const char *>();
-  const char *tokenC = config["auth"]["token"].as<const char *>();
-  std::string token = (tokenC != nullptr) ? std::string(tokenC) : "";
-
-  if (enabled && token.empty()) {
-    token = generateToken();
-    config["auth"]["token"] = token;
-    requestConfigSave();
-    log(INFO, "☁️ Generated auth token for cloud tunnel");
-  }
-
-  if (enabled && baseUrl != nullptr && baseUrl[0] != '\0') {
-    const std::string hostname = getHostname();
-    s_controlCloudTunnel->configure(baseUrl, hostname.c_str(), token.c_str(),
-                                    "ws_control");
-    s_controlCloudTunnel->setEnabled(true);
-  } else {
-    s_controlCloudTunnel->setEnabled(false);
-  }
+  log(INFO, "🎛️ Control WebSocket started: /ws/control");
 #endif
 }

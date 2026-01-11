@@ -16,9 +16,6 @@ export default function CameraModule({
   onDelete,
   deviceOnline = true,
   saveConfigToDevice,
-  usingCloudTunnel = false,
-  cloudTunnelWsRef = null,
-  registerCloudBinaryHandler = null,
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
@@ -30,8 +27,6 @@ export default function CameraModule({
   });
 
   const wsRef = useRef(null);
-  const cloudUnsubRef = useRef(null);
-  const pendingSnapshotRef = useRef(false);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
@@ -44,54 +39,6 @@ export default function CameraModule({
   }, [config?.name]);
 
   const handleStartStream = () => {
-    // Cloud tunnel: use control tunnel WebSocket
-    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
-      const ws = cloudTunnelWsRef.current;
-      if (ws.readyState !== WebSocket.OPEN) {
-        console.error("Cloud tunnel not connected");
-        return;
-      }
-
-      // Register binary handler for cloud camera frames
-      if (
-        typeof registerCloudBinaryHandler === "function" &&
-        !cloudUnsubRef.current
-      ) {
-        cloudUnsubRef.current = registerCloudBinaryHandler((ab) => {
-          if (!(ab instanceof ArrayBuffer)) return;
-
-          // Handle snapshot
-          if (pendingSnapshotRef.current) {
-            pendingSnapshotRef.current = false;
-            const blob = new Blob([ab], { type: "image/jpeg" });
-            const objectUrl = URL.createObjectURL(blob);
-            window.open(objectUrl, "_blank");
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
-            return;
-          }
-
-          // Handle streaming
-          const blob = new Blob([ab], { type: "image/jpeg" });
-          const objectURL = URL.createObjectURL(blob);
-          if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-            URL.revokeObjectURL(imageUrlRef.current);
-          }
-          imageUrlRef.current = objectURL;
-          setImageUrl(objectURL);
-        });
-      }
-
-      // Subscribe via control socket
-      try {
-        ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: true }));
-      } catch (err) {
-        console.error("Failed to subscribe to cloud camera:", err);
-        return;
-      }
-      setIsStreaming(true);
-      return;
-    }
-
     // LAN: connect to /ws/camera
     const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
     const cameraWsUrl = buildWebSocketUrl("/ws/camera", mdnsHostname || null);
@@ -139,39 +86,7 @@ export default function CameraModule({
   };
 
   const handleStopStream = () => {
-    // Cloud tunnel: unsubscribe
-    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
-      const ws = cloudTunnelWsRef.current;
-      if (ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: false }));
-        } catch {
-          // ignore
-        }
-      }
-
-      // Unregister binary handler
-      if (cloudUnsubRef.current) {
-        try {
-          cloudUnsubRef.current();
-        } catch {
-          // ignore
-        }
-        cloudUnsubRef.current = null;
-      }
-
-      setIsStreaming(false);
-
-      // Clean up image URL
-      if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-        URL.revokeObjectURL(imageUrlRef.current);
-        imageUrlRef.current = "";
-        setImageUrl("");
-      }
-      return;
-    }
-
-    // LAN: close WebSocket
+    // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -184,40 +99,6 @@ export default function CameraModule({
       imageUrlRef.current = "";
       setImageUrl("");
     }
-  };
-
-  const handleSnapshot = async () => {
-    // Cloud tunnel: request snapshot via control socket
-    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
-      const ws = cloudTunnelWsRef.current;
-      if (ws.readyState === WebSocket.OPEN) {
-        // Register handler if not already registered
-        if (
-          !cloudUnsubRef.current &&
-          typeof registerCloudBinaryHandler === "function"
-        ) {
-          cloudUnsubRef.current = registerCloudBinaryHandler((ab) => {
-            if (!(ab instanceof ArrayBuffer)) return;
-            if (!pendingSnapshotRef.current) return;
-            pendingSnapshotRef.current = false;
-            const blob = new Blob([ab], { type: "image/jpeg" });
-            const objectUrl = URL.createObjectURL(blob);
-            window.open(objectUrl, "_blank");
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
-          });
-        }
-        pendingSnapshotRef.current = true;
-        try {
-          ws.send(JSON.stringify({ cmd: "camera_snapshot" }));
-        } catch (err) {
-          console.error("Failed to request snapshot:", err);
-        }
-      }
-      return;
-    }
-
-    // LAN: snapshot not supported on /ws/camera (binary only)
-    console.warn("Snapshot not supported for LAN streaming yet");
   };
 
   const handleDeleteModule = () => {
@@ -266,8 +147,11 @@ export default function CameraModule({
     }
   };
 
+  const handleSnapshot = async () => {
+    console.warn("Snapshot not yet implemented for LAN mode");
+  };
+
   const handleOpenSettings = () => {
-    // Set settings data (no URL configuration)
     setSettingsData({
       name: config?.name || "",
     });
@@ -279,12 +163,11 @@ export default function CameraModule({
     setSettingsModalOpen(false);
   };
 
-  const handleSaveSettings = () => {
-    // Update the module config with the new name only
-    if (onUpdate && moduleKey) {
-      console.log(`📷 Saving camera settings - Name: ${settingsData.name}`);
+  const handleSaveSettings = (updatedData) => {
+    console.log(`📷 Saving camera settings - data:`, updatedData);
+    if (onUpdate && moduleKey && updatedData) {
       onUpdate(moduleKey, {
-        name: settingsData.name,
+        name: updatedData.name,
       });
     }
     handleCloseSettings();
@@ -293,7 +176,6 @@ export default function CameraModule({
   // Listen for fullscreen changes
   useEffect(() => {
     const handleFullscreenChange = () => {
-      // Check for fullscreen across all browser prefixes
       const isFullscreenActive =
         document.fullscreenElement ||
         document.webkitFullscreenElement ||
@@ -303,7 +185,6 @@ export default function CameraModule({
       setIsFullscreen(!!isFullscreenActive);
     };
 
-    // Add listeners for all browser prefixes
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
     document.addEventListener("mozfullscreenchange", handleFullscreenChange);
@@ -329,7 +210,6 @@ export default function CameraModule({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Mark component as unmounted to prevent further API calls
       isMountedRef.current = false;
 
       // Clean up object URL

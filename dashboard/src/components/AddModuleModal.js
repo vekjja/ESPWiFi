@@ -182,24 +182,19 @@ export default function AddModuleModal({
   };
 
   const handleSaveCamera = () => {
-    // No validation needed - camera always uses /ws/control
     const existingModules = config.modules || [];
     const newCamera = {
       type: "camera",
-      name:
-        cameraData.name ||
-        `Camera ${
-          existingModules.filter((m) => m.type === "camera").length + 1
-        }`,
+      name: cameraData.name || "Camera",
       key: generateUniqueKey(existingModules),
     };
 
     const updatedModules = [...existingModules, newCamera];
     const configToSave = { ...config, modules: updatedModules };
-    saveConfig(configToSave); // Update local config
-    saveConfigToDevice(configToSave); // Save to device
+    saveConfig(configToSave);
+    saveConfigToDevice(configToSave);
     handleCloseCameraModal();
-    onClose(); // Close the main Add Module modal
+    onClose();
   };
 
   return (

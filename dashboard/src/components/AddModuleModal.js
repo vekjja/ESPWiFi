@@ -51,8 +51,6 @@ export default function AddModuleModal({
 
   const [cameraData, setCameraData] = useState({
     name: "",
-    url: "/ws/camera",
-    frameRate: 10,
   });
 
   const handleOpenPinModal = () => {
@@ -82,8 +80,6 @@ export default function AddModuleModal({
   const handleOpenCameraModal = () => {
     setCameraData({
       name: "",
-      url: "/ws/camera",
-      frameRate: 10,
     });
     setCameraModalOpen(true);
   };
@@ -186,22 +182,15 @@ export default function AddModuleModal({
   };
 
   const handleSaveCamera = () => {
-    // Validate required fields
-    if (!cameraData.url || cameraData.url.trim() === "") {
-      alert("Please enter a camera URL");
-      return;
-    }
-
+    // No validation needed - camera always uses /ws/control
     const existingModules = config.modules || [];
     const newCamera = {
       type: "camera",
-      url: cameraData.url.trim(),
       name:
         cameraData.name ||
         `Camera ${
           existingModules.filter((m) => m.type === "camera").length + 1
         }`,
-      frameRate: cameraData.frameRate,
       key: generateUniqueKey(existingModules),
     };
 

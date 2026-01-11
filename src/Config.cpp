@@ -191,7 +191,7 @@ void ESPWiFi::saveConfig() {
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);
   }
-  log(DEBUG, "⚙️\n%s", prettyConfig());
+  // log(DEBUG, "⚙️\n%s", prettyConfig());
 
   configNeedsSave = false;
 }
@@ -268,10 +268,7 @@ void ESPWiFi::handleConfigUpdate() {
     configUpdate.clear();
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
-    // Apply cloud tunnel config changes immediately to active websocket
-    // endpoints. This allows UI enable/disable to take effect without
-    // rebooting.
-    ctrlSoc.syncCloudTunnelFromConfig();
+    syncCloudTunnelFromConfig();
 #endif
 
     if (wifiRestartRequested_) {

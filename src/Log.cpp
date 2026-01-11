@@ -81,6 +81,9 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
   if (tagEquals(tag, tagLen, "mdns") || tagEquals(tag, tagLen, "mdns_mem")) {
     return "🏷️";
   }
+  if (tagEquals(tag, tagLen, "websocket_client")) {
+    return "🌐";
+  }
   if (tagEquals(tag, tagLen, "cam_hal") || tagEquals(tag, tagLen, "camera") ||
       tagEquals(tag, tagLen, "esp_camera") ||
       tagEquals(tag, tagLen, "s3 ll_cam") ||
@@ -88,8 +91,12 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
     return "📷";
   }
   if (tagEquals(tag, tagLen, "BTDM_INIT") || tagEquals(tag, tagLen, "BT") ||
-      tagEquals(tag, tagLen, "NimBLE") || tagEquals(tag, tagLen, "nimble")) {
+      tagEquals(tag, tagLen, "BLE_INIT") || tagEquals(tag, tagLen, "NimBLE") ||
+      tagEquals(tag, tagLen, "nimble")) {
     return "🔵";
+  }
+  if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
+    return "🔐";
   }
   return "";
 }

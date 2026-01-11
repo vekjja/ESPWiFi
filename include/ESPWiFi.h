@@ -259,6 +259,26 @@ public:
   // ---- Control WebSocket (for cloud/pairing control channel)
   void startControlWebSocket();
 
+#if ESPWiFi_HAS_CAMERA
+  // ---- Camera WebSocket (for LAN streaming)
+  void startCameraWebSocket();
+#endif
+
+  // Send binary data to cloud tunnel (if connected)
+  // Returns true if sent, false if cloud not available
+  bool sendToCloudTunnel(const uint8_t *data, size_t len);
+
+  // Cloud tunnel status queries
+  bool cloudTunnelEnabled() const;
+  bool cloudTunnelConnected() const;
+  bool cloudUIConnected() const;
+  const char *cloudUIWSURL() const;
+  const char *cloudDeviceWSURL() const;
+  uint32_t cloudRegisteredAtMs() const;
+
+  // Re-sync cloud tunnel from config (called after config changes)
+  void syncCloudTunnelFromConfig();
+
   // ---- Power Management
   void powerConfigHandler();
   void applyWiFiPowerSettings();
@@ -360,6 +380,14 @@ public:
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;
+
+#if ESPWiFi_HAS_CAMERA
+  WebSocket cameraSoc;
+  bool cameraSocStarted = false;
+#endif
+
+  // CloudTunnel is managed internally by ControlSocket.cpp
+  // (declared as static to avoid exposing CloudTunnel.h in this header)
 
 // ---- Camera
 #if ESPWiFi_HAS_CAMERA

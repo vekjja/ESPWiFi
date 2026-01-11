@@ -24,6 +24,8 @@
 
 // Always include project header; it conditionally pulls in esp_camera only when
 // a camera model is selected, and defines ESPWiFi_HAS_CAMERA.
+#include <CloudTunnel.h>
+
 #include "ESPWiFi.h"
 
 // Only compile when a camera model is selected
@@ -54,6 +56,9 @@
 // ============================================================================
 
 static SemaphoreHandle_t s_camMutex = nullptr; ///< Mutex for concurrent access
+static uint32_t s_lastInitAttemptMs = 0;       ///< Last init attempt timestamp
+static uint32_t s_initBackoffMs = 0;           ///< Current backoff delay
+static uint8_t s_consecutiveInitFailures = 0;  ///< Failed init attempts
 
 // ============================================================================
 // Camera Mutex Helpers
@@ -116,8 +121,8 @@ static void giveCamMutex_() {
  * - User configuration (frame rate, quality)
  *
  * This function is idempotent and thread-safe. Multiple calls return quickly
- * if already initialized. Uses a re-entrancy guard to prevent concurrent
- * initialization attempts.
+ * if already initialized. Uses exponential backoff after failures to allow
+ * PSRAM to defragment and hardware to stabilize.
  *
  * @return true if camera is initialized (or was already), false on failure
  *
@@ -130,14 +135,19 @@ bool ESPWiFi::initCamera() {
     return true;
   }
 
-  // Re-entrancy guard: camera init can be called from multiple contexts
-  // (config handler, HTTP route, startup sequence)
+  // Exponential backoff after failures to allow PSRAM/hardware to recover
+  const uint32_t nowMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+  if (s_initBackoffMs > 0 && (nowMs - s_lastInitAttemptMs) < s_initBackoffMs) {
+    return false; // Still in backoff period
+  }
+
+  // Re-entrancy guard: prevent concurrent init attempts
   static bool initInProgress = false;
   if (initInProgress) {
-    log(WARNING, "📷 Camera initialization already in progress");
     return false;
   }
   initInProgress = true;
+  s_lastInitAttemptMs = nowMs;
 
   log(INFO, "📷 Initializing Camera");
 
@@ -155,12 +165,9 @@ bool ESPWiFi::initCamera() {
     // Each SVGA frame buffer is ~96KB, we need at least 2 buffers
     const size_t minRequiredPSRAM = 200 * 1024; // 200KB safety margin
     if (freePSRAM < minRequiredPSRAM) {
-      // With SCT enabled (TLS tunnels), PSRAM can be tight. Don't hard-fail:
-      // fall back to DRAM settings (lower resolution, single buffer) so the
-      // camera can still function.
       log(WARNING,
-          "📷 Low PSRAM for camera (%u bytes free; need %u). Falling back to "
-          "DRAM mode.",
+          "📷 Insufficient PSRAM for camera (%u bytes free; need %u). Falling "
+          "back to DRAM mode.",
           freePSRAM, minRequiredPSRAM);
       usingPSRAM = false;
     }
@@ -170,6 +177,11 @@ bool ESPWiFi::initCamera() {
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
     log(ERROR, "📷 Camera mutex timeout during init");
     initInProgress = false;
+    // Apply backoff
+    s_consecutiveInitFailures++;
+    s_initBackoffMs = 1000 << (s_consecutiveInitFailures > 4
+                                   ? 4
+                                   : s_consecutiveInitFailures); // Max 16s
     return false;
   }
 
@@ -180,6 +192,8 @@ bool ESPWiFi::initCamera() {
     camera = s; // Cache the sensor pointer
     giveCamMutex_();
     initInProgress = false;
+    s_consecutiveInitFailures = 0;
+    s_initBackoffMs = 0;
     return true;
   }
 
@@ -191,43 +205,46 @@ bool ESPWiFi::initCamera() {
   cam.ledc_timer = LEDC_TIMER_0;
 
   // Pin configuration from CameraPins.h (based on CAMERA_MODEL_* build flag)
-  // These mappings are specific to each camera module/board variant
-  cam.pin_d0 = Y2_GPIO_NUM;         // Data bit 0
-  cam.pin_d1 = Y3_GPIO_NUM;         // Data bit 1
-  cam.pin_d2 = Y4_GPIO_NUM;         // Data bit 2
-  cam.pin_d3 = Y5_GPIO_NUM;         // Data bit 3
-  cam.pin_d4 = Y6_GPIO_NUM;         // Data bit 4
-  cam.pin_d5 = Y7_GPIO_NUM;         // Data bit 5
-  cam.pin_d6 = Y8_GPIO_NUM;         // Data bit 6
-  cam.pin_d7 = Y9_GPIO_NUM;         // Data bit 7
-  cam.pin_xclk = XCLK_GPIO_NUM;     // External clock
-  cam.pin_pclk = PCLK_GPIO_NUM;     // Pixel clock
-  cam.pin_vsync = VSYNC_GPIO_NUM;   // Vertical sync
-  cam.pin_href = HREF_GPIO_NUM;     // Horizontal reference
-  cam.pin_sccb_sda = SIOD_GPIO_NUM; // I2C data (SCCB protocol)
-  cam.pin_sccb_scl = SIOC_GPIO_NUM; // I2C clock (SCCB protocol)
-  cam.pin_pwdn = PWDN_GPIO_NUM;     // Power down pin
-  cam.pin_reset = RESET_GPIO_NUM;   // Reset pin
+  cam.pin_d0 = Y2_GPIO_NUM;
+  cam.pin_d1 = Y3_GPIO_NUM;
+  cam.pin_d2 = Y4_GPIO_NUM;
+  cam.pin_d3 = Y5_GPIO_NUM;
+  cam.pin_d4 = Y6_GPIO_NUM;
+  cam.pin_d5 = Y7_GPIO_NUM;
+  cam.pin_d6 = Y8_GPIO_NUM;
+  cam.pin_d7 = Y9_GPIO_NUM;
+  cam.pin_xclk = XCLK_GPIO_NUM;
+  cam.pin_pclk = PCLK_GPIO_NUM;
+  cam.pin_vsync = VSYNC_GPIO_NUM;
+  cam.pin_href = HREF_GPIO_NUM;
+  cam.pin_sccb_sda = SIOD_GPIO_NUM;
+  cam.pin_sccb_scl = SIOC_GPIO_NUM;
+  cam.pin_pwdn = PWDN_GPIO_NUM;
+  cam.pin_reset = RESET_GPIO_NUM;
 
   // Clock frequency: 20MHz is conservative and widely compatible
-  // Some sensors support up to 24MHz, but 20MHz provides better stability
   cam.xclk_freq_hz = 20000000;
 
   // Output format: JPEG for efficient wireless transmission
   cam.pixel_format = PIXFORMAT_JPEG;
 
   // Adaptive buffering based on PSRAM availability
-  // PSRAM allows larger frames and multiple buffers for smoother streaming
-  // ESP-IDF: Use esp_psram_is_initialized() instead of Arduino's psramFound()
-  // Note: usingPSRAM was already checked above
   if (usingPSRAM) {
-    cam.frame_size = FRAMESIZE_SVGA;      // 800x600
-    cam.jpeg_quality = 15;                // Lower = better quality (0-63)
-    cam.fb_count = 2;                     // Double buffering
-    cam.fb_location = CAMERA_FB_IN_PSRAM; // Store in external RAM
-    cam.grab_mode = CAMERA_GRAB_LATEST;   // Discard old frames
-
-    log(INFO, "📷 Using PSRAM: frame_size=SVGA, quality=15, buffers=2");
+    // For cloud streaming, use smaller frames to avoid tunnel overflow
+    if (cameraCloudMode_) {
+      cam.frame_size = FRAMESIZE_QVGA; // 320x240 for cloud
+      cam.jpeg_quality = 30;           // More compression
+      cam.fb_count = 1;                // Single buffer
+      log(INFO, "📷 Cloud mode: frame_size=QVGA, quality=30, buffers=1");
+    } else {
+      cam.frame_size = FRAMESIZE_SVGA; // 800x600 for LAN
+      cam.jpeg_quality = 15;           // Better quality
+      cam.fb_count = 1;                // Single buffer (prevents FB-OVF)
+      log(INFO, "📷 LAN mode: frame_size=SVGA, quality=15, buffers=1");
+    }
+    cam.fb_location = CAMERA_FB_IN_PSRAM;
+    cam.grab_mode =
+        CAMERA_GRAB_LATEST; // Always get latest frame, drop old ones
   } else {
     // Without PSRAM, use smaller frames and single buffer
     cam.frame_size = FRAMESIZE_QVGA;     // 320x240
@@ -239,16 +256,6 @@ bool ESPWiFi::initCamera() {
     log(INFO, "📷 No PSRAM: frame_size=QVGA, quality=25, buffers=1");
   }
 
-  // Cloud mode profile: reduce bandwidth/latency to keep the tunnel stable.
-  if (cameraCloudMode_) {
-    cam.frame_size = FRAMESIZE_QVGA; // 320x240 (much smaller frames)
-    cam.jpeg_quality = 30;           // more compression (smaller)
-    cam.fb_count = 1;                // single buffer to reduce memory
-    cam.fb_location = usingPSRAM ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
-    cam.grab_mode = CAMERA_GRAB_LATEST;
-    log(INFO, "📷 Cloud mode: frame_size=QVGA, quality=30, buffers=1");
-  }
-
   // Extract frame rate from configuration (with bounds checking)
   int frameRate = config["camera"]["frameRate"].isNull()
                       ? CAM_DEFAULT_FPS
@@ -256,21 +263,14 @@ bool ESPWiFi::initCamera() {
 
   // Clamp to safe range
   if (frameRate < CAM_MIN_FPS) {
-    log(WARNING, "📷 Frame rate %d too low, clamping to %d", frameRate,
-        CAM_MIN_FPS);
     frameRate = CAM_MIN_FPS;
   }
   if (frameRate > CAM_MAX_FPS) {
-    log(WARNING, "📷 Frame rate %d too high, clamping to %d", frameRate,
-        CAM_MAX_FPS);
     frameRate = CAM_MAX_FPS;
   }
 
-  // log(INFO, "📷 Target frame rate: %d FPS", frameRate);
-
   // Initialize the camera driver
   // Note: We do NOT use ESP_ERROR_CHECK here to avoid aborting on failure
-  // [[memory:12698303]]
   esp_err_t err = esp_camera_init(&cam);
   if (err != ESP_OK) {
     const char *errName = esp_err_to_name(err);
@@ -281,6 +281,13 @@ bool ESPWiFi::initCamera() {
 
     giveCamMutex_();
     initInProgress = false;
+
+    // Apply exponential backoff: 1s, 2s, 4s, 8s, 16s
+    s_consecutiveInitFailures++;
+    s_initBackoffMs =
+        1000 << (s_consecutiveInitFailures > 4 ? 4 : s_consecutiveInitFailures);
+    log(WARNING, "📷 Init failed %d times, backing off for %u ms",
+        s_consecutiveInitFailures, s_initBackoffMs);
     return false;
   }
 
@@ -291,6 +298,10 @@ bool ESPWiFi::initCamera() {
     (void)esp_camera_deinit();
     giveCamMutex_();
     initInProgress = false;
+
+    s_consecutiveInitFailures++;
+    s_initBackoffMs =
+        1000 << (s_consecutiveInitFailures > 4 ? 4 : s_consecutiveInitFailures);
     return false;
   }
 
@@ -299,6 +310,10 @@ bool ESPWiFi::initCamera() {
 
   giveCamMutex_();
   initInProgress = false;
+
+  // Reset backoff on success
+  s_consecutiveInitFailures = 0;
+  s_initBackoffMs = 0;
 
   log(INFO, "📷 Camera initialized (%s, %d FPS)", usingPSRAM ? "PSRAM" : "DRAM",
       frameRate);
@@ -310,10 +325,10 @@ bool ESPWiFi::initCamera() {
  * @brief Deinitialize camera hardware and driver
  *
  * Cleanly shuts down the camera subsystem:
- * 1. Closes all active WebSocket connections
- * 2. Clears frame buffers to prevent stale data
- * 3. Deinitializes the camera driver
- * 4. Resets internal state flags
+ * 1. Clears frame buffers to prevent stale data
+ * 2. Deinitializes the camera driver
+ * 3. Resets internal state flags
+ * 4. Allows hardware and PSRAM to settle before reuse
  *
  * This is safe to call even if camera is not initialized (no-op).
  * Mutex-protected to prevent concurrent access during shutdown.
@@ -324,24 +339,28 @@ void ESPWiFi::deinitCamera() {
     return;
   }
 
-  log(INFO, "📷 Deinitializing camera");
-
-  // Acquire mutex for shutdown to prevent streaming interference
+  // Acquire mutex for shutdown to prevent concurrent deinit
   if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_INIT_MS))) {
-    log(WARNING, "📷 Camera mutex timeout during deinit, proceeding anyway");
-    // Continue anyway - we need to clean up
+    // If we can't get mutex, another thread is likely already deiniting
+    return;
   }
 
+  // Double-check after acquiring mutex
+  if (camera == nullptr) {
+    giveCamMutex_();
+    return;
+  }
+
+  log(INFO, "📷 Deinitializing camera");
+
   // Clear any pending frames from buffer before deinit
-  // This must be done while driver is still valid
   log(DEBUG, "📷 Clearing frame buffers before deinit");
   for (int i = 0; i < 3; i++) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (fb) {
       esp_camera_fb_return(fb);
-      log(VERBOSE, "📷 Freed frame buffer %d", i + 1);
     } else {
-      break; // No more frames
+      break;
     }
     feedWatchDog(1);
   }
@@ -350,26 +369,26 @@ void ESPWiFi::deinitCamera() {
   esp_err_t err = esp_camera_deinit();
   if (err != ESP_OK) {
     log(WARNING, "📷 esp_camera_deinit() returned: %s", esp_err_to_name(err));
-
-    // If deinit fails, force clear the pointer anyway to prevent further use
-    // This prevents cascading errors
-    camera = nullptr;
-    giveCamMutex_();
-    return;
   }
 
-  camera = nullptr; // Clear the cached sensor pointer
-
-  // Note: Camera streaming runs over /ws/control; do not close control sockets
-  // as part of camera deinit.
-
-  log(INFO, "📷 Camera Deinitialized");
+  // Clear the cached sensor pointer
+  camera = nullptr;
 
   giveCamMutex_();
 
-  // Allow hardware and memory to settle after deinit
-  // This is critical for PSRAM to release frame buffers
-  feedWatchDog(200);
+  // CRITICAL: Allow PSRAM to defragment and hardware to stabilize
+  // Also force garbage collection to recover memory
+  feedWatchDog(100);
+
+#ifdef CONFIG_SPIRAM
+  // Force PSRAM compaction by allocating and freeing a small chunk
+  if (esp_psram_is_initialized()) {
+    void *temp = heap_caps_malloc(1024, MALLOC_CAP_SPIRAM);
+    if (temp) {
+      heap_caps_free(temp);
+    }
+  }
+#endif
 
   // Log memory status after deinit
   bool psramAvailable = false;
@@ -382,6 +401,8 @@ void ESPWiFi::deinitCamera() {
     log(DEBUG, "📷 PSRAM after deinit: %u / %u bytes free", freePSRAM,
         totalPSRAM);
   }
+
+  log(INFO, "📷 Camera deinitialized");
 }
 
 /**
@@ -625,203 +646,186 @@ void ESPWiFi::streamCamera() {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   return;
 #else
-  // Camera is subscription-driven; do not gate streaming on
-  // config.camera.enabled.
-
-  // Camera frames are streamed over /ws/control (binary frames), gated by an
-  // explicit subscription command. If control socket isn't up, there's nowhere
-  // to send frames.
   if (!ctrlSocStarted) {
     return;
   }
 
-  // Only stream when there's a real consumer:
-  // - LAN subscribers on /ws/control, OR
-  // - Cloud subscriber + cloud UI attached (cloud tunnel transport alone
-  // shouldn't trigger capture)
-  const bool cloudTunnelEnabled = !config["cloudTunnel"]["enabled"].isNull() &&
-                                  config["cloudTunnel"]["enabled"].as<bool>();
-  const bool hasCloudUI = cloudTunnelEnabled && ctrlSoc.cloudUIConnected();
+  // Check for subscribers
   const size_t lanSubs = (size_t)cameraStreamSubCount_;
-  const bool cloudSub = cameraStreamCloudSubscribed_ && hasCloudUI;
-  const int snapFd = cameraSnapshotFd_;
-  const bool snapPending = (snapFd != 0);
+  const bool cloudSub = cameraStreamCloudSubscribed_ && cloudUIConnected();
+  const bool snapPending = (cameraSnapshotFd_ != 0);
+  const bool hasConsumers = (lanSubs > 0 || cloudSub || snapPending);
 
-  // Stream only when there's a real consumer:
-  const bool anyConsumer = (lanSubs > 0) || cloudSub || snapPending;
-
-  // If the camera was previously initialized (e.g., a client disconnected),
-  // deinit it after a short grace period to avoid cam_hal FB-OVF spam while
-  // idle.
-  static IntervalTimer noConsumerGrace(3000);
-  static bool noConsumerGraceArmed = false;
-  const int64_t nowUs0 = esp_timer_get_time();
-  if (!anyConsumer) {
+  // No consumers? Deinit camera after grace period
+  static bool noConsumerPrevious = false;
+  static uint32_t noConsumerStartMs = 0;
+  if (!hasConsumers) {
     if (camera != nullptr) {
-      // Arm the grace timer on the first no-consumer observation.
-      // Avoid IntervalTimer's "first call returns true" behavior.
-      if (!noConsumerGraceArmed) {
-        noConsumerGrace.resetAt(nowUs0);
-        noConsumerGraceArmed = true;
+      if (!noConsumerPrevious) {
+        // First time seeing no consumers - start grace period
+        noConsumerStartMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+        noConsumerPrevious = true;
         return;
       }
-      if (noConsumerGrace.shouldRunAt(nowUs0)) {
-        log(INFO, "📷 No consumers; deinitializing camera to avoid overflow");
+      // Check if grace period expired (2 seconds)
+      uint32_t nowMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+      if ((nowMs - noConsumerStartMs) > 2000) {
         deinitCamera();
-        noConsumerGraceArmed = false;
-        noConsumerGrace.resetAt(nowUs0);
+        noConsumerPrevious = false;
       }
     } else {
-      noConsumerGraceArmed = false;
-      noConsumerGrace.resetAt(nowUs0);
+      noConsumerPrevious = false;
     }
     return;
   }
-  // Reset idle timer as soon as we have any consumer.
-  noConsumerGraceArmed = false;
-  noConsumerGrace.resetAt(nowUs0);
+  noConsumerPrevious = false;
 
-  // Ensure camera is initialized
+  // Initialize camera if needed
   if (camera == nullptr) {
+    cameraCloudMode_ = (cloudSub && lanSubs == 0);
     if (!initCamera()) {
       return;
     }
   }
 
-  // Extract and validate frame rate from config
+  // Get frame rate
   int frameRate = config["camera"]["frameRate"].isNull()
                       ? CAM_DEFAULT_FPS
                       : config["camera"]["frameRate"].as<int>();
-
-  // Clamp to safe range
   if (frameRate < CAM_MIN_FPS)
     frameRate = CAM_MIN_FPS;
   if (frameRate > CAM_MAX_FPS)
     frameRate = CAM_MAX_FPS;
 
-  // Optional cloud-only FPS cap, configurable via cloudTunnel.maxFps.
-  // Applies only when cloud UI is attached and there are no LAN clients.
-  // 0 = disabled (no cap).
+  // Cloud-only FPS cap
   if (cloudSub && lanSubs == 0) {
-    int maxCloudFps = config["cloudTunnel"]["maxFps"].isNull()
-                          ? 0
-                          : config["cloudTunnel"]["maxFps"].as<int>();
-    // Default to 3 FPS if not set or set to 0.
-    if (maxCloudFps <= 0)
-      maxCloudFps = 3;
-    if (maxCloudFps > 0) {
-      if (maxCloudFps < 1)
-        maxCloudFps = 1;
-      if (maxCloudFps > CAM_MAX_FPS)
-        maxCloudFps = CAM_MAX_FPS;
-      if (frameRate > maxCloudFps)
-        frameRate = maxCloudFps;
-    }
+    int cloudFps = config["cloudTunnel"]["maxFps"].isNull()
+                       ? 3
+                       : config["cloudTunnel"]["maxFps"].as<int>();
+    if (cloudFps < 1)
+      cloudFps = 3;
+    if (cloudFps > CAM_MAX_FPS)
+      cloudFps = CAM_MAX_FPS;
+    if (frameRate > cloudFps)
+      frameRate = cloudFps;
   }
 
-  const int intervalMs = 1000 / frameRate;
-
-  // Use interval timer for rate limiting
+  // Rate limit
   static IntervalTimer frameTimer(1000);
-  frameTimer.setIntervalMs((uint32_t)intervalMs);
-
-  const int64_t nowUs = esp_timer_get_time();
-  if (!frameTimer.shouldRunAt(nowUs)) {
-    return; // Not time for next frame yet
-  }
-
-  // Track consecutive frame capture failures for error recovery
-  static int consecutiveFailures = 0;
-  const int maxFailures = 10;
-
-  // Try to acquire mutex with short timeout (non-blocking approach)
-  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_QUICK_MS))) {
-    consecutiveFailures++;
-    if (consecutiveFailures >= maxFailures) {
-      log(ERROR, "📷 Camera mutex locked for too long, possible deadlock");
-      consecutiveFailures = 0;
-    }
+  frameTimer.setIntervalMs((uint32_t)(1000 / frameRate));
+  if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
     return;
   }
 
-  camera_fb_t *fb = esp_camera_fb_get();
+  // Capture frame
+  if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_QUICK_MS))) {
+    return;
+  }
+
+  // Drain any old frames first to prevent FB-OVF
+  // This ensures we always get the latest frame
+  camera_fb_t *fb = nullptr;
+  int drained = 0;
+  while (drained < 5) { // Max 5 frames to prevent infinite loop
+    fb = esp_camera_fb_get();
+    if (!fb) {
+      break;
+    }
+    drained++;
+    // If this is not the last available frame, return it and get next
+    camera_fb_t *next = esp_camera_fb_get();
+    if (next) {
+      esp_camera_fb_return(fb);
+      fb = next;
+    } else {
+      // This is the last frame, use it
+      break;
+    }
+  }
+
   giveCamMutex_();
 
-  // Validate frame buffer
-  if (!fb) {
-    consecutiveFailures++;
-    if (consecutiveFailures >= maxFailures) {
-      log(ERROR,
-          "📷 Failed to capture %d consecutive frames, reinitializing camera",
-          consecutiveFailures);
-      consecutiveFailures = 0;
+  if (!fb || fb->format != PIXFORMAT_JPEG || !fb->buf || fb->len == 0) {
+    if (fb) {
+      esp_camera_fb_return(fb);
+    }
+    return;
+  }
 
-      // Attempt recovery: reinitialize camera
-      deinitCamera();
-      feedWatchDog(100);
-      if (!initCamera()) {
-        log(ERROR, "📷 Camera recovery failed");
+  if (drained > 1) {
+    log(DEBUG, "📷 Drained %d old frames (using latest)", drained - 1);
+  }
+
+  // Send to LAN subscribers on /ws/camera
+  bool lanSendSuccess = true;
+  if (cameraSocStarted && lanSubs > 0) {
+    static uint32_t lanFrameCount = 0;
+    static uint32_t lanDropCount = 0;
+
+    for (size_t i = 0; i < lanSubs; i++) {
+      int fd = cameraStreamSubFds_[i];
+      if (fd > 0) {
+        esp_err_t err =
+            cameraSoc.sendBinary(fd, (const uint8_t *)fb->buf, fb->len);
+        if (err != ESP_OK) {
+          lanSendSuccess = false;
+          lanDropCount++;
+          if (lanDropCount % 10 == 0) {
+            log(DEBUG, "📷 LAN: dropped %lu frames (client slow)",
+                lanDropCount);
+          }
+        }
       }
-    } else {
-      log(WARNING, "📷 Failed to capture frame (%d/%d)", consecutiveFailures,
-          maxFailures);
     }
-    return;
-  }
 
-  if (fb->format != PIXFORMAT_JPEG || fb->buf == nullptr || fb->len == 0) {
-    log(WARNING, "📷 Invalid frame: format=%d, buf=%p, len=%zu", fb->format,
-        fb->buf, fb->len);
-    esp_camera_fb_return(fb);
-    consecutiveFailures++;
-    return;
-  }
+    if (lanSendSuccess) {
+      lanFrameCount++;
+      if (lanDropCount > 0) {
+        lanDropCount = 0; // Reset on successful send
+      }
 
-  // Success - reset failure counter
-  consecutiveFailures = 0;
-
-  // Double-check consumers still connected before broadcast
-  // (they may have disconnected between the initial check and now)
-  const size_t lanSubs2 = (size_t)cameraStreamSubCount_;
-  const bool cloudSub2 = cameraStreamCloudSubscribed_ && hasCloudUI;
-  const int snapFd2 = cameraSnapshotFd_;
-  const bool snapPending2 = (snapFd2 != 0);
-  if (lanSubs2 == 0 && !cloudSub2 && !snapPending2) {
-    esp_camera_fb_return(fb);
-    return;
-  }
-
-  // Broadcast frame to all connected clients
-  // Each frame is sent as a single binary WebSocket message
-  // log(VERBOSE, "📷 Broadcasting frame: %zu bytes to %d clients", fb->len,
-  //     clientCount);
-
-  // Send to LAN subscribers (binary JPEG frames on /ws/control)
-  for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
-    const int fd = cameraStreamSubFds_[i];
-    if (fd <= 0)
-      continue;
-    (void)ctrlSoc.binaryTo(fd, (const uint8_t *)fb->buf, fb->len);
-  }
-
-  // Send to cloud tunnel (broker fans out to UI clients)
-  if (cameraStreamCloudSubscribed_ && hasCloudUI) {
-    // Cloud tunnel: keep frames bounded; prefer dropping large frames under
-    // backpressure to keep the tunnel alive.
-    if (fb->len <= 60 * 1024) {
-      (void)ctrlSoc.binaryTo(WebSocket::kCloudClientFd,
-                             (const uint8_t *)fb->buf, fb->len);
+      // Log every 60 frames (every ~6 seconds at 10 FPS)
+      if (lanFrameCount % 60 == 0) {
+        log(DEBUG, "📷 LAN: sent %lu frames to %zu client(s)", lanFrameCount,
+            lanSubs);
+      }
     }
   }
 
-  // One-shot snapshot: send to the requesting client only, then clear.
-  if (snapPending2) {
+  // Send to cloud via /ws/control tunnel (with aggressive rate limiting)
+  if (cloudSub) {
+    static uint32_t lastCloudSendMs = 0;
+    static uint32_t cloudDropCount = 0;
+    const uint32_t nowMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+    const uint32_t cloudMinIntervalMs = 250; // Max 4 FPS for cloud
+
+    // Only send if enough time has passed since last successful send
+    if ((nowMs - lastCloudSendMs) >= cloudMinIntervalMs) {
+      bool sent = sendToCloudTunnel((const uint8_t *)fb->buf, fb->len);
+      if (sent) {
+        lastCloudSendMs = nowMs;
+        if (cloudDropCount > 0) {
+          log(DEBUG, "📷 Cloud: sent frame after %lu drops", cloudDropCount);
+          cloudDropCount = 0;
+        }
+      } else {
+        cloudDropCount++;
+        if (cloudDropCount % 10 == 0) {
+          log(DEBUG, "📷 Cloud: dropped %lu frames (tunnel busy)",
+              cloudDropCount);
+        }
+      }
+    }
+  }
+
+  // Snapshot
+  if (snapPending) {
+    int snapFd = cameraSnapshotFd_;
     cameraSnapshotFd_ = 0;
-    (void)ctrlSoc.binaryTo(snapFd2, (const uint8_t *)fb->buf, fb->len);
-    // If no one is streaming, snapshot completes the "need" for the camera.
-    if ((size_t)cameraStreamSubCount_ == 0 && !cameraStreamCloudSubscribed_) {
-      log(INFO, "📷 Snapshot complete; deinitializing camera");
-      deinitCamera();
+    if (snapFd == CloudTunnel::kCloudClientFd) {
+      sendToCloudTunnel((const uint8_t *)fb->buf, fb->len);
+    } else if (snapFd > 0 && cameraSocStarted) {
+      cameraSoc.sendBinary(snapFd, (const uint8_t *)fb->buf, fb->len);
     }
   }
 
@@ -831,29 +835,22 @@ void ESPWiFi::streamCamera() {
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
-  if (clientFd == WebSocket::kCloudClientFd) {
+  if (clientFd == CloudTunnel::kCloudClientFd) {
     cameraStreamCloudSubscribed_ = enable;
-    // When cloud streaming is active and there are no LAN subs, enable cloud
-    // mode profile (low bandwidth). Reinit if needed.
-    const bool nextCloudMode = enable && ((size_t)cameraStreamSubCount_ == 0);
-    if (cameraCloudMode_ != nextCloudMode) {
-      cameraCloudMode_ = nextCloudMode;
-      if (camera != nullptr) {
-        log(INFO, "📷 Switching camera profile (cloudMode=%d); reinitializing",
-            (int)cameraCloudMode_);
-        deinitCamera();
-      }
-    }
-    // If the last consumer unsubscribed, stop immediately and deinit camera.
+
+    // When cloud streaming is disabled and no LAN subs exist, deinit camera
     if (!enable && (size_t)cameraStreamSubCount_ == 0 &&
         cameraSnapshotFd_ == 0) {
       if (camera != nullptr) {
         log(INFO, "📷 No subscribers; deinitializing camera");
         deinitCamera();
       }
+      // Reset cloud mode flag
+      cameraCloudMode_ = false;
     }
     return;
   }
+
   if (clientFd <= 0) {
     return;
   }
@@ -866,19 +863,21 @@ void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
         const size_t last = (size_t)cameraStreamSubCount_ - 1;
         cameraStreamSubFds_[i] = cameraStreamSubFds_[last];
         cameraStreamSubFds_[last] = 0;
-        // Avoid -- on volatile (deprecated): use explicit assignment.
         cameraStreamSubCount_ = (size_t)cameraStreamSubCount_ - 1;
         continue;
       }
       i++;
     }
-    // If the last consumer unsubscribed, stop immediately and deinit camera.
+
+    // If last consumer unsubscribed, deinit camera
     if ((size_t)cameraStreamSubCount_ == 0 && !cameraStreamCloudSubscribed_ &&
         cameraSnapshotFd_ == 0) {
       if (camera != nullptr) {
         log(INFO, "📷 No subscribers; deinitializing camera");
         deinitCamera();
       }
+      // Reset cloud mode flag
+      cameraCloudMode_ = false;
     }
     return;
   }
@@ -886,30 +885,53 @@ void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
   // Add if not present
   for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
     if (cameraStreamSubFds_[i] == clientFd) {
-      return;
+      return; // Already subscribed
     }
   }
+
   if ((size_t)cameraStreamSubCount_ >= kMaxCameraStreamSubscribers) {
     log(WARNING, "📷 Camera stream subscriber limit reached; ignoring fd=%d",
         clientFd);
     return;
   }
-  // Avoid ++ on volatile (deprecated): use explicit assignment.
+
   const size_t idx = (size_t)cameraStreamSubCount_;
   cameraStreamSubFds_[idx] = clientFd;
   cameraStreamSubCount_ = idx + 1;
 
-  // Any LAN subscriber means we should NOT use cloud profile.
+  // LAN subscriber means we should NOT use cloud profile
+  // Note: We don't reinit here - let the camera init happen naturally
+  // on the next frame capture with the correct profile
   if (cameraCloudMode_) {
     cameraCloudMode_ = false;
     if (camera != nullptr) {
-      log(INFO, "📷 Switching camera profile (cloudMode=0); reinitializing");
+      log(INFO,
+          "📷 LAN subscriber added; will use normal profile on next init");
+      // Deinit so next frame capture will reinit with correct profile
       deinitCamera();
     }
   }
 }
 
 void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
+  // Check if already unsubscribed to prevent double-cleanup
+  bool found = false;
+
+  if (clientFd == CloudTunnel::kCloudClientFd) {
+    found = cameraStreamCloudSubscribed_;
+  } else if (clientFd > 0) {
+    for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
+      if (cameraStreamSubFds_[i] == clientFd) {
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    return; // Already cleaned up
+  }
+
   setCameraStreamSubscribed(clientFd, false);
 }
 
@@ -1160,38 +1182,36 @@ void ESPWiFi::cameraConfigHandler() {
   // Handle enable/disable transitions
   if (newEnabled != oldEnabled) {
     if (!newEnabled) {
-      // log(INFO, "📷 Camera Disabled");
       deinitCamera();
     } else {
-      // log(INFO, "📷 Camera Enabled");
-      // Apply using the *new* config values (configUpdate).
+      // Enable camera: apply new config and initialize
       config = configUpdate;
       initCamera();
-      updateCameraSettings();
-      clearCameraBuffer();
+      if (camera != nullptr) {
+        updateCameraSettings();
+        clearCameraBuffer();
+      }
       config = oldCfg;
     }
   } else if (newEnabled && settingsChanged) {
-    // Apply using the *new* config values (configUpdate).
+    // Camera is enabled and settings changed
     config = configUpdate;
 
     if (needsReinit) {
-      log(INFO,
-          "📷 Camera settings changed (requires reinit), restarting camera");
-      deinitCamera();
-      initCamera();
+      log(INFO, "📷 Camera settings changed (requires reinit)");
+      // Only reinit if camera is currently initialized
+      if (camera != nullptr) {
+        deinitCamera();
+      }
+      // Reinit will happen on next frame capture
     } else {
+      // Settings can be applied without reinit
       log(INFO, "📷 Camera settings changed, applying updates");
-    }
-
-    // Ensure camera is initialized before applying settings
-    if (camera != nullptr) {
-      updateCameraSettings();
-
-      // Clear frame buffer to avoid showing stale frames with old settings
-      feedWatchDog(50); // Wait for sensor to apply settings
-      clearCameraBuffer();
-      log(DEBUG, "📷 Frame buffer cleared after settings update");
+      if (camera != nullptr) {
+        updateCameraSettings();
+        feedWatchDog(50); // Wait for sensor to apply settings
+        clearCameraBuffer();
+      }
     }
     config = oldCfg;
   }

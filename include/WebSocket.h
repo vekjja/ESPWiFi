@@ -9,8 +9,6 @@
 #include "esp_err.h"
 #include "esp_http_server.h"
 
-class ESPWiFi;
-
 #ifndef CONFIG_HTTPD_WS_SUPPORT
 // When CONFIG_HTTPD_WS_SUPPORT is disabled, esp_http_server.h may not declare
 // websocket types. Provide tiny fallbacks so this header stays buildable.
@@ -22,67 +20,37 @@ static constexpr httpd_ws_type_t HTTPD_WS_TYPE_CLOSE = 2;
 
 class WebSocket {
 public:
-  // Synthetic fd used to represent the cloud tunnel transport connection inside
-  // callbacks and per-client send helpers (textTo/binaryTo).
-  static constexpr int kCloudClientFd = -7777;
+  // Callbacks use void* for user context
+  using OnConnectCb = void (*)(WebSocket *ws, int clientFd, void *userCtx);
+  using OnDisconnectCb = void (*)(WebSocket *ws, int clientFd, void *userCtx);
+  using OnMessageCb = void (*)(WebSocket *ws, int clientFd,
+                               httpd_ws_type_t type, const uint8_t *data,
+                               size_t len, void *userCtx);
 
 private:
-  ESPWiFi *espWifi_ = nullptr;
+  void *userCtx_ = nullptr;
 
   static constexpr size_t kMaxUriLen = 64;
   char uri_[kMaxUriLen] = {0};
 
-  static constexpr size_t kMaxClients = 8; // matches/overlaps our httpd config
+  static constexpr size_t kMaxClients = 8;
   int clientFds_[kMaxClients] = {0};
   size_t clientCount_ = 0;
 
   size_t maxMessageLen_ = 1024;
   size_t maxBroadcastLen_ = 8192;
 
-  // ---- Cloud tunneling (optional)
-  // Implemented in WebSocket.cpp using esp_websocket_client.
-  // Stored as fixed buffers to keep RAM bounded and avoid heap churn.
-  static constexpr size_t kMaxCloudBaseUrlLen = 160;  // ws(s)://host[:port]
-  static constexpr size_t kMaxCloudDeviceIdLen = 64;  // hostname or custom id
-  static constexpr size_t kMaxCloudTokenLen = 96;     // bearer/token value
-  static constexpr size_t kMaxCloudTunnelKeyLen = 64; // e.g. ws_camera
-
-  char cloudBaseUrl_[kMaxCloudBaseUrlLen] = {0};
-  char cloudDeviceId_[kMaxCloudDeviceIdLen] = {0};
-  char cloudToken_[kMaxCloudTokenLen] = {0};
-  char cloudTunnelKey_[kMaxCloudTunnelKeyLen] = {0};
-
-  // Last registration details received from the tunnel broker (best-effort).
-  static constexpr size_t kMaxCloudRegisteredUrlLen = 220;
-  char cloudUIWSURL_[kMaxCloudRegisteredUrlLen] = {0};
-  char cloudDeviceWSURL_[kMaxCloudRegisteredUrlLen] = {0};
-  volatile uint32_t cloudRegisteredAtMs_ = 0; // millis()
-  volatile bool cloudUIConnected_ = false;    // set by broker messages
-
-  volatile bool cloudTunnelEnabled_ = false;
-  volatile bool cloudTunnelConnected_ = false;
-
-  // Opaque handles so this header doesn't pull in FreeRTOS/websocket headers.
-  void *cloudClient_ = nullptr;
-  void *cloudTask_ = nullptr;
-  void *cloudMutex_ = nullptr;
-
-public:
-  // Callbacks kept as plain function pointers for low overhead.
-  using OnConnectCb = void (*)(WebSocket *ws, int clientFd, ESPWiFi *espWifi);
-  using OnDisconnectCb = void (*)(WebSocket *ws, int clientFd,
-                                  ESPWiFi *espWifi);
-  using OnMessageCb = void (*)(WebSocket *ws, int clientFd,
-                               httpd_ws_type_t type, const uint8_t *data,
-                               size_t len, ESPWiFi *espWifi);
-
-private:
   OnConnectCb onConnect_ = nullptr;
   OnDisconnectCb onDisconnect_ = nullptr;
   OnMessageCb onMessage_ = nullptr;
 
   bool started_ = false;
   bool requireAuth_ = false;
+  httpd_handle_t server_ = nullptr;
+
+  // Auth helper (optional; nullptr = no auth)
+  using AuthCheckFn = bool (*)(httpd_req_t *req, void *userCtx);
+  AuthCheckFn authCheck_ = nullptr;
 
   static void getRemoteInfo_(int fd, char *outIp, size_t outIpLen,
                              uint16_t *outPort);
@@ -97,73 +65,45 @@ private:
   static void sendToWorkTrampoline(void *arg);
   void broadcastNow_(httpd_ws_type_t type, const uint8_t *payload, size_t len);
 
-  // Cloud tunnel internals
-  void applyCloudTunnelConfigFromESPWiFi_();
-  void startCloudTunnelTask_();
-  void stopCloudTunnel_();
-  static void cloudTaskTrampoline_(void *arg);
-  static void cloudEventHandler_(void *handler_args, esp_event_base_t base,
-                                 int32_t event_id, void *event_data);
-  esp_err_t cloudSendFrame_(httpd_ws_type_t type, const uint8_t *payload,
-                            size_t len);
-
 public:
   WebSocket() = default;
   ~WebSocket();
 
-  // Initialize and register the WS endpoint.
-  // Note: `uri` is copied into a fixed buffer (bounded RAM).
-  bool begin(const char *uri, ESPWiFi *espWifi, OnMessageCb onMessage = nullptr,
-             OnConnectCb onConnect = nullptr,
+  // Initialize and register the WS endpoint
+  // - uri: WebSocket endpoint path (e.g., "/ws/control")
+  // - server: ESP-IDF httpd handle
+  // - userCtx: User context passed to callbacks
+  // - authCheck: Optional auth function (nullptr = no auth)
+  bool begin(const char *uri, httpd_handle_t server, void *userCtx,
+             OnMessageCb onMessage = nullptr, OnConnectCb onConnect = nullptr,
              OnDisconnectCb onDisconnect = nullptr, size_t maxMessageLen = 1024,
-             size_t maxBroadcastLen = 8192, bool requireAuth = false);
+             size_t maxBroadcastLen = 8192, bool requireAuth = false,
+             AuthCheckFn authCheck = nullptr);
 
   operator bool() const { return started_; }
 
-  // Total listeners (LAN websocket clients + optional cloud tunnel).
-  size_t numClients() const {
-    return clientCount_ + (cloudTunnelConnected_ ? 1 : 0);
-  }
-  // LAN listeners only (excludes cloud tunnel transport connection).
-  size_t numLanClients() const { return clientCount_; }
-  bool cloudTunnelEnabled() const { return cloudTunnelEnabled_; }
-  bool cloudTunnelConnected() const { return cloudTunnelConnected_; }
-  bool cloudUIConnected() const { return cloudUIConnected_; }
-  const char *cloudUIWSURL() const { return cloudUIWSURL_; }
-  const char *cloudDeviceWSURL() const { return cloudDeviceWSURL_; }
-  uint32_t cloudRegisteredAtMs() const { return cloudRegisteredAtMs_; }
+  // LAN client count
+  size_t clientCount() const { return clientCount_; }
 
-  // Re-evaluate config and (re)connect/disconnect cloud tunnel accordingly.
-  // Intended to be called after config changes are applied.
-  void syncCloudTunnelFromConfig() { applyCloudTunnelConfigFromESPWiFi_(); }
+  // Send text to a specific client
+  esp_err_t sendText(int clientFd, const char *message, size_t len);
+  esp_err_t sendText(int clientFd, const char *message);
 
-  // Enable/disable the cloud tunnel for this WebSocket endpoint.
-  // If enabled and configured, it will connect in the background and act as an
-  // additional WS client for inbound/outbound frames.
-  void setCloudTunnelEnabled(bool enabled);
+  // Send binary to a specific client
+  esp_err_t sendBinary(int clientFd, const uint8_t *data, size_t len);
 
-  // Configure cloud tunnel connection details. This does not force-enable it;
-  // call setCloudTunnelEnabled(true) or set config cloudTunnel.enabled.
-  // - baseUrl: e.g. "wss://tunnel.example.com"
-  // - deviceId: if null/empty, uses ESPWiFi hostname
-  // - token: optional, sent as ?token=
-  // - tunnelKey: optional; if null/empty, derived from WS uri
-  void configureCloudTunnel(const char *baseUrl, const char *deviceId,
-                            const char *token, const char *tunnelKey);
+  // Broadcast text to all connected clients
+  esp_err_t broadcastText(const char *message, size_t len);
+  esp_err_t broadcastText(const char *message);
 
-  // Queue a broadcast into the HTTP server task for thread-safety and to keep
-  // callers snappy (user-perceived performance).
-  esp_err_t textAll(const char *message);
-  esp_err_t textAll(const char *message, size_t len);
-  // Send to a specific client fd. If fd == cloud synthetic fd, routes via
-  // cloud.
-  esp_err_t textTo(int clientFd, const char *message);
-  esp_err_t textTo(int clientFd, const char *message, size_t len);
+  // Broadcast binary to all connected clients
+  esp_err_t broadcastBinary(const uint8_t *data, size_t len);
 
-  esp_err_t binaryAll(const uint8_t *data, size_t len);
-  esp_err_t binaryTo(int clientFd, const uint8_t *data, size_t len);
-
+  // Close all connections
   void closeAll();
+
+  // Get client FDs (for external management, e.g., CloudTunnel)
+  const int *getClientFds() const { return clientFds_; }
 };
 
 #endif

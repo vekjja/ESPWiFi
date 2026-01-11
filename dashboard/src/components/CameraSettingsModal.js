@@ -334,30 +334,19 @@ export default function CameraSettingsModal({
     >
       <Box>
         <Stack spacing={2}>
-          {/* Module-level: Camera Name and URL */}
+          {/* Module-level: Camera Name only (no URL configuration) */}
           {!isDeviceLevel && (
             <Card elevation={1} sx={{ bgcolor: "background.paper" }}>
               <CardContent>
-                <Stack spacing={2}>
-                  <TextField
-                    label="Camera Name"
-                    value={localData?.name || ""}
-                    onChange={(e) => handleDataChange("name", e.target.value)}
-                    placeholder="Enter camera name"
-                    fullWidth
-                    variant="outlined"
-                  />
-
-                  <TextField
-                    label="Camera URL"
-                    value={localData?.url || ""}
-                    onChange={(e) => handleDataChange("url", e.target.value)}
-                    placeholder="Enter camera URL (e.g., /ws/camera or ws://192.168.1.100:8080/ws/camera)"
-                    fullWidth
-                    variant="outlined"
-                    helperText="Local: /ws/camera | Remote: ws://hostname:port/ws/camera | HTTP: http://hostname:port/ws/camera"
-                  />
-                </Stack>
+                <TextField
+                  label="Camera Name"
+                  value={localData?.name || ""}
+                  onChange={(e) => handleDataChange("name", e.target.value)}
+                  placeholder="Enter camera name"
+                  fullWidth
+                  variant="outlined"
+                  helperText="Camera always streams over /ws/control (LAN or cloud tunnel)"
+                />
               </CardContent>
             </Card>
           )}

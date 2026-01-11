@@ -87,8 +87,9 @@ function SortableCameraModule({
   onDelete,
   deviceOnline,
   saveConfigToDevice,
-  controlWsRef,
-  registerControlBinaryHandler,
+  usingCloudTunnel,
+  cloudTunnelWsRef,
+  registerCloudBinaryHandler,
 }) {
   const {
     attributes,
@@ -115,8 +116,9 @@ function SortableCameraModule({
         onDelete={onDelete}
         deviceOnline={deviceOnline}
         saveConfigToDevice={saveConfigToDevice}
-        controlWsRef={controlWsRef}
-        registerControlBinaryHandler={registerControlBinaryHandler}
+        usingCloudTunnel={usingCloudTunnel}
+        cloudTunnelWsRef={cloudTunnelWsRef}
+        registerCloudBinaryHandler={registerCloudBinaryHandler}
       />
     </div>
   );
@@ -127,8 +129,9 @@ export default function Modules({
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
-  controlWsRef = null,
-  registerControlBinaryHandler = null,
+  usingCloudTunnel = false,
+  cloudTunnelWsRef = null,
+  registerCloudBinaryHandler = null,
 }) {
   const [modules, setModules] = useState([]);
 
@@ -380,8 +383,9 @@ export default function Modules({
                     onDelete={deleteModule}
                     deviceOnline={deviceOnline}
                     saveConfigToDevice={saveConfigToDevice}
-                    controlWsRef={controlWsRef}
-                    registerControlBinaryHandler={registerControlBinaryHandler}
+                    usingCloudTunnel={usingCloudTunnel}
+                    cloudTunnelWsRef={cloudTunnelWsRef}
+                    registerCloudBinaryHandler={registerCloudBinaryHandler}
                   />
                 );
               }

@@ -126,7 +126,7 @@ function App() {
   const [, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
-  const controlBinaryHandlersRef = useRef(new Set());
+  const controlBinaryHandlersRef = useRef(new Set()); // For cloud tunnel camera snapshots
   const logsFetchRef = useRef({
     inProgress: false,
     expectOffset: null,
@@ -605,6 +605,13 @@ function App() {
     return lanControlUrl || null;
   }, [tunnelReady, controlUiUrl, lanControlUrl]);
 
+  // Determine if we're using cloud tunnel (for camera streaming)
+  const usingCloudTunnel = useMemo(() => {
+    return (
+      tunnelReady && controlWsUrl && controlWsUrl.includes("tnl.espwifi.io")
+    );
+  }, [tunnelReady, controlWsUrl]);
+
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
@@ -663,8 +670,8 @@ function App() {
         };
         ws.onmessage = (evt) => {
           try {
+            // Binary frames (camera snapshots for cloud tunnel only)
             if (evt?.data instanceof ArrayBuffer) {
-              // Fan out binary frames (camera JPEG) to listeners.
               controlBinaryHandlersRef.current.forEach((fn) => {
                 try {
                   fn(evt.data);
@@ -674,6 +681,7 @@ function App() {
               });
               return;
             }
+
             const msg = JSON.parse(evt?.data || "{}");
             if (msg?.cmd === "get_config" && msg?.config) {
               setConfig(msg.config);
@@ -1049,8 +1057,9 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={deviceOnline}
-            controlWsRef={controlWsRef}
-            registerControlBinaryHandler={registerControlBinaryHandler}
+            usingCloudTunnel={usingCloudTunnel}
+            cloudTunnelWsRef={controlWsRef}
+            registerCloudBinaryHandler={registerControlBinaryHandler}
           />
         </Suspense>
       </Container>

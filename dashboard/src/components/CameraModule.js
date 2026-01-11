@@ -7,8 +7,7 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
-import { buildWebSocketUrl, getFetchOptions } from "../utils/apiUtils";
-import { resolveWebSocketUrl } from "../utils/connectionUtils";
+import { buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function CameraModule({
   config,
@@ -17,210 +16,98 @@ export default function CameraModule({
   onDelete,
   deviceOnline = true,
   saveConfigToDevice,
-  controlWsRef = null,
-  registerControlBinaryHandler = null,
+  usingCloudTunnel = false,
+  cloudTunnelWsRef = null,
+  registerCloudBinaryHandler = null,
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [streamUrl, setStreamUrl] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsData, setSettingsData] = useState({
     name: config?.name || "",
-    url: config?.url || "/ws/camera",
   });
 
-  // Local websocket for non-default/custom camera endpoints only.
   const wsRef = useRef(null);
-  const controlCameraModeRef = useRef(false);
-  const controlUnsubRef = useRef(null);
-  const controlStreamOnRef = useRef(false);
+  const cloudUnsubRef = useRef(null);
   const pendingSnapshotRef = useRef(false);
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
 
-  // We intentionally avoid "online/status" polling/derivation here.
-  // Start/stop is driven purely by `camera_subscribe` on the shared control WS.
-
-  useEffect(() => {
-    // Convert relative path to absolute URL
-    let wsUrl = config?.url || "/ws/camera";
-    const isDefaultCamera = wsUrl === "/ws/camera";
-
-    // Check if URL already has a protocol
-    if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
-      if (wsUrl.startsWith("/")) {
-        // Camera now streams over /ws/control (binary frames) gated by a
-        // camera_subscribe command. Keep /ws/camera as a logical default for
-        // modules, but route it to control under the hood.
-        if (isDefaultCamera) {
-          wsUrl = resolveWebSocketUrl("control", globalConfig);
-        } else {
-          // Otherwise, keep existing behavior for custom endpoints.
-          const mdnsHostname =
-            globalConfig?.hostname || globalConfig?.deviceName;
-          wsUrl = buildWebSocketUrl(wsUrl, mdnsHostname || null);
-        }
-      } else {
-        // URL doesn't have protocol and doesn't start with /, add ws:// protocol
-        wsUrl = `ws://${wsUrl}`;
-      }
-    }
-
-    // If URL changed and we're currently streaming, reconnect
-    const urlChanged = streamUrl !== "" && streamUrl !== wsUrl;
-    if (urlChanged && isStreaming) {
-      console.log(
-        `📷 Camera URL changed from ${streamUrl} to ${wsUrl}, reconnecting...`
-      );
-      handleStopStream();
-      setStreamUrl(wsUrl);
-      // Give it a moment to close the old connection before starting new one
-      setTimeout(() => {
-        setStreamUrl(wsUrl);
-      }, 100);
-    } else {
-      setStreamUrl(wsUrl);
-    }
-
-    // Track whether this stream uses /ws/control camera_subscribe semantics.
-    // (Used by start/stop to send subscribe/unsubscribe commands.)
-    controlCameraModeRef.current = isDefaultCamera;
-  }, [
-    config?.url,
-    globalConfig?.hostname,
-    globalConfig?.deviceName,
-    globalConfig?.cloudTunnel?.enabled,
-    globalConfig?.cloudTunnel?.baseUrl,
-    globalConfig?.auth?.token,
-  ]); // Re-run if URL/device identity/cloud tunnel changes
-
-  // Listen for camera disable events and disconnect WebSocket
-  useEffect(() => {
-    const handleCameraDisable = () => {
-      console.log(
-        "📷 Camera disable event received, disconnecting WebSocket..."
-      );
-      handleStopStream();
-    };
-
-    // Add event listener for camera disable
-    const moduleElement = document.querySelector("[data-camera-module]");
-    if (moduleElement) {
-      moduleElement.addEventListener("cameraDisable", handleCameraDisable);
-    }
-
-    // Cleanup event listener
-    return () => {
-      if (moduleElement) {
-        moduleElement.removeEventListener("cameraDisable", handleCameraDisable);
-      }
-    };
-  }, []);
-
   // Update settings data when config changes
   useEffect(() => {
     setSettingsData({
       name: config?.name || "",
-      url: config?.url || "/ws/camera",
     });
-  }, [config?.name, config?.url]);
+  }, [config?.name]);
 
   const handleStartStream = () => {
-    if (!streamUrl) {
-      console.error("No stream URL available");
-      return;
-    }
-
-    // Default camera uses the shared /ws/control socket (no second WS).
-    if (controlCameraModeRef.current) {
-      const ws = controlWsRef?.current || null;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.error(
-          "Control socket not connected; cannot start camera stream"
-        );
-        setIsStreaming(false);
+    // Cloud tunnel: use control tunnel WebSocket
+    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
+      const ws = cloudTunnelWsRef.current;
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.error("Cloud tunnel not connected");
         return;
       }
 
-      // Register binary handler (camera frames)
-      if (typeof registerControlBinaryHandler === "function") {
-        if (!controlUnsubRef.current) {
-          controlUnsubRef.current = registerControlBinaryHandler((ab) => {
-            if (!(ab instanceof ArrayBuffer)) return;
-            // If this was a one-shot snapshot request, consume one frame and clear.
-            if (pendingSnapshotRef.current) {
-              pendingSnapshotRef.current = false;
-              const blob = new Blob([ab], { type: "image/jpeg" });
-              const objectUrl = URL.createObjectURL(blob);
-              window.open(objectUrl, "_blank");
-              setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
-              return;
-            }
+      // Register binary handler for cloud camera frames
+      if (
+        typeof registerCloudBinaryHandler === "function" &&
+        !cloudUnsubRef.current
+      ) {
+        cloudUnsubRef.current = registerCloudBinaryHandler((ab) => {
+          if (!(ab instanceof ArrayBuffer)) return;
 
-            if (!controlStreamOnRef.current) return;
+          // Handle snapshot
+          if (pendingSnapshotRef.current) {
+            pendingSnapshotRef.current = false;
             const blob = new Blob([ab], { type: "image/jpeg" });
-            const objectURL = URL.createObjectURL(blob);
-            if (
-              imageUrlRef.current &&
-              imageUrlRef.current.startsWith("blob:")
-            ) {
-              URL.revokeObjectURL(imageUrlRef.current);
-            }
-            imageUrlRef.current = objectURL;
-            setImageUrl(objectURL);
-          });
-        }
+            const objectUrl = URL.createObjectURL(blob);
+            window.open(objectUrl, "_blank");
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+            return;
+          }
+
+          // Handle streaming
+          const blob = new Blob([ab], { type: "image/jpeg" });
+          const objectURL = URL.createObjectURL(blob);
+          if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
+            URL.revokeObjectURL(imageUrlRef.current);
+          }
+          imageUrlRef.current = objectURL;
+          setImageUrl(objectURL);
+        });
       }
 
+      // Subscribe via control socket
       try {
         ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: true }));
-      } catch {
-        // ignore
+      } catch (err) {
+        console.error("Failed to subscribe to cloud camera:", err);
+        return;
       }
-      controlStreamOnRef.current = true;
       setIsStreaming(true);
       return;
     }
 
-    // Close existing connection if any
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+    // LAN: connect to /ws/camera
+    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
+    const cameraWsUrl = buildWebSocketUrl("/ws/camera", mdnsHostname || null);
 
-    // Validate URL format
-    try {
-      new URL(streamUrl);
-    } catch (error) {
-      console.error(`Invalid WebSocket URL: ${streamUrl}`);
+    if (!cameraWsUrl) {
+      console.error("Failed to build camera WebSocket URL");
       return;
     }
 
     try {
-      const ws = new WebSocket(streamUrl);
+      const ws = new WebSocket(cameraWsUrl);
       ws.binaryType = "arraybuffer";
-
       wsRef.current = ws;
-      setIsStreaming(false); // Set to connecting state
-
-      // Track WebSocket globally for cleanup
-      if (!window.cameraWebSockets) {
-        window.cameraWebSockets = [];
-      }
-      window.cameraWebSockets.push(ws);
 
       ws.onopen = () => {
-        // Camera streams over /ws/control via a subscribe command.
-        if (controlCameraModeRef.current) {
-          try {
-            ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: true }));
-          } catch {
-            // ignore
-          }
-        }
+        console.log("📷 Camera WebSocket connected:", cameraWsUrl);
         setIsStreaming(true);
       };
 
@@ -228,54 +115,64 @@ export default function CameraModule({
         if (event.data instanceof ArrayBuffer) {
           const blob = new Blob([event.data], { type: "image/jpeg" });
           const objectURL = URL.createObjectURL(blob);
-
-          // Clean up previous URL to prevent memory leaks
           if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
             URL.revokeObjectURL(imageUrlRef.current);
           }
-
           imageUrlRef.current = objectURL;
           setImageUrl(objectURL);
-        } else if (typeof event.data === "string") {
-          // Control socket may send JSON responses; ignore for camera rendering.
         }
       };
 
       ws.onerror = (error) => {
-        console.error("❌ Camera WebSocket error:", error);
+        console.error("📷 Camera WebSocket error:", error);
         setIsStreaming(false);
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = () => {
+        console.log("📷 Camera WebSocket closed");
         setIsStreaming(false);
         wsRef.current = null;
       };
     } catch (error) {
-      console.error("❌ Failed to create camera WebSocket:", error);
+      console.error("📷 Failed to create camera WebSocket:", error);
     }
   };
 
   const handleStopStream = () => {
-    // Default camera: unsubscribe but do NOT close the shared control socket.
-    if (controlCameraModeRef.current) {
-      const ws = controlWsRef?.current || null;
-      if (ws && ws.readyState === WebSocket.OPEN) {
+    // Cloud tunnel: unsubscribe
+    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
+      const ws = cloudTunnelWsRef.current;
+      if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({ cmd: "camera_subscribe", enable: false }));
         } catch {
           // ignore
         }
       }
-      controlStreamOnRef.current = false;
-      if (controlUnsubRef.current) {
+
+      // Unregister binary handler
+      if (cloudUnsubRef.current) {
         try {
-          controlUnsubRef.current();
+          cloudUnsubRef.current();
         } catch {
           // ignore
         }
-        controlUnsubRef.current = null;
+        cloudUnsubRef.current = null;
       }
-    } else if (wsRef.current) {
+
+      setIsStreaming(false);
+
+      // Clean up image URL
+      if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(imageUrlRef.current);
+        imageUrlRef.current = "";
+        setImageUrl("");
+      }
+      return;
+    }
+
+    // LAN: close WebSocket
+    if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -287,6 +184,40 @@ export default function CameraModule({
       imageUrlRef.current = "";
       setImageUrl("");
     }
+  };
+
+  const handleSnapshot = async () => {
+    // Cloud tunnel: request snapshot via control socket
+    if (usingCloudTunnel && cloudTunnelWsRef?.current) {
+      const ws = cloudTunnelWsRef.current;
+      if (ws.readyState === WebSocket.OPEN) {
+        // Register handler if not already registered
+        if (
+          !cloudUnsubRef.current &&
+          typeof registerCloudBinaryHandler === "function"
+        ) {
+          cloudUnsubRef.current = registerCloudBinaryHandler((ab) => {
+            if (!(ab instanceof ArrayBuffer)) return;
+            if (!pendingSnapshotRef.current) return;
+            pendingSnapshotRef.current = false;
+            const blob = new Blob([ab], { type: "image/jpeg" });
+            const objectUrl = URL.createObjectURL(blob);
+            window.open(objectUrl, "_blank");
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
+          });
+        }
+        pendingSnapshotRef.current = true;
+        try {
+          ws.send(JSON.stringify({ cmd: "camera_snapshot" }));
+        } catch (err) {
+          console.error("Failed to request snapshot:", err);
+        }
+      }
+      return;
+    }
+
+    // LAN: snapshot not supported on /ws/camera (binary only)
+    console.warn("Snapshot not supported for LAN streaming yet");
   };
 
   const handleDeleteModule = () => {
@@ -335,41 +266,10 @@ export default function CameraModule({
     }
   };
 
-  const handleSnapshot = async () => {
-    try {
-      // Snapshot is requested over /ws/control and returned as a binary JPEG frame.
-      const ws = controlWsRef?.current || null;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        throw new Error("control_ws_not_connected");
-      }
-      // Ensure we can receive the next binary frame.
-      if (typeof registerControlBinaryHandler !== "function") {
-        throw new Error("no_binary_handler");
-      }
-      if (!controlUnsubRef.current) {
-        // Register handler so snapshot can be consumed even if not streaming.
-        controlUnsubRef.current = registerControlBinaryHandler((ab) => {
-          if (!(ab instanceof ArrayBuffer)) return;
-          if (!pendingSnapshotRef.current) return;
-          pendingSnapshotRef.current = false;
-          const blob = new Blob([ab], { type: "image/jpeg" });
-          const objectUrl = URL.createObjectURL(blob);
-          window.open(objectUrl, "_blank");
-          setTimeout(() => URL.revokeObjectURL(objectUrl), 15000);
-        });
-      }
-      pendingSnapshotRef.current = true;
-      ws.send(JSON.stringify({ cmd: "camera_snapshot" }));
-    } catch (err) {
-      console.error("Failed to request snapshot:", err);
-    }
-  };
-
   const handleOpenSettings = () => {
-    // Set settings data
+    // Set settings data (no URL configuration)
     setSettingsData({
       name: config?.name || "",
-      url: config?.url || "/ws/camera",
     });
 
     setSettingsModalOpen(true);
@@ -380,14 +280,11 @@ export default function CameraModule({
   };
 
   const handleSaveSettings = () => {
-    // Update the module config with the new name and URL
+    // Update the module config with the new name only
     if (onUpdate && moduleKey) {
-      console.log(
-        `📷 Saving camera settings - URL: ${settingsData.url}, Name: ${settingsData.name}`
-      );
+      console.log(`📷 Saving camera settings - Name: ${settingsData.name}`);
       onUpdate(moduleKey, {
         name: settingsData.name,
-        url: settingsData.url,
       });
     }
     handleCloseSettings();
@@ -555,9 +452,7 @@ export default function CameraModule({
             marginTop: 0.5,
           }}
         >
-          <Tooltip
-            title={isStreaming ? "Stop Stream" : "Start Stream"}
-          >
+          <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
             <span>
               <IconButton
                 onClick={isStreaming ? handleStopStream : handleStartStream}
@@ -583,9 +478,7 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
-          <Tooltip
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          >
+          <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
             <span>
               <IconButton
                 onClick={handleFullscreen}

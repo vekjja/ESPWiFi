@@ -12,6 +12,9 @@ void ESPWiFi::start() {
   startMDNS();
   startWebServer();
   startControlWebSocket();
+#if ESPWiFi_HAS_CAMERA
+  startCameraWebSocket();
+#endif
   srvAll();
 }
 

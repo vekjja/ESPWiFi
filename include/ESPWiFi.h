@@ -192,6 +192,7 @@ public:
   void wifiConfigHandler(const JsonDocument &oldConfig);
   void startAP();
   void startWiFi();
+  void stopWiFi();
   void startMDNS();
   void startClient();
   int selectBestChannel();
@@ -251,6 +252,11 @@ public:
   void srvLog();
   void srvRoot();
   void srvGPIO();
+
+  // GPIO helper methods (used by both HTTP and WebSocket)
+  bool setGPIO(int pin, bool state, std::string &errorMsg);
+  bool getGPIO(int pin, int &state, std::string &errorMsg);
+  bool setPWM(int pin, int duty, int freq, std::string &errorMsg);
   void srvAuth();
   void srvBLE();
   void srvBluetooth();
@@ -350,10 +356,10 @@ public:
 #endif
 
   // ---- Bluetooth Audio
+  void bluetoothConfigHandler();
 #ifdef CONFIG_BT_A2DP_ENABLE
   bool connectBluetoothed = false;
   bool btStarted = false;
-  void bluetoothConfigHandler();
   void startBluetooth();
   void stopBluetooth();
   void scanBluetooth();

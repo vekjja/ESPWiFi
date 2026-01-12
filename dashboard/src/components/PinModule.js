@@ -12,6 +12,7 @@ export default function PinModule({
   config,
   onUpdate,
   onDelete,
+  controlWs,
 }) {
   const [isOn, setIsOn] = useState(initialProps.state === "high");
   const [name, setName] = useState(initialProps.name || "Pin");
@@ -60,9 +61,44 @@ export default function PinModule({
       newPinState.duty = duty;
     }
 
-    // For immediate pin state changes (like toggling), send to ESP32
+    // For immediate pin state changes (like toggling), send to ESP32 via WebSocket
     // For configuration changes (like settings), only update local config
-    if (config && (newState.state || newState.duty)) {
+    if (
+      config &&
+      (newState.state || newState.duty) &&
+      controlWs &&
+      controlWs.readyState === WebSocket.OPEN
+    ) {
+      let wsCommand;
+
+      if (mode === "pwm") {
+        // PWM mode
+        wsCommand = {
+          cmd: "set_pwm",
+          pin: parseInt(currentPinNum, 10),
+          duty: newState.duty || duty,
+          freq: 5000, // Default frequency
+        };
+      } else {
+        // Digital mode
+        const state = newState.state === "high" ? 1 : 0;
+        wsCommand = {
+          cmd: "set_gpio",
+          pin: parseInt(currentPinNum, 10),
+          state: state,
+        };
+      }
+
+      controlWs.send(JSON.stringify(wsCommand));
+
+      // Update local state after sending command
+      if (deletePin) {
+        onDelete(moduleKey);
+      } else if (saveConfig) {
+        onUpdate(moduleKey, newPinState);
+      }
+    } else if (config && (newState.state || newState.duty)) {
+      // Fallback to HTTP API if WebSocket is not available
       // Determine the target URL - use remoteURL if specified, otherwise use apiURL or current hostname
       let targetURL;
       if (remoteURL && remoteURL.trim()) {

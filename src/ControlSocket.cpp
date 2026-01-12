@@ -6,6 +6,10 @@
 // For get_rssi
 #include "esp_wifi.h"
 
+// For GPIO control
+#include "driver/gpio.h"
+#include "driver/ledc.h"
+
 static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                           const uint8_t *data, size_t len, void *userCtx) {
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
@@ -98,6 +102,62 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         if (!queued) {
           resp["ok"] = false;
           resp["error"] = "queue_failed";
+        }
+      }
+    } else if (strcmp(cmd, "set_gpio") == 0) {
+      // Set GPIO pin: {cmd: "set_gpio", pin: 2, state: 1}
+      if (!req["pin"].is<int>()) {
+        resp["ok"] = false;
+        resp["error"] = "missing_pin";
+      } else {
+        const int pin = req["pin"];
+        const int state = req["state"] | 0;
+        std::string errorMsg;
+
+        if (espwifi->setGPIO(pin, state != 0, errorMsg)) {
+          resp["pin"] = pin;
+          resp["state"] = state ? 1 : 0;
+        } else {
+          resp["ok"] = false;
+          resp["error"] = errorMsg;
+        }
+      }
+    } else if (strcmp(cmd, "get_gpio") == 0) {
+      // Get GPIO pin state: {cmd: "get_gpio", pin: 2}
+      if (!req["pin"].is<int>()) {
+        resp["ok"] = false;
+        resp["error"] = "missing_pin";
+      } else {
+        const int pin = req["pin"];
+        int state = 0;
+        std::string errorMsg;
+
+        if (espwifi->getGPIO(pin, state, errorMsg)) {
+          resp["pin"] = pin;
+          resp["state"] = state;
+        } else {
+          resp["ok"] = false;
+          resp["error"] = errorMsg;
+        }
+      }
+    } else if (strcmp(cmd, "set_pwm") == 0) {
+      // Set PWM: {cmd: "set_pwm", pin: 2, duty: 128, freq: 5000}
+      if (!req["pin"].is<int>()) {
+        resp["ok"] = false;
+        resp["error"] = "missing_pin";
+      } else {
+        const int pin = req["pin"];
+        const int duty = req["duty"] | 0; // 0-255
+        const int freq = req["freq"] | 5000;
+        std::string errorMsg;
+
+        if (espwifi->setPWM(pin, duty, freq, errorMsg)) {
+          resp["pin"] = pin;
+          resp["duty"] = duty;
+          resp["freq"] = freq;
+        } else {
+          resp["ok"] = false;
+          resp["error"] = errorMsg;
         }
       }
     } else {

@@ -702,6 +702,7 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={deviceOnline}
+            controlWs={controlWsRef.current}
           />
         </Suspense>
       </Container>

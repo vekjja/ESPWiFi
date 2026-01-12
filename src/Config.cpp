@@ -263,21 +263,13 @@ void ESPWiFi::handleConfigUpdate() {
 
     // Now handlers can compare oldConfig vs config (new), and config is already
     // correct
-    wifiConfigHandler(oldConfig);
     cameraConfigHandler();
     powerConfigHandler();
     corsConfigHandler();
     logConfigHandler();
     bleConfigHandler();
-#ifdef CONFIG_BT_A2DP_ENABLE
     bluetoothConfigHandler();
-#endif
-
-    if (wifiRestartRequested_) {
-      wifiRestartRequested_ = false;
-      log(INFO, "📶 WiFi config changed; restarting WiFi");
-      startWiFi();
-    }
+    wifiConfigHandler(oldConfig);
   }
 
   configUpdate.clear();

@@ -19,7 +19,7 @@ import WebSocketModule from "./WebSocketModule";
 import CameraModule from "./CameraModule";
 
 // Sortable wrapper component for Pin modules
-function SortablePinModule({ module, config, onUpdate, onDelete }) {
+function SortablePinModule({ module, config, onUpdate, onDelete, controlWs }) {
   const {
     attributes,
     listeners,
@@ -44,6 +44,7 @@ function SortablePinModule({ module, config, onUpdate, onDelete }) {
         config={config}
         onUpdate={onUpdate}
         onDelete={onDelete}
+        controlWs={controlWs}
       />
     </div>
   );
@@ -123,6 +124,7 @@ export default function Modules({
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
+  controlWs,
 }) {
   const [modules, setModules] = useState([]);
 
@@ -357,6 +359,7 @@ export default function Modules({
                     config={config}
                     onUpdate={updateModule}
                     onDelete={deleteModule}
+                    controlWs={controlWs}
                   />
                 );
               } else if (module.type === "webSocket") {

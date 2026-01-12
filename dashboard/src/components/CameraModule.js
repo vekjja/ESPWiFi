@@ -30,6 +30,7 @@ export default function CameraModule({
   const imgRef = useRef(null);
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
+  const intentionalCloseRef = useRef(false);
 
   // Update settings data when config changes
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function CameraModule({
     }
 
     try {
+      intentionalCloseRef.current = false; // Reset flag when starting stream
       const ws = new WebSocket(cameraWsUrl);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
@@ -73,9 +75,9 @@ export default function CameraModule({
       ws.onerror = (error) => {
         console.error("📷 Camera WebSocket error:", error);
         setIsStreaming(false);
-        // Auto-reconnect on error after a delay
+        // Auto-reconnect on error after a delay (if not intentionally closed)
         setTimeout(() => {
-          if (isMountedRef.current && wsRef.current === ws) {
+          if (isMountedRef.current && wsRef.current === ws && !intentionalCloseRef.current) {
             console.log("📷 Attempting to reconnect camera after error...");
             handleStartStream();
           }
@@ -87,11 +89,11 @@ export default function CameraModule({
         setIsStreaming(false);
         wsRef.current = null;
 
-        // Auto-reconnect if closed unexpectedly (not a normal close)
-        if (event.code !== 1000 && isMountedRef.current) {
+        // Auto-reconnect if closed unexpectedly (not a normal close and not intentional)
+        if (event.code !== 1000 && isMountedRef.current && !intentionalCloseRef.current) {
           console.log("📷 Unexpected close, attempting to reconnect in 2s...");
           setTimeout(() => {
-            if (isMountedRef.current) {
+            if (isMountedRef.current && !intentionalCloseRef.current) {
               handleStartStream();
             }
           }, 2000);
@@ -103,6 +105,9 @@ export default function CameraModule({
   };
 
   const handleStopStream = () => {
+    // Mark as intentional close to prevent auto-reconnect
+    intentionalCloseRef.current = true;
+    
     // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close();
@@ -245,6 +250,7 @@ export default function CameraModule({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      intentionalCloseRef.current = true; // Mark as intentional on unmount
 
       // Clean up object URL
       if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {

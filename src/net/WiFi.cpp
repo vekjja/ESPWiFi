@@ -67,6 +67,12 @@ void ESPWiFi::wifiConfigHandler(const JsonDocument &oldConfig) {
   if (wifiNeedsRestart) {
     wifiRestartRequested_ = true;
     log(INFO, "📶 WiFi config changed, restart requested");
+
+    // Perform the restart immediately
+    log(INFO, "📶 WiFi config changed; restarting WiFi");
+    stopWiFi();                     // Properly stop before restart
+    vTaskDelay(pdMS_TO_TICKS(200)); // Let everything settle
+    startWiFi();
   } else {
     log(DEBUG, "📶 No WiFi restart needed (no wificonfig changes)");
   }
@@ -81,6 +87,38 @@ void ESPWiFi::initNVS() {
     ret = nvs_flash_init();
   }
   ESP_ERROR_CHECK(ret);
+}
+
+void ESPWiFi::stopWiFi() {
+  if (!wifi_initialized) {
+    return; // Nothing to stop
+  }
+
+  log(DEBUG, "📶 Stopping WiFi...");
+
+  // Stop WiFi driver
+  esp_err_t ret = esp_wifi_stop();
+  if (ret != ESP_OK) {
+    log(WARNING, "📶 WiFi stop failed: %s", esp_err_to_name(ret));
+  }
+  vTaskDelay(pdMS_TO_TICKS(100)); // Let it fully stop
+
+  // Deinitialize WiFi
+  ret = esp_wifi_deinit();
+  if (ret != ESP_OK) {
+    log(WARNING, "📶 WiFi deinit failed: %s", esp_err_to_name(ret));
+  }
+  wifi_initialized = false;
+  vTaskDelay(pdMS_TO_TICKS(100));
+
+  // Destroy network interface to allow mode switch
+  if (current_netif != nullptr) {
+    esp_netif_destroy(current_netif);
+    current_netif = nullptr;
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
+  log(DEBUG, "📶 WiFi stopped");
 }
 
 void ESPWiFi::startWiFi() {

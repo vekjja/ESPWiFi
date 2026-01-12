@@ -11,7 +11,7 @@ default_env=$( cd "$PROJECT_DIR" && pio project config --json-output | jq -r '.[
 SDKCONFIG_ENV="$SDKCONFIG_DIR/$default_env.sdkconfig"
 
 # RM existing sdkconfig files
-echo "🗑️ Removing existing sdkconfig files"
+echo "🗑️  Removing existing sdkconfig files"
 # macOS/BSD find lacks -verbose; print then delete for visibility
 find "$PROJECT_DIR" -maxdepth 1 -name 'sdkconfig*' -type f -print -delete
 

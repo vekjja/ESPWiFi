@@ -160,6 +160,68 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
           resp["error"] = errorMsg;
         }
       }
+    } else if (strcmp(cmd, "list_files") == 0) {
+      // List files: {cmd: "list_files", fs: "lfs", path: "/"}
+      std::string fs = req["fs"] | "lfs";
+      std::string path = req["path"] | "/";
+      std::string errorMsg;
+
+      JsonDocument filesDoc;
+      if (espwifi->listFiles(fs, path, filesDoc, errorMsg)) {
+        resp["files"] = filesDoc["files"];
+      } else {
+        resp["ok"] = false;
+        resp["error"] = errorMsg;
+      }
+    } else if (strcmp(cmd, "get_storage") == 0) {
+      // Get storage info: {cmd: "get_storage", fs: "lfs"}
+      std::string fs = req["fs"] | "lfs";
+      size_t total = 0, used = 0, free = 0;
+
+      espwifi->getStorageInfo(fs, total, used, free);
+      resp["total"] = (uint64_t)total;
+      resp["used"] = (uint64_t)used;
+      resp["free"] = (uint64_t)free;
+      resp["filesystem"] = fs;
+    } else if (strcmp(cmd, "mkdir") == 0) {
+      // Make directory: {cmd: "mkdir", fs: "lfs", path: "/", name: "newfolder"}
+      std::string fs = req["fs"] | "lfs";
+      std::string path = req["path"] | "/";
+      std::string name = req["name"] | "";
+      std::string errorMsg;
+
+      if (espwifi->makeDirectory(fs, path, name, errorMsg)) {
+        resp["success"] = true;
+      } else {
+        resp["ok"] = false;
+        resp["error"] = errorMsg;
+      }
+    } else if (strcmp(cmd, "rename_file") == 0) {
+      // Rename file: {cmd: "rename_file", fs: "lfs", oldPath: "/old.txt",
+      // newName: "new.txt"}
+      std::string fs = req["fs"] | "lfs";
+      std::string oldPath = req["oldPath"] | "";
+      std::string newName = req["newName"] | "";
+      std::string errorMsg;
+
+      if (espwifi->renameFile(fs, oldPath, newName, errorMsg)) {
+        resp["success"] = true;
+      } else {
+        resp["ok"] = false;
+        resp["error"] = errorMsg;
+      }
+    } else if (strcmp(cmd, "delete_file") == 0) {
+      // Delete file: {cmd: "delete_file", fs: "lfs", path: "/file.txt"}
+      std::string fs = req["fs"] | "lfs";
+      std::string path = req["path"] | "";
+      std::string errorMsg;
+
+      if (espwifi->deleteFile(fs, path, errorMsg)) {
+        resp["success"] = true;
+      } else {
+        resp["ok"] = false;
+        resp["error"] = errorMsg;
+      }
     } else {
       resp["ok"] = false;
       resp["error"] = "unknown_cmd";

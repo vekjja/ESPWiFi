@@ -242,6 +242,7 @@ export default function SettingsButtonBar({
   deviceOnline,
   saveConfig,
   saveConfigToDevice,
+  onRefreshConfig,
   getRSSIColor,
   getRSSIIcon,
   controlRssi = null,
@@ -258,6 +259,7 @@ export default function SettingsButtonBar({
   cloudMode = false,
   controlConnected = false,
   deviceInfoOverride = null,
+  controlWs = null,
 }) {
   // Track previous visible IDs to detect newly available buttons
   const prevVisibleIdsRef = useRef(new Set());
@@ -298,6 +300,7 @@ export default function SettingsButtonBar({
           config={config}
           deviceOnline={httpCapable || canCloudConfigure}
           saveConfigToDevice={saveConfigToDevice}
+          onRefreshConfig={onRefreshConfig}
           cloudMode={cloudMode}
           controlConnected={controlConnected}
           deviceInfoOverride={deviceInfoOverride}
@@ -374,7 +377,11 @@ export default function SettingsButtonBar({
     items.push({
       id: "files",
       render: () => (
-        <FileBrowserButton config={config} deviceOnline={httpCapable} />
+        <FileBrowserButton
+          config={config}
+          deviceOnline={httpCapable}
+          controlWs={controlWs}
+        />
       ),
     });
 
@@ -398,6 +405,7 @@ export default function SettingsButtonBar({
     deviceOnline,
     saveConfig,
     saveConfigToDevice,
+    onRefreshConfig,
     getRSSIColor,
     getRSSIIcon,
     controlRssi,
@@ -414,6 +422,7 @@ export default function SettingsButtonBar({
     controlConnected,
     deviceInfoOverride,
     showDevicePicker,
+    controlWs,
   ]);
 
   const visibleIds = useMemo(

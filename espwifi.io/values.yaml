@@ -75,7 +75,7 @@ ingress:
 
 # CloudTunnel broker (tnl.espwifi.io)
 cloudTunnel:
-  enabled: true
+  enabled: false
 
   image:
     repository: ghcr.io/vekjja/espwifi-cloudtunnel

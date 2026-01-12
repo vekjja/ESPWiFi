@@ -524,6 +524,25 @@ function App() {
   );
 
   /**
+   * Refresh config and info from device
+   * Used when opening settings to get latest state
+   */
+  const refreshConfigFromDevice = useCallback(() => {
+    const ws = controlWsRef.current;
+    if (!ws || ws.readyState !== 1) {
+      console.warn("Control WS not connected; cannot refresh config.");
+      return;
+    }
+    try {
+      console.log("📡 Refreshing config and info from device...");
+      ws.send(JSON.stringify({ cmd: "get_config" }));
+      ws.send(JSON.stringify({ cmd: "get_info" }));
+    } catch (err) {
+      console.error("Error refreshing config from device:", err);
+    }
+  }, []);
+
+  /**
    * Get RSSI color based on signal strength
    * @param {number} rssi - The RSSI value in dBm
    * @returns {string} Theme color string
@@ -645,6 +664,7 @@ function App() {
           deviceOnline={deviceOnline}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
+          onRefreshConfig={refreshConfigFromDevice}
           getRSSIColor={getRSSIColor}
           getRSSIIcon={getRSSIIcon}
           controlRssi={cloudRssi}
@@ -692,6 +712,7 @@ function App() {
           }}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
+          controlWs={controlWsRef.current}
         />
       </Suspense>
 

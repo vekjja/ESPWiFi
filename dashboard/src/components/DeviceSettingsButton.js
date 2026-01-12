@@ -10,12 +10,17 @@ export default function DeviceSettingsButton({
   cloudMode = false,
   controlConnected = false,
   deviceInfoOverride = null,
+  onRefreshConfig, // Add callback to refresh config
 }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleClick = () => {
     // Only open modal if device is online AND config is loaded
     if ((cloudMode ? controlConnected : deviceOnline) && config) {
+      // Refresh config before opening modal
+      if (onRefreshConfig) {
+        onRefreshConfig();
+      }
       setModalOpen(true);
     }
   };
@@ -46,7 +51,9 @@ export default function DeviceSettingsButton({
             size="medium"
             color="primary"
             onClick={handleClick}
-            disabled={(cloudMode ? !controlConnected : !deviceOnline) || !config}
+            disabled={
+              (cloudMode ? !controlConnected : !deviceOnline) || !config
+            }
             sx={{
               color:
                 (cloudMode ? !controlConnected : !deviceOnline) || !config

@@ -94,10 +94,13 @@ const getContentTypeFromExtension = (fileName) => {
   return contentTypes[ext] || null;
 };
 
-const FileBrowserComponent = ({ config, deviceOnline }) => {
+const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
   const theme = useTheme();
   const DeleteIcon = getDeleteIcon(theme);
   const EditIcon = getEditIcon(theme);
+
+  // Check if we should use WebSocket (when controlWs is available and open)
+  const useWebSocket = controlWs && controlWs.readyState === WebSocket.OPEN;
 
   // State management
   const [files, setFiles] = useState([]);
@@ -140,6 +143,43 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const downloadXhrRef = useRef(null);
 
   const apiURL = config?.apiURL || "";
+
+  // Helper to send WebSocket command and wait for response
+  const sendWsCommand = useCallback(
+    (cmd) => {
+      return new Promise((resolve, reject) => {
+        if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
+          reject(new Error("WebSocket not connected"));
+          return;
+        }
+
+        const timeout = setTimeout(() => {
+          reject(new Error("WebSocket command timed out"));
+        }, 10000);
+
+        const handleMessage = (event) => {
+          try {
+            const response = JSON.parse(event.data);
+            if (response.cmd === cmd.cmd) {
+              clearTimeout(timeout);
+              controlWs.removeEventListener("message", handleMessage);
+              if (response.ok === false) {
+                reject(new Error(response.error || "Command failed"));
+              } else {
+                resolve(response);
+              }
+            }
+          } catch (err) {
+            // Ignore parse errors for other messages
+          }
+        };
+
+        controlWs.addEventListener("message", handleMessage);
+        controlWs.send(JSON.stringify(cmd));
+      });
+    },
+    [controlWs]
+  );
 
   // Helper function to reset download state
   const resetDownloadState = useCallback(() => {
@@ -508,22 +548,37 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       setStorageInfo((prev) => ({ ...prev, loading: true }));
 
       try {
-        const response = await fetchWithRetry(
-          `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
-        );
-        const data = await response.json();
-        setStorageInfo({
-          total: data.total || 0,
-          used: data.used || 0,
-          free: data.free || 0,
-          loading: false,
-        });
+        if (useWebSocket) {
+          // Use WebSocket
+          const response = await sendWsCommand({
+            cmd: "get_storage",
+            fs: fs,
+          });
+          setStorageInfo({
+            total: response.total || 0,
+            used: response.used || 0,
+            free: response.free || 0,
+            loading: false,
+          });
+        } else {
+          // Use HTTP
+          const response = await fetchWithRetry(
+            `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
+          );
+          const data = await response.json();
+          setStorageInfo({
+            total: data.total || 0,
+            used: data.used || 0,
+            free: data.free || 0,
+            loading: false,
+          });
+        }
       } catch (err) {
         console.error(`Failed to fetch storage info: ${err.message}`);
         setStorageInfo((prev) => ({ ...prev, loading: false }));
       }
     },
-    [fileSystem, apiURL, fetchWithRetry]
+    [fileSystem, apiURL, fetchWithRetry, useWebSocket, sendWsCommand]
   );
 
   // Fetch files with retry and better error handling
@@ -533,22 +588,40 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
       setError(null);
 
       try {
-        const response = await fetchWithRetry(
-          `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`
-        );
+        if (useWebSocket) {
+          // Use WebSocket
+          const response = await sendWsCommand({
+            cmd: "list_files",
+            fs: fs,
+            path: path,
+          });
+          setFiles(response.files || []);
+          setCurrentPath(path);
+          setFileSystem(fs);
+          fetchStorageInfo(fs);
+        } else {
+          // Use HTTP
+          const response = await fetchWithRetry(
+            `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`
+          );
 
-        const data = await response.json();
-        setFiles(data.files || []);
-        setCurrentPath(path);
-        setFileSystem(fs);
-        fetchStorageInfo(fs);
+          const data = await response.json();
+          setFiles(data.files || []);
+          setCurrentPath(path);
+          setFileSystem(fs);
+          fetchStorageInfo(fs);
+        }
       } catch (err) {
         let errorMsg = "Failed to load files";
-        if (err.message === "Request timed out") {
+        if (
+          err.message === "Request timed out" ||
+          err.message.includes("timed out")
+        ) {
           errorMsg = "Device is busy. Please wait a moment and try again.";
         } else if (
           err.message.includes("NetworkError") ||
-          err.message.includes("fetch")
+          err.message.includes("fetch") ||
+          err.message.includes("WebSocket")
         ) {
           errorMsg = "Cannot connect to device. Check your connection.";
         } else {
@@ -560,7 +633,7 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
         setLoading(false);
       }
     },
-    [apiURL, fetchStorageInfo, fetchWithRetry]
+    [apiURL, fetchStorageInfo, fetchWithRetry, useWebSocket, sendWsCommand]
   );
 
   // Handle file system change
@@ -595,14 +668,25 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     setError(null);
 
     try {
-      await fetchWithRetry(`${apiURL}/api/files/mkdir`, {
-        method: "POST",
-        body: JSON.stringify({
+      if (useWebSocket) {
+        // Use WebSocket
+        await sendWsCommand({
+          cmd: "mkdir",
           fs: fileSystem,
           path: currentPath,
           name: newFolderDialog.folderName.trim(),
-        }),
-      });
+        });
+      } else {
+        // Use HTTP
+        await fetchWithRetry(`${apiURL}/api/files/mkdir`, {
+          method: "POST",
+          body: JSON.stringify({
+            fs: fileSystem,
+            path: currentPath,
+            name: newFolderDialog.folderName.trim(),
+          }),
+        });
+      }
 
       setNewFolderDialog({ open: false, folderName: "" });
       fetchFiles(currentPath, fileSystem);
@@ -655,14 +739,25 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
     if (!renameDialog.file || !renameDialog.newName.trim()) return;
 
     try {
-      await fetchWithRetry(
-        `${apiURL}/api/files/rename?fs=${encodeURIComponent(
-          fileSystem
-        )}&oldPath=${encodeURIComponent(
-          renameDialog.file.path
-        )}&newName=${encodeURIComponent(renameDialog.newName.trim())}`,
-        { method: "POST" }
-      );
+      if (useWebSocket) {
+        // Use WebSocket
+        await sendWsCommand({
+          cmd: "rename_file",
+          fs: fileSystem,
+          oldPath: renameDialog.file.path,
+          newName: renameDialog.newName.trim(),
+        });
+      } else {
+        // Use HTTP
+        await fetchWithRetry(
+          `${apiURL}/api/files/rename?fs=${encodeURIComponent(
+            fileSystem
+          )}&oldPath=${encodeURIComponent(
+            renameDialog.file.path
+          )}&newName=${encodeURIComponent(renameDialog.newName.trim())}`,
+          { method: "POST" }
+        );
+      }
 
       setRenameDialog({ open: false, file: null, newName: "" });
       fetchFiles(currentPath, fileSystem);
@@ -676,12 +771,22 @@ const FileBrowserComponent = ({ config, deviceOnline }) => {
   const handleDeleteSubmit = async () => {
     try {
       for (const file of deleteDialog.files) {
-        await fetchWithRetry(
-          `${apiURL}/api/files/delete?fs=${encodeURIComponent(
-            fileSystem
-          )}&path=${encodeURIComponent(file.path)}`,
-          { method: "POST" }
-        );
+        if (useWebSocket) {
+          // Use WebSocket
+          await sendWsCommand({
+            cmd: "delete_file",
+            fs: fileSystem,
+            path: file.path,
+          });
+        } else {
+          // Use HTTP
+          await fetchWithRetry(
+            `${apiURL}/api/files/delete?fs=${encodeURIComponent(
+              fileSystem
+            )}&path=${encodeURIComponent(file.path)}`,
+            { method: "POST" }
+          );
+        }
       }
 
       setDeleteDialog({ open: false, files: [] });

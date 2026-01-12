@@ -246,6 +246,11 @@ public:
                  size_t bytesSent = 0);
   JsonDocument readRequestBody(httpd_req_t *req);
 
+  // GPIO helper methods (used by both HTTP and WebSocket)
+  bool setGPIO(int pin, bool state, std::string &errorMsg);
+  bool getGPIO(int pin, int &state, std::string &errorMsg);
+  bool setPWM(int pin, int duty, int freq, std::string &errorMsg);
+
   // Route groups
   void srvFiles();
   void srvAll();
@@ -253,10 +258,15 @@ public:
   void srvRoot();
   void srvGPIO();
 
-  // GPIO helper methods (used by both HTTP and WebSocket)
-  bool setGPIO(int pin, bool state, std::string &errorMsg);
-  bool getGPIO(int pin, int &state, std::string &errorMsg);
-  bool setPWM(int pin, int duty, int freq, std::string &errorMsg);
+  // File browser helper methods (used by both HTTP and WebSocket)
+  bool listFiles(const std::string &fs, const std::string &path,
+                 JsonDocument &outDoc, std::string &errorMsg);
+  bool makeDirectory(const std::string &fs, const std::string &path,
+                     const std::string &name, std::string &errorMsg);
+  bool renameFile(const std::string &fs, const std::string &oldPath,
+                  const std::string &newName, std::string &errorMsg);
+  bool deleteFile(const std::string &fs, const std::string &path,
+                  std::string &errorMsg);
   void srvAuth();
   void srvBLE();
   void srvBluetooth();

@@ -143,6 +143,293 @@ bool pickMountPoint(ESPWiFi *espwifi, const std::string &fsParam,
 }
 } // namespace
 
+// ===== REUSABLE FILE BROWSER FUNCTIONS =====
+
+bool ESPWiFi::listFiles(const std::string &fs, const std::string &path,
+                        JsonDocument &outDoc, std::string &errorMsg) {
+  std::string normalizedPath = normalizePath(path);
+  if (!isSafePath(normalizedPath)) {
+    errorMsg = "Invalid path";
+    return false;
+  }
+
+  std::string mountPoint;
+  if (!pickMountPoint(this, fs, mountPoint)) {
+    errorMsg = "File system not available";
+    return false;
+  }
+
+  std::string fullPath = mountPoint + normalizedPath;
+  DIR *dir = opendir(fullPath.c_str());
+  if (!dir) {
+    errorMsg = "Directory not found";
+    return false;
+  }
+
+  JsonArray filesArray = outDoc["files"].to<JsonArray>();
+  struct dirent *entry;
+  int fileCount = 0;
+  const int maxFiles = 1000;
+
+  while ((entry = readdir(dir)) != nullptr && fileCount < maxFiles) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    std::string entryPath = normalizedPath;
+    if (entryPath.back() != '/') {
+      entryPath += "/";
+    }
+    entryPath += entry->d_name;
+
+    std::string fullEntryPath = mountPoint + entryPath;
+    struct stat st;
+    if (stat(fullEntryPath.c_str(), &st) != 0) {
+      continue;
+    }
+
+    JsonObject fileObj = filesArray.add<JsonObject>();
+    fileObj["name"] = entry->d_name;
+    fileObj["path"] = entryPath;
+    fileObj["isDirectory"] = S_ISDIR(st.st_mode);
+    fileObj["size"] = S_ISDIR(st.st_mode) ? 0 : (int64_t)st.st_size;
+    fileObj["modified"] = (int64_t)st.st_mtime;
+
+    fileCount++;
+    if ((fileCount % 16) == 0) {
+      feedWatchDog();
+    }
+  }
+
+  closedir(dir);
+  log(DEBUG, "📁 List: Success, found %d files", fileCount);
+  return true;
+}
+
+bool ESPWiFi::makeDirectory(const std::string &fs, const std::string &path,
+                            const std::string &name, std::string &errorMsg) {
+  std::string normalizedPath = normalizePath(path);
+  if (!isSafePath(normalizedPath) || name.empty()) {
+    errorMsg = "Invalid path or name";
+    return false;
+  }
+
+  std::string mountPoint;
+  if (!pickMountPoint(this, fs, mountPoint)) {
+    errorMsg = "File system not available";
+    return false;
+  }
+
+  const std::string sanitizedName = sanitizeFilename(name);
+  if (sanitizedName.empty() || sanitizedName == "." || sanitizedName == "..") {
+    errorMsg = "Bad folder name";
+    return false;
+  }
+
+  std::string dirPath = normalizedPath;
+  if (dirPath.back() != '/') {
+    dirPath += "/";
+  }
+  dirPath += sanitizedName;
+
+  if (isProtectedFile(fs, dirPath)) {
+    errorMsg = "Path is protected";
+    return false;
+  }
+
+  std::string fullDirPath = mountPoint + dirPath;
+  if (mkDir(fullDirPath)) {
+    log(INFO, "📂 MkDir: Created: %s", dirPath.c_str());
+    return true;
+  } else {
+    errorMsg = "Failed to create directory";
+    log(ERROR, " 📂 MkDir: Failed: %s", fullDirPath.c_str());
+    return false;
+  }
+}
+
+bool ESPWiFi::renameFile(const std::string &fs, const std::string &oldPath,
+                         const std::string &newName, std::string &errorMsg) {
+  std::string normalizedPath = normalizePath(oldPath);
+  if (!isSafePath(normalizedPath) || newName.empty()) {
+    errorMsg = "Invalid path or name";
+    return false;
+  }
+
+  std::string mountPoint;
+  if (!pickMountPoint(this, fs, mountPoint)) {
+    errorMsg = "File system not available";
+    return false;
+  }
+
+  if (isProtectedFile(fs, normalizedPath)) {
+    errorMsg = "Path is protected";
+    return false;
+  }
+
+  std::string sanitizedNewName = sanitizeFilename(newName);
+  if (sanitizedNewName.empty() || sanitizedNewName == "." ||
+      sanitizedNewName == "..") {
+    errorMsg = "Bad name";
+    return false;
+  }
+
+  size_t lastSlash = normalizedPath.find_last_of('/');
+  std::string dirPath = (lastSlash != std::string::npos)
+                            ? normalizedPath.substr(0, lastSlash)
+                            : "/";
+  std::string newPath = dirPath;
+  if (newPath.back() != '/') {
+    newPath += "/";
+  }
+  newPath += sanitizedNewName;
+
+  if (isProtectedFile(fs, newPath)) {
+    errorMsg = "Target path is protected";
+    return false;
+  }
+
+  std::string fullOldPath = mountPoint + normalizedPath;
+  std::string fullNewPath = mountPoint + newPath;
+
+  if (rename(fullOldPath.c_str(), fullNewPath.c_str()) == 0) {
+    log(INFO, "✏️ Rename: %s -> %s", normalizedPath.c_str(), newPath.c_str());
+    return true;
+  } else {
+    errorMsg = "Failed to rename file";
+    log(ERROR, " ✏️ Rename: Failed: %s -> %s", normalizedPath.c_str(),
+        fullNewPath.c_str());
+    return false;
+  }
+}
+
+bool ESPWiFi::deleteFile(const std::string &fs, const std::string &filePath,
+                         std::string &errorMsg) {
+  std::string normalizedPath = normalizePath(filePath);
+  if (!isSafePath(normalizedPath)) {
+    errorMsg = "Invalid path";
+    return false;
+  }
+
+  std::string mountPoint;
+  if (!pickMountPoint(this, fs, mountPoint)) {
+    errorMsg = "File system not available";
+    return false;
+  }
+
+  std::string fullPath = mountPoint + normalizedPath;
+
+  if (!fileExists(fullPath) && !dirExists(fullPath)) {
+    errorMsg = "File not found";
+    return false;
+  }
+
+  if (isProtectedFile(fs, normalizedPath)) {
+    errorMsg = "Path is protected";
+    return false;
+  }
+
+  bool deleteSuccess = false;
+  if (dirExists(fullPath)) {
+    // Simple recursive delete for directories
+    std::vector<std::string> stack;
+    stack.reserve(16);
+    stack.push_back(normalizedPath);
+    int ops = 0;
+
+    // Delete files
+    while (!stack.empty()) {
+      std::string cur = stack.back();
+      stack.pop_back();
+      std::string curFull = mountPoint + cur;
+      DIR *dir = opendir(curFull.c_str());
+      if (!dir)
+        continue;
+
+      struct dirent *entry;
+      while ((entry = readdir(dir)) != nullptr) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
+          continue;
+        }
+
+        std::string child = cur;
+        if (child.back() != '/') {
+          child += "/";
+        }
+        child += entry->d_name;
+        std::string childFull = mountPoint + child;
+        struct stat st;
+        if (stat(childFull.c_str(), &st) != 0)
+          continue;
+
+        if (S_ISDIR(st.st_mode)) {
+          stack.push_back(child);
+        } else {
+          ::remove(childFull.c_str());
+        }
+
+        if ((++ops % 16) == 0) {
+          feedWatchDog();
+        }
+      }
+      closedir(dir);
+    }
+
+    // Remove directories
+    stack.clear();
+    stack.push_back(normalizedPath);
+    while (!stack.empty()) {
+      std::string cur = stack.back();
+      stack.pop_back();
+      std::string curFull = mountPoint + cur;
+      DIR *dir = opendir(curFull.c_str());
+      if (!dir) {
+        ::rmdir(curFull.c_str());
+        continue;
+      }
+
+      struct dirent *entry;
+      bool hasSubdir = false;
+      while ((entry = readdir(dir)) != nullptr) {
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0) {
+          continue;
+        }
+        std::string child = cur;
+        if (child.back() != '/') {
+          child += "/";
+        }
+        child += entry->d_name;
+        std::string childFull = mountPoint + child;
+        struct stat st;
+        if (stat(childFull.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+          hasSubdir = true;
+          stack.push_back(child);
+        }
+      }
+      closedir(dir);
+
+      if (!hasSubdir) {
+        ::rmdir(curFull.c_str());
+      }
+    }
+
+    deleteSuccess = !dirExists(fullPath) && !fileExists(fullPath);
+  } else {
+    deleteSuccess = (::remove(fullPath.c_str()) == 0);
+  }
+
+  if (deleteSuccess) {
+    log(INFO, "🗑️ Delete: Removed: %s", normalizedPath.c_str());
+    return true;
+  } else {
+    errorMsg = "Failed to delete file";
+    log(ERROR, " 🗑️ Delete: Failed: %s", normalizedPath.c_str());
+    return false;
+  }
+}
+
 void ESPWiFi::srvFiles() {
   // API endpoint for file browser JSON data - GET /api/files
   registerRoute(

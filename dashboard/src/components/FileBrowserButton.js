@@ -7,6 +7,7 @@ import FileBrowserComponent from "./FileBrowser";
 export default function FileBrowserButton({
   config,
   deviceOnline,
+  controlWs,
   onFileBrowser,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -81,7 +82,11 @@ export default function FileBrowserButton({
             pb: { xs: 1.5, sm: 1.25 },
           }}
         >
-          <FileBrowserComponent config={config} deviceOnline={deviceOnline} />
+          <FileBrowserComponent
+            config={config}
+            deviceOnline={deviceOnline}
+            controlWs={controlWs}
+          />
         </SettingsModal>
       )}
     </>

@@ -26,7 +26,7 @@ export default function AddModuleButton({
 
   return (
     <>
-      <Tooltip title="Add Module">
+      <Tooltip title={!deviceOnline ? "Control socket disconnected" : "Add Module"}>
         {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
         <span>
           <Fab

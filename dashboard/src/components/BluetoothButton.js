@@ -28,7 +28,7 @@ export default function BluetoothButton({
 
   return (
     <>
-      <Tooltip title="Pair BLE Device">
+      <Tooltip title={isDisabled ? (!config ? "Loading configuration..." : "Control socket disconnected") : "Pair BLE Device"}>
         <Fab
           size="medium"
           color="primary"

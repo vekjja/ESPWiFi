@@ -26,7 +26,9 @@ export default function CameraButton({
     <>
       <Tooltip
         title={
-          !config
+          !deviceOnline
+            ? "Control socket disconnected"
+            : !config
             ? "Loading configuration..."
             : !isCameraAvailable
             ? "Camera not installed"

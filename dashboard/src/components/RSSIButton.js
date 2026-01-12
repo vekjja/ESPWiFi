@@ -80,6 +80,7 @@ export default function RSSIButton({
 
   // Get RSSI status text
   const getRSSIStatusText = (rssiValue) => {
+    if (!deviceOnline) return "Control socket disconnected";
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
     return `RSSI: ${rssiValue} dBm`;

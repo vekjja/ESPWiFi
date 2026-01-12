@@ -266,6 +266,10 @@ export default function SettingsButtonBar({
   /**
    * Build list of available buttons based on device capabilities
    * Some buttons (camera, bluetooth) only appear if device supports them
+   * 
+   * When control socket is disconnected (deviceOnline=false), all buttons 
+   * except devicePicker should be disabled to prevent operations that require
+   * the WebSocket connection (e.g., RSSI polling, logs, settings changes).
    */
   const availableButtons = useMemo(() => {
     const items = [];

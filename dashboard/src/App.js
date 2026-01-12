@@ -631,8 +631,8 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: deviceOnline ? "secondary.light" : "error.main",
-          color: deviceOnline ? "primary.main" : "white",
+          backgroundColor: controlConnected ? "secondary.light" : "error.main",
+          color: controlConnected ? "primary.main" : "white",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -661,7 +661,7 @@ function App() {
       <Suspense fallback={null}>
         <SettingsButtonBar
           config={effectiveConfig}
-          deviceOnline={deviceOnline}
+          deviceOnline={controlConnected}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
           onRefreshConfig={refreshConfigFromDevice}
@@ -722,7 +722,7 @@ function App() {
             config={effectiveConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
-            deviceOnline={deviceOnline}
+            deviceOnline={controlConnected}
             controlWs={controlWsRef.current}
           />
         </Suspense>

@@ -26,7 +26,7 @@ export default function LogsButton({
 
   return (
     <>
-      <Tooltip title="Logs">
+      <Tooltip title={!deviceOnline ? "Control socket disconnected" : "Logs"}>
         {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
         <span>
           <Fab

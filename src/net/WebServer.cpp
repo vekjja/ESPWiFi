@@ -592,9 +592,9 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     int sockfd = httpd_req_to_sockfd(req);
 
     // Stream the range in chunks using direct socket send
-    // Use larger chunks for range requests (8KB) since we're not having memory
-    // issues
-    constexpr size_t CHUNK_SIZE = 8192;
+    // Use 32KB chunks for faster streaming (MP3 players need quick initial
+    // buffer)
+    constexpr size_t CHUNK_SIZE = 32768;
     char *buffer = (char *)malloc(CHUNK_SIZE);
     if (!buffer) {
       fclose(file);
@@ -604,7 +604,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     }
 
     while (totalSent < bytesToSend && ret == ESP_OK) {
-      feedWatchDog();
       size_t toRead = (bytesToSend - totalSent < CHUNK_SIZE)
                           ? (bytesToSend - totalSent)
                           : CHUNK_SIZE;
@@ -624,7 +623,6 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
         ret = ESP_FAIL;
         break;
       }
-      feedWatchDog();
 
       // Send directly to socket (no chunked encoding)
       ssize_t sent =
@@ -635,6 +633,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
         ret = ESP_FAIL;
         break;
       }
+
+      // Feed watchdog once per chunk (after send completes)
       feedWatchDog();
 
       totalSent += bytesRead;
@@ -650,11 +650,12 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Full file request: use chunked encoding for progressive streaming
     httpd_resp_set_status(req, "200 OK");
 
-    log(DEBUG, "🗄️ Serving full file (%ld bytes) using chunked encoding",
-        fileSize);
+    log(DEBUG, "🗄️ Serving full file: %s (%ld bytes) using chunked encoding",
+        filePath.c_str(), fileSize);
 
     // Use smaller chunk size to reduce memory pressure (2KB instead of 4KB)
-    // Allocate from heap (not stack) to ensure it's in regular RAM, not PSRAM
+    // Allocate from heap (not stack) to ensure it's in regular RAM, not
+    // PSRAM
     constexpr size_t CHUNK_SIZE = 2048;
     char *buffer = (char *)malloc(CHUNK_SIZE);
     if (!buffer) {
@@ -706,7 +707,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
         log(ERROR, "Failed to finalize chunked transfer: %s",
             esp_err_to_name(ret));
       } else {
-        log(DEBUG, "🗄️ Full file transfer completed: %zu bytes", totalSent);
+        log(DEBUG, "🗄️ Full file transfer completed: %s (%zu bytes)",
+            filePath.c_str(), totalSent);
       }
       feedWatchDog();
     }

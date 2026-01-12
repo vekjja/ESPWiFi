@@ -148,8 +148,11 @@ public:
   // ---- Logging
   // Defer log writes to avoid blocking request handling
   std::vector<std::string> deferredLogMessages;
-  bool deferLogWrite(std::string message);
-  void flushDeferredLogs();
+  bool logIDF(std::string message);
+  void flushDeferredLog();
+  std::string formatIDFtoESPWiFi(const std::string &line,
+                                 LogLevel *outLevel = nullptr);
+  static int idfLogVprintfHook(const char *format, va_list args);
 
   void cleanLogFile();
   int maxLogFileSize = 0;
@@ -472,6 +475,7 @@ private:
 
   // ---- Log file synchronization (best-effort; avoid blocking httpd)
   SemaphoreHandle_t logFileMutex = nullptr;
+  SemaphoreHandle_t deferredLogMutex = nullptr;
 
   // ---- WiFi event handlers
   esp_err_t registerWiFiHandlers();

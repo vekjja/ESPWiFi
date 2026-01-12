@@ -519,73 +519,6 @@ void ESPWiFi::updateCameraSettings() {
   printCameraSettings();
 }
 
-/**
- * @brief Stream camera frames to WebSocket clients
- *
- * This function should be called periodically from the main loop. It:
- * 1. Checks if streaming is enabled and clients are connected
- * 2. Rate-limits frame capture based on configured FPS
- * 3. Captures a JPEG frame from the camera
- * 4. Broadcasts the frame to all connected WebSocket clients
- *
- * The function is designed to be watchdog-safe and non-blocking. If the
- * mutex is busy or no frame is available, it returns immediately without
- * waiting.
- *
- * @note Safe to call even if camera is disabled (no-op)
- * @note Requires CONFIG_HTTPD_WS_SUPPORT
- */
-void ESPWiFi::streamCamera() {
-#ifndef CONFIG_HTTPD_WS_SUPPORT
-  return;
-#else
-  if (!cameraSocStarted) {
-    return;
-  }
-
-  // Check for subscribers
-  const size_t lanSubs = (size_t)cameraStreamSubCount_;
-  if (lanSubs == 0) {
-    if (camera != nullptr) {
-      deinitCamera();
-    }
-    return;
-  }
-
-  // Initialize camera if needed
-  if (camera == nullptr) {
-    if (!initCamera()) {
-      return;
-    }
-  }
-
-  static IntervalTimer frameTimer(1000);
-  frameTimer.setIntervalMs((uint32_t)(1000 / 30)); // 30 FPS
-  if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
-    return;
-  }
-
-  camera_fb_t *fb = esp_camera_fb_get();
-
-  if (!fb || fb->format != PIXFORMAT_JPEG || !fb->buf || fb->len == 0) {
-    if (fb) {
-      esp_camera_fb_return(fb);
-    }
-    return;
-  }
-
-  // Send to all subscribers
-  for (size_t i = 0; i < lanSubs; i++) {
-    int fd = cameraStreamSubFds_[i];
-    if (fd > 0) {
-      cameraSoc.sendBinary(fd, fb->buf, fb->len);
-    }
-  }
-
-  esp_camera_fb_return(fb);
-#endif
-}
-
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
   if (clientFd <= 0) {
@@ -653,7 +586,7 @@ void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
 
 /**
  * @brief Take a camera snapshot and optionally save to SD card
- * 
+ *
  * @param save If true, save snapshot to SD card
  * @param url Output parameter for the URL where snapshot can be accessed
  * @param errorMsg Output parameter for error message if snapshot fails
@@ -669,7 +602,7 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
 
   // Capture frame
   camera_fb_t *fb = esp_camera_fb_get();
-  
+
   if (!fb) {
     errorMsg = "Frame capture failed";
     log(ERROR, "📸 Snapshot: Frame capture failed");
@@ -692,7 +625,7 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
       // Create snapshots directory
       char snapDir[128];
       snprintf(snapDir, sizeof(snapDir), "%s/snapshots", sdMountPoint.c_str());
-      
+
       int mkdirResult = mkdir(snapDir, 0755);
       if (mkdirResult != 0 && errno != EEXIST) {
         log(ERROR, "📸 Failed to create snapshots directory: %s (errno=%d)",
@@ -700,19 +633,19 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
       } else if (mkdirResult == 0) {
         log(INFO, "📸 Created snapshots directory: %s", snapDir);
       }
-      
+
       // Generate filename using timestamp
       unsigned long timestamp = millis();
       char filename[128];
       snprintf(filename, sizeof(filename), "%s/snapshots/%lu.jpg",
                sdMountPoint.c_str(), timestamp);
-      
+
       // Write snapshot to file
       FILE *file = fopen(filename, "wb");
       if (file) {
         size_t written = fwrite(fb->buf, 1, fb->len, file);
         fclose(file);
-        
+
         if (written == fb->len) {
           char urlBuf[64];
           snprintf(urlBuf, sizeof(urlBuf), "/sd/snapshots/%lu.jpg", timestamp);
@@ -721,12 +654,13 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
           log(INFO, "📸 Snapshot saved: %s (%zu bytes)", filename, fb->len);
         } else {
           errorMsg = "Failed to write snapshot";
-          log(ERROR, "📸 Failed to write snapshot: %zu/%zu bytes", written, fb->len);
+          log(ERROR, "📸 Failed to write snapshot: %zu/%zu bytes", written,
+              fb->len);
         }
       } else {
         errorMsg = "Failed to create file";
-        log(ERROR, "📸 Failed to create snapshot file: %s (errno=%d)", 
-            filename, errno);
+        log(ERROR, "📸 Failed to create snapshot file: %s (errno=%d)", filename,
+            errno);
       }
     } else {
       errorMsg = "SD card not available";
@@ -937,5 +871,72 @@ void ESPWiFi::cameraConfigHandler() {
   } else {
     deinitCamera();
   }
+#endif
+}
+
+/**
+ * @brief Stream camera frames to WebSocket clients
+ *
+ * This function should be called periodically from the main loop. It:
+ * 1. Checks if streaming is enabled and clients are connected
+ * 2. Rate-limits frame capture based on configured FPS
+ * 3. Captures a JPEG frame from the camera
+ * 4. Broadcasts the frame to all connected WebSocket clients
+ *
+ * The function is designed to be watchdog-safe and non-blocking. If the
+ * mutex is busy or no frame is available, it returns immediately without
+ * waiting.
+ *
+ * @note Safe to call even if camera is disabled (no-op)
+ * @note Requires CONFIG_HTTPD_WS_SUPPORT
+ */
+void ESPWiFi::streamCamera() {
+#if !defined(CONFIG_HTTPD_WS_SUPPORT) || !ESPWiFi_HAS_CAMERA
+  return;
+#else
+  if (!cameraSocStarted) {
+    return;
+  }
+
+  // Check for subscribers
+  const size_t lanSubs = (size_t)cameraStreamSubCount_;
+  if (lanSubs == 0) {
+    if (camera != nullptr) {
+      deinitCamera();
+    }
+    return;
+  }
+
+  // Initialize camera if needed
+  if (camera == nullptr) {
+    if (!initCamera()) {
+      return;
+    }
+  }
+
+  static IntervalTimer frameTimer(1000);
+  frameTimer.setIntervalMs((uint32_t)(1000 / 30)); // 30 FPS
+  if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
+    return;
+  }
+
+  camera_fb_t *fb = esp_camera_fb_get();
+
+  if (!fb || fb->format != PIXFORMAT_JPEG || !fb->buf || fb->len == 0) {
+    if (fb) {
+      esp_camera_fb_return(fb);
+    }
+    return;
+  }
+
+  // Send to all subscribers
+  for (size_t i = 0; i < lanSubs; i++) {
+    int fd = cameraStreamSubFds_[i];
+    if (fd > 0) {
+      cameraSoc.sendBinary(fd, fb->buf, fb->len);
+    }
+  }
+
+  esp_camera_fb_return(fb);
 #endif
 }

@@ -648,6 +648,101 @@ void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
 #endif
 
 // ============================================================================
+// Snapshot Helper (shared by HTTP and WebSocket)
+// ============================================================================
+
+/**
+ * @brief Take a camera snapshot and optionally save to SD card
+ * 
+ * @param save If true, save snapshot to SD card
+ * @param url Output parameter for the URL where snapshot can be accessed
+ * @param errorMsg Output parameter for error message if snapshot fails
+ * @return true if snapshot was taken successfully, false otherwise
+ */
+bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
+  // Check camera availability
+  if (camera == nullptr) {
+    errorMsg = "Camera not available";
+    log(WARNING, "📸 Snapshot: Camera not initialized");
+    return false;
+  }
+
+  // Capture frame
+  camera_fb_t *fb = esp_camera_fb_get();
+  
+  if (!fb) {
+    errorMsg = "Frame capture failed";
+    log(ERROR, "📸 Snapshot: Frame capture failed");
+    return false;
+  }
+
+  if (fb->format != PIXFORMAT_JPEG || fb->buf == nullptr || fb->len == 0) {
+    esp_camera_fb_return(fb);
+    errorMsg = "Invalid frame";
+    log(ERROR, "📸 Snapshot: Invalid frame captured");
+    return false;
+  }
+
+  log(INFO, "📸 Snapshot captured: %zu bytes", fb->len);
+  bool success = false;
+
+  if (save) {
+    // Save to SD card
+    if (checkSDCard()) {
+      // Create snapshots directory
+      char snapDir[128];
+      snprintf(snapDir, sizeof(snapDir), "%s/snapshots", sdMountPoint.c_str());
+      
+      int mkdirResult = mkdir(snapDir, 0755);
+      if (mkdirResult != 0 && errno != EEXIST) {
+        log(ERROR, "📸 Failed to create snapshots directory: %s (errno=%d)",
+            snapDir, errno);
+      } else if (mkdirResult == 0) {
+        log(INFO, "📸 Created snapshots directory: %s", snapDir);
+      }
+      
+      // Generate filename using timestamp
+      unsigned long timestamp = millis();
+      char filename[128];
+      snprintf(filename, sizeof(filename), "%s/snapshots/%lu.jpg",
+               sdMountPoint.c_str(), timestamp);
+      
+      // Write snapshot to file
+      FILE *file = fopen(filename, "wb");
+      if (file) {
+        size_t written = fwrite(fb->buf, 1, fb->len, file);
+        fclose(file);
+        
+        if (written == fb->len) {
+          char urlBuf[64];
+          snprintf(urlBuf, sizeof(urlBuf), "/sd/snapshots/%lu.jpg", timestamp);
+          url = std::string(urlBuf);
+          success = true;
+          log(INFO, "📸 Snapshot saved: %s (%zu bytes)", filename, fb->len);
+        } else {
+          errorMsg = "Failed to write snapshot";
+          log(ERROR, "📸 Failed to write snapshot: %zu/%zu bytes", written, fb->len);
+        }
+      } else {
+        errorMsg = "Failed to create file";
+        log(ERROR, "📸 Failed to create snapshot file: %s (errno=%d)", 
+            filename, errno);
+      }
+    } else {
+      errorMsg = "SD card not available";
+      log(ERROR, "📸 Snapshot save failed: SD card not available");
+    }
+  } else {
+    // Don't save, just return the snapshot endpoint URL
+    url = "/camera/snapshot";
+    success = true;
+  }
+
+  esp_camera_fb_return(fb);
+  return success;
+}
+
+// ============================================================================
 // HTTP Response Helpers
 // ============================================================================
 

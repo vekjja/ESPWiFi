@@ -408,6 +408,7 @@ public:
   void updateCameraSettings();
   void cameraConfigHandler();
   esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
+  bool takeSnapshot(bool save, std::string &url, std::string &errorMsg);
 
   // Camera event handlers (instance methods)
   void cameraInitHandler(bool success, void *obj);

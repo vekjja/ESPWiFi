@@ -88,6 +88,7 @@ function SortableCameraModule({
   onDelete,
   deviceOnline,
   saveConfigToDevice,
+  controlWs,
 }) {
   const {
     attributes,
@@ -114,6 +115,7 @@ function SortableCameraModule({
         onDelete={onDelete}
         deviceOnline={deviceOnline}
         saveConfigToDevice={saveConfigToDevice}
+        controlWs={controlWs}
       />
     </div>
   );
@@ -381,6 +383,7 @@ export default function Modules({
                     onDelete={deleteModule}
                     deviceOnline={deviceOnline}
                     saveConfigToDevice={saveConfigToDevice}
+                    controlWs={controlWs}
                   />
                 );
               }

@@ -222,6 +222,27 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         resp["ok"] = false;
         resp["error"] = errorMsg;
       }
+    } else if (strcmp(cmd, "take_snapshot") == 0) {
+      // Take camera snapshot: {cmd: "take_snapshot", save: true}
+      // Captures the frame and returns the URL where it can be accessed
+#if ESPWiFi_HAS_CAMERA
+      bool save = req["save"] | false;
+      std::string url;
+      std::string errorMsg;
+
+      if (espwifi->takeSnapshot(save, url, errorMsg)) {
+        resp["url"] = url;
+        if (save) {
+          resp["path"] = url;
+        }
+      } else {
+        resp["ok"] = false;
+        resp["error"] = errorMsg;
+      }
+#else
+      resp["ok"] = false;
+      resp["error"] = "Camera not supported";
+#endif
     } else {
       resp["ok"] = false;
       resp["error"] = "unknown_cmd";

@@ -7,7 +7,7 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
-import { buildWebSocketUrl } from "../utils/apiUtils";
+import { buildWebSocketUrl, buildApiUrl } from "../utils/apiUtils";
 
 export default function CameraModule({
   config,
@@ -16,6 +16,7 @@ export default function CameraModule({
   onDelete,
   deviceOnline = true,
   saveConfigToDevice,
+  controlWs,
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
@@ -77,7 +78,11 @@ export default function CameraModule({
         setIsStreaming(false);
         // Auto-reconnect on error after a delay (if not intentionally closed)
         setTimeout(() => {
-          if (isMountedRef.current && wsRef.current === ws && !intentionalCloseRef.current) {
+          if (
+            isMountedRef.current &&
+            wsRef.current === ws &&
+            !intentionalCloseRef.current
+          ) {
             console.log("📷 Attempting to reconnect camera after error...");
             handleStartStream();
           }
@@ -90,7 +95,11 @@ export default function CameraModule({
         wsRef.current = null;
 
         // Auto-reconnect if closed unexpectedly (not a normal close and not intentional)
-        if (event.code !== 1000 && isMountedRef.current && !intentionalCloseRef.current) {
+        if (
+          event.code !== 1000 &&
+          isMountedRef.current &&
+          !intentionalCloseRef.current
+        ) {
           console.log("📷 Unexpected close, attempting to reconnect in 2s...");
           setTimeout(() => {
             if (isMountedRef.current && !intentionalCloseRef.current) {
@@ -107,7 +116,7 @@ export default function CameraModule({
   const handleStopStream = () => {
     // Mark as intentional close to prevent auto-reconnect
     intentionalCloseRef.current = true;
-    
+
     // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close();
@@ -180,7 +189,55 @@ export default function CameraModule({
   };
 
   const handleSnapshot = async () => {
-    console.warn("Snapshot not yet implemented for LAN mode");
+    try {
+      // Use control WebSocket if available
+      if (controlWs && controlWs.readyState === WebSocket.OPEN) {
+        // Send command via WebSocket - always save to get a direct file URL
+        const message = JSON.stringify({ cmd: "take_snapshot", save: true });
+
+        // Wait for response
+        const handleMessage = (event) => {
+          try {
+            const response = JSON.parse(event.data);
+            if (response.cmd === "take_snapshot") {
+              controlWs.removeEventListener("message", handleMessage);
+
+              if (response.ok !== false && response.url) {
+                // Open the saved snapshot file URL in a new tab
+                const mdnsHostname =
+                  globalConfig?.hostname || globalConfig?.deviceName;
+                const snapshotUrl = buildApiUrl(response.url, mdnsHostname);
+                window.open(snapshotUrl, "_blank");
+                console.log("📸 Snapshot saved and opened:", snapshotUrl);
+              } else {
+                console.error(
+                  "📸 Snapshot failed:",
+                  response.error || "Unknown error"
+                );
+              }
+            }
+          } catch (err) {
+            console.error("📸 Error parsing snapshot response:", err);
+          }
+        };
+
+        controlWs.addEventListener("message", handleMessage);
+        controlWs.send(message);
+
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          controlWs.removeEventListener("message", handleMessage);
+        }, 5000);
+      } else {
+        // Fallback to direct HTTP snapshot endpoint
+        const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
+        const snapshotUrl = buildApiUrl("/camera/snapshot", mdnsHostname);
+        window.open(snapshotUrl, "_blank");
+        console.log("📸 Direct snapshot URL:", snapshotUrl);
+      }
+    } catch (err) {
+      console.error("📸 Snapshot error:", err);
+    }
   };
 
   const handleOpenSettings = () => {

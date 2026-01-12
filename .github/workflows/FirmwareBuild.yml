@@ -1,15 +1,30 @@
-name: Build Firmware
+name: Build and Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "**"
+  pull_request:
+    branches:
+      - main
+      - dev
   workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
+  docker-build:
+    name: Call Docker BuildX
+    uses: ./.github/workflows/DockerBuildX.yml
+    secrets: inherit
+
   build-dashboard:
     name: Build Dashboard
     runs-on: ubuntu-latest
@@ -31,9 +46,22 @@ jobs:
         working-directory: dashboard
         run: npm run build
 
-      - name: Get tag name
+      - name: Compute tag name
         id: tag
-        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # For tags, keep tag name as-is
+            TAG="${REF_NAME}"
+          else
+            # Branch pushes use branch-sha format
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Package dashboard
         run: |
@@ -102,9 +130,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      - name: Get tag name
+      - name: Compute tag name
         id: tag
-        run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # For tags, keep tag name as-is
+            TAG="${REF_NAME}"
+          else
+            # Branch pushes use branch-sha format
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Generate SDK config for ${{ matrix.environment }}
         run: ./sdkconfigs/sdkconfig.sh ${{ matrix.environment }}
@@ -166,110 +207,10 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Flatten the artifact directory structure
-          find release-artifacts -type f -exec cp {} release/ \;
-          
-          VERSION="${GITHUB_REF_NAME}"
-          
-          # Read metadata from all built environments
-          METADATA_FILES=(release/metadata-*.json)
-          
-          # Build arrays from metadata files
-          ENVIRONMENTS=()
-          CHIPS=()
-          BAUDS=()
-          OFFSETS=()
-          
-          for meta_file in "${METADATA_FILES[@]}"; do
-            if [ -f "$meta_file" ]; then
-              env=$(jq -r '.environment' "$meta_file")
-              chip=$(jq -r '.chip' "$meta_file")
-              baud=$(jq -r '.baud' "$meta_file")
-              offset=$(jq -r '.bootloader_offset' "$meta_file")
-              
-              ENVIRONMENTS+=("$env")
-              CHIPS+=("$chip")
-              BAUDS+=("$baud")
-              OFFSETS+=("$offset")
-            fi
-          done
+          # Flatten the artifact directory structure, excluding metadata files
+          find release-artifacts -type f ! -name 'metadata-*.json' -exec cp {} release/ \;
           
           echo "Found ${#ENVIRONMENTS[@]} environments: ${ENVIRONMENTS[*]}"
-          
-          # Create a combined release notes file
-          cat > release/FLASH_INSTRUCTIONS.md << 'FLASH_START'
-          # ESPWiFi Firmware Flash Instructions
-          
-          This release contains firmware binaries for the following ESP32 variants:
-          FLASH_START
-          
-          # Add environment list dynamically
-          for env in "${ENVIRONMENTS[@]}"; do
-            echo "- ${env^^} ($env)" >> release/FLASH_INSTRUCTIONS.md
-          done
-          
-          cat >> release/FLASH_INSTRUCTIONS.md << 'FLASH_CONTINUE'
-          
-          ## Prerequisites
-          
-          Install esptool.py if you haven't already:
-          ```bash
-          pip install esptool
-          ```
-          
-          ## Flashing Instructions
-          
-          ### Option 1: Using esptool.py (Recommended for first flash)
-          
-          FLASH_CONTINUE
-          
-          # Generate flash instructions for each environment
-          for i in "${!ENVIRONMENTS[@]}"; do
-            env="${ENVIRONMENTS[$i]}"
-            chip="${CHIPS[$i]}"
-            baud="${BAUDS[$i]}"
-            offset="${OFFSETS[$i]}"
-            
-            cat >> release/FLASH_INSTRUCTIONS.md << FLASH_ENV
-          For **${env^^}**:
-          \`\`\`bash
-          esptool.py --chip ${chip} --port /dev/ttyUSB0 --baud ${baud} write_flash \\
-            ${offset} espwifi-bootloader-${VERSION}-${env}.bin \\
-            0x8000 espwifi-partitions-${VERSION}-${env}.bin \\
-            0x10000 espwifi-firmware-${VERSION}-${env}.bin
-          \`\`\`
-          
-          FLASH_ENV
-          done
-          
-          cat >> release/FLASH_INSTRUCTIONS.md << 'FLASH_END'
-          ### Option 2: Using npm scripts
-          
-          If you have the source code:
-          ```bash
-          cd dashboard && npm run upload
-          ```
-          
-          ### Option 3: Firmware-only update (OTA)
-          
-          If you already have the bootloader and partition table flashed:
-          ```bash
-          esptool.py --chip auto --port /dev/ttyUSB0 write_flash 0x10000 espwifi-firmware-${VERSION}-<variant>.bin
-          ```
-          
-          ## Troubleshooting
-          
-          - On macOS, replace `/dev/ttyUSB0` with `/dev/cu.usbserial-*` or similar
-          - On Windows, use `COM3` or appropriate COM port
-          - If flashing fails, try holding the BOOT button during the flash process
-          - Ensure proper drivers are installed for your ESP32 board
-          
-          ## Notes
-          
-          - Always use the correct firmware for your specific ESP32 variant
-          - Flash all three files (bootloader, partitions, firmware) for a clean install
-          - For updates, flashing only the firmware.bin file is usually sufficient
-          FLASH_END
           
           ls -lh release/
 
@@ -280,8 +221,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           
-          # Read metadata from all built environments
-          METADATA_FILES=(release/metadata-*.json)
+          # Read metadata from all built environments (from artifacts, not release)
+          METADATA_FILES=(release-artifacts/*/metadata-*.json)
           
           # Build arrays from metadata files
           ENVIRONMENTS=()
@@ -317,7 +258,6 @@ jobs:
           echo "" >> release_notes.md
           
           cat >> release_notes.md << 'RELEASE_CONTINUE'
-          See `FLASH_INSTRUCTIONS.md` for detailed flashing instructions.
           
           ### Files Included
           
@@ -344,49 +284,6 @@ jobs:
           
           echo "**Dashboard:**" >> release_notes.md
           echo "- \`espwifi-dashboard-${VERSION}.zip\` - Web dashboard UI (optional)" >> release_notes.md
-          echo "" >> release_notes.md
-          
-          # Generate flash instructions dynamically
-          cat >> release_notes.md << 'FLASH_START'
-          ### Quick Flash
-          
-          Replace `/dev/ttyUSB0` with your serial port.
-          
-          FLASH_START
-          
-          for i in "${!ENVIRONMENTS[@]}"; do
-            env="${ENVIRONMENTS[$i]}"
-            chip="${CHIPS[$i]}"
-            baud="${BAUDS[$i]}"
-            offset="${OFFSETS[$i]}"
-            
-            cat >> release_notes.md << FLASH_CMD
-          **${env^^}:**
-          \`\`\`bash
-          esptool.py --chip ${chip} --port /dev/ttyUSB0 --baud ${baud} write_flash \\
-            ${offset} espwifi-bootloader-${VERSION}-${env}.bin \\
-            0x8000 espwifi-partitions-${VERSION}-${env}.bin \\
-            0x10000 espwifi-firmware-${VERSION}-${env}.bin
-          \`\`\`
-          
-          FLASH_CMD
-          done
-          
-          # Add final sections
-          cat >> release_notes.md << 'FINAL'
-          ### Using npm scripts
-          
-          ```bash
-          cd dashboard && npm run upload
-          ```
-          
-          ### Dashboard Upload (Optional)
-          
-          Extract `espwifi-dashboard-${VERSION}.zip` to the `data` directory, then:
-          ```bash
-          cd dashboard && npm run uploadfs
-          ```
-          FINAL
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

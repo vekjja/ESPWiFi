@@ -79,7 +79,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectedFiles"].add("/config.json");
   doc["auth"]["protectedFiles"].add("/asset-manifest.json");
 
-  doc["cloudTunnel"]["baseUrl"] = "https://tnl.espwifi.io";
+  doc["cloudClient"]["baseUrl"] = "https://tnl.espwifi.io";
 
 // SD Card
 #if ESPWiFi_HAS_SDCARD

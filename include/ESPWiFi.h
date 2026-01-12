@@ -77,6 +77,7 @@ public:
 
   int connectTimeout = 15000;
   JsonDocument config = defaultConfig();
+  JsonDocument oldConfig;
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";
 
@@ -197,13 +198,13 @@ public:
 
   // ---- WiFi
   void initNVS();
-  void wifiConfigHandler(const JsonDocument &oldConfig);
   void startAP();
   void startWiFi();
   void stopWiFi();
   void startMDNS();
   void startClient();
   int selectBestChannel();
+  void wifiConfigHandler();
   std::string getHostname();
   std::string genHostname();
   std::string ipAddress();

@@ -25,7 +25,7 @@ static esp_netif_t *current_netif = nullptr;
 
 bool ESPWiFi::isWiFiInitialized() const { return wifi_initialized; }
 
-void ESPWiFi::wifiConfigHandler(const JsonDocument &oldConfig) {
+void ESPWiFi::wifiConfigHandler() {
   // Determine whether WiFi needs a restart based on changed settings.
   //
   // Convention: Compare oldConfig (before) vs config (after update).

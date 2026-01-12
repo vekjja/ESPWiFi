@@ -110,11 +110,11 @@ jobs:
             #   REACT_APP_WS_PROTOCOL=ws:
 
           # Cloud tunnel broker
-          - name: cloudtunnel
-            context: ./cloudTunnel
-            dockerfile: ./cloudTunnel/Dockerfile
-            image: ghcr.io/vekjja/espwifi-cloudtunnel
-            build_args: ""
+          # - name: cloudtunnel
+          #   context: ./cloudTunnel
+          #   dockerfile: ./cloudTunnel/Dockerfile
+          #   image: ghcr.io/vekjja/espwifi-cloudtunnel
+          #   build_args: ""
 
   helm-deploy:
     name: Deploy (helm upgrade)

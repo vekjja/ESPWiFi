@@ -1,16 +1,7 @@
 name: Docker BuildX
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "**"
-  pull_request:
-    branches:
-      - main
-      - dev
-  workflow_call:  # Make this workflow callable from other workflows
+  workflow_call:  # Only callable from other workflows
     secrets:
       GH_PAT:
         required: false

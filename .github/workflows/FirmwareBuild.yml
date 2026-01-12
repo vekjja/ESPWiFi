@@ -26,7 +26,7 @@ jobs:
     secrets: inherit
 
   build-dashboard:
-    name: Build Dashboard
+    name: Build Embedded Dashboard
     runs-on: ubuntu-latest
     
     steps:
@@ -67,7 +67,8 @@ jobs:
         run: |
           if [ -d data ] && [ "$(ls -A data)" ]; then
             cd data
-            zip -r ../espwifi-dashboard-${{ steps.tag.outputs.tag }}.zip .
+            TAG="${{ steps.tag.outputs.tag }}"
+            zip -r ../espwifi-dashboard-${TAG}.zip .
             cd ..
           fi
 
@@ -159,17 +160,17 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           ENV="${{ matrix.environment }}"
           
-          # Copy the main firmware binary with new naming convention
-          cp .pio/build/$ENV/firmware.bin artifacts/espwifi-firmware-${TAG}-${ENV}.bin
+          # Copy the main firmware binary with new naming convention: espwifi-[type]-[env]-[tag].ext
+          cp .pio/build/$ENV/firmware.bin artifacts/espwifi-firmware-${ENV}-${TAG}.bin
           
           # Copy partition table if it exists
           if [ -f .pio/build/$ENV/partitions.bin ]; then
-            cp .pio/build/$ENV/partitions.bin artifacts/espwifi-partitions-${TAG}-${ENV}.bin
+            cp .pio/build/$ENV/partitions.bin artifacts/espwifi-partitions-${ENV}-${TAG}.bin
           fi
           
           # Copy bootloader if it exists
           if [ -f .pio/build/$ENV/bootloader.bin ]; then
-            cp .pio/build/$ENV/bootloader.bin artifacts/espwifi-bootloader-${TAG}-${ENV}.bin
+            cp .pio/build/$ENV/bootloader.bin artifacts/espwifi-bootloader-${ENV}-${TAG}.bin
           fi
           
           # Create metadata file for this environment
@@ -245,10 +246,10 @@ jobs:
           done
           
           # Start release notes
-          cat > release_notes.md << 'RELEASE_START'
-          ## ESPWiFi Firmware ${VERSION}
+          cat > release_notes.md << RELEASE_START
+          ## 🎉 New ESPWiFi Firmware Release: ${VERSION}
           
-          This release includes firmware binaries for:
+          This release includes firmware binaries for the following environments:
           RELEASE_START
           
           # Add environment list dynamically
@@ -259,31 +260,35 @@ jobs:
           
           cat >> release_notes.md << 'RELEASE_CONTINUE'
           
-          ### Files Included
+          ### 📦 Files Included
           
           RELEASE_CONTINUE
           
           # Generate file list dynamically
-          echo "**Firmware Binaries:**" >> release_notes.md
+          echo "**💽 Firmware Binaries:**" >> release_notes.md
           for env in "${ENVIRONMENTS[@]}"; do
-            echo "- \`espwifi-firmware-${VERSION}-${env}.bin\` - ${env^^} firmware" >> release_notes.md
+            echo "- \`espwifi-firmware-${env}-${VERSION}.bin\` - ${env^^} firmware" >> release_notes.md
           done
           echo "" >> release_notes.md
           
-          echo "**Bootloaders:**" >> release_notes.md
+          echo "**📲 Bootloaders:**" >> release_notes.md
           for env in "${ENVIRONMENTS[@]}"; do
-            echo "- \`espwifi-bootloader-${VERSION}-${env}.bin\` - ${env^^} bootloader" >> release_notes.md
+            echo "- \`espwifi-bootloader-${env}-${VERSION}.bin\` - ${env^^} bootloader" >> release_notes.md
           done
           echo "" >> release_notes.md
           
-          echo "**Partition Tables:**" >> release_notes.md
+          echo "**💾 Partition Tables:**" >> release_notes.md
           for env in "${ENVIRONMENTS[@]}"; do
-            echo "- \`espwifi-partitions-${VERSION}-${env}.bin\` - ${env^^} partition table" >> release_notes.md
+            echo "- \`espwifi-partitions-${env}-${VERSION}.bin\` - ${env^^} partition table" >> release_notes.md
           done
           echo "" >> release_notes.md
           
-          echo "**Dashboard:**" >> release_notes.md
+          echo "**🖥️ Dashboard:**" >> release_notes.md
           echo "- \`espwifi-dashboard-${VERSION}.zip\` - Web dashboard UI (optional)" >> release_notes.md
+          echo "" >> release_notes.md
+          
+          echo "**🐳 Docker Images:**" >> release_notes.md
+          echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard container image" >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

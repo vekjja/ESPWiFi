@@ -26,7 +26,7 @@ import {
   Breadcrumbs,
   Link,
 } from "@mui/material";
-import { getFetchOptions } from "../utils/apiUtils";
+import { getFetchOptions, buildApiUrl } from "../utils/apiUtils";
 import { getAuthHeader } from "../utils/authUtils";
 import StorageIcon from "@mui/icons-material/Storage";
 import UploadIcon from "@mui/icons-material/Upload";
@@ -46,52 +46,6 @@ const formatBytes = (bytes) => {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
-
-// Helper function to infer content type from file extension
-const getContentTypeFromExtension = (fileName) => {
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  const contentTypes = {
-    // Images
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
-    bmp: "image/bmp",
-    ico: "image/x-icon",
-    // Videos
-    mp4: "video/mp4",
-    webm: "video/webm",
-    ogg: "video/ogg",
-    avi: "video/x-msvideo",
-    mov: "video/quicktime",
-    mkv: "video/x-matroska",
-    // Audio
-    mp3: "audio/mpeg",
-    wav: "audio/wav",
-    oga: "audio/ogg",
-    flac: "audio/flac",
-    // Documents
-    pdf: "application/pdf",
-    // Text files
-    txt: "text/plain",
-    log: "text/plain",
-    json: "application/json",
-    xml: "application/xml",
-    html: "text/html",
-    htm: "text/html",
-    css: "text/css",
-    js: "text/javascript",
-    md: "text/markdown",
-    ini: "text/plain",
-    conf: "text/plain",
-    cfg: "text/plain",
-    yml: "text/yaml",
-    yaml: "text/yaml",
-  };
-  return contentTypes[ext] || null;
 };
 
 const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
@@ -141,8 +95,6 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
   const abortControllerRef = useRef(null);
   const uploadXhrRef = useRef(null);
   const downloadXhrRef = useRef(null);
-
-  const apiURL = config?.apiURL || "";
 
   // Helper to send WebSocket command and wait for response
   const sendWsCommand = useCallback(
@@ -241,221 +193,39 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
   // Open file with authentication and progress tracking
   const openFileWithAuth = useCallback(
     async (file) => {
-      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      // Build proper file URL using hostname from config
+      const mdnsHostname = config?.hostname || config?.deviceName;
+      const fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
 
-      setIsDownloading(true);
-      setDownloadProgress(0);
-      setDownloadingFileName(file.name);
-      setDownloadIndeterminate(false);
       setError(null);
 
-      // Open a blank window immediately (within user action context to avoid popup blocker)
-      let newWindow = null;
       try {
-        newWindow = window.open("", "_blank");
-        if (newWindow) {
-          newWindow.document.write(`
-            <html>
-              <head>
-                <title>Loading ${file.name}...</title>
-                <style>
-                  body {
-                    margin: 0;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    height: 100vh;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    background: #1a1a1a;
-                    color: #fff;
-                  }
-                  .container {
-                    text-align: center;
-                    max-width: 400px;
-                    padding: 20px;
-                  }
-                  .filename {
-                    font-size: 18px;
-                    margin-bottom: 24px;
-                    word-break: break-word;
-                  }
-                  .progress-bar {
-                    width: 100%;
-                    height: 6px;
-                    background: rgba(71, 255, 240, 0.1);
-                    border-radius: 3px;
-                    overflow: hidden;
-                    margin-bottom: 12px;
-                  }
-                  .progress-fill {
-                    height: 100%;
-                    background: #47FFF0;
-                    width: 0%;
-                    transition: width 0.3s ease;
-                  }
-                  .progress-text {
-                    font-size: 14px;
-                    color: #888;
-                  }
-                  .spinner {
-                    border: 3px solid rgba(71, 255, 240, 0.1);
-                    border-top: 3px solid #47FFF0;
-                    border-radius: 50%;
-                    width: 40px;
-                    height: 40px;
-                    animation: spin 1s linear infinite;
-                    margin: 20px auto;
-                  }
-                  @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                  }
-                </style>
-              </head>
-              <body>
-                <div class="container">
-                  <div class="spinner"></div>
-                  <div class="filename" id="filename">${file.name}</div>
-                  <div class="progress-bar">
-                    <div class="progress-fill" id="progress"></div>
-                  </div>
-                  <div class="progress-text" id="status">Starting download...</div>
-                </div>
-              </body>
-            </html>
-          `);
-          newWindow.document.close();
+        // Open URL directly in new tab - let browser handle streaming
+        // This is much more efficient for large files (videos, PDFs, etc.)
+        const newWindow = window.open(fileUrl, "_blank");
+
+        if (!newWindow) {
+          // Popup was blocked
+          setError(
+            `Popup blocked. Please allow popups for this site, or try downloading the file instead.`
+          );
+        } else {
+          setInfo(`Opening ${file.name}...`);
         }
       } catch (err) {
-        console.warn("Could not open new window (popup blocked?):", err);
+        setError(`Failed to open file: ${err.message}`);
+        console.error("Error opening file:", err);
       }
-
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        downloadXhrRef.current = xhr;
-
-        xhr.open("GET", fileUrl, true);
-        xhr.responseType = "blob";
-
-        // Track download progress and update the new window
-        xhr.addEventListener("progress", (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round(
-              (event.loaded / event.total) * 100
-            );
-            setDownloadProgress(percentComplete);
-            setDownloadIndeterminate(false);
-
-            // Update progress in the new window
-            if (newWindow && !newWindow.closed && newWindow.document) {
-              try {
-                const progressEl =
-                  newWindow.document.getElementById("progress");
-                const statusEl = newWindow.document.getElementById("status");
-                if (progressEl) progressEl.style.width = percentComplete + "%";
-                if (statusEl)
-                  statusEl.textContent = `Loading... ${percentComplete}%`;
-              } catch (e) {
-                // Ignore cross-origin or access errors
-              }
-            }
-          } else {
-            // No Content-Length header, show indeterminate progress
-            setDownloadIndeterminate(true);
-            if (newWindow && !newWindow.closed && newWindow.document) {
-              try {
-                const statusEl = newWindow.document.getElementById("status");
-                if (statusEl) statusEl.textContent = "Loading...";
-              } catch (e) {
-                // Ignore cross-origin or access errors
-              }
-            }
-          }
-        });
-
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              // Get content type from response or infer from extension
-              let contentType =
-                xhr.getResponseHeader("content-type") ||
-                getContentTypeFromExtension(file.name) ||
-                "application/octet-stream";
-
-              const blob = xhr.response;
-              const blobUrl = URL.createObjectURL(
-                new Blob([blob], { type: contentType })
-              );
-
-              // If we opened a window earlier, update it with the blob
-              if (newWindow && !newWindow.closed) {
-                newWindow.location.replace(blobUrl); // Use replace instead of href
-              } else {
-                // Try to open a new window (may be blocked)
-                const fallbackWindow = window.open(blobUrl, "_blank");
-                if (!fallbackWindow) {
-                  // Popup was blocked, create a download link instead
-                  const a = document.createElement("a");
-                  a.href = blobUrl;
-                  a.target = "_blank";
-                  a.rel = "noopener noreferrer";
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  setInfo(
-                    `Opened ${file.name} (if popup was blocked, check downloads)`
-                  );
-                } else {
-                  setInfo(`Opened ${file.name}`);
-                }
-              }
-
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-              resolve();
-            } catch (err) {
-              if (newWindow && !newWindow.closed) newWindow.close();
-              setError(`Failed to open file: ${err.message}`);
-              reject(err);
-            } finally {
-              resetDownloadState();
-            }
-          } else {
-            if (newWindow && !newWindow.closed) newWindow.close();
-            const errorMsg =
-              xhr.status === 408
-                ? "Request timed out - device may be busy"
-                : `Failed to open file: HTTP ${xhr.status}`;
-            setError(errorMsg);
-            resetDownloadState();
-            reject(new Error(errorMsg));
-          }
-        });
-
-        xhr.addEventListener("error", () => {
-          if (newWindow && !newWindow.closed) newWindow.close();
-          setError("Failed to open file: Network error");
-          resetDownloadState();
-          reject(new Error("Network error"));
-        });
-
-        xhr.addEventListener("timeout", () => {
-          if (newWindow && !newWindow.closed) newWindow.close();
-          setError("Request timed out - device may be busy");
-          resetDownloadState();
-          reject(new Error("Timeout"));
-        });
-
-        xhr.timeout = 60000; // 60 second timeout for large files
-        xhr.send();
-      });
     },
-    [apiURL, fileSystem, resetDownloadState]
+    [fileSystem, config]
   );
 
   // Download file with authentication and progress tracking
   const downloadFileWithAuth = useCallback(
     async (file) => {
-      const fileUrl = `${apiURL}/${fileSystem}${file.path}`;
+      // Build proper file URL using hostname from config
+      const mdnsHostname = config?.hostname || config?.deviceName;
+      const fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
 
       setIsDownloading(true);
       setDownloadProgress(0);
@@ -539,7 +309,7 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         xhr.send();
       });
     },
-    [apiURL, fileSystem, resetDownloadState]
+    [fileSystem, resetDownloadState, config]
   );
 
   // Fetch storage information
@@ -562,9 +332,12 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
           });
         } else {
           // Use HTTP
-          const response = await fetchWithRetry(
-            `${apiURL}/api/storage?fs=${encodeURIComponent(fs)}`
+          const mdnsHostname = config?.hostname || config?.deviceName;
+          const storageUrl = buildApiUrl(
+            `/api/storage?fs=${encodeURIComponent(fs)}`,
+            mdnsHostname
           );
+          const response = await fetchWithRetry(storageUrl);
           const data = await response.json();
           setStorageInfo({
             total: data.total || 0,
@@ -578,7 +351,7 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         setStorageInfo((prev) => ({ ...prev, loading: false }));
       }
     },
-    [fileSystem, apiURL, fetchWithRetry, useWebSocket, sendWsCommand]
+    [fileSystem, fetchWithRetry, useWebSocket, sendWsCommand, config]
   );
 
   // Fetch files with retry and better error handling
@@ -601,9 +374,12 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
           fetchStorageInfo(fs);
         } else {
           // Use HTTP
-          const response = await fetchWithRetry(
-            `${apiURL}/api/files?fs=${fs}&path=${encodeURIComponent(path)}`
+          const mdnsHostname = config?.hostname || config?.deviceName;
+          const filesUrl = buildApiUrl(
+            `/api/files?fs=${fs}&path=${encodeURIComponent(path)}`,
+            mdnsHostname
           );
+          const response = await fetchWithRetry(filesUrl);
 
           const data = await response.json();
           setFiles(data.files || []);
@@ -633,7 +409,7 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         setLoading(false);
       }
     },
-    [apiURL, fetchStorageInfo, fetchWithRetry, useWebSocket, sendWsCommand]
+    [fetchStorageInfo, fetchWithRetry, useWebSocket, sendWsCommand, config]
   );
 
   // Handle file system change
@@ -678,7 +454,9 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         });
       } else {
         // Use HTTP
-        await fetchWithRetry(`${apiURL}/api/files/mkdir`, {
+        const mdnsHostname = config?.hostname || config?.deviceName;
+        const mkdirUrl = buildApiUrl("/api/files/mkdir", mdnsHostname);
+        await fetchWithRetry(mkdirUrl, {
           method: "POST",
           body: JSON.stringify({
             fs: fileSystem,
@@ -749,14 +527,16 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         });
       } else {
         // Use HTTP
-        await fetchWithRetry(
-          `${apiURL}/api/files/rename?fs=${encodeURIComponent(
+        const mdnsHostname = config?.hostname || config?.deviceName;
+        const renameUrl = buildApiUrl(
+          `/api/files/rename?fs=${encodeURIComponent(
             fileSystem
           )}&oldPath=${encodeURIComponent(
             renameDialog.file.path
           )}&newName=${encodeURIComponent(renameDialog.newName.trim())}`,
-          { method: "POST" }
+          mdnsHostname
         );
+        await fetchWithRetry(renameUrl, { method: "POST" });
       }
 
       setRenameDialog({ open: false, file: null, newName: "" });
@@ -780,12 +560,14 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
           });
         } else {
           // Use HTTP
-          await fetchWithRetry(
-            `${apiURL}/api/files/delete?fs=${encodeURIComponent(
+          const mdnsHostname = config?.hostname || config?.deviceName;
+          const deleteUrl = buildApiUrl(
+            `/api/files/delete?fs=${encodeURIComponent(
               fileSystem
             )}&path=${encodeURIComponent(file.path)}`,
-            { method: "POST" }
+            mdnsHostname
           );
+          await fetchWithRetry(deleteUrl, { method: "POST" });
         }
       }
 
@@ -828,9 +610,13 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
     formData.append("file", file);
 
     // Add fs and path as URL parameters
-    const url = `${apiURL}/api/files/upload?fs=${encodeURIComponent(
-      fileSystem
-    )}&path=${encodeURIComponent(currentPath)}`;
+    const mdnsHostname = config?.hostname || config?.deviceName;
+    const url = buildApiUrl(
+      `/api/files/upload?fs=${encodeURIComponent(
+        fileSystem
+      )}&path=${encodeURIComponent(currentPath)}`,
+      mdnsHostname
+    );
 
     // Use XMLHttpRequest for progress tracking
     const xhr = new XMLHttpRequest();

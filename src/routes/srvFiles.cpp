@@ -202,7 +202,7 @@ bool ESPWiFi::listFiles(const std::string &fs, const std::string &path,
   }
 
   closedir(dir);
-  log(DEBUG, "📁 List: Success, found %d files", fileCount);
+  // log(DEBUG, "📁 List: Success, found %d files", fileCount);
   return true;
 }
 

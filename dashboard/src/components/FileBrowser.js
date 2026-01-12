@@ -195,11 +195,20 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
     async (file) => {
       // Build proper file URL using hostname from config
       const mdnsHostname = config?.hostname || config?.deviceName;
-      const fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
+      let fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
+
+      // Add auth token as query parameter for window.open (can't set headers)
+      const token = localStorage.getItem("espwifi.token");
+      if (token) {
+        const sep = fileUrl.includes("?") ? "&" : "?";
+        fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
+      }
 
       setError(null);
 
       try {
+        console.log(`📂 Opening file: ${fileUrl}`);
+
         // Open URL directly in new tab - let browser handle streaming
         // This is much more efficient for large files (videos, PDFs, etc.)
         const newWindow = window.open(fileUrl, "_blank");

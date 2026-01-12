@@ -1,96 +1,41 @@
-import React, { useState, useEffect } from "react";
-import { Fab, Tooltip } from "@mui/material";
-import BluetoothIcon from "@mui/icons-material/Bluetooth";
-import BluetoothDisabledIcon from "@mui/icons-material/BluetoothDisabled";
+import React, { useState } from "react";
+import { Fab, Tooltip, Dialog, DialogContent, IconButton } from "@mui/material";
 import BluetoothSearchingIcon from "@mui/icons-material/BluetoothSearching";
-import BluetoothConnectedIcon from "@mui/icons-material/BluetoothConnected";
-import BluetoothSettingsModal from "./BluetoothSettingsModal";
-import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
+import CloseIcon from "@mui/icons-material/Close";
+import BlePairingFlow from "./BlePairingFlow";
 
 export default function BluetoothButton({
   config,
   deviceOnline,
-  saveConfig,
-  saveConfigToDevice,
+  onDevicePaired,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [bleStatus, setBleStatus] = useState(null);
-
-  // Poll BLE status when device is online
-  useEffect(() => {
-    if (!deviceOnline) {
-      setBleStatus(null);
-      return;
-    }
-
-    const fetchStatus = async () => {
-      try {
-        const url = buildApiUrl("/api/ble/status");
-        const options = getFetchOptions("GET");
-        const response = await fetch(url, options);
-        if (response.ok) {
-          const data = await response.json();
-          setBleStatus(data);
-        } else {
-          // Silently handle 404 - endpoint might not be available
-          setBleStatus(null);
-        }
-      } catch (error) {
-        // Silently handle errors in development when device isn't connected
-        if (process.env.NODE_ENV !== "production") {
-          setBleStatus(null);
-        }
-      }
-    };
-
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
-    return () => clearInterval(interval);
-  }, [deviceOnline]);
 
   const handleClick = () => {
-    if (deviceOnline) {
-      setModalOpen(true);
-    }
+    setModalOpen(true);
   };
 
   const handleCloseModal = () => {
     setModalOpen(false);
   };
 
-  const isDisabled = !deviceOnline || !config;
-  const isEnabled = config?.ble?.enabled || false;
-  const status = bleStatus?.status || "not_initialized";
-
-  const getIcon = () => {
-    if (!isEnabled) return <BluetoothDisabledIcon />;
-    if (status === "connected") return <BluetoothConnectedIcon />;
-    if (status === "advertising") return <BluetoothSearchingIcon />;
-    return <BluetoothIcon />;
+  const handleDevicePaired = (deviceRecord, details) => {
+    setModalOpen(false);
+    onDevicePaired?.(deviceRecord, details);
   };
 
-  const getTooltipText = () => {
-    if (!config) return "Loading configuration...";
-    if (!isEnabled) return "Web Bluetooth - Disabled";
-    if (status === "connected") return "Web Bluetooth - Connected";
-    if (status === "advertising") return "Web Bluetooth - Advertising";
-    return "Web Bluetooth - Connect to BLE Devices";
-  };
+  const isDisabled = !config;
 
   return (
     <>
-      <Tooltip title={getTooltipText()}>
+      <Tooltip title="Pair BLE Device">
         <Fab
           size="medium"
           color="primary"
           onClick={handleClick}
           disabled={isDisabled}
           sx={{
-            color: isDisabled
-              ? "text.disabled"
-              : isEnabled
-              ? "primary.main"
-              : "text.disabled",
+            color: isDisabled ? "text.disabled" : "primary.main",
             backgroundColor: isDisabled ? "action.disabled" : "action.hover",
             "&:hover": {
               backgroundColor: isDisabled
@@ -99,21 +44,46 @@ export default function BluetoothButton({
             },
           }}
         >
-          {getIcon()}
+          <BluetoothSearchingIcon />
         </Fab>
       </Tooltip>
 
-      {modalOpen && (
-        <BluetoothSettingsModal
-          config={config}
-          saveConfig={saveConfig}
-          saveConfigToDevice={saveConfigToDevice}
-          deviceOnline={deviceOnline}
-          open={modalOpen}
-          onClose={handleCloseModal}
-          bleStatus={bleStatus}
-        />
-      )}
+      <Dialog
+        open={modalOpen}
+        onClose={handleCloseModal}
+        fullScreen
+        sx={{
+          "& .MuiDialog-paper": {
+            backgroundColor: "background.default",
+          },
+        }}
+      >
+        <IconButton
+          onClick={handleCloseModal}
+          sx={{
+            position: "absolute",
+            right: 16,
+            top: 16,
+            zIndex: 1,
+            color: "text.secondary",
+          }}
+        >
+          <CloseIcon />
+        </IconButton>
+        <DialogContent
+          sx={{
+            p: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "auto",
+          }}
+        >
+          <BlePairingFlow
+            onDeviceProvisioned={handleDevicePaired}
+            onClose={handleCloseModal}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

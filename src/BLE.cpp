@@ -265,13 +265,21 @@ void ESPWiFi::startBLEServices() {
           size_t reqLen = 0;
           if (!readOmToBuf(ctxt->om, reqBuf, sizeof(reqBuf), &reqLen) ||
               reqLen == 0) {
+            espwifi->log(ERROR, "🔵 BLE Control: Empty request");
             setControlRespStr("{\"ok\":false,\"error\":\"empty\"}");
             return 0;
           }
 
+          espwifi->log(DEBUG, "🔵 BLE Control Write: %zu bytes: %.*s", reqLen,
+                       (int)reqLen, reqBuf);
+
+          // ArduinoJson v7 uses heap allocation automatically
+          // The default constructor uses the global heap allocator
           JsonDocument req;
           DeserializationError err = deserializeJson(req, reqBuf, reqLen);
           if (err) {
+            espwifi->log(ERROR, "🔵 BLE Control: JSON parse error: %s",
+                         err.c_str());
             JsonDocument resp;
             resp["ok"] = false;
             resp["error"] = "bad_json";
@@ -280,7 +288,11 @@ void ESPWiFi::startBLEServices() {
             return 0;
           }
 
-          const char *cmd = req["cmd"] | "";
+          const char *cmd = req["cmd"];
+          if (!cmd)
+            cmd = "";
+          espwifi->log(INFO, "🔵 BLE Control: cmd='%s'", cmd);
+
           JsonDocument resp;
           resp["ok"] = true;
           resp["cmd"] = cmd;
@@ -298,63 +310,27 @@ void ESPWiFi::startBLEServices() {
             const esp_app_desc_t *app = esp_app_get_description();
             resp["fw"] = (app && app->version[0] != '\0') ? app->version
                                                           : espwifi->version();
-          } else if (strcmp(cmd, "get_cloud") == 0) {
-            std::string token =
-                espwifi->config["auth"]["token"].as<std::string>();
-            if (token.empty()) {
-              token = espwifi->generateToken();
-              espwifi->config["auth"]["token"] = token;
-              espwifi->requestConfigSave();
-            }
-            resp["enabled"] =
-                espwifi->config["cloudTunnel"]["enabled"].as<bool>();
-            resp["baseUrl"] =
-                espwifi->config["cloudTunnel"]["baseUrl"].as<std::string>();
-            resp["token"] = token;
-            std::string deviceId =
-                espwifi->config["hostname"].as<std::string>();
-            if (deviceId.empty()) {
-              deviceId = espwifi->genHostname();
-            }
-            resp["deviceId"] = deviceId;
-          } else if (strcmp(cmd, "set_cloud") == 0) {
-            const bool enabled = req["enabled"] | true;
-            const char *baseUrl = req["baseUrl"] | nullptr;
-
-            // Ensure auth token exists (shared token for device registration +
-            // UI auth)
-            std::string token =
-                espwifi->config["auth"]["token"].as<std::string>();
-            if (token.empty()) {
-              token = espwifi->generateToken();
-              espwifi->config["auth"]["token"] = token;
-            }
-
-            // Build an update document and stage it
-            JsonDocument updates;
-            updates["cloudTunnel"]["enabled"] = enabled;
-            if (baseUrl && baseUrl[0] != '\0') {
-              updates["cloudTunnel"]["baseUrl"] = baseUrl;
-            }
-            updates["cloudTunnel"]["tunnelAll"] = true;
-
-            JsonDocument next = espwifi->mergeJson(espwifi->config, updates);
-            espwifi->configUpdate = next;
-            espwifi->requestConfigSave();
-
-            resp["enabled"] = enabled;
-            resp["baseUrl"] = (baseUrl && baseUrl[0] != '\0')
-                                  ? std::string(baseUrl)
-                                  : espwifi->config["cloudTunnel"]["baseUrl"]
-                                        .as<std::string>();
-            resp["token"] = token;
           } else if (strcmp(cmd, "set_wifi") == 0) {
-            const char *ssid = req["ssid"] | nullptr;
-            const char *password = req["password"] | "";
+            const char *ssid = req["ssid"];
+            const char *password = req["password"];
+            if (!password)
+              password = "";
+
+            espwifi->log(INFO, "🔵 BLE set_wifi: ssid=%s (%s), password=%s",
+                         ssid ? ssid : "(null)",
+                         ssid ? (ssid[0] == '\0' ? "empty" : "set") : "null",
+                         password[0] != '\0' ? "***" : "(empty)");
+
             if (!ssid || ssid[0] == '\0') {
+              espwifi->log(ERROR, "🔵 BLE set_wifi: SSID is null or empty");
               resp["ok"] = false;
               resp["error"] = "ssid_required";
             } else {
+              espwifi->log(
+                  INFO,
+                  "🔵 BLE set_wifi: Configuring WiFi client mode, SSID='%s'",
+                  ssid);
+
               JsonDocument updates;
               updates["wifi"]["enabled"] = true;
               updates["wifi"]["mode"] = "client";
@@ -365,6 +341,8 @@ void ESPWiFi::startBLEServices() {
               espwifi->configUpdate = next;
               espwifi->requestConfigSave();
 
+              espwifi->log(INFO, "🔵 BLE set_wifi: Config queued for save, "
+                                 "WiFi restart pending");
               resp["wifi_restart_queued"] = true;
             }
           } else if (strcmp(cmd, "get_status") == 0) {
@@ -379,11 +357,24 @@ void ESPWiFi::startBLEServices() {
             resp["code"] = espwifi->getClaimCode(rotate);
             resp["expires_in_ms"] = espwifi->claimExpiresInMs();
           } else {
+            espwifi->log(WARNING, "🔵 BLE Control: Unknown command '%s'", cmd);
             resp["ok"] = false;
             resp["error"] = "unknown_cmd";
           }
 
           setControlRespJson(resp);
+
+          // Log the response being sent
+          char respPreview[128];
+          size_t respLen =
+              serializeJson(resp, respPreview, sizeof(respPreview));
+          if (respLen < sizeof(respPreview)) {
+            espwifi->log(DEBUG, "🔵 BLE Control Response: %s", respPreview);
+          } else {
+            espwifi->log(DEBUG, "🔵 BLE Control Response: (truncated) %.*s...",
+                         100, respPreview);
+          }
+
           notifyControlResp(conn_handle, attr_handle);
           return 0;
         }
@@ -576,6 +567,18 @@ bool ESPWiFi::startBLE() {
     extern ESPWiFi espwifi;
     espwifi.bleHostResetHandler(reason, &espwifi);
   };
+
+  // Configure BLE security for encrypted connections
+  // "Just Works" pairing - no PIN required, but connection is encrypted
+  ble_hs_cfg.sm_bonding = 1; // Enable bonding (stores keys)
+  ble_hs_cfg.sm_mitm = 0;    // No Man-in-the-Middle protection (Just Works)
+  ble_hs_cfg.sm_sc = 1;      // Secure Connections (LE Secure Connections)
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT; // Just Works pairing
+  ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
+  ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
+
+  log(INFO, "🔵 🔐 BLE Security: Just Works pairing enabled (encrypted "
+            "connection) ✨");
 
   // Initialize NimBLE host - but only if not already initialized
   // Double-init causes ESP_ERR_INVALID_STATE

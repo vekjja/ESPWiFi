@@ -330,8 +330,12 @@ export default function SettingsButtonBar({
           <BluetoothButton
             config={config}
             deviceOnline={httpCapable}
-            saveConfig={saveConfig}
-            saveConfigToDevice={saveConfigToDevice}
+            onDevicePaired={(deviceRecord, details) => {
+              // Handle device paired from BLE
+              if (onPairNewDevice) {
+                onPairNewDevice(deviceRecord, details);
+              }
+            }}
           />
         ),
       });

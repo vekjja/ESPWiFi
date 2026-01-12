@@ -189,7 +189,7 @@ public:
 
   // ---- WiFi
   void initNVS();
-  void wifiConfigHandler();
+  void wifiConfigHandler(const JsonDocument &oldConfig);
   void startAP();
   void startWiFi();
   void startMDNS();

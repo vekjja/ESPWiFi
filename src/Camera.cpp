@@ -40,8 +40,9 @@
 #include <time.h>
 
 // Frame rate constraints (to keep streaming safe and watchdog-friendly)
+// Note: Higher frame rates (>30) may cause watchdog timeouts on some boards
 #define CAM_MIN_FPS 1
-#define CAM_MAX_FPS 15
+#define CAM_MAX_FPS 30
 #define CAM_DEFAULT_FPS 10
 
 // ============================================================================
@@ -558,28 +559,13 @@ void ESPWiFi::streamCamera() {
     }
   }
 
-  // Rate limit
-  // int frameRate = config["camera"]["frameRate"].isNull()
-  //                     ? CAM_DEFAULT_FPS
-  //                     : config["camera"]["frameRate"].as<int>();
-  // if (frameRate < CAM_MIN_FPS)
-  //   frameRate = CAM_MIN_FPS;
-  // if (frameRate > CAM_MAX_FPS)
-  //   frameRate = CAM_MAX_FPS;
-
   static IntervalTimer frameTimer(1000);
   frameTimer.setIntervalMs((uint32_t)(1000 / 30)); // 30 FPS
   if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
     return;
   }
 
-  // // Capture frame
-  // if (!takeCamMutex_(this, pdMS_TO_TICKS(CAM_MUTEX_TIMEOUT_FRAME_MS))) {
-  //   return;
-  // }
-
   camera_fb_t *fb = esp_camera_fb_get();
-  // giveCamMutex_();
 
   if (!fb || fb->format != PIXFORMAT_JPEG || !fb->buf || fb->len == 0) {
     if (fb) {

@@ -12,13 +12,27 @@ import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
-import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
+import {
+  getApiUrl,
+  buildWebSocketUrl,
+  isHostedFromEspWiFiIo,
+} from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
+import {
+  loadDevices,
+  saveDevices,
+  loadSelectedDeviceId,
+  saveSelectedDeviceId,
+  upsertDevice,
+  removeDevice as removeDeviceFromRegistry,
+  touchSelected,
+} from "./utils/deviceRegistry";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
 const Login = lazy(() => import("./components/Login"));
 const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
+const BlePairingFlow = lazy(() => import("./components/BlePairingFlow"));
 
 // Define the theme
 const theme = createTheme({
@@ -121,8 +135,39 @@ function App() {
   const [cloudLogs, setCloudLogs] = useState("");
   const [cloudLogsError, setCloudLogsError] = useState("");
 
+  // Device registry state for espwifi.io hosted mode
+  const [devices, setDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [showInitialSetup, setShowInitialSetup] = useState(false);
+  const isHostedMode = useMemo(() => {
+    const hosted = isHostedFromEspWiFiIo();
+    console.log("[App] isHostedMode:", hosted);
+    return hosted;
+  }, []);
+
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
+
+  // Load device registry on mount (only in hosted mode)
+  useEffect(() => {
+    console.log("[App] Loading device registry, isHostedMode:", isHostedMode);
+    if (!isHostedMode) return;
+    const loadedDevices = loadDevices();
+    console.log("[App] Loaded devices:", loadedDevices);
+    setDevices(loadedDevices);
+    const loadedSelectedId = loadSelectedDeviceId();
+    if (
+      loadedSelectedId &&
+      loadedDevices.some((d) => d.id === loadedSelectedId)
+    ) {
+      setSelectedDeviceId(loadedSelectedId);
+      console.log("[App] Selected existing device:", loadedSelectedId);
+    } else if (loadedDevices.length === 0) {
+      // No devices configured - show initial setup
+      console.log("[App] No devices found, showing initial setup");
+      setShowInitialSetup(true);
+    }
+  }, [isHostedMode]);
 
   // Measure header height and expose as CSS var to avoid brittle vh math on mobile.
   useEffect(() => {
@@ -364,6 +409,68 @@ function App() {
   };
 
   /**
+   * Handle device provisioning from initial setup
+   * Called when a new device is successfully configured via BLE
+   */
+  const handleDeviceProvisioned = useCallback(
+    (deviceRecord, details) => {
+      const updatedDevices = upsertDevice(devices, deviceRecord);
+      setDevices(updatedDevices);
+      saveDevices(updatedDevices);
+      setSelectedDeviceId(deviceRecord.id);
+      saveSelectedDeviceId(deviceRecord.id);
+      setShowInitialSetup(false);
+    },
+    [devices]
+  );
+
+  /**
+   * Handle device selection from device picker
+   */
+  const handleSelectDevice = useCallback(
+    (device) => {
+      if (!device || !device.id) return;
+      const updatedDevices = touchSelected(devices, device.id);
+      setDevices(updatedDevices);
+      saveDevices(updatedDevices);
+      setSelectedDeviceId(device.id);
+      saveSelectedDeviceId(device.id);
+    },
+    [devices]
+  );
+
+  /**
+   * Handle device removal from registry
+   */
+  const handleRemoveDevice = useCallback(
+    (device) => {
+      if (!device || !device.id) return;
+      const updatedDevices = removeDeviceFromRegistry(devices, device.id);
+      setDevices(updatedDevices);
+      saveDevices(updatedDevices);
+      if (selectedDeviceId === device.id) {
+        setSelectedDeviceId(null);
+        saveSelectedDeviceId(null);
+        // If this was the last device, show initial setup again
+        if (updatedDevices.length === 0) {
+          setShowInitialSetup(true);
+        }
+      }
+    },
+    [devices, selectedDeviceId]
+  );
+
+  /**
+   * Handle pairing a new device
+   */
+  const handlePairNewDevice = useCallback(
+    (deviceRecord, details) => {
+      handleDeviceProvisioned(deviceRecord, details);
+    },
+    [handleDeviceProvisioned]
+  );
+
+  /**
    * Update local config only (no device API calls)
    * Used for immediate UI updates before saving to device
    * @param {Object} newConfig - The new configuration object (can be partial)
@@ -439,6 +546,38 @@ function App() {
 
   const effectiveConfig = cloudDeviceConfig || localConfig;
 
+  // Show initial setup screen when hosted from espwifi.io and no devices configured
+  if (isHostedMode && showInitialSetup) {
+    return (
+      <ThemeProvider theme={theme}>
+        <Container
+          ref={headerRef}
+          sx={{
+            fontFamily: theme.typography.headerFontFamily,
+            backgroundColor: "secondary.light",
+            color: "primary.main",
+            fontSize: "3em",
+            height: "var(--app-header-height, 9vh)",
+            zIndex: 1000,
+            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: "100%",
+            position: "sticky",
+            top: 0,
+          }}
+        >
+          ESPWiFi
+        </Container>
+
+        <Suspense fallback={<LinearProgress color="inherit" />}>
+          <BlePairingFlow onDeviceProvisioned={handleDeviceProvisioned} />
+        </Suspense>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       {/* Show saving progress bar at the top when saving */}
@@ -511,7 +650,12 @@ function App() {
           controlRssi={cloudRssi}
           logsText={cloudLogs}
           logsError={cloudLogsError}
-          showDevicePicker={false}
+          showDevicePicker={isHostedMode}
+          devices={devices}
+          selectedDeviceId={selectedDeviceId}
+          onSelectDevice={handleSelectDevice}
+          onRemoveDevice={handleRemoveDevice}
+          onPairNewDevice={handlePairNewDevice}
           onRequestRssi={() => {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;

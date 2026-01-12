@@ -25,56 +25,50 @@ static esp_netif_t *current_netif = nullptr;
 
 bool ESPWiFi::isWiFiInitialized() const { return wifi_initialized; }
 
-void ESPWiFi::wifiConfigHandler() {
+void ESPWiFi::wifiConfigHandler(const JsonDocument &oldConfig) {
   // Determine whether WiFi needs a restart based on changed settings.
   //
-  // Convention: config handlers read from configUpdate (staged config) and may
-  // enqueue runtime work. We only *schedule* a restart here;
-  // handleConfigUpdate() performs it after `config = configUpdate` so
-  // startWiFi() uses the new config.
-  //
-  // Important: treat missing fields in configUpdate as "unchanged" to avoid
-  // spurious restarts on unrelated config writes.
+  // Convention: Compare oldConfig (before) vs config (after update).
+  // We only *schedule* a restart here; handleConfigUpdate() performs it
+  // after all handlers run, so startWiFi() uses the new config.
   bool wifiNeedsRestart = false;
 
-  const bool oldEnabled = config["wifi"]["enabled"].as<bool>();
-  const bool newEnabled = configUpdate["wifi"]["enabled"].isNull()
-                              ? oldEnabled
-                              : configUpdate["wifi"]["enabled"].as<bool>();
+  const bool oldEnabled = oldConfig["wifi"]["enabled"].as<bool>();
+  const bool newEnabled = config["wifi"]["enabled"].as<bool>();
   if (oldEnabled != newEnabled) {
+    log(DEBUG, "📶 WiFi enabled changed: %d -> %d", oldEnabled, newEnabled);
     wifiNeedsRestart = true;
   }
 
-  std::string oldMode = config["wifi"]["mode"].as<std::string>();
-  std::string newMode = configUpdate["wifi"]["mode"].isNull()
-                            ? oldMode
-                            : configUpdate["wifi"]["mode"].as<std::string>();
+  std::string oldMode = oldConfig["wifi"]["mode"].as<std::string>();
+  std::string newMode = config["wifi"]["mode"].as<std::string>();
   toLowerCase(oldMode);
   toLowerCase(newMode);
   if (oldMode != newMode) {
+    log(DEBUG, "📶 WiFi mode changed: %s -> %s", oldMode.c_str(),
+        newMode.c_str());
     wifiNeedsRestart = true;
   }
 
-  std::string oldSsid = config["wifi"]["client"]["ssid"].as<std::string>();
-  std::string newSsid =
-      configUpdate["wifi"]["client"]["ssid"].isNull()
-          ? oldSsid
-          : configUpdate["wifi"]["client"]["ssid"].as<std::string>();
+  std::string oldSsid = oldConfig["wifi"]["client"]["ssid"].as<std::string>();
+  std::string newSsid = config["wifi"]["client"]["ssid"].as<std::string>();
   if (oldSsid != newSsid) {
+    log(DEBUG, "📶 WiFi SSID changed: '%s' -> '%s'", oldSsid.c_str(),
+        newSsid.c_str());
     wifiNeedsRestart = true;
   }
 
-  std::string oldPw = config["wifi"]["client"]["password"].as<std::string>();
-  std::string newPw =
-      configUpdate["wifi"]["client"]["password"].isNull()
-          ? oldPw
-          : configUpdate["wifi"]["client"]["password"].as<std::string>();
+  std::string oldPw = oldConfig["wifi"]["client"]["password"].as<std::string>();
+  std::string newPw = config["wifi"]["client"]["password"].as<std::string>();
   if (oldPw != newPw) {
     wifiNeedsRestart = true;
   }
 
   if (wifiNeedsRestart) {
     wifiRestartRequested_ = true;
+    log(INFO, "📶 WiFi config changed, restart requested");
+  } else {
+    log(DEBUG, "📶 No WiFi restart needed (no wificonfig changes)");
   }
 }
 

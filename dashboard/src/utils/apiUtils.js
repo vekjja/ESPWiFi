@@ -1,5 +1,27 @@
 import { getAuthHeader, getAuthToken } from "./authUtils";
 
+/**
+ * Check if the dashboard is hosted from espwifi.io
+ * Used to determine if we should show initial device setup flow
+ * @returns {boolean} True if hosted from espwifi.io domain
+ */
+export const isHostedFromEspWiFiIo = () => {
+  // Allow testing in development mode ONLY (not in production builds)
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.REACT_APP_TEST_HOSTED_MODE === "true"
+  ) {
+    console.log("[apiUtils] Test hosted mode enabled via env var (dev only)");
+    return true;
+  }
+
+  const hostname = window.location.hostname.toLowerCase();
+  const isHosted =
+    hostname === "espwifi.io" || hostname.endsWith(".espwifi.io");
+  console.log("[apiUtils] Hostname check:", hostname, "→", isHosted);
+  return isHosted;
+};
+
 const normalizeProtocol = (protocol) => {
   if (!protocol) return "";
   // Accept "http", "http:", "https", "https:" (same for ws/wss)

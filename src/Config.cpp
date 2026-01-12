@@ -263,7 +263,7 @@ void ESPWiFi::handleConfigUpdate() {
 
     // Now handlers can compare oldConfig vs config (new), and config is already
     // correct
-    wifiConfigHandler();
+    wifiConfigHandler(oldConfig);
     cameraConfigHandler();
     powerConfigHandler();
     corsConfigHandler();

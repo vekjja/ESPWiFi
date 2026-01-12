@@ -35,7 +35,12 @@ async function writeJsonAndRead(characteristic, obj) {
   return JSON.parse(txt);
 }
 
-export default function BlePairingDialog({ open, onClose, onPaired }) {
+export default function BlePairingDialog({
+  open,
+  onClose,
+  onPaired,
+  isInitialSetup = false,
+}) {
   const supported = useMemo(() => hasWebBluetooth(), []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +69,14 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
       setStatusText("Reading device info…");
       const identity = await writeJsonAndRead(control, { cmd: "get_identity" });
 
+      // For initial setup mode, always prompt for WiFi credentials
+      if (isInitialSetup) {
+        setStatusText("");
+        setPhase("wifi");
+        setBusy(false);
+        return;
+      }
+
       // If device is in AP / not online yet, we need to provide WiFi creds.
       setStatusText("Checking WiFi status…");
       const status = await writeJsonAndRead(control, { cmd: "get_status" });
@@ -80,25 +93,14 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
         return;
       }
 
-      setStatusText("Enabling cloud tunnel…");
-      await writeJsonAndRead(control, {
-        cmd: "set_cloud",
-        enabled: true,
-        baseUrl: "https://tnl.espwifi.io",
-      });
-
-      setStatusText("Fetching cloud tunnel details…");
-      const cloud = await writeJsonAndRead(control, { cmd: "get_cloud" });
-
-      // Close BLE to avoid keeping the device connected.
+      // Device is already online, just get identity
       try {
         dev?.gatt?.disconnect?.();
       } catch {
         // ignore
       }
 
-      const deviceId =
-        cloud?.deviceId || identity?.hostname || identity?.deviceId || null;
+      const deviceId = identity?.hostname || identity?.deviceId || null;
       const id = deviceId || identity?.hostname || dev?.name || dev?.id;
       if (!id) throw new Error("BLE device did not provide an id/hostname");
 
@@ -108,12 +110,11 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
           identity?.deviceName || identity?.model || dev?.name || String(id),
         hostname: identity?.hostname || null,
         deviceId: deviceId || String(id),
-        authToken: cloud?.token || identity?.token || null,
-        cloudBaseUrl: cloud?.baseUrl || "https://tnl.espwifi.io",
+        authToken: identity?.token || null,
         lastSeenAtMs: Date.now(),
       };
 
-      onPaired?.(record, { identity, cloud });
+      onPaired?.(record, { identity });
       onClose?.();
     } catch (e) {
       try {
@@ -153,13 +154,52 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
       const control = await service.getCharacteristic(CONTROL_UUID);
 
       const identity = await writeJsonAndRead(control, { cmd: "get_identity" });
-      await writeJsonAndRead(control, {
+
+      setStatusText("Configuring WiFi client mode…");
+      const result = await writeJsonAndRead(control, {
         cmd: "set_wifi",
         ssid: ssid.trim(),
         password,
       });
 
-      // Poll for IP
+      // Check if successful
+      if (result?.ok === false) {
+        throw new Error(result?.error || "Failed to configure WiFi");
+      }
+
+      // For initial setup, device will restart WiFi automatically
+      if (isInitialSetup) {
+        setStatusText("Configuration saved, device applying settings…");
+        // Give device time to apply settings
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // Close BLE connection
+        try {
+          dev?.gatt?.disconnect?.();
+        } catch {
+          // ignore
+        }
+
+        // Create a basic device record
+        const deviceId =
+          identity?.hostname || identity?.deviceId || dev?.name || dev?.id;
+        const id = String(deviceId);
+        const record = {
+          id,
+          name:
+            identity?.deviceName || identity?.model || dev?.name || String(id),
+          hostname: identity?.hostname || null,
+          deviceId: String(deviceId),
+          authToken: identity?.token || null,
+          lastSeenAtMs: Date.now(),
+        };
+
+        onPaired?.(record, { identity });
+        onClose?.();
+        return;
+      }
+
+      // Original flow for non-initial setup: Poll for IP and wait for connection
       const deadline = Date.now() + 45_000;
       let ip = "0.0.0.0";
       while (Date.now() < deadline) {
@@ -174,24 +214,14 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
         throw new Error("Timed out waiting for WiFi connection");
       }
 
-      setStatusText("Enabling cloud tunnel…");
-      await writeJsonAndRead(control, {
-        cmd: "set_cloud",
-        enabled: true,
-        baseUrl: "https://tnl.espwifi.io",
-      });
-
-      setStatusText("Fetching cloud tunnel details…");
-      const cloud = await writeJsonAndRead(control, { cmd: "get_cloud" });
-
+      // Device connected successfully
       try {
         dev?.gatt?.disconnect?.();
       } catch {
         // ignore
       }
 
-      const deviceId =
-        cloud?.deviceId || identity?.hostname || identity?.deviceId || null;
+      const deviceId = identity?.hostname || identity?.deviceId || null;
       const id = deviceId || identity?.hostname || dev?.name || dev?.id;
       if (!id) throw new Error("BLE device did not provide an id/hostname");
 
@@ -201,12 +231,11 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
           identity?.deviceName || identity?.model || dev?.name || String(id),
         hostname: identity?.hostname || null,
         deviceId: deviceId || String(id),
-        authToken: cloud?.token || identity?.token || null,
-        cloudBaseUrl: cloud?.baseUrl || "https://tnl.espwifi.io",
+        authToken: identity?.token || null,
         lastSeenAtMs: Date.now(),
       };
 
-      onPaired?.(record, { identity, cloud });
+      onPaired?.(record, { identity });
       onClose?.();
     } catch (e) {
       try {
@@ -229,21 +258,26 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
       fullWidth
       maxWidth="sm"
     >
-      <DialogTitle sx={{ fontWeight: 800 }}>Pair device (BLE)</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 800 }}>
+        {isInitialSetup ? "Set Up ESPWiFi Device" : "Pair device (BLE)"}
+      </DialogTitle>
       <DialogContent dividers>
         {!supported && (
           <Alert severity="warning">
-            Web Bluetooth isn’t available in this browser. Use Chrome on Android
+            Web Bluetooth isn't available in this browser. Use Chrome on Android
             or Desktop Chrome for BLE pairing, or we can add a manual pairing
             fallback (token/QR).
           </Alert>
         )}
         {supported && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <Typography variant="body2" sx={{ opacity: 0.9 }}>
-              This will open the browser’s BLE chooser. Select your ESPWiFi
-              device to fetch its identity + cloud tunnel connection info.
-            </Typography>
+            {phase === "idle" && (
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                {isInitialSetup
+                  ? "Click 'Start BLE scan' to search for your ESPWiFi device. You'll be prompted to enter WiFi credentials."
+                  : "This will open the browser's BLE chooser. Select your ESPWiFi device to configure it."}
+              </Typography>
+            )}
             {phase === "wifi" && (
               <Box
                 sx={{
@@ -254,8 +288,9 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
                 }}
               >
                 <Alert severity="info">
-                  Device isn’t on the internet yet. Enter WiFi client
-                  credentials to connect, then we’ll enable the cloud tunnel.
+                  {isInitialSetup
+                    ? "Enter your WiFi network credentials. The device will switch to client mode and connect to your network."
+                    : "Device isn't configured yet. Enter WiFi credentials to connect."}
                 </Alert>
                 <TextField
                   label="WiFi SSID"
@@ -302,7 +337,13 @@ export default function BlePairingDialog({ open, onClose, onPaired }) {
             variant="contained"
             disabled={!supported || busy}
           >
-            {busy ? "Provisioning…" : "Connect WiFi + enable tunnel"}
+            {busy
+              ? isInitialSetup
+                ? "Configuring & Restarting…"
+                : "Provisioning…"
+              : isInitialSetup
+              ? "Configure WiFi"
+              : "Connect WiFi"}
           </Button>
         ) : (
           <Button

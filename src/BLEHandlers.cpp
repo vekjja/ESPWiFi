@@ -408,6 +408,7 @@ int ESPWiFi::bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg) {
   }
 
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(arg);
+  struct ble_gap_conn_desc desc;
 
   // Always log the raw event type with a best-effort name, so numbered events
   // like 38/34/18 become readable in logs.
@@ -435,6 +436,25 @@ int ESPWiFi::bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg) {
   case BLE_GAP_EVENT_MTU:
     espwifi->bleMtuUpdateHandler(event->mtu.conn_handle, event->mtu.value, arg);
     break;
+
+  case BLE_GAP_EVENT_ENC_CHANGE:
+    // Encryption status changed (pairing complete)
+    if (event->enc_change.status == 0) {
+      espwifi->log(INFO,
+                   "🔵 🔐 BLE Connection encrypted (paired successfully) ✨");
+    } else {
+      espwifi->log(WARNING, "🔵 🔐 BLE Encryption failed: status=%d",
+                   event->enc_change.status);
+    }
+    break;
+
+  case BLE_GAP_EVENT_REPEAT_PAIRING:
+    // Device trying to pair again - allow it
+    espwifi->log(INFO, "🔵 🔐 BLE Repeat pairing request, deleting old bond");
+    // Delete old bond and allow re-pairing
+    ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
+    ble_store_util_delete_peer(&desc.peer_id_addr);
+    return BLE_GAP_REPEAT_PAIRING_RETRY;
 
   default:
     break;

@@ -146,6 +146,11 @@ public:
   std::string getQueryParam(httpd_req_t *req, const char *key);
 
   // ---- Logging
+  // Defer log writes to avoid blocking request handling
+  std::vector<std::string> deferredLogMessages;
+  bool deferLogWrite(std::string message);
+  void flushDeferredLogs();
+
   void cleanLogFile();
   int maxLogFileSize = 0;
   bool loggingStarted = false;

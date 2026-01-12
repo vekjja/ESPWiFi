@@ -383,7 +383,7 @@ export default function SettingsButtonBar({
       render: () => (
         <FileBrowserButton
           config={config}
-          deviceOnline={httpCapable}
+          deviceOnline={deviceOnline}
           controlWs={controlWs}
         />
       ),
@@ -394,7 +394,7 @@ export default function SettingsButtonBar({
       render: () => (
         <AddModuleButton
           config={config}
-          deviceOnline={httpCapable}
+          deviceOnline={deviceOnline}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           missingSettingsButtons={[]}

@@ -324,7 +324,7 @@ export default function CameraModule({
       <Module
         title={config?.name || "Camera"}
         onSettings={handleOpenSettings}
-        settingsDisabled={false}
+        settingsDisabled={!deviceOnline}
         settingsTooltip={"Settings"}
         errorOutline={false}
         data-camera-module="true"
@@ -333,6 +333,7 @@ export default function CameraModule({
           maxWidth: "500px",
           minHeight: "auto",
           maxHeight: "500px",
+          borderColor: !deviceOnline ? "error.main" : "primary.main",
           "& .MuiCardContent-root": {
             minHeight: "auto",
             paddingBottom: "0px !important",
@@ -407,11 +408,15 @@ export default function CameraModule({
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                backgroundColor: isStreaming ? "success.main" : "primary.main",
+                backgroundColor: !deviceOnline
+                  ? "error.main"
+                  : isStreaming
+                  ? "success.main"
+                  : "primary.main",
               }}
             />
             <Typography variant="caption" sx={{ color: "white" }}>
-              {isStreaming ? "Live" : "Idle"}
+              {!deviceOnline ? "Offline" : isStreaming ? "Live" : "Idle"}
             </Typography>
           </Box>
         </Box>
@@ -429,12 +434,21 @@ export default function CameraModule({
             marginTop: 0.5,
           }}
         >
-          <Tooltip title={isStreaming ? "Stop Stream" : "Start Stream"}>
+          <Tooltip
+            title={
+              isStreaming
+                ? "Stop Stream"
+                : !deviceOnline
+                ? "Device Offline"
+                : "Start Stream"
+            }
+          >
             <span>
               <IconButton
                 onClick={isStreaming ? handleStopStream : handleStartStream}
+                disabled={!deviceOnline}
                 sx={{
-                  color: "primary.main",
+                  color: !deviceOnline ? "text.disabled" : "primary.main",
                 }}
               >
                 {isStreaming ? <PauseIcon /> : <PlayArrowIcon />}
@@ -442,12 +456,13 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
-          <Tooltip title={"Take Snapshot"}>
+          <Tooltip title={!deviceOnline ? "Device Offline" : "Take Snapshot"}>
             <span>
               <IconButton
                 onClick={handleSnapshot}
+                disabled={!deviceOnline}
                 sx={{
-                  color: "primary.main",
+                  color: !deviceOnline ? "text.disabled" : "primary.main",
                 }}
               >
                 <CameraAltIcon />
@@ -455,12 +470,21 @@ export default function CameraModule({
             </span>
           </Tooltip>
 
-          <Tooltip title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}>
+          <Tooltip
+            title={
+              isFullscreen
+                ? "Exit Fullscreen"
+                : !deviceOnline
+                ? "Device Offline"
+                : "Fullscreen"
+            }
+          >
             <span>
               <IconButton
                 onClick={handleFullscreen}
+                disabled={!deviceOnline}
                 sx={{
-                  color: "primary.main",
+                  color: !deviceOnline ? "text.disabled" : "primary.main",
                 }}
               >
                 {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}

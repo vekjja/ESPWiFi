@@ -394,7 +394,7 @@ jobs:
           
           # Start release notes
           cat > release_notes.md << RELEASE_START
-          ## ESPWiFi Firmware Release: 🎉 ${VERSION} 🎉
+          # ESPWiFi: 🎉 ${VERSION} 🎉
           
           ### 📦 Packaged Environments:
           RELEASE_START
@@ -439,6 +439,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          name: "🎉 ESPWiFi Release ${{ steps.release_notes.outputs.version }} 🎉"
           files: release/*
           body_path: release_notes.md
           draft: false

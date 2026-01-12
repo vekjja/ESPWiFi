@@ -26,30 +26,34 @@ export default function CameraButton({
     <>
       <Tooltip
         title={
-          !config
+          !deviceOnline
+            ? "Control socket disconnected"
+            : !config
             ? "Loading configuration..."
             : !isCameraAvailable
             ? "Camera not installed"
             : "Camera Settings"
         }
       >
-        <Fab
-          size="medium"
-          color="primary"
-          onClick={handleClick}
-          disabled={isDisabled}
-          sx={{
-            color: isDisabled ? "text.disabled" : "primary.main",
-            backgroundColor: isDisabled ? "action.disabled" : "action.hover",
-            "&:hover": {
-              backgroundColor: isDisabled
-                ? "action.disabled"
-                : "action.selected",
-            },
-          }}
-        >
-          <CameraAltIcon />
-        </Fab>
+        <span>
+          <Fab
+            size="medium"
+            color="primary"
+            onClick={handleClick}
+            disabled={isDisabled}
+            sx={{
+              color: isDisabled ? "text.disabled" : "primary.main",
+              backgroundColor: isDisabled ? "action.disabled" : "action.hover",
+              "&:hover": {
+                backgroundColor: isDisabled
+                  ? "action.disabled"
+                  : "action.selected",
+              },
+            }}
+          >
+            <CameraAltIcon />
+          </Fab>
+        </span>
       </Tooltip>
 
       {modalOpen && config && saveConfigToDevice && (

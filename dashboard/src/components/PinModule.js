@@ -13,6 +13,7 @@ export default function PinModule({
   onUpdate,
   onDelete,
   controlWs,
+  deviceOnline = true,
 }) {
   const [isOn, setIsOn] = useState(initialProps.state === "high");
   const [name, setName] = useState(initialProps.name || "Pin");
@@ -289,6 +290,7 @@ export default function PinModule({
     <Module
       title={moduleTitle}
       onSettings={handleOpenPinModal}
+      settingsDisabled={!deviceOnline}
       settingsTooltip={
         remoteURL && remoteURL.trim()
           ? `Pin Settings (Remote: ${remoteURL})`
@@ -296,7 +298,11 @@ export default function PinModule({
       }
       sx={{
         backgroundColor: effectiveIsOn ? "secondary.light" : "secondary.dark",
-        borderColor: effectiveIsOn ? "primary.main" : "secondary.main",
+        borderColor: !deviceOnline
+          ? "secondary.main"
+          : effectiveIsOn
+          ? "primary.main"
+          : "secondary.main",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -324,7 +330,7 @@ export default function PinModule({
             <Switch
               checked={!!effectiveIsOn}
               onChange={handleChange}
-              disabled={mode === "in"}
+              disabled={mode === "in" || !deviceOnline}
               data-no-dnd="true"
             />
           }
@@ -352,6 +358,7 @@ export default function PinModule({
               min={Number(sliderMin)}
               max={Number(sliderMax)}
               valueLabelDisplay="auto"
+              disabled={!deviceOnline}
               data-no-dnd="true"
               sx={{
                 width: "100%",

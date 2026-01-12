@@ -28,24 +28,34 @@ export default function BluetoothButton({
 
   return (
     <>
-      <Tooltip title="Pair BLE Device">
-        <Fab
-          size="medium"
-          color="primary"
-          onClick={handleClick}
-          disabled={isDisabled}
-          sx={{
-            color: isDisabled ? "text.disabled" : "primary.main",
-            backgroundColor: isDisabled ? "action.disabled" : "action.hover",
-            "&:hover": {
-              backgroundColor: isDisabled
-                ? "action.disabled"
-                : "action.selected",
-            },
-          }}
-        >
-          <BluetoothSearchingIcon />
-        </Fab>
+      <Tooltip
+        title={
+          isDisabled
+            ? !config
+              ? "Loading configuration..."
+              : "Control socket disconnected"
+            : "Pair BLE Device"
+        }
+      >
+        <span>
+          <Fab
+            size="medium"
+            color="primary"
+            onClick={handleClick}
+            disabled={isDisabled}
+            sx={{
+              color: isDisabled ? "text.disabled" : "primary.main",
+              backgroundColor: isDisabled ? "action.disabled" : "action.hover",
+              "&:hover": {
+                backgroundColor: isDisabled
+                  ? "action.disabled"
+                  : "action.selected",
+              },
+            }}
+          >
+            <BluetoothSearchingIcon />
+          </Fab>
+        </span>
       </Tooltip>
 
       <Dialog

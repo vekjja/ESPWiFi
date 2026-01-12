@@ -73,8 +73,6 @@ void ESPWiFi::wifiConfigHandler(const JsonDocument &oldConfig) {
     stopWiFi();                     // Properly stop before restart
     vTaskDelay(pdMS_TO_TICKS(200)); // Let everything settle
     startWiFi();
-  } else {
-    log(DEBUG, "📶 No WiFi restart needed (no wificonfig changes)");
   }
 }
 

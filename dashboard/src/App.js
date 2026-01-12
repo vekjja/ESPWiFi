@@ -113,7 +113,6 @@ function App() {
   const [config, setConfig] = useState(null);
   const [localConfig, setLocalConfig] = useState(null);
   const [saving] = useState(false);
-  const [deviceOnline, setDeviceOnline] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(false);
@@ -147,6 +146,8 @@ function App() {
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
+  const lastRssiTimeRef = useRef(Date.now());
+  const connectionCheckRef = useRef(null);
 
   // Load device registry on mount (only in hosted mode)
   useEffect(() => {
@@ -249,8 +250,6 @@ function App() {
     if (!networkEnabled) return;
     if (!controlWsUrl) return;
 
-    setDeviceOnline(true);
-
     const connect = () => {
       if (!networkEnabled) return;
       const uiUrl = controlWsUrl;
@@ -266,6 +265,12 @@ function App() {
         controlWsRef.current = null;
       }
 
+      // Clear any existing connection check
+      if (connectionCheckRef.current) {
+        clearInterval(connectionCheckRef.current);
+        connectionCheckRef.current = null;
+      }
+
       try {
         const ws = new WebSocket(uiUrl);
         // Needed for camera streaming over /ws/control.
@@ -273,7 +278,9 @@ function App() {
         controlWsRef.current = ws;
 
         ws.onopen = () => {
+          console.log("[App] Control WebSocket connected");
           setControlConnected(true);
+          lastRssiTimeRef.current = Date.now();
           try {
             ws.send(JSON.stringify({ cmd: "ping" }));
             ws.send(JSON.stringify({ cmd: "get_config" }));
@@ -281,10 +288,32 @@ function App() {
           } catch {
             // ignore
           }
+
+          // Start connection health check
+          // We rely on RSSI polling (every 1s) as our heartbeat
+          // If we don't get any RSSI response for 5 seconds, connection is dead
+          connectionCheckRef.current = setInterval(() => {
+            const timeSinceLastRssi = Date.now() - lastRssiTimeRef.current;
+            if (timeSinceLastRssi > 5000 && ws.readyState === WebSocket.OPEN) {
+              console.warn(
+                "[App] No RSSI response for 5s, connection appears dead"
+              );
+              // Immediately update state before closing
+              setControlConnected(false);
+              setCloudDeviceConfig(null);
+              setCloudDeviceInfo(null);
+              setCloudRssi(null);
+              ws.close();
+            }
+          }, 2000);
         };
         ws.onmessage = (evt) => {
           try {
             const msg = JSON.parse(evt?.data || "{}");
+
+            // Update last message time on any message (indicates connection is alive)
+            lastRssiTimeRef.current = Date.now();
+
             if (msg?.cmd === "get_config" && msg?.config) {
               setConfig(msg.config);
               setLocalConfig(msg.config);
@@ -361,14 +390,24 @@ function App() {
             // ignore
           }
         };
-        ws.onerror = () => {
+        ws.onerror = (err) => {
+          console.error("[App] Control WebSocket error:", err);
           setControlConnected(false);
         };
         ws.onclose = (evt) => {
+          console.log("[App] Control WebSocket closed, code:", evt?.code);
           controlWsRef.current = null;
           setControlConnected(false);
           setCloudDeviceConfig(null);
           setCloudDeviceInfo(null);
+          setCloudRssi(null);
+
+          // Clear connection check
+          if (connectionCheckRef.current) {
+            clearInterval(connectionCheckRef.current);
+            connectionCheckRef.current = null;
+          }
+
           if (evt?.code === 1000) return;
           controlRetryRef.current = setTimeout(connect, 2000);
         };
@@ -382,6 +421,10 @@ function App() {
       if (controlRetryRef.current) {
         clearTimeout(controlRetryRef.current);
         controlRetryRef.current = null;
+      }
+      if (connectionCheckRef.current) {
+        clearInterval(connectionCheckRef.current);
+        connectionCheckRef.current = null;
       }
       if (controlWsRef.current) {
         try {
@@ -465,6 +508,12 @@ function App() {
    */
   const handlePairNewDevice = useCallback(
     (deviceRecord, details) => {
+      // If called without arguments (from device picker), show initial setup
+      if (!deviceRecord) {
+        setShowInitialSetup(true);
+        return;
+      }
+      // Otherwise, handle the device provisioning
       handleDeviceProvisioned(deviceRecord, details);
     },
     [handleDeviceProvisioned]
@@ -591,7 +640,10 @@ function App() {
         </Container>
 
         <Suspense fallback={<LinearProgress color="inherit" />}>
-          <BlePairingFlow onDeviceProvisioned={handleDeviceProvisioned} />
+          <BlePairingFlow
+            onDeviceProvisioned={handleDeviceProvisioned}
+            onClose={() => setShowInitialSetup(false)}
+          />
         </Suspense>
       </ThemeProvider>
     );
@@ -631,8 +683,8 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: deviceOnline ? "secondary.light" : "error.main",
-          color: deviceOnline ? "primary.main" : "white",
+          backgroundColor: controlConnected ? "secondary.light" : "error.main",
+          color: controlConnected ? "primary.main" : "white",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -661,7 +713,7 @@ function App() {
       <Suspense fallback={null}>
         <SettingsButtonBar
           config={effectiveConfig}
-          deviceOnline={deviceOnline}
+          deviceOnline={controlConnected}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
           onRefreshConfig={refreshConfigFromDevice}
@@ -710,6 +762,7 @@ function App() {
               // ignore
             }
           }}
+          cloudMode={isHostedMode}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
           controlWs={controlWsRef.current}
@@ -722,7 +775,7 @@ function App() {
             config={effectiveConfig}
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
-            deviceOnline={deviceOnline}
+            deviceOnline={controlConnected}
             controlWs={controlWsRef.current}
           />
         </Suspense>

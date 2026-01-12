@@ -80,7 +80,7 @@ jobs:
           retention-days: 90
 
   build-firmware:
-    name: Build Firmware Binaries
+    name: Build Firmware Binaries for ${{ matrix.environment.name }}
     needs: build-dashboard
     runs-on: ubuntu-latest
     
@@ -148,10 +148,10 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate SDK config for ${{ matrix.environment }}
+      - name: Generate SDK config for ${{ matrix.environment.name }}
         run: ./sdkconfigs/sdkconfig.sh ${{ matrix.environment }}
 
-      - name: Build firmware for ${{ matrix.environment }}
+      - name: Build firmware for ${{ matrix.environment.name }}
         run: pio run --environment ${{ matrix.environment }}
 
       - name: Prepare artifacts
@@ -247,9 +247,9 @@ jobs:
           
           # Start release notes
           cat > release_notes.md << RELEASE_START
-          ## 🎉 New ESPWiFi Firmware Release: ${VERSION}
+          ## ESPWiFi Firmware Release: 🎉 ${VERSION} 🎉
           
-          This release includes firmware binaries for the following environments:
+          ### 📦 Packages For Environments:
           RELEASE_START
           
           # Add environment list dynamically
@@ -259,8 +259,7 @@ jobs:
           echo "" >> release_notes.md
           
           cat >> release_notes.md << 'RELEASE_CONTINUE'
-          
-          ### 📦 Files Included
+
           
           RELEASE_CONTINUE
           

@@ -1,0 +1,10 @@
+# Production dashboard image using pre-built assets
+# This Dockerfile expects the dashboard to already be built in ./data
+
+FROM nginx:1.27-alpine AS runtime
+
+COPY dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+COPY data /usr/share/nginx/html
+
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]

@@ -30,6 +30,12 @@ jobs:
       - name: GitHub Checkout
         uses: actions/checkout@v3
 
+      - name: Download pre-built dashboard
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-build
+          path: data
+
       - name: Compute tags
         id: vars
         shell: bash
@@ -94,17 +100,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # Dashboard UI
+          # Dashboard UI (using pre-built assets)
           - name: dashboard
-            context: ./dashboard
-            dockerfile: ./dashboard/Dockerfile
+            context: .
+            dockerfile: ./dashboard/Dockerfile.prebuilt
             image: ghcr.io/vekjja/espwifi
             build_args: ""
-            # build_args: |
-            #   REACT_APP_API_HOST=espwifi.local
-            #   REACT_APP_API_PORT=80
-            #   REACT_APP_API_PROTOCOL=http:
-            #   REACT_APP_WS_PROTOCOL=ws:
 
           # Cloud tunnel broker
           # - name: cloudtunnel

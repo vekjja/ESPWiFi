@@ -57,10 +57,19 @@ jobs:
     
     strategy:
       matrix:
-        environment:
-          - esp32
-          - esp32-c3
-          - esp32-s3
+        include:
+          # - environment: esp32
+          #   chip: esp32
+          #   baud: 460800
+          #   bootloader_offset: "0x1000"
+          # - environment: esp32-c3
+          #   chip: esp32c3
+          #   baud: 921600
+          #   bootloader_offset: "0x0"
+          - environment: esp32-s3
+            chip: esp32s3
+            baud: 921600
+            bootloader_offset: "0x0"
     
     steps:
       - name: Checkout code
@@ -121,6 +130,16 @@ jobs:
           if [ -f .pio/build/$ENV/bootloader.bin ]; then
             cp .pio/build/$ENV/bootloader.bin artifacts/espwifi-bootloader-${TAG}-${ENV}.bin
           fi
+          
+          # Create metadata file for this environment
+          cat > artifacts/metadata-${ENV}.json << EOF
+          {
+            "environment": "${{ matrix.environment }}",
+            "chip": "${{ matrix.chip }}",
+            "baud": "${{ matrix.baud }}",
+            "bootloader_offset": "${{ matrix.bootloader_offset }}"
+          }
+          EOF
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -150,14 +169,46 @@ jobs:
           # Flatten the artifact directory structure
           find release-artifacts -type f -exec cp {} release/ \;
           
+          VERSION="${GITHUB_REF_NAME}"
+          
+          # Read metadata from all built environments
+          METADATA_FILES=(release/metadata-*.json)
+          
+          # Build arrays from metadata files
+          ENVIRONMENTS=()
+          CHIPS=()
+          BAUDS=()
+          OFFSETS=()
+          
+          for meta_file in "${METADATA_FILES[@]}"; do
+            if [ -f "$meta_file" ]; then
+              env=$(jq -r '.environment' "$meta_file")
+              chip=$(jq -r '.chip' "$meta_file")
+              baud=$(jq -r '.baud' "$meta_file")
+              offset=$(jq -r '.bootloader_offset' "$meta_file")
+              
+              ENVIRONMENTS+=("$env")
+              CHIPS+=("$chip")
+              BAUDS+=("$baud")
+              OFFSETS+=("$offset")
+            fi
+          done
+          
+          echo "Found ${#ENVIRONMENTS[@]} environments: ${ENVIRONMENTS[*]}"
+          
           # Create a combined release notes file
-          cat > release/FLASH_INSTRUCTIONS.md << 'EOF'
+          cat > release/FLASH_INSTRUCTIONS.md << 'FLASH_START'
           # ESPWiFi Firmware Flash Instructions
           
           This release contains firmware binaries for the following ESP32 variants:
-          - ESP32 (esp32)
-          - ESP32-C3 (esp32-c3)
-          - ESP32-S3 (esp32-s3)
+          FLASH_START
+          
+          # Add environment list dynamically
+          for env in "${ENVIRONMENTS[@]}"; do
+            echo "- ${env^^} ($env)" >> release/FLASH_INSTRUCTIONS.md
+          done
+          
+          cat >> release/FLASH_INSTRUCTIONS.md << 'FLASH_CONTINUE'
           
           ## Prerequisites
           
@@ -170,49 +221,40 @@ jobs:
           
           ### Option 1: Using esptool.py (Recommended for first flash)
           
-          For **ESP32**:
+          FLASH_CONTINUE
+          
+          # Generate flash instructions for each environment
+          for i in "${!ENVIRONMENTS[@]}"; do
+            env="${ENVIRONMENTS[$i]}"
+            chip="${CHIPS[$i]}"
+            baud="${BAUDS[$i]}"
+            offset="${OFFSETS[$i]}"
+            
+            cat >> release/FLASH_INSTRUCTIONS.md << FLASH_ENV
+          For **${env^^}**:
+          \`\`\`bash
+          esptool.py --chip ${chip} --port /dev/ttyUSB0 --baud ${baud} write_flash \\
+            ${offset} espwifi-bootloader-${VERSION}-${env}.bin \\
+            0x8000 espwifi-partitions-${VERSION}-${env}.bin \\
+            0x10000 espwifi-firmware-${VERSION}-${env}.bin
+          \`\`\`
+          
+          FLASH_ENV
+          done
+          
+          cat >> release/FLASH_INSTRUCTIONS.md << 'FLASH_END'
+          ### Option 2: Using npm scripts
+          
+          If you have the source code:
           ```bash
-          esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash \
-            0x1000 bootloader-esp32.bin \
-            0x8000 partitions-esp32.bin \
-            0x10000 firmware-esp32.bin
-          ```
-          
-          For **ESP32-C3**:
-          ```bash
-          esptool.py --chip esp32c3 --port /dev/ttyUSB0 --baud 921600 write_flash \
-            0x0 bootloader-esp32-c3.bin \
-            0x8000 partitions-esp32-c3.bin \
-            0x10000 firmware-esp32-c3.bin
-          ```
-          
-          For **ESP32-S3**:
-          ```bash
-          esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash \
-            0x0 bootloader-esp32-s3.bin \
-            0x8000 partitions-esp32-s3.bin \
-            0x10000 firmware-esp32-s3.bin
-          ```
-          
-          ### Option 2: Using PlatformIO
-          
-          If you have the source code and PlatformIO installed:
-          ```bash
-          # For ESP32
-          pio run --target upload --environment esp32
-          
-          # For ESP32-C3
-          pio run --target upload --environment esp32-c3
-          
-          # For ESP32-S3
-          pio run --target upload --environment esp32-s3
+          cd dashboard && npm run upload
           ```
           
           ### Option 3: Firmware-only update (OTA)
           
           If you already have the bootloader and partition table flashed:
           ```bash
-          esptool.py --chip auto --port /dev/ttyUSB0 write_flash 0x10000 firmware-<variant>.bin
+          esptool.py --chip auto --port /dev/ttyUSB0 write_flash 0x10000 espwifi-firmware-${VERSION}-<variant>.bin
           ```
           
           ## Troubleshooting
@@ -227,7 +269,7 @@ jobs:
           - Always use the correct firmware for your specific ESP32 variant
           - Flash all three files (bootloader, partitions, firmware) for a clean install
           - For updates, flashing only the firmware.bin file is usually sufficient
-          EOF
+          FLASH_END
           
           ls -lh release/
 
@@ -238,11 +280,28 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           
-          # Define environments
-          ENVIRONMENTS=("esp32" "esp32-c3" "esp32-s3")
-          CHIPS=("esp32" "esp32c3" "esp32s3")
-          BAUDS=("460800" "921600" "921600")
-          OFFSETS=("0x1000" "0x0" "0x0")
+          # Read metadata from all built environments
+          METADATA_FILES=(release/metadata-*.json)
+          
+          # Build arrays from metadata files
+          ENVIRONMENTS=()
+          CHIPS=()
+          BAUDS=()
+          OFFSETS=()
+          
+          for meta_file in "${METADATA_FILES[@]}"; do
+            if [ -f "$meta_file" ]; then
+              env=$(jq -r '.environment' "$meta_file")
+              chip=$(jq -r '.chip' "$meta_file")
+              baud=$(jq -r '.baud' "$meta_file")
+              offset=$(jq -r '.bootloader_offset' "$meta_file")
+              
+              ENVIRONMENTS+=("$env")
+              CHIPS+=("$chip")
+              BAUDS+=("$baud")
+              OFFSETS+=("$offset")
+            fi
+          done
           
           # Start release notes
           cat > release_notes.md << 'RELEASE_START'

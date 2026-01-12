@@ -259,10 +259,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.platformio
+            ~/.platformio/.cache
+            ~/.platformio/platforms
+            ~/.platformio/packages
             .pio
-          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}-${{ matrix.environment }}
           restore-keys: |
+            ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}-
             ${{ runner.os }}-pio-
 
       - name: Set up Python

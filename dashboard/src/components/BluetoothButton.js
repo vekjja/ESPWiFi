@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Fab, Tooltip, Badge } from "@mui/material";
+import { Fab, Tooltip } from "@mui/material";
 import BluetoothIcon from "@mui/icons-material/Bluetooth";
 import BluetoothDisabledIcon from "@mui/icons-material/BluetoothDisabled";
 import BluetoothSearchingIcon from "@mui/icons-material/BluetoothSearching";
@@ -71,45 +71,36 @@ export default function BluetoothButton({
 
   const getTooltipText = () => {
     if (!config) return "Loading configuration...";
+    if (!isEnabled) return "Web Bluetooth - Disabled";
+    if (status === "connected") return "Web Bluetooth - Connected";
+    if (status === "advertising") return "Web Bluetooth - Advertising";
     return "Web Bluetooth - Connect to BLE Devices";
-  };
-
-  const getBadgeContent = () => {
-    if (status === "connected") return "●";
-    if (status === "advertising") return "◉";
-    return null;
   };
 
   return (
     <>
       <Tooltip title={getTooltipText()}>
-        <Badge
-          badgeContent={getBadgeContent()}
-          color={status === "connected" ? "success" : "warning"}
-          overlap="circular"
+        <Fab
+          size="medium"
+          color="primary"
+          onClick={handleClick}
+          disabled={isDisabled}
+          sx={{
+            color: isDisabled
+              ? "text.disabled"
+              : isEnabled
+              ? "primary.main"
+              : "text.disabled",
+            backgroundColor: isDisabled ? "action.disabled" : "action.hover",
+            "&:hover": {
+              backgroundColor: isDisabled
+                ? "action.disabled"
+                : "action.selected",
+            },
+          }}
         >
-          <Fab
-            size="medium"
-            color="primary"
-            onClick={handleClick}
-            disabled={isDisabled}
-            sx={{
-              color: isDisabled
-                ? "text.disabled"
-                : isEnabled
-                ? "primary.main"
-                : "text.disabled",
-              backgroundColor: isDisabled ? "action.disabled" : "action.hover",
-              "&:hover": {
-                backgroundColor: isDisabled
-                  ? "action.disabled"
-                  : "action.selected",
-              },
-            }}
-          >
-            {getIcon()}
-          </Fab>
-        </Badge>
+          {getIcon()}
+        </Fab>
       </Tooltip>
 
       {modalOpen && (

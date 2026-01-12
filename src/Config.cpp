@@ -255,6 +255,14 @@ bool ESPWiFi::queueConfigUpdate(JsonVariantConst updates) {
 void ESPWiFi::handleConfigUpdate() {
 
   if (configUpdate.size() > 0) {
+    // Save old config for comparison in handlers
+    JsonDocument oldConfig = config;
+
+    // Apply new config first
+    config = configUpdate;
+
+    // Now handlers can compare oldConfig vs config (new), and config is already
+    // correct
     wifiConfigHandler();
     cameraConfigHandler();
     powerConfigHandler();
@@ -264,8 +272,6 @@ void ESPWiFi::handleConfigUpdate() {
 #ifdef CONFIG_BT_A2DP_ENABLE
     bluetoothConfigHandler();
 #endif
-    config = configUpdate;
-    configUpdate.clear();
 
     if (wifiRestartRequested_) {
       wifiRestartRequested_ = false;
@@ -274,6 +280,7 @@ void ESPWiFi::handleConfigUpdate() {
     }
   }
 
+  configUpdate.clear();
   if (configNeedsSave) {
     saveConfig();
   }

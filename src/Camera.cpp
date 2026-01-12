@@ -165,7 +165,7 @@ bool ESPWiFi::initCamera() {
     cam.frame_size = FRAMESIZE_SVGA; // 800x600 for LAN
     cam.jpeg_quality = 15;           // Better quality
     cam.fb_count = 1;                // Single buffer (prevents FB-OVF)
-    log(INFO, "📷 LAN mode: frame_size=SVGA, quality=15, buffers=1");
+    log(INFO, "📷 frame_size=SVGA, quality=15, buffers=1");
     cam.fb_location = CAMERA_FB_IN_PSRAM;
     cam.grab_mode =
         CAMERA_GRAB_LATEST; // Always get latest frame, drop old ones
@@ -833,100 +833,28 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
  *
  * Called when camera-related configuration changes. Handles:
  * - Camera enable/disable
- * - Camera installation status
- * - Setting updates
+ * - Camera setting updates requiring reinit
  *
- * Compares configUpdate with current config to determine what changed.
- * This is called before config is updated with configUpdate values.
- *
- * This is the main entry point for responding to config updates from
- * the HTTP API or startup sequence.
+ * NOTE: This is called AFTER config has been updated with new values.
+ * The old config is no longer available for comparison.
  */
 void ESPWiFi::cameraConfigHandler() {
 #if ESPWiFi_HAS_CAMERA
-  if (!config["camera"]["installed"].as<bool>()) {
+
+  JsonObject camUpdate = configUpdate["camera"];
+  if (camUpdate.isNull() || camUpdate.size() == 0) {
     return;
   }
 
-  // NOTE: handleConfigUpdate() calls this handler before it swaps
-  // `config = configUpdate`. For any immediate hardware actions (init/reinit),
-  // we must apply settings using the *new* config values in configUpdate.
-  // Keep a snapshot of the old config for comparisons, but temporarily swap
-  // config to configUpdate when applying.
-  JsonDocument oldCfg = config;
-  JsonVariantConst oldCam = oldCfg["camera"];
-  JsonVariantConst newCam = configUpdate["camera"];
+  bool enabled = config["camera"]["enabled"].as<bool>();
 
-  bool oldEnabled = oldCam["enabled"].as<bool>();
-  bool newEnabled =
-      newCam["enabled"].isNull() ? oldEnabled : newCam["enabled"].as<bool>();
-
-  // Check if any settings changed (only if they're present in configUpdate)
-  bool settingsChanged = false;
-  bool needsReinit = false;
-
-  // List of camera settings that trigger updateCameraSettings()
-  const char *settingKeys[] = {"frameRate",      "rotation",   "brightness",
-                               "contrast",       "saturation", "sharpness",
-                               "denoise",        "quality",    "exposure_level",
-                               "exposure_value", "agc_gain",   "gain_ceiling",
-                               "white_balance",  "awb_gain",   "wb_mode"};
-
-  for (const char *key : settingKeys) {
-    if (!newCam[key].isNull()) {
-      // This setting is being updated, check if value actually changed
-      auto oldVal = oldCam[key];
-      auto newVal = newCam[key];
-      if (oldVal != newVal) {
-        settingsChanged = true;
-
-        // Some settings are flaky/driver-dependent; for stability, we reinit
-        // the camera when these change. (Requested: rotation + exposure).
-        if (strcmp(key, "rotation") == 0 ||
-            strcmp(key, "exposure_level") == 0 ||
-            strcmp(key, "exposure_value") == 0) {
-          needsReinit = true;
-        }
-        break;
-      }
-    }
-  }
-
-  // Handle enable/disable transitions
-  if (newEnabled != oldEnabled) {
-    if (!newEnabled) {
-      deinitCamera();
-    } else {
-      // Enable camera: apply new config and initialize
-      config = configUpdate;
-      initCamera();
-      if (camera != nullptr) {
-        updateCameraSettings();
-        clearCameraBuffer();
-      }
-      config = oldCfg;
-    }
-  } else if (newEnabled && settingsChanged) {
-    // Camera is enabled and settings changed
-    config = configUpdate;
-
-    if (needsReinit) {
-      log(INFO, "📷 Camera settings changed (requires reinit)");
-      // Only reinit if camera is currently initialized
-      if (camera != nullptr) {
-        deinitCamera();
-      }
-      // Reinit will happen on next frame capture
-    } else {
-      // Settings can be applied without reinit
-      log(INFO, "📷 Camera settings changed, applying updates");
-      if (camera != nullptr) {
-        updateCameraSettings();
-        feedWatchDog(50); // Wait for sensor to apply settings
-        clearCameraBuffer();
-      }
-    }
-    config = oldCfg;
+  if (enabled) {
+    log(INFO, "📷 Camera config changed, reinitializing...");
+    deinitCamera();
+    feedWatchDog(100);
+    initCamera();
+  } else {
+    deinitCamera();
   }
 #endif
 }

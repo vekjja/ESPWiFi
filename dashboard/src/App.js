@@ -14,23 +14,11 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
 import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
-// NOTE: control WS URL is constructed from the selected device record to avoid
-// reconnect loops on config changes in paired/tunnel mode.
-import {
-  loadDevices,
-  loadSelectedDeviceId,
-  upsertDevice,
-  removeDevice,
-  saveDevices,
-  saveSelectedDeviceId,
-  touchSelected,
-} from "./utils/deviceRegistry";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
 const Login = lazy(() => import("./components/Login"));
 const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
-const BlePairingDialog = lazy(() => import("./components/BlePairingDialog"));
 
 // Define the theme
 const theme = createTheme({
@@ -116,14 +104,6 @@ function App() {
   const [checkingAuth, setCheckingAuth] = useState(false);
   const [networkEnabled, setNetworkEnabled] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [needsPairing, setNeedsPairing] = useState(false);
-  const [devices, setDevices] = useState([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
-  const [pairingOpen, setPairingOpen] = useState(false);
-  const claimHandledRef = useRef(false);
-  const [claimInProgress, setClaimInProgress] = useState(false);
-  // Claim errors are kept for debugging in console/logs; no UI banner is shown.
-  const [, setClaimError] = useState("");
   const controlWsRef = useRef(null);
   const controlRetryRef = useRef(null);
   const logsFetchRef = useRef({
@@ -143,13 +123,6 @@ function App() {
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
-
-  // Use ref for fetch locking to avoid race conditions with async state updates
-  const deviceOnlineRef = useRef(deviceOnline);
-
-  useEffect(() => {
-    deviceOnlineRef.current = deviceOnline;
-  }, [deviceOnline]);
 
   // Measure header height and expose as CSS var to avoid brittle vh math on mobile.
   useEffect(() => {
@@ -190,360 +163,16 @@ function App() {
     };
   }, []);
 
-  const host = window.location.hostname || "";
-  const isDevHost =
-    host === "localhost" || host === "127.0.0.1" || host === "::1";
-  // Cloud dashboard is ONLY espwifi.io (or subdomains). Device-hosted .local must
-  // behave as LAN and should never show pairing UI by default.
-  let isCloudDashboard = host === "espwifi.io" || host.endsWith(".espwifi.io");
-  let isDeviceHosted = !isCloudDashboard && !isDevHost;
-  let devHostMode = "";
-  let devLanHost = "";
-
-  // Dev-only: allow localhost:3000 to "pretend" it's cloud-hosted or device-hosted.
-  // Usage:
-  // - http://localhost:3000/?mode=cloud  -> behave like espwifi.io
-  // - http://localhost:3000/?mode=device -> behave like espwifi.local (device-hosted)
-  // - http://localhost:3000/?mode=dev    -> normal localhost behavior
-  // The choice is persisted in localStorage so refreshes keep the mode.
-  if (isDevHost) {
-    const MODE_KEY = "espwifi.devHostMode";
-    const LAN_HOST_KEY = "espwifi.devLanHost";
-
-    const normalizeMode = (v) =>
-      String(v || "")
-        .trim()
-        .toLowerCase();
-    const isAllowed = (v) => v === "cloud" || v === "device" || v === "dev";
-
-    const readStored = () => {
-      try {
-        return normalizeMode(window.localStorage?.getItem(MODE_KEY));
-      } catch {
-        return "";
-      }
-    };
-
-    const writeStored = (v) => {
-      try {
-        window.localStorage?.setItem(MODE_KEY, v);
-      } catch {
-        // ignore
-      }
-    };
-
-    const params = new URLSearchParams(window.location.search || "");
-    const modeParam = normalizeMode(params.get("mode"));
-    const lanHostParam = normalizeMode(params.get("lanHost"));
-
-    const readLanHost = () => {
-      try {
-        return normalizeMode(window.localStorage?.getItem(LAN_HOST_KEY));
-      } catch {
-        return "";
-      }
-    };
-    const writeLanHost = (v) => {
-      try {
-        window.localStorage?.setItem(LAN_HOST_KEY, v);
-      } catch {
-        // ignore
-      }
-    };
-
-    if (isAllowed(modeParam)) {
-      devHostMode = modeParam;
-      writeStored(modeParam);
-    } else {
-      const stored = readStored();
-      if (isAllowed(stored)) devHostMode = stored;
-    }
-
-    // Optional in device-mode: which LAN host to use for /ws/control.
-    // Defaults to espwifi.local.
-    if (lanHostParam) {
-      devLanHost = lanHostParam;
-      writeLanHost(lanHostParam);
-    } else {
-      devLanHost = readLanHost();
-    }
-    if (!devLanHost) devLanHost = "espwifi.local";
-
-    if (devHostMode === "cloud") {
-      isCloudDashboard = true;
-      isDeviceHosted = false;
-    } else if (devHostMode === "device") {
-      isCloudDashboard = false;
-      isDeviceHosted = true;
-    } else if (devHostMode === "dev") {
-      isCloudDashboard = false;
-      isDeviceHosted = false;
-    }
-  }
-
-  // Note: localhost can still operate fully via /ws/control (LAN mode), or via
-  // tunnel if a device record is selected that contains tunnel details.
-
-  // One mode: always talk over /ws/control.
-  // The only difference between "LAN" and "paired/tunnel" is the control WS URL:
-  // - LAN: ws(s)://<device>/ws/control
-  // - Tunnel: wss://tnl.../ws/ui/<id>?tunnel=ws_control&token=...
-
-  // Tunnel-ready means we have enough info to operate without LAN HTTP.
-  const selectedDevice = useMemo(() => {
-    const id = String(selectedDeviceId || "");
-    if (!id) return null;
-    return devices.find((d) => String(d?.id) === id) || null;
-  }, [devices, selectedDeviceId]);
-
-  // NOTE: We intentionally compute these without referencing makeCloudConfigFromDevice
-  // (defined later) to keep ESLint happy and to avoid reconnecting control WS
-  // when config objects change.
-  const tunnelReady = Boolean(
-    selectedDevice &&
-      (selectedDevice.authToken || "").length > 0 &&
-      (selectedDevice.cloudBaseUrl || "").length > 0 &&
-      (selectedDevice.hostname || selectedDevice.id)
-  );
-
-  const controlUiUrl = useMemo(() => {
-    if (!tunnelReady || !selectedDevice) return null;
-    const base = selectedDevice.cloudBaseUrl || "https://tnl.espwifi.io";
-    const id = selectedDevice.hostname || selectedDevice.id;
-    const token = selectedDevice.authToken || "";
-    if (!id || !token) return null;
-    // Always use wss on https pages
-    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const baseUrl =
-      base.startsWith("ws:") || base.startsWith("wss:")
-        ? base
-        : base.replace(/^https?:/i, wsProto);
-    const sep = baseUrl.endsWith("/") ? "" : "/";
-    return `${baseUrl}${sep}ws/ui/${encodeURIComponent(
-      id
-    )}?tunnel=ws_control&token=${encodeURIComponent(token)}`;
-  }, [tunnelReady, selectedDevice]);
-
-  const [controlReconnectSeq, setControlReconnectSeq] = useState(0);
-
-  const makeCloudConfigFromDevice = useCallback((d) => {
-    if (!d) return null;
-    const deviceId = d.deviceId || d.hostname || d.id;
-    return {
-      deviceName: d.name || d.id,
-      hostname: d.hostname || d.id,
-      auth: { token: d.authToken || "" },
-      wifi: { mode: "client", enabled: true },
-      cloudTunnel: {
-        enabled: true,
-        baseUrl: d.cloudBaseUrl || "https://tnl.espwifi.io",
-        tunnelAll: true,
-        uris: ["ws_control"],
-      },
-      // Keep Modules/Settings bar happy
-      pins: [],
-      webSockets: [],
-      modules: [],
-      camera: { installed: true, enabled: true },
-      bluetooth: { installed: true },
-      deviceId,
-    };
-  }, []);
-
-  // Bootstrap device registry early (before any network calls).
-  useEffect(() => {
-    // Device-hosted UI (espwifi.local / *.local): do not show pairing UI.
-    // Always connect to same-origin /ws/control.
-    if (isDeviceHosted) {
-      setNeedsPairing(false);
-      setAuthChecked(true);
-      return;
-    }
-
-    const loaded = loadDevices();
-    const sel = loadSelectedDeviceId();
-    setDevices(loaded);
-    setSelectedDeviceId(sel);
-
-    const chosen =
-      loaded.find((d) => String(d?.id) === String(sel)) || loaded[0] || null;
-
-    // If we have saved devices, default-select the last selected (or first)
-    // so LAN dev has a deterministic target, but still show "Select a device"
-    // if nothing is selected (user can unselect via UI in the future).
-    if (chosen) {
-      const chosenId = String(chosen.id);
-      setSelectedDeviceId(chosenId);
-      saveSelectedDeviceId(chosenId);
-    }
-
-    // Show "Select a device" banner when there are saved devices but none selected,
-    // and "No device paired" when there are none. This applies on localhost dev + cloud.
-    setNeedsPairing(loaded.length === 0 || !chosen);
-    setAuthChecked(true);
-
-    // If we're cloud-hosted and have a chosen device, build the virtual config.
-    if (isCloudDashboard && chosen) {
-      const cc = makeCloudConfigFromDevice(chosen);
-      setConfig(cc);
-      setLocalConfig(cc);
-      setAuthenticated(true);
-      // Defer marking "online" until boot phase completes so we don't start
-      // websocket connects before the page is fully loaded.
-      setDeviceOnline(false);
-    }
-  }, [isCloudDashboard, isDeviceHosted, makeCloudConfigFromDevice]);
-
-  // Claim-code pairing flow (iPhone):
-  // - QR opens espwifi.io/?claim=CODE
-  // - dashboard exchanges CODE -> token via cloudTunnel, then saves the device.
-  useEffect(() => {
-    if (!networkEnabled) return;
-    if (!isCloudDashboard) return;
-    if (claimHandledRef.current || claimInProgress) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const claim = (params.get("claim") || "").trim();
-    if (!claim) return;
-
-    setClaimInProgress(true);
-    setClaimError("");
-
-    const cleanupUrl = () => {
-      try {
-        params.delete("claim");
-        const next =
-          window.location.pathname +
-          (params.toString() ? `?${params.toString()}` : "") +
-          window.location.hash;
-        window.history.replaceState(null, "", next);
-      } catch {
-        // ignore
-      }
-    };
-
-    const run = async () => {
-      try {
-        const res = await fetch("https://tnl.espwifi.io/api/claim", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: claim, tunnel: "ws_control" }),
-        });
-        if (!res.ok) {
-          // 404 is common for expired / not-yet-registered claim codes.
-          throw new Error(`claim_exchange_http_${res.status}`);
-        }
-        const data = await res.json();
-        if (!data?.ok || !data?.device_id || !data?.token) {
-          throw new Error("claim_exchange_bad_response");
-        }
-
-        const record = {
-          id: String(data.device_id),
-          name: String(data.device_id),
-          hostname: String(data.device_id),
-          authToken: String(data.token),
-          cloudBaseUrl: "https://tnl.espwifi.io",
-          deviceId: String(data.device_id),
-        };
-
-        setDevices((prev) => {
-          const next = upsertDevice(prev, record);
-          saveDevices(next);
-          return next;
-        });
-        setSelectedDeviceId(record.id);
-        saveSelectedDeviceId(record.id);
-        setNeedsPairing(false);
-
-        const cc = makeCloudConfigFromDevice(record);
-        setConfig(cc);
-        setLocalConfig(cc);
-        // Wait for boot phase before connecting sockets.
-        setDeviceOnline(false);
-
-        claimHandledRef.current = true;
-        cleanupUrl();
-      } catch (e) {
-        console.warn("Claim exchange failed:", e);
-        setClaimError(String(e?.message || "claim_exchange_failed"));
-        // Leave ?claim=... in the URL so the user can retry by refreshing.
-      } finally {
-        setClaimInProgress(false);
-      }
-    };
-
-    run();
-  }, [
-    networkEnabled,
-    isCloudDashboard,
-    makeCloudConfigFromDevice,
-    claimInProgress,
-  ]);
-
-  const handleSelectDevice = useCallback(
-    (d) => {
-      if (!d?.id) return;
-      const id = String(d.id);
-      setSelectedDeviceId(id);
-      saveSelectedDeviceId(id);
-      // Even if selecting the same device again, force a control reconnect.
-      setControlReconnectSeq((n) => n + 1);
-
-      // Touch + persist registry
-      setDevices((prev) => {
-        const next = touchSelected(prev, id);
-        saveDevices(next);
-        return next;
-      });
-
-      if (isCloudDashboard) {
-        const cc = makeCloudConfigFromDevice(d);
-        setConfig(cc);
-        setLocalConfig(cc);
-        setNeedsPairing(false);
-        setAuthenticated(true);
-        setAuthChecked(true);
-        // Don't connect sockets until boot phase (networkEnabled).
-        setDeviceOnline(false);
-      }
-    },
-    [isCloudDashboard, makeCloudConfigFromDevice]
-  );
-
-  const handleRemoveDevice = useCallback(
-    (d) => {
-      const id = String(d?.id || "");
-      if (!id) return;
-      setDevices((prev) => {
-        const next = removeDevice(prev, id);
-        saveDevices(next);
-        return next;
-      });
-      if (String(selectedDeviceId) === id) {
-        setSelectedDeviceId(null);
-        saveSelectedDeviceId(null);
-        setNeedsPairing(isCloudDashboard);
-        if (isCloudDashboard) {
-          setConfig(null);
-          setLocalConfig(null);
-        }
-      }
-    },
-    [isCloudDashboard, selectedDeviceId]
-  );
-
-  const handlePairNewDevice = useCallback(() => {
-    // Web Bluetooth requires a user gesture; this is triggered from the Devices dialog.
-    setPairingOpen(true);
-  }, []);
-
   // Defer any network activity until the page is fully loaded.
   // This avoids "blank screen on mobile" scenarios where the app immediately
   // starts hitting device endpoints / websockets before the UI is visible.
   useEffect(() => {
     const enable = () => {
-      const run = () => setNetworkEnabled(true);
+      const run = () => {
+        setNetworkEnabled(true);
+        setAuthChecked(true);
+        setAuthenticated(true);
+      };
       // Prefer idle time so render/layout settles before network work begins.
       if (window.requestIdleCallback) {
         window.requestIdleCallback(run, { timeout: 1500 });
@@ -561,71 +190,19 @@ function App() {
     return () => window.removeEventListener("load", enable);
   }, []);
 
-  const lanTargetHost = useMemo(() => {
-    // Prefer explicit override.
-    if (process.env.REACT_APP_API_HOST) return process.env.REACT_APP_API_HOST;
-    // When simulating "device-hosted" on localhost, target the LAN device by default.
-    if (isDevHost && devHostMode === "device")
-      return devLanHost || "espwifi.local";
-    // If a device is selected, use it as the LAN target.
-    const selHost =
-      selectedDevice?.hostname ||
-      selectedDevice?.deviceId ||
-      selectedDevice?.id;
-    if (selHost) return selHost;
-    // If we already have a config, prefer its hostname.
-    if (localConfig?.hostname) return localConfig.hostname;
-    if (config?.hostname) return config.hostname;
-    // No selection yet.
-    return null;
-  }, [
-    config?.hostname,
-    devHostMode,
-    devLanHost,
-    isDevHost,
-    localConfig?.hostname,
-    selectedDevice,
-  ]);
-
-  const lanControlUrl = useMemo(() => {
-    // True device-hosted UI (espwifi.local / *.local) always connects to same-origin /ws/control.
-    // When *spoofing* device-hosted mode on localhost (dev override), do NOT force
-    // same-origin because localhost won't have /ws/control unless a proxy is set up.
-    if (isDeviceHosted && !isDevHost) return buildWebSocketUrl("/ws/control");
-    // If no target host yet, don't connect.
-    if (!lanTargetHost) return null;
-    return buildWebSocketUrl("/ws/control", lanTargetHost);
-  }, [isDeviceHosted, isDevHost, lanTargetHost]);
-
+  // Direct connection to control WebSocket
   const controlWsUrl = useMemo(() => {
-    // Tunnel when a selected device provides tunnel connection details.
-    if (tunnelReady) return controlUiUrl || null;
-    // Otherwise, always use LAN control WS.
-    return lanControlUrl || null;
-  }, [tunnelReady, controlUiUrl, lanControlUrl]);
+    // Use environment variable if set, otherwise same-origin
+    if (process.env.REACT_APP_API_HOST) {
+      return buildWebSocketUrl("/ws/control", process.env.REACT_APP_API_HOST);
+    }
+    return buildWebSocketUrl("/ws/control");
+  }, []);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
-
-    // On espwifi.io, we require a selected tunneled device.
-    if (isCloudDashboard && !controlWsUrl) {
-      setDeviceOnline(false);
-      setControlConnected(false);
-      if (controlRetryRef.current) {
-        clearTimeout(controlRetryRef.current);
-        controlRetryRef.current = null;
-      }
-      if (controlWsRef.current) {
-        try {
-          controlWsRef.current.close(1000, "No device selected");
-        } catch {
-          // ignore
-        }
-        controlWsRef.current = null;
-      }
-      return;
-    }
+    if (!controlWsUrl) return;
 
     setDeviceOnline(true);
 
@@ -741,18 +318,12 @@ function App() {
         };
         ws.onerror = () => {
           setControlConnected(false);
-          console.warn("Control WS error:", uiUrl);
         };
         ws.onclose = (evt) => {
           controlWsRef.current = null;
           setControlConnected(false);
           setCloudDeviceConfig(null);
           setCloudDeviceInfo(null);
-          console.warn(
-            "Control WS closed:",
-            { code: evt?.code, reason: evt?.reason },
-            uiUrl
-          );
           if (evt?.code === 1000) return;
           controlRetryRef.current = setTimeout(connect, 2000);
         };
@@ -776,27 +347,19 @@ function App() {
         controlWsRef.current = null;
       }
     };
-  }, [
-    networkEnabled,
-    isCloudDashboard,
-    controlWsUrl,
-    selectedDeviceId,
-    controlReconnectSeq,
-  ]);
+  }, [networkEnabled, controlWsUrl]);
 
   // No HTTP config endpoint in the dashboard anymore. Config/info are sourced from
-  // /ws/control (LAN) or tunnel /ws/ui/... (cloud) only.
+  // /ws/control only.
   useEffect(() => {
     if (!networkEnabled) return;
     setAuthChecked(true);
     setCheckingAuth(false);
-    // Do not show login modal; control socket acts as the transport.
     setAuthenticated(true);
   }, [networkEnabled]);
 
   const handleLoginSuccess = () => {
-    // Legacy: keep the handler so the Login component can still resolve,
-    // but the app no longer depends on HTTP auth/config.
+    // Legacy: keep the handler so the Login component can still resolve.
     setAuthenticated(true);
   };
 
@@ -910,9 +473,8 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor:
-            needsPairing || deviceOnline ? "secondary.light" : "error.main",
-          color: needsPairing || deviceOnline ? "primary.main" : "white",
+          backgroundColor: deviceOnline ? "secondary.light" : "error.main",
+          color: deviceOnline ? "primary.main" : "white",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -928,14 +490,12 @@ function App() {
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
-          {selectedDeviceId ? (
-            <Typography
-              variant="caption"
-              sx={{ opacity: 0.75, fontFamily: "inherit" }}
-            >
-              Control: {controlConnected ? "connected" : "disconnected"}
-            </Typography>
-          ) : null}
+          <Typography
+            variant="caption"
+            sx={{ opacity: 0.75, fontFamily: "inherit" }}
+          >
+            Control: {controlConnected ? "connected" : "disconnected"}
+          </Typography>
         </Box>
       </Container>
 
@@ -951,7 +511,7 @@ function App() {
           controlRssi={cloudRssi}
           logsText={cloudLogs}
           logsError={cloudLogsError}
-          showDevicePicker={!isDeviceHosted}
+          showDevicePicker={false}
           onRequestRssi={() => {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;
@@ -969,7 +529,7 @@ function App() {
               if (lf.inProgress) return;
 
               const tailBytes = 256 * 1024;
-              const maxBytes = Boolean(controlUiUrl) ? 2 * 1024 : 8 * 1024;
+              const maxBytes = 8 * 1024;
 
               lf.inProgress = true;
               lf.expectOffset = null;
@@ -986,37 +546,10 @@ function App() {
               // ignore
             }
           }}
-          cameraEnabled={effectiveConfig?.camera?.enabled || false}
-          getCameraColor={() =>
-            effectiveConfig?.camera?.enabled ? "primary.main" : "text.disabled"
-          }
-          devices={devices}
-          selectedDeviceId={selectedDeviceId}
-          onSelectDevice={handleSelectDevice}
-          onRemoveDevice={handleRemoveDevice}
-          onPairNewDevice={handlePairNewDevice}
-          cloudMode={Boolean(controlUiUrl)}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
         />
       </Suspense>
-
-      {pairingOpen && (
-        <Suspense fallback={null}>
-          <BlePairingDialog
-            open={pairingOpen}
-            onClose={() => setPairingOpen(false)}
-            onPaired={(record) => {
-              setDevices((prev) => {
-                const next = upsertDevice(prev, record);
-                saveDevices(next);
-                return next;
-              });
-              handleSelectDevice(record);
-            }}
-          />
-        </Suspense>
-      )}
 
       <Container>
         <Suspense fallback={<LinearProgress color="inherit" />}>
@@ -1030,7 +563,7 @@ function App() {
       </Container>
 
       {/* Show login modal when not authenticated */}
-      {!authenticated && !needsPairing && authChecked && !checkingAuth && (
+      {!authenticated && authChecked && !checkingAuth && (
         <Suspense fallback={null}>
           <Login onLoginSuccess={handleLoginSuccess} />
         </Suspense>

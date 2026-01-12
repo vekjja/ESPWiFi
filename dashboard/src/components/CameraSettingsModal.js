@@ -131,18 +131,24 @@ export default function CameraSettingsModal({
   };
 
   const handleSave = async () => {
-    console.log("CameraSettingsModal handleSave");
-    console.log("Current camera settings:", cameraSettings);
-    console.log("localData:", localData);
-
     if (!config || !saveConfigToDevice) {
-      console.warn("No config or saveConfigToDevice function");
+      console.warn("Cannot save camera settings - config not loaded yet");
       return;
     }
 
     setLoading(true);
 
     try {
+      // For module-level: save the name update via onSave callback
+      // When adding a new module, onSave handles the entire save, so we return early
+      if (onSave && !isDeviceLevel && localData) {
+        onSave(localData);
+        onClose();
+        setLoading(false);
+        return;
+      }
+
+      // For device-level: save camera sensor settings
       const updatedConfig = {
         ...config,
         camera: {
@@ -165,15 +171,7 @@ export default function CameraSettingsModal({
         },
       };
 
-      console.log("Saving camera config to device:", updatedConfig.camera);
       await saveConfigToDevice(updatedConfig);
-      console.log("Camera settings saved successfully");
-
-      // Call onSave callback if provided (for module-level name update)
-      if (onSave && !isDeviceLevel) {
-        console.log("Calling onSave callback with localData:", localData);
-        onSave(localData);
-      }
 
       onClose();
     } catch (err) {
@@ -193,13 +191,16 @@ export default function CameraSettingsModal({
   };
 
   const handleDelete = () => {
-    console.log("CameraSettingsModal handleDelete called");
+    console.log("🗑️ CameraSettingsModal.handleDelete called", {
+      hasOnDelete: !!onDelete,
+      isDeviceLevel,
+    });
     if (onDelete) {
-      console.log("Calling onDelete callback");
       onDelete();
-      onClose();
+      // Don't call onClose here - let the parent component handle closing
+      // after the delete is complete
     } else {
-      console.warn("No onDelete callback provided");
+      console.warn("🗑️ onDelete callback is not provided");
     }
   };
 

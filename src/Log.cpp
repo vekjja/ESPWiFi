@@ -142,31 +142,31 @@ static int espwifiEspLogVprintfHook(const char *format, va_list args) {
       // const size_t len = strnlen(line, sizeof(line));
       // const bool hasNl = (len > 0 && line[len - 1] == '\n');
 
-      // // Infer log level from the formatted line prefix. Avoid allocations.
-      // LogLevel lvl = s_lastIdfLevel;
-      // const char *p = skipAnsiAndWhitespace(line);
-      // if (p != nullptr) {
-      //   switch (*p) {
-      //   case 'E':
-      //     lvl = ERROR;
-      //     break;
-      //   case 'W':
-      //     lvl = WARNING;
-      //     break;
-      //   case 'I':
-      //     lvl = DEBUG;
-      //     break;
-      //   case 'D':
-      //     lvl = DEBUG;
-      //     break;
-      //   case 'V':
-      //     lvl = VERBOSE;
-      //     break;
-      //   default:
-      //     break;
-      //   }
-      // }
-      // s_lastIdfLevel = lvl;
+      // Infer log level from the formatted line prefix. Avoid allocations.
+      LogLevel lvl = s_lastIdfLevel;
+      const char *p = skipAnsiAndWhitespace(line);
+      if (p != nullptr) {
+        switch (*p) {
+        case 'E':
+          lvl = ERROR;
+          break;
+        case 'W':
+          lvl = WARNING;
+          break;
+        case 'I':
+          lvl = DEBUG;
+          break;
+        case 'D':
+          lvl = DEBUG;
+          break;
+        case 'V':
+          lvl = VERBOSE;
+          break;
+        default:
+          break;
+        }
+      }
+      s_lastIdfLevel = lvl;
 
       // if (espwifi->shouldLog(lvl)) {
       // Extract ESP-IDF tag for icon mapping:

@@ -1,22 +1,19 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
-import NoPhotographyIcon from "@mui/icons-material/NoPhotography";
 import CameraSettingsModal from "./CameraSettingsModal";
 
 export default function CameraButton({
   config,
   deviceOnline,
   saveConfigToDevice,
-  cameraEnabled,
-  getCameraColor,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const isCameraAvailable = config?.camera?.installed !== false;
   const isDisabled = !deviceOnline || !config || !isCameraAvailable;
 
   const handleClick = () => {
-    if (!isDisabled) {
+    if (!isDisabled && config && saveConfigToDevice) {
       setModalOpen(true);
     }
   };
@@ -33,9 +30,7 @@ export default function CameraButton({
             ? "Loading configuration..."
             : !isCameraAvailable
             ? "Camera not installed"
-            : cameraEnabled
-            ? "Camera Hardware Enabled - Click to Configure"
-            : "Camera Hardware Disabled - Click to Configure"
+            : "Camera Settings"
         }
       >
         <Fab
@@ -44,11 +39,7 @@ export default function CameraButton({
           onClick={handleClick}
           disabled={isDisabled}
           sx={{
-            color: isDisabled
-              ? "text.disabled"
-              : getCameraColor
-              ? getCameraColor()
-              : "primary.main",
+            color: isDisabled ? "text.disabled" : "primary.main",
             backgroundColor: isDisabled ? "action.disabled" : "action.hover",
             "&:hover": {
               backgroundColor: isDisabled
@@ -57,15 +48,11 @@ export default function CameraButton({
             },
           }}
         >
-          {!isDisabled && !cameraEnabled ? (
-            <NoPhotographyIcon />
-          ) : (
-            <CameraAltIcon />
-          )}
+          <CameraAltIcon />
         </Fab>
       </Tooltip>
 
-      {modalOpen && (
+      {modalOpen && config && saveConfigToDevice && (
         <CameraSettingsModal
           open={modalOpen}
           onClose={handleCloseModal}

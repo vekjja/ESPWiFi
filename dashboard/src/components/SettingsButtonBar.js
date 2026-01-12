@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Stack, Paper, Box, Typography } from "@mui/material";
 import {
   DndContext,
@@ -249,8 +249,6 @@ export default function SettingsButtonBar({
   logsText = "",
   logsError = "",
   onRequestLogs = null,
-  cameraEnabled,
-  getCameraColor,
   devices,
   selectedDeviceId,
   onSelectDevice,
@@ -261,6 +259,8 @@ export default function SettingsButtonBar({
   controlConnected = false,
   deviceInfoOverride = null,
 }) {
+  // Track previous visible IDs to detect newly available buttons
+  const prevVisibleIdsRef = useRef(new Set());
   /**
    * Build list of available buttons based on device capabilities
    * Some buttons (camera, bluetooth) only appear if device supports them
@@ -339,14 +339,6 @@ export default function SettingsButtonBar({
 
     // Show camera button if camera is installed and there's at least one camera module
     const hasCameraModule = config?.modules?.some((m) => m.type === "camera");
-    console.log(
-      "Camera button check - installed:",
-      config?.camera?.installed,
-      "hasCameraModule:",
-      hasCameraModule,
-      "modules:",
-      config?.modules
-    );
     if (config && config?.camera?.installed !== false && hasCameraModule) {
       items.push({
         id: "camera",
@@ -355,8 +347,6 @@ export default function SettingsButtonBar({
             config={config}
             deviceOnline={deviceOnline}
             saveConfigToDevice={saveConfigToDevice}
-            cameraEnabled={cameraEnabled}
-            getCameraColor={getCameraColor}
           />
         ),
       });
@@ -411,8 +401,6 @@ export default function SettingsButtonBar({
     logsText,
     logsError,
     onRequestLogs,
-    cameraEnabled,
-    getCameraColor,
     devices,
     selectedDeviceId,
     onSelectDevice,
@@ -465,36 +453,37 @@ export default function SettingsButtonBar({
    * (e.g., camera/bluetooth appears/disappears based on device capabilities)
    */
   useEffect(() => {
-    // Enabled buttons are a subset of what's available; always keep required buttons.
     setEnabledIds((prev) => {
       const prevList = Array.isArray(prev) ? prev : [];
-      const next = prevList.filter((id) => visibleIds.includes(id));
+      const prevVisibleIds = prevVisibleIdsRef.current;
+      const currentVisibleIds = new Set(visibleIds);
 
-      // Auto-enable camera button when camera module is added
-      const hasCameraModule = config?.modules?.some((m) => m.type === "camera");
-      if (
-        hasCameraModule &&
-        visibleIds.includes("camera") &&
-        !next.includes("camera")
-      ) {
-        console.log("Auto-enabling camera button");
-        next.push("camera");
+      // Filter out buttons that are no longer available
+      const next = prevList.filter((id) => currentVisibleIds.has(id));
+
+      // Auto-enable newly available buttons (like camera when module is added)
+      for (const id of visibleIds) {
+        if (!prevVisibleIds.has(id) && !next.includes(id)) {
+          // This is a newly available button, auto-enable it
+          next.push(id);
+        }
       }
 
-      // Auto-disable camera button when no camera modules exist
-      if (!hasCameraModule && next.includes("camera")) {
-        console.log("Auto-disabling camera button");
-        return next.filter((id) => id !== "camera");
-      }
-
+      // Always ensure non-removable buttons are enabled
       for (const id of NON_REMOVABLE_IDS) {
-        if (visibleIds.includes(id) && !next.includes(id)) next.push(id);
+        if (currentVisibleIds.has(id) && !next.includes(id)) {
+          next.push(id);
+        }
       }
+
+      // Update the ref for next comparison
+      prevVisibleIdsRef.current = currentVisibleIds;
+
       // First run: if nothing loaded, default to all available.
       if (next.length === 0) return visibleIds;
       return next;
     });
-  }, [visibleIds, config?.modules]);
+  }, [visibleIds]);
 
   /**
    * Keep button order in sync with enabled and available buttons

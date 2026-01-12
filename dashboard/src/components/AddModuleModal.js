@@ -303,11 +303,12 @@ export default function AddModuleModal({
       />
 
       <CameraSettingsModal
-        open={cameraModalOpen}
+        onCameraDataChange={handleCameraDataChange}
+        saveConfigToDevice={saveConfigToDevice}
         onClose={handleCloseCameraModal}
         onSave={handleSaveCamera}
         cameraData={cameraData}
-        onCameraDataChange={handleCameraDataChange}
+        open={cameraModalOpen}
         config={config}
       />
     </>

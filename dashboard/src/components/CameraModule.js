@@ -73,12 +73,29 @@ export default function CameraModule({
       ws.onerror = (error) => {
         console.error("📷 Camera WebSocket error:", error);
         setIsStreaming(false);
+        // Auto-reconnect on error after a delay
+        setTimeout(() => {
+          if (isMountedRef.current && wsRef.current === ws) {
+            console.log("📷 Attempting to reconnect camera after error...");
+            handleStartStream();
+          }
+        }, 2000);
       };
 
-      ws.onclose = () => {
-        console.log("📷 Camera WebSocket closed");
+      ws.onclose = (event) => {
+        console.log("📷 Camera WebSocket closed", event.code);
         setIsStreaming(false);
         wsRef.current = null;
+
+        // Auto-reconnect if closed unexpectedly (not a normal close)
+        if (event.code !== 1000 && isMountedRef.current) {
+          console.log("📷 Unexpected close, attempting to reconnect in 2s...");
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              handleStartStream();
+            }
+          }, 2000);
+        }
       };
     } catch (error) {
       console.error("📷 Failed to create camera WebSocket:", error);
@@ -102,10 +119,20 @@ export default function CameraModule({
   };
 
   const handleDeleteModule = () => {
+    console.log("🗑️ Camera module delete initiated", { moduleKey });
     // Best-effort cleanup before removing the module
     handleStopStream();
-    if (onDelete && moduleKey) {
+    // Close the settings modal first
+    handleCloseSettings();
+    // Then delete the module
+    if (onDelete && moduleKey !== null && moduleKey !== undefined) {
+      console.log("🗑️ Calling onDelete with moduleKey:", moduleKey);
       onDelete(moduleKey);
+    } else {
+      console.warn("🗑️ Cannot delete: onDelete or moduleKey missing", {
+        hasOnDelete: !!onDelete,
+        moduleKey,
+      });
     }
   };
 
@@ -152,9 +179,17 @@ export default function CameraModule({
   };
 
   const handleOpenSettings = () => {
-    setSettingsData({
+    if (!globalConfig || !saveConfigToDevice) {
+      console.warn("Cannot open camera settings - config not loaded yet");
+      return;
+    }
+    const data = {
       name: config?.name || "",
-    });
+    };
+    console.log("📷 Opening camera settings with data:", data);
+    console.log("📷 moduleKey:", moduleKey);
+    console.log("📷 hasOnDelete:", !!onDelete);
+    setSettingsData(data);
 
     setSettingsModalOpen(true);
   };
@@ -164,7 +199,6 @@ export default function CameraModule({
   };
 
   const handleSaveSettings = (updatedData) => {
-    console.log(`📷 Saving camera settings - data:`, updatedData);
     if (onUpdate && moduleKey && updatedData) {
       onUpdate(moduleKey, {
         name: updatedData.name,
@@ -232,10 +266,10 @@ export default function CameraModule({
         errorOutline={false}
         data-camera-module="true"
         sx={{
-          minWidth: "300px",
-          maxWidth: "400px",
+          minWidth: "400px",
+          maxWidth: "500px",
           minHeight: "auto",
-          maxHeight: "400px",
+          maxHeight: "500px",
           "& .MuiCardContent-root": {
             minHeight: "auto",
             paddingBottom: "0px !important",
@@ -245,7 +279,7 @@ export default function CameraModule({
         <Box
           sx={{
             width: "100%",
-            height: "160px",
+            height: "280px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -374,10 +408,10 @@ export default function CameraModule({
       </Module>
 
       <CameraSettingsModal
-        open={settingsModalOpen}
+        open={settingsModalOpen && globalConfig && saveConfigToDevice}
         onClose={handleCloseSettings}
         onSave={handleSaveSettings}
-        onDelete={onDelete ? handleDeleteModule : undefined}
+        onDelete={handleDeleteModule}
         cameraData={settingsData}
         onCameraDataChange={setSettingsData}
         config={globalConfig}

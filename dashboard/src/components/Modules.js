@@ -303,12 +303,16 @@ export default function Modules({
   };
 
   const deleteModule = (moduleKey) => {
+    console.log("🗑️ Modules.deleteModule called with moduleKey:", moduleKey);
+    console.log("🗑️ Current modules:", modules);
     const updatedModules = modules.filter((module) => module.key !== moduleKey);
+    console.log("🗑️ Updated modules after filter:", updatedModules);
 
     setModules(updatedModules);
 
     // Update the global config
     const updatedConfig = { ...config, modules: updatedModules };
+    console.log("🗑️ Saving updated config:", updatedConfig);
     saveConfig(updatedConfig); // Update local config
     saveConfigToDevice(updatedConfig); // Save to device
   };

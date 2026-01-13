@@ -80,7 +80,7 @@ cloud:
   image:
     repository: ghcr.io/vekjja/espwifi-cloud
     pullPolicy: Always
-    tag: "dev-0.1.5-cloud"
+    tag: "dev-0.1.5-cloud-0"
 
   service:
     type: ClusterIP

@@ -82,7 +82,7 @@ jobs:
           retention-days: 1  # Short retention since it's just for Docker build
 
   docker-build:
-    name: Build Docker Image
+    name: Build ${{ matrix.image.name }} Docker Image
     needs: build-dashboard
     runs-on: ubuntu-latest
     if: github.actor != 'github-actions[bot]'
@@ -90,11 +90,26 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        image:
+          - name: dashboard
+            repository: ghcr.io/vekjja/espwifi
+            context: .
+            dockerfile: ./dashboard/Dockerfile.prebuilt
+            needs_dashboard: true
+          - name: cloud
+            repository: ghcr.io/vekjja/espwifi-cloud
+            context: ./cloud
+            dockerfile: ./cloud/Dockerfile
+            needs_dashboard: false
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Download pre-built dashboard
+        if: matrix.image.needs_dashboard
         uses: actions/download-artifact@v4
         with:
           name: dashboard-build
@@ -135,7 +150,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/vekjja/espwifi
+          images: ${{ matrix.image.repository }}
           tags: |
             type=raw,value=${{ steps.vars.outputs.tag }}
             type=raw,value=development,enable=${{ github.ref_name == 'dev' }}
@@ -144,15 +159,15 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: ./dashboard/Dockerfile.prebuilt
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
           pull: true
           push: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
   helm-deploy:
     name: Deploy to Kubernetes
@@ -203,7 +218,7 @@ jobs:
           helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
             --namespace espwifi-io --create-namespace \
             --set image.tag="${TAG}" \
-            --set cloudTunnel.image.tag="${TAG}"
+            --set cloud.image.tag="${TAG}"
 
       - name: Update values.yaml
         shell: bash
@@ -211,7 +226,7 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
           perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
-          perl -0777 -i -pe "s/(^cloudTunnel:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          perl -0777 -i -pe "s/(^cloud:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
 
       - name: Commit updated values.yaml
         shell: bash
@@ -434,6 +449,7 @@ jobs:
           
           echo "**🐳 Docker Images:**" >> release_notes.md
           echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard Docker Image" >> release_notes.md
+          echo "- \`ghcr.io/vekjja/espwifi-cloud:${VERSION}\` - Cloud Tunnel Docker Image" >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

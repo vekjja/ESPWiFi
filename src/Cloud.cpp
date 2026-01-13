@@ -152,7 +152,8 @@ void Cloud::buildWsUrl() {
     host.pop_back();
   }
 
-  snprintf(wsUrl_, sizeof(wsUrl_), "%s://%s/ws/device/%s?tunnel=%s&claim=%s",
+  snprintf(wsUrl_, sizeof(wsUrl_),
+           "%s://%s/ws/device/%s?tunnel=%s&claim=%s&announce=1&token=%s",
            protocol.c_str(), host.c_str(), config_.deviceId, config_.tunnel,
-           claimCode_);
+           claimCode_, config_.authToken ? config_.authToken : "");
 }

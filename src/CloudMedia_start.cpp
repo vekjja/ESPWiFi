@@ -9,16 +9,10 @@ void ESPWiFi::startCloudMedia() {
     return;
   }
 
-  // Check if control tunnel is connected first
-  if (!cloudCtl.isConnected()) {
-    log(INFO,
-        "☁️ Media cloud tunnel disabled (control tunnel not connected yet)");
-    return;
-  }
-
   // Check if media tunnel is explicitly enabled
   bool mediaTunnelEnabled =
-      config["cloud"]["mediaEnabled"] | true; // Default true if cloud enabled
+      config["cloud"]["mediaEnabled"] |
+      false; // Default false initially due to resource constraints
   if (!mediaTunnelEnabled) {
     log(INFO, "☁️ Media cloud tunnel disabled in config");
     return;
@@ -43,6 +37,11 @@ void ESPWiFi::startCloudMedia() {
   log(INFO, "☁️ Base URL: %s", baseUrl);
   log(INFO, "☁️ Device ID: %s", deviceId);
   log(INFO, "☁️ Tunnel: ws_media");
+
+  // Wait for control tunnel TLS handshake to complete
+  // (avoids memory contention during simultaneous TLS connections)
+  log(INFO, "☁️ Waiting 3s for control tunnel to establish...");
+  feedWatchDog(3000);
 
   // Configure media cloud client
   CloudMedia::Config cfg;

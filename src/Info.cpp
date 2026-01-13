@@ -59,9 +59,15 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
                           ? false
                           : config["cloud"]["tunnelAll"].as<bool>();
 
-    // Claim info
-    ct["claimCode"] = getClaimCode(false);
-    ct["claimExpiresInMs"] = claimExpiresInMs();
+    // Cloud claim code from cloudCtl (for cloud broker pairing)
+    if (cloudCtl.isConnected()) {
+      const char *claimCode = cloudCtl.getClaimCode();
+      if (claimCode && claimCode[0] != '\0') {
+        ct["claimCode"] = std::string(claimCode);
+      }
+    }
+    // For now, claim expiry is not tracked in Cloud class
+    // ct["claimExpiresInMs"] = 600000; // 10 minutes
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     JsonObject endpoints = ct["endpoints"].to<JsonObject>();
@@ -99,11 +105,17 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
 #endif
   }
 
-  // Pairing / claim code (for iOS flows)
+  // Pairing / claim code (cloud broker claim code for iOS flows)
   {
     JsonObject p = jsonDoc["pairing"].to<JsonObject>();
-    p["claim_code"] = getClaimCode(false);
-    p["claim_expires_in_ms"] = claimExpiresInMs();
+    if (cloudCtl.isConnected()) {
+      const char *claimCode = cloudCtl.getClaimCode();
+      if (claimCode && claimCode[0] != '\0') {
+        p["claim_code"] = std::string(claimCode);
+      }
+    }
+    // For now, claim expiry is not tracked in Cloud class
+    // p["claim_expires_in_ms"] = 600000; // 10 minutes
   }
 
   maybeYield();

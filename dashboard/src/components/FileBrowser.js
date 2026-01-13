@@ -195,7 +195,12 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
     async (file) => {
       // Build proper file URL using hostname from config
       const mdnsHostname = config?.hostname || config?.deviceName;
-      let fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
+      // Encode the file path properly - split by '/' and encode each segment
+      const encodedPath = file.path
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+      let fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
 
       // Add auth token as query parameter for window.open (can't set headers)
       const token = localStorage.getItem("espwifi.token");
@@ -234,7 +239,12 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
     async (file) => {
       // Build proper file URL using hostname from config
       const mdnsHostname = config?.hostname || config?.deviceName;
-      const fileUrl = buildApiUrl(`/${fileSystem}${file.path}`, mdnsHostname);
+      // Encode the file path properly - split by '/' and encode each segment
+      const encodedPath = file.path
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+      const fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
 
       setIsDownloading(true);
       setDownloadProgress(0);

@@ -145,6 +145,7 @@ public:
   bool dirExists(const std::string &fullPath);
   bool mkDir(const std::string &fullPath);
   std::string getQueryParam(httpd_req_t *req, const char *key);
+  std::string urlDecode(const std::string &encoded);
 
   // ---- Logging
   // Defer log writes to avoid blocking request handling

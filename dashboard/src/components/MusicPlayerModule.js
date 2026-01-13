@@ -18,10 +18,9 @@ import PauseIcon from "@mui/icons-material/Pause";
 import StopIcon from "@mui/icons-material/Stop";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
 import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
-import QueueMusicIcon from "@mui/icons-material/QueueMusic";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import CastIcon from "@mui/icons-material/Cast";
-import ShareIcon from "@mui/icons-material/Share";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
 import { buildApiUrl } from "../utils/apiUtils";
 import { getAuthToken } from "../utils/authUtils";
@@ -45,7 +44,6 @@ export default function MusicPlayerModule({
   const [loading, setLoading] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsData, setSettingsData] = useState({
-    name: config?.name || "Music Player",
     musicDir: config?.musicDir || "/music",
   });
   const [progress, setProgress] = useState(0);
@@ -63,10 +61,9 @@ export default function MusicPlayerModule({
   // Update settings data when config changes
   useEffect(() => {
     setSettingsData({
-      name: config?.name || "Music Player",
       musicDir: config?.musicDir || "/music",
     });
-  }, [config?.name, config?.musicDir]);
+  }, [config?.musicDir]);
 
   // Initialize audio element
   useEffect(() => {
@@ -216,7 +213,6 @@ export default function MusicPlayerModule({
     const musicDir = config?.musicDir || "/music";
     const filePath = `${musicDir}/${file.name}`;
 
-    // Build URL like FileBrowser does:
     // Encode the file path properly - split by '/' and encode each segment
     const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
     const encodedPath = filePath
@@ -224,33 +220,28 @@ export default function MusicPlayerModule({
       .map((segment) => encodeURIComponent(segment))
       .join("/");
 
-    // Use /sd prefix for SD card file system (like FileBrowser)
+    // Use /sd prefix for SD card file system
     let fileUrl = buildApiUrl(`/sd${encodedPath}`, mdnsHostname);
 
     // Add auth token as query parameter
     const token = getAuthToken();
-    if (
-      token &&
-      token !== "null" &&
-      token !== "undefined" &&
-      token.trim() !== ""
-    ) {
+    if (token && token !== "null" && token !== "undefined" && token.trim()) {
       const sep = fileUrl.includes("?") ? "&" : "?";
       fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
     }
 
-    console.log("🎵 Playing track:", file.name, "URL:", fileUrl);
+    console.log("🎵 Playing track:", file.name);
+
+    // Update state immediately
+    setCurrentTrack(file);
+    setCurrentTrackIndex(index);
+    setProgress(0);
 
     // Set audio source and play
     audioRef.current.src = fileUrl;
 
     try {
       await audioRef.current.play();
-      setCurrentTrack(file);
-      setCurrentTrackIndex(index);
-      setIsPlaying(true);
-      setIsPaused(false);
-      setProgress(0);
     } catch (error) {
       console.error("🎵 Error playing track:", error);
     }
@@ -260,19 +251,16 @@ export default function MusicPlayerModule({
   const handlePlayPause = async () => {
     if (!audioRef.current) return;
 
-    if (!currentTrack) {
-      // If no track selected, play the first one
-      if (musicFiles.length > 0) {
-        handleSelectTrack(musicFiles[0], 0);
-      }
+    // If no track selected, play the first one
+    if (!currentTrack && musicFiles.length > 0) {
+      handleSelectTrack(musicFiles[0], 0);
       return;
     }
 
+    // Toggle play/pause
     if (isPlaying && !isPaused) {
-      // Pause
       audioRef.current.pause();
     } else {
-      // Play/Resume
       try {
         await audioRef.current.play();
       } catch (error) {
@@ -284,11 +272,8 @@ export default function MusicPlayerModule({
   // Handle stop
   const handleStop = () => {
     if (!audioRef.current) return;
-
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
-    setIsPlaying(false);
-    setIsPaused(false);
     setProgress(0);
     setCurrentTime(0);
   };
@@ -296,7 +281,6 @@ export default function MusicPlayerModule({
   // Handle skip next
   const handleSkipNext = () => {
     if (musicFiles.length === 0) return;
-
     const nextIndex = (currentTrackIndex + 1) % musicFiles.length;
     handleSelectTrack(musicFiles[nextIndex], nextIndex);
   };
@@ -304,7 +288,6 @@ export default function MusicPlayerModule({
   // Handle skip previous
   const handleSkipPrevious = () => {
     if (musicFiles.length === 0) return;
-
     const prevIndex =
       currentTrackIndex <= 0 ? musicFiles.length - 1 : currentTrackIndex - 1;
     handleSelectTrack(musicFiles[prevIndex], prevIndex);
@@ -318,7 +301,6 @@ export default function MusicPlayerModule({
       audioRef.current.volume = newVolume;
     }
 
-    // Inform user if casting that volume control is on the cast device
     if (isCasting) {
       console.log(
         "🎵 Note: Volume control for cast devices must be adjusted on the device itself"
@@ -374,45 +356,6 @@ export default function MusicPlayerModule({
             error.message || "Unknown error"
           }. The audio source may require authentication that cast devices cannot provide.`
         );
-      }
-    }
-  };
-
-  // Handle share (copy track URL to clipboard)
-  const handleShare = async () => {
-    if (!currentTrack) return;
-
-    const filePath = `${settingsData.musicDir}/${currentTrack.name}`;
-    const pathSegments = filePath.split("/").filter((s) => s);
-    const encodedPath = pathSegments.map(encodeURIComponent).join("/");
-    const mdnsHostname = globalConfig?.mdns_hostname || "espwifi";
-
-    const fileUrl = buildApiUrl(`/sd/${encodedPath}`, mdnsHostname);
-    const token = getAuthToken();
-    const fullUrl = token ? `${fileUrl}?token=${token}` : fileUrl;
-
-    try {
-      // Try to use Web Share API if available
-      if (navigator.share) {
-        await navigator.share({
-          title: currentTrack.name,
-          text: `Listen to ${currentTrack.name}`,
-          url: fullUrl,
-        });
-        console.log("🎵 Shared successfully");
-      } else {
-        // Fallback to clipboard
-        await navigator.clipboard.writeText(fullUrl);
-        alert("Track URL copied to clipboard!");
-      }
-    } catch (error) {
-      console.error("🎵 Share error:", error);
-      // Final fallback - try clipboard even if share failed
-      try {
-        await navigator.clipboard.writeText(fullUrl);
-        alert("Track URL copied to clipboard!");
-      } catch (clipError) {
-        alert("Unable to share or copy URL");
       }
     }
   };
@@ -508,7 +451,14 @@ export default function MusicPlayerModule({
   return (
     <>
       <Module
-        title={config?.name || "Music Player"}
+        title={
+          <LibraryMusicIcon
+            sx={{
+              fontSize: { xs: 28, sm: 32 },
+              color: "primary.main",
+            }}
+          />
+        }
         onSettings={handleOpenSettings}
         settingsDisabled={!deviceOnline}
         settingsTooltip="Settings"
@@ -551,14 +501,6 @@ export default function MusicPlayerModule({
               position: "relative",
             }}
           >
-            <QueueMusicIcon
-              sx={{
-                fontSize: { xs: 20, sm: 32 },
-                color: "primary.main",
-                mb: { xs: 0.25, sm: 1 },
-                display: { xs: "none", sm: "block" },
-              }}
-            />
             <Typography
               variant="body2"
               align="center"
@@ -648,23 +590,6 @@ export default function MusicPlayerModule({
                   }}
                 >
                   <CastIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Tooltip title="Share Track">
-              <span>
-                <IconButton
-                  onClick={handleShare}
-                  disabled={!currentTrack}
-                  size="small"
-                  sx={{
-                    color: !currentTrack ? "text.disabled" : "primary.main",
-                    padding: { xs: "4px", sm: 1 },
-                    minWidth: 0,
-                  }}
-                >
-                  <ShareIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
                 </IconButton>
               </span>
             </Tooltip>

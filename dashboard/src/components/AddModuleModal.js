@@ -12,7 +12,7 @@ import SettingsModal from "./SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
-import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PinSettingsModal from "./PinSettingsModal";
@@ -57,7 +57,6 @@ export default function AddModuleModal({
   });
 
   const [musicPlayerData, setMusicPlayerData] = useState({
-    name: "",
     musicDir: "/music",
   });
 
@@ -303,7 +302,7 @@ export default function AddModuleModal({
           <ListItem disablePadding>
             <ListItemButton onClick={handleOpenMusicPlayerModal}>
               <ListItemIcon>
-                <MusicNoteIcon />
+                <LibraryMusicIcon />
               </ListItemIcon>
               <ListItemText
                 primary="Music Player"

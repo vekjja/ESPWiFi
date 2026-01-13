@@ -8,7 +8,7 @@ import {
   Box,
 } from "@mui/material";
 import SettingsModal from "./SettingsModal";
-import MusicNoteIcon from "@mui/icons-material/MusicNote";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import DeleteButton from "./DeleteButton";
 
 export default function MusicPlayerSettingsModal({
@@ -28,11 +28,6 @@ export default function MusicPlayerSettingsModal({
 
   const handleSave = () => {
     // Validate required fields
-    if (!musicPlayerData.name || musicPlayerData.name.trim() === "") {
-      alert("Please enter a name for the music player");
-      return;
-    }
-
     if (!musicPlayerData.musicDir || musicPlayerData.musicDir.trim() === "") {
       alert("Please enter a music directory path");
       return;
@@ -70,7 +65,7 @@ export default function MusicPlayerSettingsModal({
             width: "100%",
           }}
         >
-          <MusicNoteIcon color="primary" />
+          <LibraryMusicIcon color="primary" />
           Music Player Settings
         </span>
       }
@@ -86,16 +81,6 @@ export default function MusicPlayerSettingsModal({
       }
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {/* Module Name */}
-        <TextField
-          label="Module Name"
-          value={musicPlayerData.name || ""}
-          onChange={(e) => handleChange("name", e.target.value)}
-          fullWidth
-          placeholder="Music Player"
-          helperText="Display name for this music player module"
-        />
-
         {/* Music Directory */}
         <TextField
           label="Music Directory"

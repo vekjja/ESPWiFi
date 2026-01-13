@@ -160,25 +160,56 @@ bool ESPWiFi::initCamera() {
   // Output format: JPEG for efficient wireless transmission
   cam.pixel_format = PIXFORMAT_JPEG;
 
-  // Adaptive buffering based on PSRAM availability
+  // Determine orientation preference (landscape vs portrait)
+  const char *orientationStr =
+      config["camera"]["orientation"] | "landscape"; // Default to landscape
+  bool isPortrait = (strcmp(orientationStr, "portrait") == 0);
+
+  // Extract quality from configuration (lower = better quality, 0-63 range)
+  int quality = config["camera"]["quality"].isNull()
+                    ? 12
+                    : config["camera"]["quality"].as<int>();
+  // Clamp quality to valid range
+  if (quality < 0) {
+    quality = 0;
+  }
+  if (quality > 63) {
+    quality = 63;
+  }
+
+  // Adaptive buffering based on PSRAM availability and orientation
   if (usingPSRAM) {
-    // LAN streaming with SVGA resolution
-    cam.frame_size = FRAMESIZE_SVGA; // 800x600 for LAN
-    cam.jpeg_quality = 15;           // Better quality
-    cam.fb_count = 1;                // Single buffer (prevents FB-OVF)
-    log(INFO, "📷 frame_size=SVGA, quality=15, buffers=1");
+    // LAN streaming with SVGA resolution (or VGA for portrait)
+    if (isPortrait) {
+      cam.frame_size = FRAMESIZE_VGA; // 640x480 for portrait
+      log(INFO, "📷 frame_size=VGA (portrait), quality=%d, buffers=1", quality);
+    } else {
+      cam.frame_size = FRAMESIZE_SVGA; // 800x600 for landscape
+      log(INFO, "📷 frame_size=SVGA (landscape), quality=%d, buffers=1",
+          quality);
+    }
+    cam.jpeg_quality = quality;
+    cam.fb_count = 1; // Single buffer (prevents FB-OVF)
     cam.fb_location = CAMERA_FB_IN_PSRAM;
     cam.grab_mode =
         CAMERA_GRAB_LATEST; // Always get latest frame, drop old ones
   } else {
     // Without PSRAM, use smaller frames and single buffer
-    cam.frame_size = FRAMESIZE_QVGA;     // 320x240
-    cam.jpeg_quality = 25;               // Lower quality for size
+    if (isPortrait) {
+      cam.frame_size = FRAMESIZE_QVGA; // 320x240 for portrait
+      log(INFO,
+          "📷 No PSRAM: frame_size=QVGA (portrait), quality=%d, buffers=1",
+          quality);
+    } else {
+      cam.frame_size = FRAMESIZE_QVGA; // 320x240 for landscape
+      log(INFO,
+          "📷 No PSRAM: frame_size=QVGA (landscape), quality=%d, buffers=1",
+          quality);
+    }
+    cam.jpeg_quality = quality;
     cam.fb_count = 1;                    // Single buffer
     cam.fb_location = CAMERA_FB_IN_DRAM; // Internal RAM only
     cam.grab_mode = CAMERA_GRAB_LATEST;
-
-    log(INFO, "📷 No PSRAM: frame_size=QVGA, quality=25, buffers=1");
   }
 
   // Extract frame rate from configuration (with bounds checking)
@@ -364,7 +395,14 @@ void ESPWiFi::printCameraSettings() {
                                           : config["camera"][key].as<int>();
   };
 
+  auto getStr = [&](const char *key, const char *def) -> const char * {
+    return config["camera"][key].isNull()
+               ? def
+               : config["camera"][key].as<const char *>();
+  };
+
   // Retrieve all settings from config
+  const char *orientation = getStr("orientation", "landscape");
   int brightness = getInt("brightness", 1);
   int contrast = getInt("contrast", 1);
   int saturation = getInt("saturation", 1);
@@ -385,6 +423,7 @@ void ESPWiFi::printCameraSettings() {
   log(DEBUG,
       "📷 Camera settings JSON:\n"
       "{\n"
+      "  \"orientation\": \"%s\",\n"
       "  \"brightness\": %d,\n"
       "  \"contrast\": %d,\n"
       "  \"saturation\": %d,\n"
@@ -401,9 +440,9 @@ void ESPWiFi::printCameraSettings() {
       "  \"rotation\": %d,\n"
       "  \"frameRate\": %d\n"
       "}",
-      brightness, contrast, saturation, sharpness, denoise, quality, ae_level,
-      aec_value, agc_gain, gain_ceiling, whitebal, awb_gain, wb_mode, rotation,
-      frameRate);
+      orientation, brightness, contrast, saturation, sharpness, denoise,
+      quality, ae_level, aec_value, agc_gain, gain_ceiling, whitebal, awb_gain,
+      wb_mode, rotation, frameRate);
 }
 
 /**
@@ -492,25 +531,26 @@ void ESPWiFi::updateCameraSettings() {
   // 180° = vflip + hflip
   // 270° = vflip only
   switch (rotation) {
-  case 0:
-    camera->set_vflip(camera, 0);
-    camera->set_hmirror(camera, 0);
+    // case 0:
+    //   camera->set_vflip(camera, 0);
+    //   camera->set_hmirror(camera, 0);
+    //   break;
+    // case 90:
+    //   camera->set_vflip(camera, 1);
+    // camera->set_hmirror(camera, 1);
     break;
-  case 90:
-    camera->set_vflip(camera, 0);
-    camera->set_hmirror(camera, 1);
-    break;
-  case 180:
-    camera->set_vflip(camera, 1);
-    camera->set_hmirror(camera, 1);
-    break;
-  case 270:
-    camera->set_vflip(camera, 1);
-    camera->set_hmirror(camera, 0);
-    break;
+  // case 180:
+  //   camera->set_vflip(camera, 1);
+  //   camera->set_hmirror(camera, 1);
+  //   break;
+  // case 270:
+  //   camera->set_vflip(camera, 1);
+  //   camera->set_hmirror(camera, 0);
+  //   break;
   default:
-    log(WARNING, "📷 Invalid rotation value: %d, using 0°", rotation);
-    camera->set_vflip(camera, 0);
+    log(WARNING, "📷 No Hardware Rotation Applied: %d, using 0°", rotation);
+    // camera->set_vflip(camera, 0);
+    camera->set_vflip(camera, 1);
     camera->set_hmirror(camera, 0);
     break;
   }

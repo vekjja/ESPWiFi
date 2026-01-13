@@ -16,6 +16,8 @@ void ESPWiFi::srvWildcard() {
         if (q != std::string::npos) {
           path.resize(q);
         }
+        // URL-decode the path to handle special characters like spaces
+        path = espwifi->urlDecode(path);
         (void)espwifi->sendFileResponse(req, path, &clientInfo);
         return ESP_OK; // sendFileResponse() owns success/error responses
       });

@@ -18,6 +18,7 @@ import {
   isHostedFromEspWiFiIo,
 } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
+import { resolveWebSocketUrl } from "./utils/connectionUtils";
 import {
   loadDevices,
   saveDevices,
@@ -81,6 +82,11 @@ const theme = createTheme({
     warning: {
       main: "#ffa726", // Default Material-UI warning color for dark mode (yellow/orange)
     },
+    musicPlayer: {
+      playing: "#47FFF0", // Cyan/primary - same as primary for consistency
+      paused: "#ffa726", // Orange/warning - indicates temporary pause
+      stopped: "#333", // Gray/secondary - neutral state
+    },
   },
   components: {
     MuiTooltip: {
@@ -133,6 +139,12 @@ function App() {
   const [cloudRssi, setCloudRssi] = useState(null);
   const [cloudLogs, setCloudLogs] = useState("");
   const [cloudLogsError, setCloudLogsError] = useState("");
+
+  // Music player state for banner color
+  const [musicPlaybackState, setMusicPlaybackState] = useState({
+    isPlaying: false,
+    isPaused: false,
+  });
 
   // Device registry state for espwifi.io hosted mode
   const [devices, setDevices] = useState([]);
@@ -237,23 +249,63 @@ function App() {
   }, []);
 
   // Direct connection to control WebSocket
+  // When a device is selected and has cloud tunnel info, use tunnel URL
+  // Otherwise, use local WebSocket connection
   const controlWsUrl = useMemo(() => {
-    // Use environment variable if set, otherwise same-origin
+    console.log("[App] Computing control WebSocket URL");
+    console.log("[App] isHostedMode:", isHostedMode);
+    console.log("[App] selectedDeviceId:", selectedDeviceId);
+    console.log("[App] devices:", devices);
+
+    // In hosted mode with a selected device, use cloud tunnel if available
+    if (isHostedMode && selectedDeviceId) {
+      const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
+      console.log("[App] Selected device:", selectedDevice);
+
+      if (selectedDevice) {
+        // Build a minimal config object for resolveWebSocketUrl
+        const deviceConfig = {
+          hostname: selectedDevice.hostname || selectedDevice.deviceId,
+          deviceName: selectedDevice.name || selectedDevice.deviceId,
+          auth: {
+            token: selectedDevice.authToken,
+          },
+          cloudTunnel: selectedDevice.cloudTunnel || {
+            enabled: false,
+          },
+        };
+
+        const url = resolveWebSocketUrl("control", deviceConfig, {
+          preferTunnel: true,
+        });
+        console.log("[App] Resolved WebSocket URL:", url);
+        return url;
+      }
+    }
+
+    // Fallback to local connection
     if (process.env.REACT_APP_API_HOST) {
       return buildWebSocketUrl("/ws/control", process.env.REACT_APP_API_HOST);
     }
     return buildWebSocketUrl("/ws/control");
-  }, []);
+  }, [isHostedMode, selectedDeviceId, devices]);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
     if (!controlWsUrl) return;
 
+    console.log(
+      "[App] Setting up control WebSocket connection to:",
+      controlWsUrl
+    );
+
     const connect = () => {
       if (!networkEnabled) return;
       const uiUrl = controlWsUrl;
       if (!uiUrl) return;
+
+      console.log("[App] Connecting control WebSocket:", uiUrl);
 
       // Tear down any existing socket before reconnect.
       if (controlWsRef.current) {
@@ -683,8 +735,18 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: controlConnected ? "secondary.light" : "error.main",
-          color: controlConnected ? "primary.main" : "white",
+          backgroundColor:
+            musicPlaybackState.isPlaying && musicPlaybackState.isPaused
+              ? "musicPlayer.paused"
+              : musicPlaybackState.isPlaying
+              ? "musicPlayer.playing"
+              : controlConnected
+              ? "secondary.light"
+              : "error.main",
+          color:
+            musicPlaybackState.isPlaying || !controlConnected
+              ? "white"
+              : "primary.main",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -696,6 +758,7 @@ function App() {
           minWidth: "100%",
           position: "sticky",
           top: 0,
+          transition: "background-color 0.3s ease",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -704,7 +767,11 @@ function App() {
             variant="caption"
             sx={{ opacity: 0.75, fontFamily: "inherit" }}
           >
-            Control: {controlConnected ? "connected" : "disconnected"}
+            {musicPlaybackState.isPlaying
+              ? musicPlaybackState.isPaused
+                ? "Music: paused"
+                : "Music: playing"
+              : `Control: ${controlConnected ? "connected" : "disconnected"}`}
           </Typography>
         </Box>
       </Container>
@@ -777,6 +844,7 @@ function App() {
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={controlConnected}
             controlWs={controlWsRef.current}
+            onMusicPlaybackChange={setMusicPlaybackState}
           />
         </Suspense>
       </Container>

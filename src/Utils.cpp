@@ -143,6 +143,10 @@ std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
   return "";
 }
 
+std::string ESPWiFi::urlDecode(const std::string &encoded) {
+  return ::urlDecode(encoded.c_str());
+}
+
 std::string ESPWiFi::getContentType(std::string filename) {
   // Strip query string (e.g. "/log?tail=65536") before extension checks.
   size_t q = filename.find('?');

@@ -650,7 +650,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Full file request: use chunked encoding for progressive streaming
     httpd_resp_set_status(req, "200 OK");
 
-    log(DEBUG, "🗄️ Serving full file: %s (%ld bytes) using chunked encoding",
+    log(DEBUG, "🗄️ Serving File: %s (%ld bytes) using chunked encoding",
         filePath.c_str(), fileSize);
 
     // Use smaller chunk size to reduce memory pressure (2KB instead of 4KB)
@@ -707,7 +707,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
         log(ERROR, "Failed to finalize chunked transfer: %s",
             esp_err_to_name(ret));
       } else {
-        log(DEBUG, "🗄️ Full file transfer completed: %s (%zu bytes)",
+        log(DEBUG, "🗄️ File transfer completed: %s (%zu bytes)",
             filePath.c_str(), totalSent);
       }
       feedWatchDog();

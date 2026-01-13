@@ -12,11 +12,13 @@ import SettingsModal from "./SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PinSettingsModal from "./PinSettingsModal";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import CameraSettingsModal from "./CameraSettingsModal";
+import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
 
 export default function AddModuleModal({
   config,
@@ -30,6 +32,7 @@ export default function AddModuleModal({
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [musicPlayerModalOpen, setMusicPlayerModalOpen] = useState(false);
 
   const [pinData, setPinData] = useState({
     name: "",
@@ -51,6 +54,10 @@ export default function AddModuleModal({
 
   const [cameraData, setCameraData] = useState({
     name: "",
+  });
+
+  const [musicPlayerData, setMusicPlayerData] = useState({
+    musicDir: "/music",
   });
 
   const handleOpenPinModal = () => {
@@ -84,6 +91,14 @@ export default function AddModuleModal({
     setCameraModalOpen(true);
   };
 
+  const handleOpenMusicPlayerModal = () => {
+    setMusicPlayerData({
+      name: "",
+      musicDir: "/music",
+    });
+    setMusicPlayerModalOpen(true);
+  };
+
   const handleClosePinModal = () => {
     setPinModalOpen(false);
   };
@@ -94,6 +109,10 @@ export default function AddModuleModal({
 
   const handleCloseCameraModal = () => {
     setCameraModalOpen(false);
+  };
+
+  const handleCloseMusicPlayerModal = () => {
+    setMusicPlayerModalOpen(false);
   };
 
   // Helper function to generate unique key
@@ -117,6 +136,10 @@ export default function AddModuleModal({
 
   const handleCameraDataChange = (newData) => {
     setCameraData(newData);
+  };
+
+  const handleMusicPlayerDataChange = (changes) => {
+    setMusicPlayerData((prev) => ({ ...prev, ...changes }));
   };
 
   const handleSavePin = () => {
@@ -197,6 +220,31 @@ export default function AddModuleModal({
     onClose();
   };
 
+  const handleSaveMusicPlayer = () => {
+    // Validate required fields
+    if (!musicPlayerData.musicDir || musicPlayerData.musicDir.trim() === "") {
+      alert("Please enter a music directory path");
+      return;
+    }
+
+    const existingModules = config.modules || [];
+    const newMusicPlayer = {
+      type: "musicPlayer",
+      name: musicPlayerData.name || "Music Player",
+      musicDir: musicPlayerData.musicDir.trim().startsWith("/")
+        ? musicPlayerData.musicDir.trim()
+        : "/" + musicPlayerData.musicDir.trim(),
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newMusicPlayer];
+    const configToSave = { ...config, modules: updatedModules };
+    saveConfig(configToSave);
+    saveConfigToDevice(configToSave);
+    handleCloseMusicPlayerModal();
+    onClose();
+  };
+
   return (
     <>
       <SettingsModal
@@ -248,6 +296,18 @@ export default function AddModuleModal({
                 <CameraAltIcon />
               </ListItemIcon>
               <ListItemText primary="Camera" secondary="Add camera module" />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={handleOpenMusicPlayerModal}>
+              <ListItemIcon>
+                <LibraryMusicIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Music Player"
+                secondary="Play music from SD card"
+              />
             </ListItemButton>
           </ListItem>
 
@@ -310,6 +370,14 @@ export default function AddModuleModal({
         cameraData={cameraData}
         open={cameraModalOpen}
         config={config}
+      />
+
+      <MusicPlayerSettingsModal
+        open={musicPlayerModalOpen}
+        onClose={handleCloseMusicPlayerModal}
+        onSave={handleSaveMusicPlayer}
+        musicPlayerData={musicPlayerData}
+        onMusicPlayerDataChange={handleMusicPlayerDataChange}
       />
     </>
   );

@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import PinModule from "./PinModule";
 import WebSocketModule from "./WebSocketModule";
 import CameraModule from "./CameraModule";
+import MusicPlayerModule from "./MusicPlayerModule";
 
 // Sortable wrapper component for Pin modules
 function SortablePinModule({
@@ -41,6 +42,9 @@ function SortablePinModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -74,6 +78,9 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -112,6 +119,9 @@ function SortableCameraModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -129,12 +139,59 @@ function SortableCameraModule({
   );
 }
 
+// Sortable wrapper component for Music Player modules
+function SortableMusicPlayerModule({
+  module,
+  config,
+  onUpdate,
+  onDelete,
+  deviceOnline,
+  saveConfigToDevice,
+  controlWs,
+  onMusicPlaybackChange,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `module-${module.key}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto", // Changed from 100% to auto for better centering
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <MusicPlayerModule
+        config={module}
+        globalConfig={config}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        deviceOnline={deviceOnline}
+        saveConfigToDevice={saveConfigToDevice}
+        controlWs={controlWs}
+        onMusicPlaybackChange={onMusicPlaybackChange}
+      />
+    </div>
+  );
+}
+
 export default function Modules({
   config,
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
   controlWs,
+  onMusicPlaybackChange,
 }) {
   const [modules, setModules] = useState([]);
 
@@ -355,9 +412,11 @@ export default function Modules({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              justifyContent: "center",
+              justifyContent: moduleItems.length === 1 ? "center" : "center",
+              alignItems: moduleItems.length === 1 ? "flex-start" : "stretch",
               width: "100%",
               minHeight: "100px",
+              gap: moduleItems.length === 1 ? 0 : "inherit",
             }}
           >
             {moduleItems.map((module) => {
@@ -393,6 +452,20 @@ export default function Modules({
                     deviceOnline={deviceOnline}
                     saveConfigToDevice={saveConfigToDevice}
                     controlWs={controlWs}
+                  />
+                );
+              } else if (module.type === "musicPlayer") {
+                return (
+                  <SortableMusicPlayerModule
+                    key={`musicplayer-${module.key}`}
+                    module={module}
+                    config={config}
+                    onUpdate={updateModule}
+                    onDelete={deleteModule}
+                    deviceOnline={deviceOnline}
+                    saveConfigToDevice={saveConfigToDevice}
+                    controlWs={controlWs}
+                    onMusicPlaybackChange={onMusicPlaybackChange}
                   />
                 );
               }

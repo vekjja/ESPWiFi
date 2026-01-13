@@ -256,20 +256,16 @@ void ESPWiFi::handleConfigUpdate() {
 
   if (configUpdate.size() > 0) {
     // Save old config for comparison in handlers
-    JsonDocument oldConfig = config;
-
-    // Apply new config first
+    oldConfig = config;
     config = configUpdate;
 
-    // Now handlers can compare oldConfig vs config (new), and config is already
-    // correct
     cameraConfigHandler();
     powerConfigHandler();
     corsConfigHandler();
     logConfigHandler();
     bleConfigHandler();
     bluetoothConfigHandler();
-    wifiConfigHandler(oldConfig);
+    wifiConfigHandler();
   }
 
   configUpdate.clear();

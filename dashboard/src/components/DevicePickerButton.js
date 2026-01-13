@@ -9,6 +9,7 @@ export default function DevicePickerButton({
   onSelectDevice,
   onRemoveDevice,
   onPairNew,
+  onDeviceClaimed,
 }) {
   const [open, setOpen] = useState(false);
 
@@ -46,6 +47,10 @@ export default function DevicePickerButton({
           onPairNew={() => {
             handleClose();
             onPairNew?.();
+          }}
+          onDeviceClaimed={(deviceRecord, details) => {
+            onDeviceClaimed?.(deviceRecord, details);
+            handleClose();
           }}
         />
       )}

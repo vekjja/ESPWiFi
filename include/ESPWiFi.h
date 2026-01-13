@@ -55,6 +55,7 @@
 #include "nvs_flash.h"
 
 #include <ArduinoJson.h>
+#include <Cloud.h>
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
@@ -77,6 +78,7 @@ public:
 
   int connectTimeout = 15000;
   JsonDocument config = defaultConfig();
+  JsonDocument oldConfig;
   void (*connectSubroutine)() = nullptr;
   std::string configFile = "/config.json";
 
@@ -144,6 +146,7 @@ public:
   bool dirExists(const std::string &fullPath);
   bool mkDir(const std::string &fullPath);
   std::string getQueryParam(httpd_req_t *req, const char *key);
+  std::string urlDecode(const std::string &encoded);
 
   // ---- Logging
   // Defer log writes to avoid blocking request handling
@@ -197,13 +200,13 @@ public:
 
   // ---- WiFi
   void initNVS();
-  void wifiConfigHandler(const JsonDocument &oldConfig);
   void startAP();
   void startWiFi();
   void stopWiFi();
   void startMDNS();
   void startClient();
   int selectBestChannel();
+  void wifiConfigHandler();
   std::string getHostname();
   std::string genHostname();
   std::string ipAddress();
@@ -287,6 +290,9 @@ public:
   // ---- Camera WebSocket (for LAN streaming)
   void startCameraWebSocket();
 #endif
+
+  // ---- Cloud Client (remote access)
+  void startCloud();
 
   // ---- Power Management
   void powerConfigHandler();
@@ -457,6 +463,9 @@ private:
   bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
+
+  // ---- Cloud Client
+  Cloud cloud;
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;

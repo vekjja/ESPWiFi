@@ -310,6 +310,16 @@ void ESPWiFi::startBLEServices() {
             const esp_app_desc_t *app = esp_app_get_description();
             resp["fw"] = (app && app->version[0] != '\0') ? app->version
                                                           : espwifi->version();
+            // Include cloud configuration for dashboard pairing
+            if (espwifi->config["cloud"]["enabled"] | false) {
+              resp["cloud"]["enabled"] = true;
+              resp["cloud"]["baseUrl"] =
+                  espwifi->config["cloud"]["baseUrl"].as<const char *>();
+              resp["cloud"]["tunnel"] =
+                  espwifi->config["cloud"]["tunnel"].as<const char *>();
+            } else {
+              resp["cloud"]["enabled"] = false;
+            }
           } else if (strcmp(cmd, "set_wifi") == 0) {
             const char *ssid = req["ssid"];
             const char *password = req["password"];

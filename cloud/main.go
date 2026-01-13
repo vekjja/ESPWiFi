@@ -202,7 +202,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("cloudTunnel listening on %s", *listenAddr)
+		log.Printf("ESPWiFi Cloud ☁️ Listening on %s", *listenAddr)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("ListenAndServe: %v", err)
 		}

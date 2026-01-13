@@ -1,0 +1,464 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "**"
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-dashboard:
+    name: Build Embedded Dashboard
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install npm dependencies
+        working-directory: dashboard
+        run: npm install
+
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Compute tag name
+        id: tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # For tags, keep tag name as-is
+            TAG="${REF_NAME}"
+          else
+            # Branch pushes use branch-sha format
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Package dashboard zip
+        run: |
+          if [ -d data ] && [ "$(ls -A data)" ]; then
+            cd data
+            TAG="${{ steps.tag.outputs.tag }}"
+            zip -r ../espwifi-dashboard-${TAG}.zip .
+            cd ..
+          fi
+
+      - name: Upload dashboard zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-zip
+          path: espwifi-dashboard-*.zip
+          retention-days: 90
+
+      - name: Upload built dashboard for Docker
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-build
+          path: data/
+          retention-days: 1  # Short retention since it's just for Docker build
+
+  docker-build:
+    name: Build ${{ matrix.image.name }} Docker Image
+    needs: build-dashboard
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        image:
+          - name: dashboard
+            repository: ghcr.io/vekjja/espwifi
+            context: .
+            dockerfile: ./dashboard/Dockerfile.prebuilt
+            needs_dashboard: true
+          - name: cloud
+            repository: ghcr.io/vekjja/espwifi-cloud
+            context: ./cloud
+            dockerfile: ./cloud/Dockerfile
+            needs_dashboard: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download pre-built dashboard
+        if: matrix.image.needs_dashboard
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-build
+          path: data
+
+      - name: Compute tags
+        id: vars
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${REF_NAME}"
+          else
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref_name=${REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Docker Set up Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Docker Login
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Docker Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ matrix.image.repository }}
+          tags: |
+            type=raw,value=${{ steps.vars.outputs.tag }}
+            type=raw,value=development,enable=${{ github.ref_name == 'dev' }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          pull: true
+          push: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+  helm-deploy:
+    name: Deploy to Kubernetes
+    needs: docker-build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Compute tag
+        id: vars
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${GITHUB_REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${HOME}/.kube"
+          echo "${{ secrets.KUBECONFIG }}" > "${HOME}/.kube/config"
+          chmod 600 "${HOME}/.kube/config"
+
+      - name: Helm upgrade
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
+            --namespace espwifi-io --create-namespace \
+            --set image.tag="${TAG}" \
+            --set cloud.image.tag="${TAG}"
+
+      - name: Update values.yaml
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          perl -0777 -i -pe "s/(^cloud:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+
+      - name: Commit updated values.yaml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add espwifi.io/values.yaml
+          git commit -m "chore(helm): record deployed tag ${{ steps.vars.outputs.tag }} [skip ci]" || exit 0
+          git push origin main
+
+  build-firmware:
+    name: Build Firmware Binaries for ${{ matrix.environment.name }}
+    needs: build-dashboard
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        include:
+          # - environment: esp32
+          #   chip: esp32
+          #   baud: 460800
+          #   bootloader_offset: "0x1000"
+          # - environment: esp32-c3
+          #   chip: esp32c3
+          #   baud: 921600
+          #   bootloader_offset: "0x0"
+          - environment: esp32-s3
+            chip: esp32s3
+            baud: 921600
+            bootloader_offset: "0x0"
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download dashboard artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-zip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/platforms
+            ~/.platformio/packages
+            ~/.cache/pip
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}-${{ matrix.environment }}
+          restore-keys: |
+            ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}-
+            ${{ runner.os }}-pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Compute tag name
+        id: tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # For tags, keep tag name as-is
+            TAG="${REF_NAME}"
+          else
+            # Branch pushes use branch-sha format
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SDK config for ${{ matrix.environment.name }}
+        run: ./sdkconfigs/sdkconfig.sh ${{ matrix.environment }}
+
+      - name: Build firmware for ${{ matrix.environment.name }}
+        run: pio run --environment ${{ matrix.environment }}
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts
+          TAG="${{ steps.tag.outputs.tag }}"
+          ENV="${{ matrix.environment }}"
+          
+          # Copy the main firmware binary with new naming convention: espwifi-[type]-[env]-[tag].ext
+          cp .pio/build/$ENV/firmware.bin artifacts/espwifi-firmware-${ENV}-${TAG}.bin
+          
+          # Copy partition table if it exists
+          if [ -f .pio/build/$ENV/partitions.bin ]; then
+            cp .pio/build/$ENV/partitions.bin artifacts/espwifi-partitions-${ENV}-${TAG}.bin
+          fi
+          
+          # Copy bootloader if it exists
+          if [ -f .pio/build/$ENV/bootloader.bin ]; then
+            cp .pio/build/$ENV/bootloader.bin artifacts/espwifi-bootloader-${ENV}-${TAG}.bin
+          fi
+          
+          # Create metadata file for this environment
+          cat > artifacts/metadata-${ENV}.json << EOF
+          {
+            "environment": "${{ matrix.environment }}",
+            "chip": "${{ matrix.chip }}",
+            "baud": "${{ matrix.baud }}",
+            "bootloader_offset": "${{ matrix.bootloader_offset }}"
+          }
+          EOF
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: artifacts/*
+          retention-days: 90
+
+  create-release:
+    name: Create Release
+    needs: build-firmware
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: '{dashboard-zip,firmware-*}'
+          merge-multiple: true
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Flatten the artifact directory structure, excluding metadata files
+          find release-artifacts -type f ! -name 'metadata-*.json' -exec cp {} release/ \;
+          
+          echo "Found ${#ENVIRONMENTS[@]} environments: ${ENVIRONMENTS[*]}"
+          
+          ls -lh release/
+
+      - name: Extract release notes from tag
+        id: release_notes
+        run: |
+          # Extract version from tag
+          VERSION="${GITHUB_REF_NAME}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          
+          # Read metadata from all built environments (from artifacts, not release)
+          METADATA_FILES=(release-artifacts/*/metadata-*.json)
+          
+          # Build arrays from metadata files
+          ENVIRONMENTS=()
+          CHIPS=()
+          BAUDS=()
+          OFFSETS=()
+          
+          for meta_file in "${METADATA_FILES[@]}"; do
+            if [ -f "$meta_file" ]; then
+              env=$(jq -r '.environment' "$meta_file")
+              chip=$(jq -r '.chip' "$meta_file")
+              baud=$(jq -r '.baud' "$meta_file")
+              offset=$(jq -r '.bootloader_offset' "$meta_file")
+              
+              ENVIRONMENTS+=("$env")
+              CHIPS+=("$chip")
+              BAUDS+=("$baud")
+              OFFSETS+=("$offset")
+            fi
+          done
+          
+          # Start release notes
+          cat > release_notes.md << RELEASE_START
+          ## 📦 Packaged Environments:
+          RELEASE_START
+          
+          # Add environment list dynamically
+          for env in "${ENVIRONMENTS[@]}"; do
+            echo "- ${env^^}" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          
+          cat >> release_notes.md << 'RELEASE_CONTINUE'
+          RELEASE_CONTINUE
+          
+          # Generate file list dynamically
+          echo "**💽 Firmware Binaries:**" >> release_notes.md
+          for env in "${ENVIRONMENTS[@]}"; do
+            echo "- \`espwifi-firmware-${env}-${VERSION}.bin\` - ${env^^} firmware" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          
+          echo "**📲 Bootloaders:**" >> release_notes.md
+          for env in "${ENVIRONMENTS[@]}"; do
+            echo "- \`espwifi-bootloader-${env}-${VERSION}.bin\` - ${env^^} bootloader" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          
+          echo "**💾 Partition Tables:**" >> release_notes.md
+          for env in "${ENVIRONMENTS[@]}"; do
+            echo "- \`espwifi-partitions-${env}-${VERSION}.bin\` - ${env^^} partition table" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          
+          echo "**🖥️ Dashboard:**" >> release_notes.md
+          echo "- \`espwifi-dashboard-${VERSION}.zip\` - Dashboard Embedded Zip" >> release_notes.md
+          echo "" >> release_notes.md
+          
+          echo "**🐳 Docker Images:**" >> release_notes.md
+          echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard Docker Image" >> release_notes.md
+          echo "- \`ghcr.io/vekjja/espwifi-cloud:${VERSION}\` - Cloud Tunnel Docker Image" >> release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "ESPWiFi: 🎉 ${{ steps.release_notes.outputs.version }} 🎉"
+          files: release/*
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

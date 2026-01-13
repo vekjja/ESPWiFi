@@ -153,7 +153,10 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
     setStatusText("Configuring WiFi client mode...");
 
     try {
-      // Use the existing BLE connection
+      // Send WiFi credentials via BLE
+      // Note: We intentionally do NOT send cloud configuration here.
+      // The device reads cloud settings from DefaultConfig.cpp (cloud.enabled = true by default).
+      // This keeps the device autonomous and reduces BLE complexity.
       const payload = {
         cmd: "set_wifi",
         ssid: ssid.trim(),
@@ -197,6 +200,16 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
         selectedDevice?.name ||
         selectedDevice?.id;
       const id = String(deviceId);
+
+      // Use cloud config from device if available, otherwise disable
+      const cloudConfig = deviceIdentity?.cloud?.enabled
+        ? {
+            enabled: true,
+            baseUrl: deviceIdentity.cloud.baseUrl,
+            tunnel: deviceIdentity.cloud.tunnel,
+          }
+        : { enabled: false };
+
       const record = {
         id,
         name:
@@ -207,6 +220,7 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
         hostname: deviceIdentity?.hostname || null,
         deviceId: String(deviceId),
         authToken: deviceIdentity?.token || null,
+        cloudTunnel: cloudConfig,
         lastSeenAtMs: Date.now(),
       };
 

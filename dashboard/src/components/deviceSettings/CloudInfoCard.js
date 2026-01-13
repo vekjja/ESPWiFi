@@ -1,8 +1,8 @@
 /**
- * @file CloudTunnelInfoCard.js
- * @brief Cloud tunnel settings + status card
+ * @file CloudInfoCard.js
+ * @brief Cloud settings + status card
  *
- * Shows cloud tunnel configuration and runtime connection status as reported by
+ * Shows cloud configuration and runtime connection status as reported by
  * /api/info, and allows enabling/disabling the feature.
  */
 
@@ -18,7 +18,6 @@ import {
   FormControlLabel,
   IconButton,
   Switch,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -32,20 +31,17 @@ import MaskedValueField from "../common/MaskedValueField";
 import { safeGetItem } from "../../utils/storageUtils";
 import QRCode from "qrcode";
 
-export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
+export default function CloudInfoCard({ config, deviceInfo, onSave }) {
   const [isEditing, setIsEditing] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [tempEnabled, setTempEnabled] = useState(false);
-  const [tempMaxFps, setTempMaxFps] = useState(0);
 
   useEffect(() => {
-    setTempEnabled(Boolean(config?.cloudTunnel?.enabled));
-    const v = config?.cloudTunnel?.maxFps;
-    setTempMaxFps(typeof v === "number" ? v : parseInt(v || 0, 10) || 0);
-  }, [config?.cloudTunnel?.enabled, config?.cloudTunnel?.maxFps]);
+    setTempEnabled(Boolean(config?.cloud?.enabled));
+  }, [config?.cloud?.enabled]);
 
-  const info = deviceInfo?.cloudTunnel || {};
+  const info = deviceInfo?.cloud || {};
   const endpoints = info?.endpoints || {};
   const pairing = deviceInfo?.pairing || {};
   const claimCode = String(pairing?.claim_code || "").trim();
@@ -82,17 +78,16 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
 
   const handleSave = () => {
     const next = {
-      cloudTunnel: {
-        ...(config?.cloudTunnel || {}),
+      cloud: {
+        ...(config?.cloud || {}),
         enabled: tempEnabled,
-        maxFps: Number.isFinite(tempMaxFps) ? tempMaxFps : 0,
-        // SCT toggle = tunnel all available websockets.
+        // Cloud toggle = tunnel all available websockets.
         tunnelAll: tempEnabled ? true : false,
-        // Allow non-control tunnels when SCT is enabled.
+        // Allow non-control tunnels when cloud is enabled.
       },
     };
 
-    // If SCT is enabled and the device has a camera, enable it so /ws/camera can tunnel.
+    // If cloud is enabled and the device has a camera, enable it so /ws/camera can tunnel.
     if (tempEnabled && config?.camera?.installed !== false) {
       next.camera = { ...(config?.camera || {}), enabled: true };
     }
@@ -102,9 +97,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   };
 
   const handleCancel = () => {
-    setTempEnabled(Boolean(config?.cloudTunnel?.enabled));
-    const v = config?.cloudTunnel?.maxFps;
-    setTempMaxFps(typeof v === "number" ? v : parseInt(v || 0, 10) || 0);
+    setTempEnabled(Boolean(config?.cloud?.enabled));
     setIsEditing(false);
   };
 
@@ -154,7 +147,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
       <InfoRow label="Status:" value={statusChip} />
       <InfoRow
         label="Base URL:"
-        value={info?.baseUrl || config?.cloudTunnel?.baseUrl || "—"}
+        value={info?.baseUrl || config?.cloud?.baseUrl || "—"}
       />
       <InfoRow
         label="iPhone pairing:"
@@ -188,16 +181,6 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
           )
         }
       />
-      {(info?.enabled || config?.cloudTunnel?.enabled) && (
-        <InfoRow
-          label="Max FPS (cloud-only):"
-          value={
-            (config?.cloudTunnel?.maxFps ?? info?.maxFps ?? 0) === 0
-              ? "No cap"
-              : String(config?.cloudTunnel?.maxFps ?? info?.maxFps)
-          }
-        />
-      )}
       {Object.keys(endpoints || {}).length > 0 && (
         <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 2 }}>
           {Object.entries(endpoints).map(([name, ep]) => {
@@ -291,21 +274,7 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
             color="primary"
           />
         }
-        label="Enable Cloud Tunnel"
-      />
-
-      <TextField
-        label="Max cloud FPS (camera)"
-        type="number"
-        size="small"
-        value={tempMaxFps}
-        disabled={!tempEnabled}
-        onChange={(e) => {
-          const n = parseInt(e.target.value || "0", 10);
-          setTempMaxFps(Number.isFinite(n) ? n : 0);
-        }}
-        helperText="Applies only when viewing camera via cloud tunnel with no LAN clients. 0 = no cap."
-        inputProps={{ min: 0, step: 1 }}
+        label="Enable Cloud"
       />
 
       <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
@@ -332,10 +301,10 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
   return (
     <>
       <InfoCard
-        title="Secure Cloud Tunnel"
+        title="ESPWiFi Cloud"
         icon={CloudIcon}
         headerActions={
-          <Tooltip title="What is Cloud Tunnel?">
+          <Tooltip title="What is ESPWiFi Cloud?">
             <IconButton size="small" onClick={() => setAboutOpen(true)}>
               <InfoOutlinedIcon fontSize="small" />
             </IconButton>
@@ -392,21 +361,19 @@ export default function CloudTunnelInfoCard({ config, deviceInfo, onSave }) {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>ESPWiFi Secure Cloud Tunnel</DialogTitle>
+        <DialogTitle>ESPWiFi Cloud</DialogTitle>
         <DialogContent dividers>
           <Typography variant="h5" color="text.primary" align="center">
-            ESPWiFi Secure Cloud Tunnel keeps an outbound WebSocket connection
-            from the device to wss://tnl.espwifi.io Secure Cloud Tunnel server
-            so the dashboard can reach the device’s WebSocket endpoints over the
-            public internet (no VPN or port-forwarding required). This is a
-            secure and private connection and provides authentication and
-            encryption.
+            ESPWiFi Cloud keeps an outbound WebSocket connection from the device
+            to wss://tnl.espwifi.io cloud server so the dashboard can reach the
+            device's WebSocket endpoints over the public internet (no VPN or
+            port-forwarding required). This is a secure and private connection
+            and provides authentication and encryption.
           </Typography>
           <Typography variant="h7" color="text.secondary" align="center">
-            The cloud tunnel server is hosted by ESPWiFi.io and is free to use.
-            It is not required to use the cloud tunnel, but it is recommended if
-            you want to access the device’s WebSocket endpoints over the public
-            internet.
+            The cloud server is hosted by ESPWiFi.io and is free to use. It is
+            not required to use the cloud, but it is recommended if you want to
+            access the device's WebSocket endpoints over the public internet.
           </Typography>
         </DialogContent>
         <DialogActions>

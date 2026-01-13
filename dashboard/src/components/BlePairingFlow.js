@@ -16,6 +16,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WifiIcon from "@mui/icons-material/Wifi";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import ClaimCodeEntry from "./ClaimCodeEntry";
 
 const DIS_UUID = 0x180a;
 const CONTROL_UUID = 0xfff1;
@@ -65,10 +66,13 @@ async function writeJsonAndRead(characteristic, obj) {
  */
 export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
   const supported = useMemo(() => hasWebBluetooth(), []);
-  const [phase, setPhase] = useState("idle"); // idle | scanning | configuring | done
+  const [phase, setPhase] = useState("idle"); // idle | scanning | configuring | quick_connect | done
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
+
+  // Claim code entry dialog
+  const [showClaimEntry, setShowClaimEntry] = useState(false);
 
   // Device info after selection
   const [selectedDevice, setSelectedDevice] = useState(null);
@@ -111,7 +115,18 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
       setSelectedDevice(dev);
       setDeviceIdentity(identity);
       setBleControl(control);
-      setPhase("configuring");
+
+      // Check if device is already connected to WiFi and registered with cloud
+      const hasCloudUrl = identity?.cloud?.enabled && identity?.cloud?.wsUrl;
+
+      if (hasCloudUrl) {
+        // Device is already configured and cloud-connected - offer quick connect
+        setPhase("quick_connect");
+      } else {
+        // Device needs WiFi configuration
+        setPhase("configuring");
+      }
+
       setStatusText("");
       setBusy(false);
     } catch (e) {
@@ -270,6 +285,80 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
     }
   };
 
+  const handleQuickConnect = async () => {
+    setError("");
+    setBusy(true);
+    setStatusText("Saving device to your dashboard...");
+
+    try {
+      // Close BLE connection
+      try {
+        selectedDevice?.gatt?.disconnect?.();
+      } catch {
+        // ignore
+      }
+
+      // Create device record with cloud info
+      const deviceId =
+        deviceIdentity?.hostname ||
+        deviceIdentity?.deviceId ||
+        selectedDevice?.name ||
+        selectedDevice?.id;
+      const id = String(deviceId);
+
+      const cloudConfig = {
+        enabled: true,
+        baseUrl: deviceIdentity.cloud.baseUrl,
+        tunnel: deviceIdentity.cloud.tunnel,
+        wsUrl: deviceIdentity.cloud.wsUrl,
+      };
+
+      const record = {
+        id,
+        name: deviceIdentity?.deviceName || selectedDevice?.name || String(id),
+        hostname: deviceIdentity?.hostname || null,
+        deviceId: String(deviceId),
+        authToken: deviceIdentity?.token || null,
+        cloudTunnel: cloudConfig,
+        lastSeenAtMs: Date.now(),
+      };
+
+      setPhase("done");
+      setStatusText("Device added successfully!");
+      setBusy(false);
+
+      // Notify parent
+      setTimeout(() => {
+        onDeviceProvisioned?.(record, {
+          identity: deviceIdentity,
+        });
+      }, 1000);
+    } catch (e) {
+      try {
+        selectedDevice?.gatt?.disconnect?.();
+      } catch {
+        // ignore
+      }
+      setError(e?.message || String(e));
+      setBusy(false);
+      setStatusText("");
+    }
+  };
+
+  const handleClaimCodeSuccess = (deviceRecord) => {
+    console.log("[BlePairingFlow] Device claimed:", deviceRecord);
+    setShowClaimEntry(false);
+
+    // Notify parent and close
+    onDeviceProvisioned?.(deviceRecord, {
+      viaClaim: true,
+    });
+
+    // Show success message
+    setPhase("done");
+    setStatusText("Device claimed successfully!");
+  };
+
   return (
     <Container
       maxWidth="sm"
@@ -304,7 +393,7 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
             sx={{ fontSize: 80, color: "primary.main", opacity: 0.9 }}
           />
         )}
-        {phase === "configuring" && (
+        {(phase === "configuring" || phase === "quick_connect") && (
           <WifiIcon
             sx={{ fontSize: 80, color: "primary.main", opacity: 0.9 }}
           />
@@ -326,6 +415,7 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
           {phase === "idle" && "Welcome to ESPWiFi"}
           {phase === "scanning" && "Selecting Device"}
           {phase === "configuring" && "Configure WiFi"}
+          {phase === "quick_connect" && "Device Already Configured"}
           {phase === "done" && "Setup Complete!"}
         </Typography>
 
@@ -336,9 +426,8 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
               variant="body1"
               sx={{ textAlign: "center", opacity: 0.9, maxWidth: "400px" }}
             >
-              Let's get started by connecting to your ESPWiFi device. We'll scan
-              for nearby devices using Bluetooth, then configure WiFi
-              credentials.
+              Connect to your ESPWiFi device using Bluetooth for initial setup,
+              or enter a claim code to pair an already-configured device.
             </Typography>
 
             <Box
@@ -369,12 +458,43 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
                   fontWeight: 600,
                 }}
               >
-                Scan for ESPWiFi Devices
+                Scan for Devices
               </Button>
+
+              <Button
+                variant="outlined"
+                size="large"
+                fullWidth
+                onClick={() => setShowClaimEntry(true)}
+                disabled={busy}
+                sx={{
+                  py: 1.5,
+                  fontSize: "1.1rem",
+                  fontWeight: 600,
+                }}
+              >
+                Enter Claim Code
+              </Button>
+
+              {onClose && (
+                <Button
+                  variant="text"
+                  size="large"
+                  fullWidth
+                  onClick={onClose}
+                  sx={{
+                    py: 1.5,
+                    fontSize: "1.1rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  Skip for Now
+                </Button>
+              )}
 
               <Alert severity="info" sx={{ textAlign: "left" }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  Requirements:
+                  Bluetooth pairing requirements:
                 </Typography>
                 <Typography variant="body2" component="ul" sx={{ m: 0, pl: 2 }}>
                   <li>ESPWiFi device powered on and in AP mode</li>
@@ -476,6 +596,85 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
           </>
         )}
 
+        {/* QUICK CONNECT PHASE - Device already configured */}
+        {phase === "quick_connect" && (
+          <>
+            <Alert severity="success" sx={{ width: "100%", mb: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Device found:{" "}
+                {deviceIdentity?.deviceName ||
+                  selectedDevice?.name ||
+                  "Unknown"}
+              </Typography>
+            </Alert>
+
+            <Alert severity="info" sx={{ width: "100%", mb: 2 }}>
+              <Typography variant="body2">
+                This device is already connected to WiFi and registered with the
+                cloud.
+              </Typography>
+            </Alert>
+
+            <Typography
+              variant="body1"
+              sx={{ textAlign: "center", opacity: 0.9, maxWidth: "400px" }}
+            >
+              Would you like to add this device to your dashboard and connect
+              via cloud?
+            </Typography>
+
+            <Box
+              sx={{
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                mt: 2,
+              }}
+            >
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                onClick={handleQuickConnect}
+                disabled={busy}
+                sx={{
+                  py: 1.5,
+                  fontSize: "1.1rem",
+                  fontWeight: 600,
+                }}
+              >
+                {busy ? "Adding Device..." : "Connect to Cloud"}
+              </Button>
+
+              <Button
+                variant="outlined"
+                size="large"
+                fullWidth
+                onClick={() => setPhase("configuring")}
+                disabled={busy}
+                sx={{
+                  py: 1.5,
+                  fontSize: "1.1rem",
+                  fontWeight: 600,
+                }}
+              >
+                Reconfigure WiFi Instead
+              </Button>
+
+              <Button
+                variant="text"
+                fullWidth
+                onClick={handleReset}
+                disabled={busy}
+                sx={{ py: 1 }}
+              >
+                Cancel
+              </Button>
+            </Box>
+          </>
+        )}
+
         {/* DONE PHASE - Success message */}
         {phase === "done" && (
           <>
@@ -486,6 +685,23 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
               Your ESPWiFi device has been configured and is connecting to your
               WiFi network.
             </Typography>
+
+            {onClose && (
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                onClick={onClose}
+                sx={{
+                  py: 1.5,
+                  fontSize: "1.1rem",
+                  fontWeight: 600,
+                  mt: 2,
+                }}
+              >
+                Continue to Dashboard
+              </Button>
+            )}
           </>
         )}
 
@@ -521,6 +737,14 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
           Once configured, your device will connect to WiFi.
         </Typography>
       )}
+
+      {/* Claim Code Entry Dialog */}
+      <ClaimCodeEntry
+        open={showClaimEntry}
+        onClose={() => setShowClaimEntry(false)}
+        onDeviceClaimed={handleClaimCodeSuccess}
+        existingDevices={[]}
+      />
     </Container>
   );
 }

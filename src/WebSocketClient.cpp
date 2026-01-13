@@ -179,6 +179,10 @@ bool WebSocketClient::begin(const Config &config) {
   // Buffer size
   wsConfig.buffer_size = config.bufferSize;
 
+  // Task stack size - increase to prevent stack overflow with TLS
+  wsConfig.task_stack =
+      8192; // Default is usually 4096, double it for cloud connections
+
   // Ping/Pong settings
   if (config.pingInterval > 0) {
     wsConfig.ping_interval_sec = config.pingInterval / 1000;

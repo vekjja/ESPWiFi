@@ -55,13 +55,17 @@ void ESPWiFi::startCloud() {
       return;
     }
 
-    // Forward all other messages to local control socket handler
-    // This allows cloud UI to use same commands as local UI
-    log(DEBUG, "☁️ Received message from cloud UI: %s", type ? type : "unknown");
+    // Forward all other messages (device control commands) to the processing
+    // logic This allows cloud UI to use same commands as local UI
+    const char *cmd = message["cmd"];
+    log(DEBUG, "☁️ Processing cloud message: cmd=%s", cmd ? cmd : "(none)");
 
-    // Note: We need to bridge messages between cloud and local control socket
-    // For now, just log them. Full integration requires bidirectional
-    // forwarding.
+    // Process the command using the same logic as local WebSocket
+    JsonDocument response;
+    handleCloudControlMessage(message, response);
+
+    // Send response back through cloud tunnel
+    cloud.sendMessage(response);
   });
 
   // Initialize and connect

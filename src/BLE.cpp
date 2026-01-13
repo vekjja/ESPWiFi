@@ -235,6 +235,34 @@ void ESPWiFi::startBLEServices() {
                    : BLE_ATT_ERR_INSUFFICIENT_RES;
       });
 
+  // Simple claim code characteristic (0x2A2B) for easy access via nRF Connect
+  // Just read this characteristic to get a fresh 10-minute claim code
+  (void)registerBleCharacteristic16(
+      0x180A, 0x2A2B, // Using 0x2A2B (unused DIS characteristic UUID)
+      BLE_GATT_CHR_F_READ,
+      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
+         struct ble_gatt_access_ctxt *ctxt) -> int {
+        (void)conn_handle;
+        (void)attr_handle;
+        if (!ctxt || ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+          return BLE_ATT_ERR_UNLIKELY;
+        }
+
+        // Generate a fresh claim code valid for 10 minutes
+        std::string code =
+            espwifi->getClaimCode(true); // rotate=true for fresh code
+        uint32_t expiresInMs = espwifi->claimExpiresInMs();
+
+        espwifi->log(
+            INFO, "🔵 Claim Code Generated via BLE: %s (expires in %u seconds)",
+            code.c_str(), expiresInMs / 1000);
+
+        // Return just the claim code (simple 8-char string)
+        return os_mbuf_append(ctxt->om, code.c_str(), code.size()) == 0
+                   ? 0
+                   : BLE_ATT_ERR_INSUFFICIENT_RES;
+      });
+
   // Optional: keep a custom control characteristic under DIS for provisioning.
   (void)registerBleCharacteristic16(
       0x180A, GattServices::controlCharUUID.value,
@@ -310,6 +338,14 @@ void ESPWiFi::startBLEServices() {
             const esp_app_desc_t *app = esp_app_get_description();
             resp["fw"] = (app && app->version[0] != '\0') ? app->version
                                                           : espwifi->version();
+
+            // Include auth token if available
+            const char *authToken =
+                espwifi->config["auth"]["token"].as<const char *>();
+            if (authToken && authToken[0] != '\0') {
+              resp["token"] = authToken;
+            }
+
             // Include cloud configuration for dashboard pairing
             if (espwifi->config["cloud"]["enabled"] | false) {
               resp["cloud"]["enabled"] = true;

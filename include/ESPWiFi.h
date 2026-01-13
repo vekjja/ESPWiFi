@@ -285,6 +285,7 @@ public:
 
   // ---- Control WebSocket (for cloud/pairing control channel)
   void startControlWebSocket();
+  void handleCloudControlMessage(const JsonDocument &req, JsonDocument &resp);
 
 #if ESPWiFi_HAS_CAMERA
   // ---- Camera WebSocket (for LAN streaming)

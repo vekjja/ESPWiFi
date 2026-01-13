@@ -132,43 +132,44 @@ void Cloud::handleMessage(const uint8_t *data, size_t len, bool isBinary) {
     return;
   }
 
+  // Check if message has a 'type' field (cloud control messages)
   const char *type = doc["type"];
-  if (type == nullptr) {
-    ESP_LOGW(TAG, "Message missing 'type' field");
-    return;
-  }
 
-  ESP_LOGD(TAG, "Received message type: %s", type);
+  // Handle cloud-specific messages (messages with 'type' field)
+  if (type != nullptr) {
+    if (strcmp(type, "registered") == 0) {
+      registered_ = true;
 
-  // Handle cloud-specific messages
-  if (strcmp(type, "registered") == 0) {
-    registered_ = true;
+      // Store UI WebSocket URL from broker
+      const char *uiUrl = doc["ui_ws_url"];
+      if (uiUrl) {
+        strncpy(uiWsUrl_, uiUrl, sizeof(uiWsUrl_) - 1);
+        uiWsUrl_[sizeof(uiWsUrl_) - 1] = '\0';
+      }
 
-    // Store UI WebSocket URL from broker
-    const char *uiUrl = doc["ui_ws_url"];
-    if (uiUrl) {
-      strncpy(uiWsUrl_, uiUrl, sizeof(uiWsUrl_) - 1);
-      uiWsUrl_[sizeof(uiWsUrl_) - 1] = '\0';
+      ESP_LOGI(TAG, "Device registered with cloud");
+      ESP_LOGI(TAG, "UI WebSocket URL: %s", uiWsUrl_);
+      ESP_LOGI(TAG, "Share claim code with users: %s", claimCode_);
+      return;
     }
 
-    ESP_LOGI(TAG, "Device registered with cloud");
-    ESP_LOGI(TAG, "UI WebSocket URL: %s", uiWsUrl_);
-    ESP_LOGI(TAG, "Share claim code with users: %s", claimCode_);
-    return;
+    if (strcmp(type, "ui_connected") == 0) {
+      ESP_LOGI(TAG, "UI client connected");
+      // Optionally notify application that UI is connected
+      return;
+    }
+
+    if (strcmp(type, "ui_disconnected") == 0) {
+      ESP_LOGI(TAG, "UI client disconnected");
+      // Optionally notify application that UI is disconnected
+      return;
+    }
   }
 
-  if (strcmp(type, "ui_connected") == 0) {
-    ESP_LOGI(TAG, "UI client connected");
-    // Optionally notify application that UI is connected
-  }
-
-  if (strcmp(type, "ui_disconnected") == 0) {
-    ESP_LOGI(TAG, "UI client disconnected");
-    // Optionally notify application that UI is disconnected
-  }
-
-  // Forward all messages to application handler
+  // Forward all device control messages (with or without 'type') to application
+  // handler These are standard device commands like get_rssi, list_files, etc.
   if (onMessage_) {
+    ESP_LOGD(TAG, "Forwarding message to application handler");
     onMessage_(doc);
   }
 }

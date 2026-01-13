@@ -47,20 +47,17 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
   std::string deviceName = config["deviceName"].as<std::string>();
   jsonDoc["mdns"] = deviceName + ".local";
 
-  // Cloud tunnel status (config + runtime)
+  // Cloud status (config + runtime)
   {
-    JsonObject ct = jsonDoc["cloudTunnel"].to<JsonObject>();
-    ct["enabled"] = config["cloudTunnel"]["enabled"].isNull()
+    JsonObject ct = jsonDoc["cloud"].to<JsonObject>();
+    ct["enabled"] = config["cloud"]["enabled"].isNull()
                         ? false
-                        : config["cloudTunnel"]["enabled"].as<bool>();
-    const char *baseUrlC = config["cloudTunnel"]["baseUrl"].as<const char *>();
+                        : config["cloud"]["enabled"].as<bool>();
+    const char *baseUrlC = config["cloud"]["baseUrl"].as<const char *>();
     ct["baseUrl"] = (baseUrlC != nullptr) ? std::string(baseUrlC) : "";
-    ct["tunnelAll"] = config["cloudTunnel"]["tunnelAll"].isNull()
+    ct["tunnelAll"] = config["cloud"]["tunnelAll"].isNull()
                           ? false
-                          : config["cloudTunnel"]["tunnelAll"].as<bool>();
-    ct["maxFps"] = config["cloudTunnel"]["maxFps"].isNull()
-                       ? 0
-                       : config["cloudTunnel"]["maxFps"].as<int>();
+                          : config["cloud"]["tunnelAll"].as<bool>();
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     JsonObject endpoints = ct["endpoints"].to<JsonObject>();
@@ -68,6 +65,16 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
     JsonObject control = endpoints["control"].to<JsonObject>();
     control["uri"] = "/ws/control";
     control["started"] = ctrlSocStarted;
+
+    // Add cloud connection status and UI WebSocket URL
+    control["cloudEnabled"] = cloud.isConnected();
+    control["cloudConnected"] = cloud.isConnected() && cloud.isRegistered();
+    if (cloud.isConnected() && cloud.isRegistered()) {
+      const char *uiWsUrl = cloud.getUiWebSocketUrl();
+      if (uiWsUrl && uiWsUrl[0] != '\0') {
+        control["ui_ws_url"] = std::string(uiWsUrl);
+      }
+    }
 #endif
   }
 

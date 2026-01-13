@@ -65,6 +65,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["password"] = "admin";
   // - username: username for authentication
   doc["auth"]["username"] = "admin";
+  // - token: generated token for API/WebSocket authentication
+  doc["auth"]["token"] = generateToken();
 
   // CORS (auth.cors)
   // - enabled: controls whether CORS headers are emitted

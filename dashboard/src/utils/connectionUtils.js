@@ -103,19 +103,12 @@ export function resolveWebSocketUrl(endpoint, config, opts = {}) {
 
   const preferTunnel = opts.preferTunnel !== false; // default true
 
-  if (preferTunnel && isTunnelReady(config)) {
-    const baseUrl = config?.cloudTunnel?.baseUrl || "";
-    const deviceId = config?.hostname || config?.deviceName || "";
-    const token = config?.auth?.token || getAuthToken() || "";
-    return buildTunnelWsUrl({
-      baseUrl,
-      deviceId,
-      tunnelKey: def.tunnelKey,
-      token,
-    });
+  // If device provided a cloud tunnel URL, use it
+  if (preferTunnel && config?.cloudTunnel?.wsUrl) {
+    return config.cloudTunnel.wsUrl;
   }
 
-  // LAN/local WS
+  // Otherwise, use local/LAN WebSocket
   const mdnsHostname = config?.hostname || config?.deviceName || null;
   return buildWebSocketUrl(def.localPath, mdnsHostname);
 }

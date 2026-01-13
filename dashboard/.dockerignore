@@ -1,30 +1,39 @@
-# Dependencies
-node_modules
-npm-debug.log
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# Local development files - should not be in Docker images
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Build outputs
+# Development artifacts
+node_modules
 build
 dist
-
-# CRA/webpack caches
 .cache
 
-# Local env files (keep these out of images)
-.env*
-
-# Allow a single optional build-time env file if you choose to use it.
-# (Better practice is passing build args / CI secrets, but this enables local builds.)
-!.env.prod
-
-# OS / editor noise
-.DS_Store
-.idea
+# IDE and editor files
 .vscode
+.idea
+*.swp
+*.swo
+*~
 
-# If you run dashboard builds that output to the firmware folder
-../data
+# OS files
+.DS_Store
+Thumbs.db
 
+# Git
+.git
+.gitignore
 
+# Testing
+coverage
+.nyc_output
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Misc
+*.log

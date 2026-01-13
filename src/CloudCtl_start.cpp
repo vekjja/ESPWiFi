@@ -1,7 +1,7 @@
 #include "ESPWiFi.h"
 #include "esp_mac.h"
 
-void ESPWiFi::startCloud() {
+void ESPWiFi::startCloudCtl() {
   // Check if cloud client is enabled in config
   bool enabled = config["cloud"]["enabled"] | false;
   if (!enabled) {
@@ -41,7 +41,7 @@ void ESPWiFi::startCloud() {
   cfg.reconnectDelay = reconnectDelay;
 
   // Set message handler - forward cloud messages to control socket handler
-  cloud.onMessage([this](JsonDocument &message) {
+  cloudCtl.onMessage([this](JsonDocument &message) {
     const char *type = message["type"];
 
     // Handle cloud-specific messages
@@ -65,16 +65,16 @@ void ESPWiFi::startCloud() {
     handleCloudControlMessage(message, response);
 
     // Send response back through cloud tunnel
-    cloud.sendMessage(response);
+    cloudCtl.sendMessage(response);
   });
 
   // Initialize and connect
-  if (!cloud.begin(cfg)) {
+  if (!cloudCtl.begin(cfg)) {
     log(ERROR, "☁️ Failed to initialize cloud client");
     return;
   }
 
   log(INFO, "☁️ Cloud client started");
   log(INFO, "☁️ Claim code: %s (share with users to pair device)",
-      cloud.getClaimCode());
+      cloudCtl.getClaimCode());
 }

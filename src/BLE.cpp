@@ -355,9 +355,9 @@ void ESPWiFi::startBLEServices() {
                   espwifi->config["cloud"]["tunnel"].as<const char *>();
 
               // Include UI WebSocket URL if device is registered with cloud
-              if (espwifi->cloud.isConnected() &&
-                  espwifi->cloud.isRegistered()) {
-                const char *uiWsUrl = espwifi->cloud.getUiWebSocketUrl();
+              if (espwifi->cloudCtl.isConnected() &&
+                  espwifi->cloudCtl.isRegistered()) {
+                const char *uiWsUrl = espwifi->cloudCtl.getUiWebSocketUrl();
                 if (uiWsUrl && uiWsUrl[0] != '\0') {
                   resp["cloud"]["wsUrl"] = uiWsUrl;
                 }

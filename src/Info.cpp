@@ -71,12 +71,29 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
     control["started"] = ctrlSocStarted;
 
     // Add cloud connection status and UI WebSocket URL
-    control["cloudEnabled"] = cloud.isConnected();
-    control["cloudConnected"] = cloud.isConnected() && cloud.isRegistered();
-    if (cloud.isConnected() && cloud.isRegistered()) {
-      const char *uiWsUrl = cloud.getUiWebSocketUrl();
+    control["cloudEnabled"] = cloudCtl.isConnected();
+    control["cloudConnected"] =
+        cloudCtl.isConnected() && cloudCtl.isRegistered();
+    if (cloudCtl.isConnected() && cloudCtl.isRegistered()) {
+      const char *uiWsUrl = cloudCtl.getUiWebSocketUrl();
       if (uiWsUrl && uiWsUrl[0] != '\0') {
         control["ui_ws_url"] = std::string(uiWsUrl);
+      }
+    }
+
+    // Camera endpoint info
+    JsonObject camera = endpoints["camera"].to<JsonObject>();
+    camera["uri"] = "/ws/camera";
+    camera["started"] = cameraSocStarted;
+
+    // Add media cloud tunnel info
+    camera["cloudEnabled"] = cloudMedia.isConnected();
+    camera["cloudConnected"] =
+        cloudMedia.isConnected() && cloudMedia.isRegistered();
+    if (cloudMedia.isConnected() && cloudMedia.isRegistered()) {
+      const char *mediaWsUrl = cloudMedia.getUiWebSocketUrl();
+      if (mediaWsUrl && mediaWsUrl[0] != '\0') {
+        camera["ui_ws_url"] = std::string(mediaWsUrl);
       }
     }
 #endif

@@ -41,6 +41,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["cloud"]["baseUrl"] = "https://cloud.espwifi.io";
   doc["cloud"]["deviceId"] = getHostname(); // Use hostname as device ID
   doc["cloud"]["tunnel"] = "ws_control";
+  doc["cloud"]["mediaEnabled"] =
+      true; // Enable separate media tunnel (camera, audio, etc)
   doc["cloud"]["autoReconnect"] = true;
   doc["cloud"]["reconnectDelay"] = 5000;
 

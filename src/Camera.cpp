@@ -938,16 +938,21 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  // Check for subscribers
+  // Check for subscribers (LAN + Cloud UI)
+  // UI controls camera start/stop via WebSocket subscription
   const size_t lanSubs = (size_t)cameraStreamSubCount_;
-  if (lanSubs == 0) {
+  const bool cloudUiConnected =
+      cloudMedia.isConnected() && cloudMedia.isRegistered();
+
+  // If no subscribers, deinit camera and return
+  if (lanSubs == 0 && !cloudUiConnected) {
     if (camera != nullptr) {
       deinitCamera();
     }
     return;
   }
 
-  // Initialize camera if needed
+  // Initialize camera if needed (only when we have subscribers)
   if (camera == nullptr) {
     if (!initCamera()) {
       return;
@@ -969,12 +974,18 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  // Send to all subscribers
+  // Send to all LAN subscribers
   for (size_t i = 0; i < lanSubs; i++) {
     int fd = cameraStreamSubFds_[i];
     if (fd > 0) {
       cameraSoc.sendBinary(fd, fb->buf, fb->len);
     }
+  }
+
+  // Send to cloud tunnel if UI is connected via cloud and registered
+  // (Cloud media tunnel only sends when there's an active UI connection)
+  if (cloudMedia.isConnected() && cloudMedia.isRegistered()) {
+    cloudMedia.sendBinary(fb->buf, fb->len);
   }
 
   esp_camera_fb_return(fb);

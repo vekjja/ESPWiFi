@@ -59,6 +59,10 @@
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
+// Cloud classes
+#include "CloudCtl.h"
+#include "CloudMedia.h"
+
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 struct ble_gap_event;
@@ -293,7 +297,8 @@ public:
 #endif
 
   // ---- Cloud Client (remote access)
-  void startCloud();
+  void startCloudCtl();
+  void startCloudMedia();
 
   // ---- Power Management
   void powerConfigHandler();
@@ -466,7 +471,8 @@ private:
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
   // ---- Cloud Client
-  Cloud cloud;
+  CloudCtl cloudCtl;     // Control WebSocket tunnel (JSON messages)
+  CloudMedia cloudMedia; // Media WebSocket tunnel (binary streaming)
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;

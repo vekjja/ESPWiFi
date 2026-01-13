@@ -81,6 +81,11 @@ const theme = createTheme({
     warning: {
       main: "#ffa726", // Default Material-UI warning color for dark mode (yellow/orange)
     },
+    musicPlayer: {
+      playing: "#47FFF0", // Cyan/primary - same as primary for consistency
+      paused: "#ffa726", // Orange/warning - indicates temporary pause
+      stopped: "#333", // Gray/secondary - neutral state
+    },
   },
   components: {
     MuiTooltip: {
@@ -133,6 +138,12 @@ function App() {
   const [cloudRssi, setCloudRssi] = useState(null);
   const [cloudLogs, setCloudLogs] = useState("");
   const [cloudLogsError, setCloudLogsError] = useState("");
+
+  // Music player state for banner color
+  const [musicPlaybackState, setMusicPlaybackState] = useState({
+    isPlaying: false,
+    isPaused: false,
+  });
 
   // Device registry state for espwifi.io hosted mode
   const [devices, setDevices] = useState([]);
@@ -683,8 +694,18 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: controlConnected ? "secondary.light" : "error.main",
-          color: controlConnected ? "primary.main" : "white",
+          backgroundColor:
+            musicPlaybackState.isPlaying && musicPlaybackState.isPaused
+              ? "musicPlayer.paused"
+              : musicPlaybackState.isPlaying
+              ? "musicPlayer.playing"
+              : controlConnected
+              ? "secondary.light"
+              : "error.main",
+          color:
+            musicPlaybackState.isPlaying || !controlConnected
+              ? "white"
+              : "primary.main",
           fontSize: "3em",
           // Prefer measured height (CSS var) but keep a fallback for first paint.
           height: "var(--app-header-height, 9vh)",
@@ -696,6 +717,7 @@ function App() {
           minWidth: "100%",
           position: "sticky",
           top: 0,
+          transition: "background-color 0.3s ease",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -704,7 +726,11 @@ function App() {
             variant="caption"
             sx={{ opacity: 0.75, fontFamily: "inherit" }}
           >
-            Control: {controlConnected ? "connected" : "disconnected"}
+            {musicPlaybackState.isPlaying
+              ? musicPlaybackState.isPaused
+                ? "Music: paused"
+                : "Music: playing"
+              : `Control: ${controlConnected ? "connected" : "disconnected"}`}
           </Typography>
         </Box>
       </Container>
@@ -777,6 +803,7 @@ function App() {
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={controlConnected}
             controlWs={controlWsRef.current}
+            onMusicPlaybackChange={setMusicPlaybackState}
           />
         </Suspense>
       </Container>

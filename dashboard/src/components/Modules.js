@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import PinModule from "./PinModule";
 import WebSocketModule from "./WebSocketModule";
 import CameraModule from "./CameraModule";
+import MusicPlayerModule from "./MusicPlayerModule";
 
 // Sortable wrapper component for Pin modules
 function SortablePinModule({
@@ -129,12 +130,56 @@ function SortableCameraModule({
   );
 }
 
+// Sortable wrapper component for Music Player modules
+function SortableMusicPlayerModule({
+  module,
+  config,
+  onUpdate,
+  onDelete,
+  deviceOnline,
+  saveConfigToDevice,
+  controlWs,
+  onMusicPlaybackChange,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `module-${module.key}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <MusicPlayerModule
+        config={module}
+        globalConfig={config}
+        onUpdate={onUpdate}
+        onDelete={onDelete}
+        deviceOnline={deviceOnline}
+        saveConfigToDevice={saveConfigToDevice}
+        controlWs={controlWs}
+        onMusicPlaybackChange={onMusicPlaybackChange}
+      />
+    </div>
+  );
+}
+
 export default function Modules({
   config,
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
   controlWs,
+  onMusicPlaybackChange,
 }) {
   const [modules, setModules] = useState([]);
 
@@ -393,6 +438,20 @@ export default function Modules({
                     deviceOnline={deviceOnline}
                     saveConfigToDevice={saveConfigToDevice}
                     controlWs={controlWs}
+                  />
+                );
+              } else if (module.type === "musicPlayer") {
+                return (
+                  <SortableMusicPlayerModule
+                    key={`musicplayer-${module.key}`}
+                    module={module}
+                    config={config}
+                    onUpdate={updateModule}
+                    onDelete={deleteModule}
+                    deviceOnline={deviceOnline}
+                    saveConfigToDevice={saveConfigToDevice}
+                    controlWs={controlWs}
+                    onMusicPlaybackChange={onMusicPlaybackChange}
                   />
                 );
               }

@@ -1,0 +1,311 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ESPWiFi Cloud Pairing Flow                                │
+│                        Simplified Architecture                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐         ┌──────────────────────┐         ┌─────────────────────┐
+│                      │         │                      │         │                     │
+│   Device (ESP32)     │◄───────►│  Cloud Broker (Go)   │◄───────►│  Dashboard (React)  │
+│                      │   WSS   │                      │  HTTPS  │    espwifi.io       │
+│  ┌────────────────┐  │         │  ┌────────────────┐  │         │  ┌───────────────┐  │
+│  │ DefaultConfig  │  │         │  │  Claim Store   │  │         │  │ Device Picker │  │
+│  │ cloud.enabled  │  │         │  │  (10min TTL)   │  │         │  │   Registry    │  │
+│  │  = true        │  │         │  └────────────────┘  │         │  └───────────────┘  │
+│  └────────────────┘  │         │                      │         │                     │
+│  ┌────────────────┐  │         │  ┌────────────────┐  │         │  ┌───────────────┐  │
+│  │  Cloud Client  │  │         │  │   WebSocket    │  │         │  │   ClaimCode   │  │
+│  │   (C++ class)  │  │         │  │    Tunnels     │  │         │  │     Entry     │  │
+│  └────────────────┘  │         │  └────────────────┘  │         │  └───────────────┘  │
+│  ┌────────────────┐  │         │                      │         │                     │
+│  │  BLE Service   │  │         │  Routes:             │         │  Routes:            │
+│  │  get_identity  │  │         │  /api/claim          │         │  /claim?code=...    │
+│  │  set_wifi      │  │         │  /ws/device/{id}     │         │  (future)           │
+│  └────────────────┘  │         │  /ws/ui/{id}         │         │                     │
+│                      │         │                      │         │                     │
+└──────────────────────┘         └──────────────────────┘         └─────────────────────┘
+          │                                  │                              │
+          │           BLE (Local)            │                              │
+          └──────────────────────────────────┴──────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                           PAIRING METHOD 1: BLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Step 1: User Opens Dashboard
+┌─────────────┐
+│ espwifi.io  │──────> No devices in localStorage
+└─────────────┘        ↓
+                   Show BLE pairing flow
+
+
+Step 2: BLE Pairing
+┌─────────────┐         ┌──────────────┐
+│  Dashboard  │  scan   │   Device     │
+│             │────────>│   (BLE)      │
+│             │<────────│              │
+│             │ identity│              │
+│             │  token  │              │
+└─────────────┘         └──────────────┘
+
+Identity Response:
+{
+  "hostname": "espwifi-ABCD12",
+  "deviceId": "AA:BB:CC:DD:EE:FF",
+  "token": "abc123...",
+  "deviceName": "ESPWiFi",
+  "model": "ESP32-S3"
+}
+
+
+Step 3: WiFi Configuration
+┌─────────────┐         ┌──────────────┐
+│  Dashboard  │  wifi   │   Device     │
+│             │ config  │   (BLE)      │
+│             │────────>│              │
+│             │<────────│              │
+│             │ ok:true │              │
+└─────────────┘         └──────────────┘
+
+WiFi Config:
+{
+  "cmd": "set_wifi",
+  "ssid": "HomeNetwork",
+  "password": "secret123"
+}
+
+❌ NO cloud config sent - device reads from DefaultConfig.cpp
+
+
+Step 4: Device Restart & Cloud Connection
+┌──────────────┐
+│   Device     │
+│              │ 1. WiFi restart (client mode)
+│              │ 2. Read DefaultConfig: cloud.enabled = true
+│              │ 3. Generate claim code: "ABC123"
+│              │ 4. Connect to cloud broker
+│              │    wss://cloud.espwifi.io/ws/device/espwifi-ABCD12?
+│              │    tunnel=ws_control&claim=ABC123&announce=1
+└──────────────┘
+        │
+        ▼
+┌──────────────┐
+│ Cloud Broker │
+│              │ 5. Register device
+│              │ 6. Store claim code (10min TTL)
+│              │ 7. Send registered message
+└──────────────┘
+
+
+Step 5: Dashboard Cloud Connection
+┌─────────────┐         ┌──────────────┐
+│  Dashboard  │         │ Cloud Broker │
+│             │ connect │              │
+│             │────────>│  Validate    │
+│             │<────────│   token      │
+│             │ success │              │
+└─────────────┘         └──────────────┘
+
+WebSocket URL:
+wss://cloud.espwifi.io/ws/ui/espwifi-ABCD12?tunnel=ws_control&token=abc123...
+
+✅ Device accessible from anywhere via espwifi.io
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                        PAIRING METHOD 2: CLAIM CODE
+═══════════════════════════════════════════════════════════════════════════════
+
+Step 1: Device Already Running
+┌──────────────┐
+│   Device     │
+│              │ 1. Connected to WiFi (client mode)
+│              │ 2. Cloud.enabled = true (from DefaultConfig)
+│              │ 3. Generated claim code: "ABC123"
+│              │ 4. Registered with cloud broker
+│              │ 5. Claim code visible in logs/display
+└──────────────┘
+        │
+        ▼
+   Claim Code: ABC123
+   (or QR code with URL: espwifi.io/claim?code=ABC123)
+
+
+Step 2: User Enters Claim Code
+┌─────────────┐
+│  Dashboard  │ 1. Visit espwifi.io
+│             │ 2. Click "Enter claim code"
+│             │ 3. Type "ABC123"
+│             │ 4. Click "Claim Device"
+└─────────────┘
+        │
+        ▼
+┌──────────────┐
+│ Cloud Broker │ POST /api/claim
+│              │ { "code": "ABC123", "tunnel": "ws_control" }
+│              │
+│              │ ✓ Validate code exists
+│              │ ✓ Check not expired (10min)
+│              │ ✓ Consume code (one-time use)
+│              │
+│              │ Return:
+│              │ {
+│              │   "ok": true,
+│              │   "device_id": "espwifi-ABCD12",
+│              │   "tunnel": "ws_control",
+│              │   "ui_ws_url": "wss://...",
+│              │   "token": "abc123..."
+│              │ }
+└──────────────┘
+        │
+        ▼
+┌─────────────┐
+│  Dashboard  │ 1. Save device to registry
+│             │ 2. Connect via tunnel
+│             │ 3. Full control available
+└─────────────┘
+
+✅ Instant remote access without BLE pairing
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                          KEY CONFIGURATION POINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Device Configuration (src/DefaultConfig.cpp):
+┌─────────────────────────────────────────┐
+│ doc["cloud"]["enabled"] = true;         │ ← Cloud on by default
+│ doc["cloud"]["baseUrl"] =               │
+│   "https://cloud.espwifi.io";           │
+│ doc["cloud"]["deviceId"] = hostname;    │
+│ doc["cloud"]["tunnel"] = "ws_control";  │
+│ doc["cloud"]["autoReconnect"] = true;   │
+│ doc["cloud"]["reconnectDelay"] = 5000;  │
+└─────────────────────────────────────────┘
+
+Dashboard Device Registry (localStorage):
+┌─────────────────────────────────────────┐
+│ {                                       │
+│   id: "espwifi-ABCD12",                 │
+│   name: "ESPWiFi",                      │
+│   hostname: "espwifi-ABCD12",           │
+│   deviceId: "AA:BB:CC:DD:EE:FF",        │
+│   authToken: "abc123...",               │
+│   cloudTunnel: {                        │
+│     enabled: true,                      │
+│     baseUrl: "https://cloud.espwifi.io" │
+│   },                                    │
+│   lastSeenAtMs: 1704067200000           │
+│ }                                       │
+└─────────────────────────────────────────┘
+
+Cloud Broker Configuration (environment):
+┌─────────────────────────────────────────┐
+│ LISTEN_ADDR=:8080                       │
+│ PUBLIC_BASE_URL=https://cloud.espwifi.io│
+│ LOG_LEVEL=info                          │
+│ # Optional global auth tokens           │
+│ # DEVICE_AUTH_TOKEN=...                 │
+│ # UI_AUTH_TOKEN=...                     │
+└─────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            SECURITY MODEL
+═══════════════════════════════════════════════════════════════════════════════
+
+┌────────────────┐  ┌────────────────┐  ┌────────────────┐
+│  Claim Code    │  │  Auth Token    │  │  WebSocket     │
+│                │  │                │  │  Connection    │
+├────────────────┤  ├────────────────┤  ├────────────────┤
+│ Purpose:       │  │ Purpose:       │  │ Security:      │
+│ Device pairing │  │ Authenticate   │  │ WSS (TLS)      │
+│                │  │ connections    │  │ Token in URL   │
+│ Properties:    │  │                │  │                │
+│ • 6 chars      │  │ Properties:    │  │ Validation:    │
+│ • 10min TTL    │  │ • Generated by │  │ • Broker       │
+│ • One-time use │  │   device       │  │   validates    │
+│ • Public OK    │  │ • Persistent   │  │ • Constant     │
+│ • Regenerated  │  │ • Secret       │  │   time compare │
+│   on restart   │  │ • Never logged │  │                │
+└────────────────┘  └────────────────┘  └────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                          DESIGN PHILOSOPHY
+═══════════════════════════════════════════════════════════════════════════════
+
+Device-Driven Configuration:
+────────────────────────────
+
+✅ Device controls its own behavior
+   └─> Reads cloud.enabled from DefaultConfig.cpp
+
+✅ UI only sends essentials
+   └─> WiFi credentials via BLE
+   └─> Commands via WebSocket
+
+✅ Single source of truth
+   └─> DefaultConfig.cpp defines device behavior
+   └─> No conflicting configurations
+
+✅ Factory defaults
+   └─> Devices ship pre-configured
+   └─> Works out-of-box with espwifi.io
+
+✅ User overrides possible
+   └─> Advanced users can disable cloud
+   └─> Changes persist in device config
+
+
+Benefits:
+─────────
+
+1. Simpler BLE protocol
+   • One command: set_wifi
+   • No complex config synchronization
+
+2. Device autonomy
+   • Works without UI for cloud setup
+   • Can operate standalone
+
+3. Consistency
+   • All devices behave the same way
+   • Predictable factory defaults
+
+4. Security
+   • Device generates its own credentials
+   • UI can't misconfigure cloud settings
+
+5. Maintainability
+   • Cloud config in one place (DefaultConfig.cpp)
+   • Easy to update default behavior
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Two pairing methods implemented:
+   1. BLE pairing (for initial setup)
+   2. Claim code entry (for remote/quick pairing)
+
+✅ Device-controlled configuration:
+   • Cloud settings in DefaultConfig.cpp
+   • UI only sends WiFi credentials
+   • Device autonomously connects to cloud
+
+✅ Cloud WebSocket tunneling:
+   • Dashboard auto-detects cloud-enabled devices
+   • Seamless connection via cloud broker
+   • Secure token-based authentication
+
+✅ Production ready:
+   • Complete security model
+   • Error handling throughout
+   • Extensive documentation
+
+Next steps (optional enhancements):
+   • Add QR code scanning to dashboard
+   • Add QR code display to device
+   • Implement deep linking for QR codes

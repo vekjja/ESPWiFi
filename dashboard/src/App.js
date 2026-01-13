@@ -18,6 +18,7 @@ import {
   isHostedFromEspWiFiIo,
 } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
+import { resolveWebSocketUrl } from "./utils/connectionUtils";
 import {
   loadDevices,
   saveDevices,
@@ -248,23 +249,63 @@ function App() {
   }, []);
 
   // Direct connection to control WebSocket
+  // When a device is selected and has cloud tunnel info, use tunnel URL
+  // Otherwise, use local WebSocket connection
   const controlWsUrl = useMemo(() => {
-    // Use environment variable if set, otherwise same-origin
+    console.log("[App] Computing control WebSocket URL");
+    console.log("[App] isHostedMode:", isHostedMode);
+    console.log("[App] selectedDeviceId:", selectedDeviceId);
+    console.log("[App] devices:", devices);
+
+    // In hosted mode with a selected device, use cloud tunnel if available
+    if (isHostedMode && selectedDeviceId) {
+      const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
+      console.log("[App] Selected device:", selectedDevice);
+
+      if (selectedDevice) {
+        // Build a minimal config object for resolveWebSocketUrl
+        const deviceConfig = {
+          hostname: selectedDevice.hostname || selectedDevice.deviceId,
+          deviceName: selectedDevice.name || selectedDevice.deviceId,
+          auth: {
+            token: selectedDevice.authToken,
+          },
+          cloudTunnel: selectedDevice.cloudTunnel || {
+            enabled: false,
+          },
+        };
+
+        const url = resolveWebSocketUrl("control", deviceConfig, {
+          preferTunnel: true,
+        });
+        console.log("[App] Resolved WebSocket URL:", url);
+        return url;
+      }
+    }
+
+    // Fallback to local connection
     if (process.env.REACT_APP_API_HOST) {
       return buildWebSocketUrl("/ws/control", process.env.REACT_APP_API_HOST);
     }
     return buildWebSocketUrl("/ws/control");
-  }, []);
+  }, [isHostedMode, selectedDeviceId, devices]);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
     if (!controlWsUrl) return;
 
+    console.log(
+      "[App] Setting up control WebSocket connection to:",
+      controlWsUrl
+    );
+
     const connect = () => {
       if (!networkEnabled) return;
       const uiUrl = controlWsUrl;
       if (!uiUrl) return;
+
+      console.log("[App] Connecting control WebSocket:", uiUrl);
 
       // Tear down any existing socket before reconnect.
       if (controlWsRef.current) {

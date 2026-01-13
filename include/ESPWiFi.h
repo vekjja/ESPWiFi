@@ -55,6 +55,7 @@
 #include "nvs_flash.h"
 
 #include <ArduinoJson.h>
+#include <Cloud.h>
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
@@ -290,6 +291,9 @@ public:
   void startCameraWebSocket();
 #endif
 
+  // ---- Cloud Client (remote access)
+  void startCloud();
+
   // ---- Power Management
   void powerConfigHandler();
   void applyWiFiPowerSettings();
@@ -459,6 +463,9 @@ private:
   bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
+
+  // ---- Cloud Client
+  Cloud cloud;
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;

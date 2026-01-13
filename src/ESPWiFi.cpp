@@ -13,6 +13,7 @@ void ESPWiFi::start() {
   startWebServer();
   startControlWebSocket();
   startCameraWebSocket();
+  startCloud();
   srvAll();
 }
 

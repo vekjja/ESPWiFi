@@ -1,0 +1,20 @@
+{{- if .Values.cloud.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "espwifi.io.fullname" . }}-cloud
+  labels:
+    {{- include "espwifi.io.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud
+spec:
+  type: {{ .Values.cloud.service.type }}
+  ports:
+    - port: {{ .Values.cloud.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "espwifi.io.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud
+{{- end }}
+

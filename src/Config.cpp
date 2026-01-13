@@ -257,7 +257,6 @@ void ESPWiFi::handleConfigUpdate() {
   if (configUpdate.size() > 0) {
     // Save old config for comparison in handlers
     oldConfig = config;
-    // Apply new config
     config = configUpdate;
 
     cameraConfigHandler();

@@ -36,6 +36,14 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Bluetooth Audio
   doc["bluetooth"]["enabled"] = false;
 
+  // Cloud Client - Connect to cloud.espwifi.io for remote access
+  doc["cloud"]["enabled"] = true;
+  doc["cloud"]["baseUrl"] = "https://cloud.espwifi.io";
+  doc["cloud"]["deviceId"] = getHostname(); // Use hostname as device ID
+  doc["cloud"]["tunnel"] = "ws_control";
+  doc["cloud"]["autoReconnect"] = true;
+  doc["cloud"]["reconnectDelay"] = 5000;
+
   // BLE Provisioning
   doc["ble"]["enabled"] = true;
   doc["ble"]["passkey"] = 123456;
@@ -78,8 +86,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["protectedFiles"].add("/index.html");
   doc["auth"]["protectedFiles"].add("/config.json");
   doc["auth"]["protectedFiles"].add("/asset-manifest.json");
-
-  doc["cloudClient"]["baseUrl"] = "https://tnl.espwifi.io";
 
 // SD Card
 #if ESPWiFi_HAS_SDCARD

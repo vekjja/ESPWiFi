@@ -1,38 +1,38 @@
-{{- if .Values.cloudTunnel.enabled -}}
+{{- if .Values.cloud.enabled -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "espwifi.io.fullname" . }}-cloudtunnel
+  name: {{ include "espwifi.io.fullname" . }}-cloud
   labels:
     {{- include "espwifi.io.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cloudtunnel
+    app.kubernetes.io/component: cloud
 spec:
   replicas: 1
   selector:
     matchLabels:
       {{- include "espwifi.io.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: cloudtunnel
+      app.kubernetes.io/component: cloud
   template:
     metadata:
       labels:
         {{- include "espwifi.io.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: cloudtunnel
+        app.kubernetes.io/component: cloud
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: cloudtunnel
-          image: "{{ .Values.cloudTunnel.image.repository }}:{{ .Values.cloudTunnel.image.tag }}"
-          imagePullPolicy: {{ .Values.cloudTunnel.image.pullPolicy }}
+        - name: cloud
+          image: "{{ .Values.cloud.image.repository }}:{{ .Values.cloud.image.tag }}"
+          imagePullPolicy: {{ .Values.cloud.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
           env:
             - name: PUBLIC_BASE_URL
-              value: "https://tnl.espwifi.io"
+              value: "https://cloud.espwifi.io"
           livenessProbe:
             httpGet:
               path: /healthz
@@ -42,7 +42,6 @@ spec:
               path: /healthz
               port: http
           resources:
-            {{- toYaml .Values.cloudTunnel.resources | nindent 12 }}
+            {{- toYaml .Values.cloud.resources | nindent 12 }}
 {{- end }}
-
 

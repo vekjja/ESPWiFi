@@ -1,22 +1,22 @@
-{{- if and .Values.cloudTunnel.enabled .Values.cloudTunnel.ingress.enabled -}}
+{{- if and .Values.cloud.enabled .Values.cloud.ingress.enabled -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "espwifi.io.fullname" . }}-cloudtunnel
+  name: {{ include "espwifi.io.fullname" . }}-cloud
   labels:
     {{- include "espwifi.io.labels" . | nindent 4 }}
-    app.kubernetes.io/component: cloudtunnel
-  {{- with .Values.cloudTunnel.ingress.annotations }}
+    app.kubernetes.io/component: cloud
+  {{- with .Values.cloud.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.cloudTunnel.ingress.className }}
+  {{- with .Values.cloud.ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- if .Values.cloudTunnel.ingress.tls }}
+  {{- if .Values.cloud.ingress.tls }}
   tls:
-    {{- range .Values.cloudTunnel.ingress.tls }}
+    {{- range .Values.cloud.ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -25,7 +25,7 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    {{- range .Values.cloudTunnel.ingress.hosts }}
+    {{- range .Values.cloud.ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:
@@ -36,11 +36,10 @@ spec:
             {{- end }}
             backend:
               service:
-                name: {{ include "espwifi.io.fullname" $ }}-cloudtunnel
+                name: {{ include "espwifi.io.fullname" $ }}-cloud
                 port:
-                  number: {{ $.Values.cloudTunnel.service.port }}
+                  number: {{ $.Values.cloud.service.port }}
           {{- end }}
     {{- end }}
 {{- end }}
-
 

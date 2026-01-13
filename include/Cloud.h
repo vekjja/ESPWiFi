@@ -55,6 +55,8 @@ public:
   const char *getDeviceId() const { return config_.deviceId; }
   const char *getTunnel() const { return config_.tunnel; }
   const char *getClaimCode() const { return claimCode_; }
+  const char *getUiWebSocketUrl() const { return uiWsUrl_; }
+  bool isRegistered() const { return registered_; }
 
 private:
   Config config_;
@@ -63,6 +65,7 @@ private:
 
   char wsUrl_[512] = {0}; // Increased from 256 to 512 for longer URLs
   char claimCode_[16] = {0};
+  char uiWsUrl_[512] = {0}; // UI WebSocket URL from cloud broker
   bool registered_ = false;
 
   // WebSocket event handlers

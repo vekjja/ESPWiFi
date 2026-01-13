@@ -3,6 +3,7 @@
 #include <cstring>
 #include <memory>
 
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -146,13 +147,33 @@ bool WebSocketClient::begin(const Config &config) {
     wsConfig.headers = authHeader_;
   }
 
-  // TLS configuration
-  if (config.certPem) {
-    wsConfig.cert_pem = config.certPem;
-  }
+  // TLS configuration for wss:// connections
+  if (strncmp(config.uri, "wss://", 6) == 0) {
+    wsConfig.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
 
-  if (config.disableCertVerify) {
-    wsConfig.skip_cert_common_name_check = true;
+    if (config.certPem) {
+      // Use provided certificate
+      wsConfig.cert_pem = config.certPem;
+    } else {
+      // Use ESP-IDF's built-in certificate bundle for verification
+      // This includes common CA certificates for HTTPS
+      wsConfig.crt_bundle_attach = esp_crt_bundle_attach;
+      wsConfig.skip_cert_common_name_check = false;
+    }
+
+    // Allow override to disable certificate verification
+    if (config.disableCertVerify) {
+      wsConfig.skip_cert_common_name_check = true;
+      wsConfig.crt_bundle_attach = NULL;
+    }
+  } else {
+    // Non-TLS connections
+    if (config.certPem) {
+      wsConfig.cert_pem = config.certPem;
+    }
+    if (config.disableCertVerify) {
+      wsConfig.skip_cert_common_name_check = true;
+    }
   }
 
   // Buffer size

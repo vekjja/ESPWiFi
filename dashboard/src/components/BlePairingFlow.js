@@ -201,12 +201,13 @@ export default function BlePairingFlow({ onDeviceProvisioned, onClose }) {
         selectedDevice?.id;
       const id = String(deviceId);
 
-      // Use cloud config from device if available, otherwise disable
+      // Use cloud config from device if available
       const cloudConfig = deviceIdentity?.cloud?.enabled
         ? {
             enabled: true,
             baseUrl: deviceIdentity.cloud.baseUrl,
             tunnel: deviceIdentity.cloud.tunnel,
+            wsUrl: deviceIdentity.cloud.wsUrl || null, // Full UI WebSocket URL from device
           }
         : { enabled: false };
 

@@ -184,6 +184,17 @@ export default function BlePairingDialog({
         const deviceId =
           identity?.hostname || identity?.deviceId || dev?.name || dev?.id;
         const id = String(deviceId);
+
+        // Extract cloud configuration from device identity
+        const cloudConfig = identity?.cloud?.enabled
+          ? {
+              enabled: true,
+              baseUrl: identity.cloud.baseUrl,
+              tunnel: identity.cloud.tunnel,
+              wsUrl: identity.cloud.wsUrl || null, // Full UI WebSocket URL from device
+            }
+          : { enabled: false };
+
         const record = {
           id,
           name:
@@ -191,6 +202,7 @@ export default function BlePairingDialog({
           hostname: identity?.hostname || null,
           deviceId: String(deviceId),
           authToken: identity?.token || null,
+          cloudTunnel: cloudConfig,
           lastSeenAtMs: Date.now(),
         };
 

@@ -143,8 +143,16 @@ void Cloud::handleMessage(const uint8_t *data, size_t len, bool isBinary) {
   // Handle cloud-specific messages
   if (strcmp(type, "registered") == 0) {
     registered_ = true;
+
+    // Store UI WebSocket URL from broker
+    const char *uiUrl = doc["ui_ws_url"];
+    if (uiUrl) {
+      strncpy(uiWsUrl_, uiUrl, sizeof(uiWsUrl_) - 1);
+      uiWsUrl_[sizeof(uiWsUrl_) - 1] = '\0';
+    }
+
     ESP_LOGI(TAG, "Device registered with cloud");
-    ESP_LOGI(TAG, "UI WebSocket URL: %s", doc["ui_ws_url"].as<const char *>());
+    ESP_LOGI(TAG, "UI WebSocket URL: %s", uiWsUrl_);
     ESP_LOGI(TAG, "Share claim code with users: %s", claimCode_);
     return;
   }

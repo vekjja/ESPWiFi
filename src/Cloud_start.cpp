@@ -11,10 +11,16 @@ void ESPWiFi::startCloud() {
 
   // Get configuration
   const char *baseUrl = config["cloud"]["baseUrl"];
-  const char *deviceId = config["cloud"]["deviceId"];
   const char *tunnel = config["cloud"]["tunnel"];
   bool autoReconnect = config["cloud"]["autoReconnect"];
   uint32_t reconnectDelay = config["cloud"]["reconnectDelay"];
+
+  // Use current hostname as device ID (override config if needed)
+  std::string hostname = config["hostname"].as<std::string>();
+  if (hostname.empty()) {
+    hostname = genHostname();
+  }
+  const char *deviceId = hostname.c_str();
 
   // Get auth token from device config (used to authenticate UI connections)
   const char *authToken = config["auth"]["token"] | nullptr;

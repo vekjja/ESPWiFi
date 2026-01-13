@@ -59,6 +59,10 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
                           ? false
                           : config["cloud"]["tunnelAll"].as<bool>();
 
+    // Claim info
+    ct["claimCode"] = getClaimCode(false);
+    ct["claimExpiresInMs"] = claimExpiresInMs();
+
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     JsonObject endpoints = ct["endpoints"].to<JsonObject>();
 

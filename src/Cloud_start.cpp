@@ -58,7 +58,7 @@ void ESPWiFi::startCloud() {
     // Forward all other messages (device control commands) to the processing
     // logic This allows cloud UI to use same commands as local UI
     const char *cmd = message["cmd"];
-    log(DEBUG, "☁️ Processing cloud message: cmd=%s", cmd ? cmd : "(none)");
+    log(VERBOSE, "☁️ Processing cloud message: cmd=%s", cmd ? cmd : "(none)");
 
     // Process the command using the same logic as local WebSocket
     JsonDocument response;

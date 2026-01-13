@@ -42,6 +42,9 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["wifiMode"] = espwifi->config["wifi"]["mode"].as<std::string>();
     } else if (strcmp(cmd, "get_config") == 0) {
       resp["config"] = espwifi->config;
+      // Add claim code info
+      resp["cloud_claim_code"] = espwifi->getClaimCode(false);
+      resp["cloud_claim_expires_in_ms"] = espwifi->claimExpiresInMs();
     } else if (strcmp(cmd, "get_info") == 0) {
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
       resp["info"] = infoDoc.as<JsonVariantConst>();
@@ -359,6 +362,11 @@ void ESPWiFi::handleCloudControlMessage(const JsonDocument &req,
     resp["ip"] = ipAddress();
     resp["hostname"] = config["hostname"].as<std::string>();
     resp["wifiMode"] = config["wifi"]["mode"].as<std::string>();
+  } else if (strcmp(cmd, "get_config") == 0) {
+    resp["config"] = config;
+    // Add claim code info
+    resp["cloud_claim_code"] = getClaimCode(false);
+    resp["cloud_claim_expires_in_ms"] = claimExpiresInMs();
   } else if (strcmp(cmd, "get_info") == 0) {
     JsonDocument infoDoc = buildInfoJson(false);
     resp["info"] = infoDoc.as<JsonVariantConst>();

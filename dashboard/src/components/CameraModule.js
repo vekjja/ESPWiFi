@@ -29,6 +29,7 @@ export default function CameraModule({
 
   const wsRef = useRef(null);
   const imgRef = useRef(null);
+  const containerRef = useRef(null); // Container for fullscreen with rotation
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
   const intentionalCloseRef = useRef(false);
@@ -152,8 +153,8 @@ export default function CameraModule({
 
   const handleFullscreen = () => {
     if (!isFullscreen) {
-      // Enter fullscreen
-      const element = imgRef.current || document.documentElement;
+      // Enter fullscreen - use container instead of img to preserve rotation
+      const element = containerRef.current || document.documentElement;
 
       if (element.requestFullscreen) {
         element.requestFullscreen();
@@ -341,6 +342,7 @@ export default function CameraModule({
         }}
       >
         <Box
+          ref={containerRef}
           sx={{
             width: "100%",
             height: "280px",
@@ -352,6 +354,39 @@ export default function CameraModule({
             borderRadius: 1,
             position: "relative",
             overflow: "hidden",
+            // Fullscreen styles
+            "&:fullscreen": {
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "black",
+            },
+            "&:-webkit-full-screen": {
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "black",
+            },
+            "&:-moz-full-screen": {
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "black",
+            },
+            "&:-ms-fullscreen": {
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "black",
+            },
           }}
         >
           {isStreaming && imageUrl ? (
@@ -364,9 +399,12 @@ export default function CameraModule({
                 height: "100%",
                 objectFit: "contain",
                 borderRadius: "4px",
-                transform: config?.rotation
-                  ? `rotate(${config.rotation}deg)`
-                  : undefined,
+                transform:
+                  config?.rotation || globalConfig?.camera?.rotation
+                    ? `rotate(${
+                        config?.rotation || globalConfig?.camera?.rotation || 0
+                      }deg)`
+                    : undefined,
                 transition: "transform 0.3s ease",
               }}
             />

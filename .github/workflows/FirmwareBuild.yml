@@ -407,8 +407,6 @@ jobs:
           echo "" >> release_notes.md
           
           cat >> release_notes.md << 'RELEASE_CONTINUE'
-
-          
           RELEASE_CONTINUE
           
           # Generate file list dynamically
@@ -431,11 +429,11 @@ jobs:
           echo "" >> release_notes.md
           
           echo "**🖥️ Dashboard:**" >> release_notes.md
-          echo "- \`espwifi-dashboard-${VERSION}.zip\` - Web dashboard UI (optional)" >> release_notes.md
+          echo "- \`espwifi-dashboard-${VERSION}.zip\` - Dashboard Embedded Zip" >> release_notes.md
           echo "" >> release_notes.md
           
           echo "**🐳 Docker Images:**" >> release_notes.md
-          echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard container image" >> release_notes.md
+          echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard Docker Image" >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

@@ -14,6 +14,8 @@ import {
   AccordionDetails,
   Divider,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
@@ -22,6 +24,8 @@ import ContrastIcon from "@mui/icons-material/Contrast";
 import TimerIcon from "@mui/icons-material/Timer";
 import ExposureIcon from "@mui/icons-material/WbSunny";
 import RotateIcon from "@mui/icons-material/Rotate90DegreesCcw";
+import StayCurrentLandscapeIcon from "@mui/icons-material/StayCurrentLandscape";
+import StayCurrentPortraitIcon from "@mui/icons-material/StayCurrentPortrait";
 import SettingsModal from "./SettingsModal";
 import SaveButton from "./SaveButton";
 import DeleteButton from "./DeleteButton";
@@ -50,6 +54,7 @@ export default function CameraSettingsModal({
   const [cameraSettings, setCameraSettings] = useState({
     frameRate: 10,
     rotation: 0,
+    orientation: "landscape",
     brightness: 1,
     contrast: 1,
     saturation: 1,
@@ -113,6 +118,7 @@ export default function CameraSettingsModal({
       setCameraSettings({
         frameRate: config.camera.frameRate ?? 10,
         rotation: moduleConfig?.rotation ?? config.camera.rotation ?? 0,
+        orientation: config.camera.orientation ?? "landscape",
         brightness: config.camera.brightness ?? 1,
         contrast: config.camera.contrast ?? 1,
         saturation: config.camera.saturation ?? 1,
@@ -155,6 +161,7 @@ export default function CameraSettingsModal({
           ...config.camera,
           frameRate: cameraSettings.frameRate,
           rotation: cameraSettings.rotation,
+          orientation: cameraSettings.orientation,
           brightness: cameraSettings.brightness,
           contrast: cameraSettings.contrast,
           saturation: cameraSettings.saturation,
@@ -369,6 +376,48 @@ export default function CameraSettingsModal({
                       />
                       <Typography variant="caption" color="text.secondary">
                         Rotate the camera image by 90° increments
+                      </Typography>
+                    </Box>
+
+                    <Divider />
+
+                    {/* Orientation */}
+                    <Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          mb: 2,
+                        }}
+                      >
+                        <Typography variant="body1" fontWeight="medium">
+                          Orientation
+                        </Typography>
+                      </Box>
+                      <ToggleButtonGroup
+                        value={cameraSettings.orientation}
+                        exclusive
+                        onChange={(e, value) => {
+                          if (value !== null) {
+                            handleCameraSettingChange("orientation", value);
+                          }
+                        }}
+                        fullWidth
+                        disabled={loading}
+                        sx={{ mb: 1 }}
+                      >
+                        <ToggleButton value="landscape">
+                          <StayCurrentLandscapeIcon sx={{ mr: 1 }} />
+                          Landscape
+                        </ToggleButton>
+                        <ToggleButton value="portrait">
+                          <StayCurrentPortraitIcon sx={{ mr: 1 }} />
+                          Portrait
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                      <Typography variant="caption" color="text.secondary">
+                        Set camera orientation for optimal frame size
                       </Typography>
                     </Box>
                   </Stack>

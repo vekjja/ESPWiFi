@@ -107,6 +107,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["white_balance"] = 1;
   doc["camera"]["awb_gain"] = 1;
   doc["camera"]["wb_mode"] = 0;
+  doc["camera"]["orientation"] = "landscape";
 #else
   doc["camera"]["installed"] = false;
 #endif

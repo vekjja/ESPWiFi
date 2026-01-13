@@ -42,6 +42,9 @@ function SortablePinModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -75,6 +78,9 @@ function SortableWebSocketModule({ module, onUpdate, onDelete }) {
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -113,6 +119,9 @@ function SortableCameraModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
   };
 
   return (
@@ -155,6 +164,9 @@ function SortableMusicPlayerModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto", // Changed from 100% to auto for better centering
+    boxSizing: "border-box",
   };
 
   return (
@@ -400,9 +412,11 @@ export default function Modules({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              justifyContent: "center",
+              justifyContent: moduleItems.length === 1 ? "center" : "center",
+              alignItems: moduleItems.length === 1 ? "flex-start" : "stretch",
               width: "100%",
               minHeight: "100px",
+              gap: moduleItems.length === 1 ? 0 : "inherit",
             }}
           >
             {moduleItems.map((module) => {

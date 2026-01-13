@@ -41,6 +41,9 @@ export default function Module({
         alignItems: "center",
         position: "relative",
         cursor: "grab",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        overflow: "hidden",
         "&:active": {
           cursor: "grabbing",
         },
@@ -50,6 +53,7 @@ export default function Module({
       <CardContent
         sx={{
           width: "100%",
+          maxWidth: "100%",
           flex: "1 1 auto",
           padding: 0,
           paddingBottom: `${BOTTOM_CONTROLS_HEIGHT}px`,
@@ -59,6 +63,8 @@ export default function Module({
           alignItems: "center",
           justifyContent: "flex-start",
           minHeight: "120px", // Ensure minimum height for all modules
+          overflow: "hidden",
+          boxSizing: "border-box",
         }}
       >
         <Typography variant="body1" align="center">

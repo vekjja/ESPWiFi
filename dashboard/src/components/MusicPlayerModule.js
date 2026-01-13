@@ -20,6 +20,8 @@ import SkipNextIcon from "@mui/icons-material/SkipNext";
 import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
 import QueueMusicIcon from "@mui/icons-material/QueueMusic";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import CastIcon from "@mui/icons-material/Cast";
+import ShareIcon from "@mui/icons-material/Share";
 import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
 import { buildApiUrl } from "../utils/apiUtils";
 import { getAuthToken } from "../utils/authUtils";
@@ -50,6 +52,7 @@ export default function MusicPlayerModule({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(0.7);
+  const [isCasting, setIsCasting] = useState(false);
 
   const isMountedRef = useRef(true);
   const audioRef = useRef(null);
@@ -101,6 +104,19 @@ export default function MusicPlayerModule({
     audio.addEventListener("pause", () => {
       setIsPaused(true);
     });
+
+    // Remote Playback API listeners (for cast status)
+    if ("remote" in audio) {
+      const handleRemoteStateChange = () => {
+        const state = audio.remote.state;
+        setIsCasting(state === "connected");
+        console.log("🎵 Cast state:", state);
+      };
+
+      audio.remote.addEventListener("connect", handleRemoteStateChange);
+      audio.remote.addEventListener("connecting", handleRemoteStateChange);
+      audio.remote.addEventListener("disconnect", handleRemoteStateChange);
+    }
 
     audioRef.current = audio;
 
@@ -301,6 +317,104 @@ export default function MusicPlayerModule({
     if (audioRef.current) {
       audioRef.current.volume = newVolume;
     }
+
+    // Inform user if casting that volume control is on the cast device
+    if (isCasting) {
+      console.log(
+        "🎵 Note: Volume control for cast devices must be adjusted on the device itself"
+      );
+    }
+  };
+
+  // Handle cast to external device (Chromecast, etc.)
+  const handleCast = async () => {
+    if (!audioRef.current || !currentTrack) {
+      alert("Please select and play a track before casting.");
+      return;
+    }
+
+    // Check if Remote Playback API is available
+    if (!("remote" in audioRef.current)) {
+      alert(
+        "Casting is not supported by this browser. Try using Chrome or Edge on desktop."
+      );
+      return;
+    }
+
+    try {
+      const remote = audioRef.current.remote;
+
+      // Check if remote playback is available
+      if (remote.state === "disconnected") {
+        console.log("🎵 Opening cast device picker...");
+        await remote.prompt();
+        console.log("🎵 Cast connected successfully");
+      } else if (remote.state === "connecting") {
+        alert("Cast is connecting, please wait...");
+      } else if (remote.state === "connected") {
+        alert("Already casting! Use your cast device to control playback.");
+      }
+    } catch (error) {
+      console.error("🎵 Cast error:", error);
+
+      // Provide more specific error messages
+      if (error.name === "NotSupportedError") {
+        alert(
+          "This audio format or source is not supported for casting. Try a different track or use the share button to play on another device."
+        );
+      } else if (error.name === "AbortError") {
+        console.log("🎵 Cast selection cancelled by user");
+      } else if (error.name === "InvalidStateError") {
+        alert("Please start playing the track before attempting to cast.");
+      } else if (error.name === "NotAllowedError") {
+        alert("Casting was blocked. Check your browser permissions.");
+      } else {
+        alert(
+          `Unable to cast: ${
+            error.message || "Unknown error"
+          }. The audio source may require authentication that cast devices cannot provide.`
+        );
+      }
+    }
+  };
+
+  // Handle share (copy track URL to clipboard)
+  const handleShare = async () => {
+    if (!currentTrack) return;
+
+    const filePath = `${settingsData.musicDir}/${currentTrack.name}`;
+    const pathSegments = filePath.split("/").filter((s) => s);
+    const encodedPath = pathSegments.map(encodeURIComponent).join("/");
+    const mdnsHostname = globalConfig?.mdns_hostname || "espwifi";
+
+    const fileUrl = buildApiUrl(`/sd/${encodedPath}`, mdnsHostname);
+    const token = getAuthToken();
+    const fullUrl = token ? `${fileUrl}?token=${token}` : fileUrl;
+
+    try {
+      // Try to use Web Share API if available
+      if (navigator.share) {
+        await navigator.share({
+          title: currentTrack.name,
+          text: `Listen to ${currentTrack.name}`,
+          url: fullUrl,
+        });
+        console.log("🎵 Shared successfully");
+      } else {
+        // Fallback to clipboard
+        await navigator.clipboard.writeText(fullUrl);
+        alert("Track URL copied to clipboard!");
+      }
+    } catch (error) {
+      console.error("🎵 Share error:", error);
+      // Final fallback - try clipboard even if share failed
+      try {
+        await navigator.clipboard.writeText(fullUrl);
+        alert("Track URL copied to clipboard!");
+      } catch (clipError) {
+        alert("Unable to share or copy URL");
+      }
+    }
   };
 
   // Handle settings
@@ -400,14 +514,16 @@ export default function MusicPlayerModule({
         settingsTooltip="Settings"
         errorOutline={!deviceOnline && !isPlaying}
         sx={{
-          minWidth: "400px",
-          maxWidth: "500px",
+          width: { xs: "100%", sm: "auto" },
+          minWidth: { xs: "280px", sm: "400px" },
+          maxWidth: { xs: "100%", sm: "500px" },
           minHeight: "auto",
-          maxHeight: "600px",
+          maxHeight: { xs: "90vh", sm: "600px" },
           borderColor: getBorderColor(),
           "& .MuiCardContent-root": {
             minHeight: "auto",
             paddingBottom: "0px !important",
+            padding: { xs: "8px !important", sm: 2 },
           },
         }}
       >
@@ -416,36 +532,55 @@ export default function MusicPlayerModule({
             width: "100%",
             display: "flex",
             flexDirection: "column",
-            gap: 1,
+            gap: { xs: 0.5, sm: 1 },
+            overflow: { xs: "hidden", sm: "visible" },
           }}
         >
           {/* Current track display */}
           <Box
             sx={{
               width: "100%",
-              minHeight: "80px",
+              minHeight: { xs: "50px", sm: "80px" },
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: "rgba(0, 0, 0, 0.2)",
               borderRadius: 1,
-              padding: 2,
+              padding: { xs: "6px", sm: 2 },
               position: "relative",
             }}
           >
             <QueueMusicIcon
-              sx={{ fontSize: 32, color: "primary.main", mb: 1 }}
+              sx={{
+                fontSize: { xs: 20, sm: 32 },
+                color: "primary.main",
+                mb: { xs: 0.25, sm: 1 },
+                display: { xs: "none", sm: "block" },
+              }}
             />
             <Typography
               variant="body2"
               align="center"
-              sx={{ fontWeight: "bold" }}
+              sx={{
+                fontWeight: "bold",
+                fontSize: { xs: "0.7rem", sm: "0.875rem" },
+                px: { xs: 0.5, sm: 1 },
+                lineHeight: { xs: 1.2, sm: 1.5 },
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
               {currentTrack ? currentTrack.name : "No track selected"}
             </Typography>
             {isPlaying && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: { xs: "0.6rem", sm: "0.75rem" } }}
+              >
                 {isPaused ? "Paused" : "Playing"} • {formatTime(currentTime)} /{" "}
                 {formatTime(duration)}
               </Typography>
@@ -456,7 +591,7 @@ export default function MusicPlayerModule({
               <LinearProgress
                 variant="determinate"
                 value={progress}
-                sx={{ width: "100%", mt: 1 }}
+                sx={{ width: "100%", mt: { xs: 0.5, sm: 1 } }}
               />
             )}
 
@@ -464,10 +599,10 @@ export default function MusicPlayerModule({
             <Box
               sx={{
                 position: "absolute",
-                top: 8,
-                right: 8,
-                width: 8,
-                height: 8,
+                top: { xs: 4, sm: 8 },
+                right: { xs: 4, sm: 8 },
+                width: { xs: 6, sm: 8 },
+                height: { xs: 6, sm: 8 },
                 borderRadius: "50%",
                 backgroundColor: !deviceOnline
                   ? "error.main"
@@ -484,12 +619,56 @@ export default function MusicPlayerModule({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 1,
-              padding: 1,
+              flexWrap: { xs: "nowrap", sm: "nowrap" },
+              gap: { xs: 0.25, sm: 1 },
+              padding: { xs: "4px", sm: 1 },
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
+              overflow: "hidden",
             }}
           >
+            <Tooltip
+              title={
+                isCasting ? "Casting (click to disconnect)" : "Cast to Device"
+              }
+            >
+              <span>
+                <IconButton
+                  onClick={handleCast}
+                  disabled={!currentTrack}
+                  size="small"
+                  sx={{
+                    color: !currentTrack
+                      ? "text.disabled"
+                      : isCasting
+                      ? "success.main"
+                      : "primary.main",
+                    padding: { xs: "4px", sm: 1 },
+                    minWidth: 0,
+                  }}
+                >
+                  <CastIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Tooltip title="Share Track">
+              <span>
+                <IconButton
+                  onClick={handleShare}
+                  disabled={!currentTrack}
+                  size="small"
+                  sx={{
+                    color: !currentTrack ? "text.disabled" : "primary.main",
+                    padding: { xs: "4px", sm: 1 },
+                    minWidth: 0,
+                  }}
+                >
+                  <ShareIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+
             <Tooltip
               title={!deviceOnline ? "Device Offline" : "Previous Track"}
             >
@@ -497,14 +676,17 @@ export default function MusicPlayerModule({
                 <IconButton
                   onClick={handleSkipPrevious}
                   disabled={musicFiles.length === 0 || !currentTrack}
+                  size="small"
                   sx={{
                     color:
                       musicFiles.length === 0 || !currentTrack
                         ? "text.disabled"
                         : "primary.main",
+                    padding: { xs: "4px", sm: 1 },
+                    minWidth: 0,
                   }}
                 >
-                  <SkipPreviousIcon />
+                  <SkipPreviousIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -519,13 +701,14 @@ export default function MusicPlayerModule({
                       musicFiles.length === 0
                         ? "text.disabled"
                         : "primary.main",
-                    fontSize: 40,
+                    padding: { xs: "6px", sm: 1 },
+                    minWidth: 0,
                   }}
                 >
                   {isPlaying && !isPaused ? (
-                    <PauseIcon fontSize="large" />
+                    <PauseIcon sx={{ fontSize: { xs: 28, sm: 40 } }} />
                   ) : (
-                    <PlayArrowIcon fontSize="large" />
+                    <PlayArrowIcon sx={{ fontSize: { xs: 28, sm: 40 } }} />
                   )}
                 </IconButton>
               </span>
@@ -536,11 +719,14 @@ export default function MusicPlayerModule({
                 <IconButton
                   onClick={handleStop}
                   disabled={!isPlaying}
+                  size="small"
                   sx={{
                     color: !isPlaying ? "text.disabled" : "error.main",
+                    padding: { xs: "4px", sm: 1 },
+                    minWidth: 0,
                   }}
                 >
-                  <StopIcon />
+                  <StopIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -550,14 +736,17 @@ export default function MusicPlayerModule({
                 <IconButton
                   onClick={handleSkipNext}
                   disabled={musicFiles.length === 0 || !currentTrack}
+                  size="small"
                   sx={{
                     color:
                       musicFiles.length === 0 || !currentTrack
                         ? "text.disabled"
                         : "primary.main",
+                    padding: { xs: "4px", sm: 1 },
+                    minWidth: 0,
                   }}
                 >
-                  <SkipNextIcon />
+                  <SkipNextIcon sx={{ fontSize: { xs: 18, sm: 24 } }} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -568,34 +757,57 @@ export default function MusicPlayerModule({
             sx={{
               display: "flex",
               alignItems: "center",
-              gap: 1,
-              padding: 1,
-              paddingLeft: 2,
-              paddingRight: 2,
+              gap: { xs: 0.5, sm: 1 },
+              padding: { xs: "4px 8px", sm: 1 },
+              paddingLeft: { xs: 1, sm: 2 },
+              paddingRight: { xs: 1, sm: 2 },
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
+              position: "relative",
             }}
           >
-            <VolumeUpIcon sx={{ color: "primary.main", fontSize: 20 }} />
+            <Tooltip
+              title={isCasting ? "Cast device controls volume" : "Volume"}
+            >
+              <VolumeUpIcon
+                sx={{
+                  color: isCasting ? "text.disabled" : "primary.main",
+                  fontSize: { xs: 14, sm: 20 },
+                }}
+              />
+            </Tooltip>
             <Slider
               value={volume * 100}
               onChange={handleVolumeChange}
+              disabled={isCasting}
               min={0}
               max={100}
               step={1}
               sx={{
                 flex: 1,
+                opacity: isCasting ? 0.5 : 1,
                 "& .MuiSlider-thumb": {
-                  width: 12,
-                  height: 12,
+                  width: { xs: 8, sm: 12 },
+                  height: { xs: 8, sm: 12 },
+                },
+                "& .MuiSlider-track": {
+                  height: { xs: 2, sm: 3 },
+                },
+                "& .MuiSlider-rail": {
+                  height: { xs: 2, sm: 3 },
                 },
               }}
             />
             <Typography
               variant="caption"
-              sx={{ minWidth: 35, textAlign: "right" }}
+              sx={{
+                minWidth: { xs: 28, sm: 35 },
+                textAlign: "right",
+                fontSize: { xs: "0.6rem", sm: "0.75rem" },
+                opacity: isCasting ? 0.5 : 1,
+              }}
             >
-              {Math.round(volume * 100)}%
+              {isCasting ? "N/A" : `${Math.round(volume * 100)}%`}
             </Typography>
           </Box>
 
@@ -603,7 +815,8 @@ export default function MusicPlayerModule({
           <Box
             sx={{
               width: "100%",
-              maxHeight: "300px",
+              maxWidth: "100%",
+              maxHeight: { xs: "200px", sm: "300px" },
               overflow: "auto",
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
@@ -615,38 +828,64 @@ export default function MusicPlayerModule({
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  padding: 4,
+                  padding: { xs: 1.5, sm: 4 },
                 }}
               >
-                <CircularProgress size={24} />
+                <CircularProgress size={20} />
               </Box>
             ) : musicFiles.length === 0 ? (
-              <Box sx={{ padding: 2, textAlign: "center" }}>
-                <Typography variant="body2" color="text.secondary">
+              <Box sx={{ padding: { xs: 1, sm: 2 }, textAlign: "center" }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontSize: { xs: "0.7rem", sm: "0.875rem" } }}
+                >
                   No music files found in {config?.musicDir || "/music"}
                 </Typography>
               </Box>
             ) : (
-              <List dense>
+              <List dense sx={{ py: { xs: 0, sm: 1 }, width: "100%" }}>
                 {musicFiles.map((file, index) => (
-                  <ListItem key={index} disablePadding>
+                  <ListItem key={index} disablePadding sx={{ width: "100%" }}>
                     <ListItemButton
                       selected={currentTrackIndex === index}
                       onClick={() => handleSelectTrack(file, index)}
+                      sx={{
+                        py: { xs: "4px", sm: 1 },
+                        px: { xs: 1, sm: 2 },
+                        minHeight: { xs: 36, sm: 48 },
+                        width: "100%",
+                        overflow: "hidden",
+                      }}
                     >
                       <ListItemText
                         primary={file.name}
                         secondary={formatFileSize(file.size)}
+                        sx={{
+                          overflow: "hidden",
+                          width: "100%",
+                          flex: "1 1 auto",
+                        }}
                         primaryTypographyProps={{
                           sx: {
-                            fontSize: "0.875rem",
+                            fontSize: { xs: "0.7rem", sm: "0.875rem" },
+                            lineHeight: { xs: 1.2, sm: 1.5 },
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            display: "block",
+                            width: "100%",
                           },
                         }}
                         secondaryTypographyProps={{
-                          sx: { fontSize: "0.75rem" },
+                          sx: {
+                            fontSize: { xs: "0.6rem", sm: "0.75rem" },
+                            lineHeight: { xs: 1.2, sm: 1.5 },
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            display: "block",
+                          },
                         }}
                       />
                     </ListItemButton>

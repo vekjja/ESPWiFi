@@ -36,6 +36,7 @@ private:
   static constexpr size_t kMaxClients = 8;
   int clientFds_[kMaxClients] = {0};
   size_t clientCount_ = 0;
+  size_t maxClients_ = kMaxClients; // Per-endpoint client limit
 
   size_t maxMessageLen_ = 1024;
   size_t maxBroadcastLen_ = 8192;
@@ -68,11 +69,12 @@ public:
   // - server: ESP-IDF httpd handle
   // - userCtx: User context passed to callbacks
   // - authCheck: Optional auth function (nullptr = no auth)
+  // - maxClients: Maximum clients allowed (default: 8, use 1 for single-client)
   bool begin(const char *uri, httpd_handle_t server, void *userCtx,
              OnMessageCb onMessage = nullptr, OnConnectCb onConnect = nullptr,
              OnDisconnectCb onDisconnect = nullptr, size_t maxMessageLen = 1024,
              size_t maxBroadcastLen = 8192, bool requireAuth = false,
-             AuthCheckFn authCheck = nullptr);
+             AuthCheckFn authCheck = nullptr, size_t maxClients = 8);
 
   operator bool() const { return started_; }
 

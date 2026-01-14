@@ -13,11 +13,12 @@
 static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                           const uint8_t *data, size_t len, void *userCtx) {
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
+  // Validate inputs
   if (!ws || !espwifi || !data || len == 0) {
     return;
   }
   if (type != HTTPD_WS_TYPE_TEXT) {
-    // Keep control socket simple: accept text JSON only.
+    // Keep control socket simple: accept text JSON only (hardened)
     return;
   }
 
@@ -268,6 +269,7 @@ static void ctrlOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
   if (!ws || !espwifi)
     return;
+
   JsonDocument hello;
   hello["type"] = "hello";
   hello["ok"] = true;
@@ -315,14 +317,16 @@ void ESPWiFi::startControlWebSocket() {
   if (ctrlSocStarted)
     return;
 
-  ctrlSocStarted = ctrlSoc.begin("/ws/control", webServer, this,
-                                 /*onMessage*/ ctrlOnMessage,
-                                 /*onConnect*/ ctrlOnConnect,
-                                 /*onDisconnect*/ ctrlOnDisconnect,
-                                 /*maxMessageLen*/ 2048,
-                                 /*maxBroadcastLen*/ 160 * 1024,
-                                 /*requireAuth*/ false,
-                                 /*authCheck*/ wsAuthCheck);
+  ctrlSocStarted = ctrlSoc.begin(
+      "/ws/control", webServer, this,
+      /*onMessage*/ ctrlOnMessage,
+      /*onConnect*/ ctrlOnConnect,
+      /*onDisconnect*/ ctrlOnDisconnect,
+      /*maxMessageLen*/ 2048,
+      /*maxBroadcastLen*/ 160 * 1024,
+      /*requireAuth*/ true, // Enforce auth for control socket (hardening)
+      /*authCheck*/ wsAuthCheck);
+  // maxClients defaults to 8, allowing multiple clients
   if (!ctrlSocStarted) {
     log(ERROR, "🎛️ Control WebSocket failed to start");
     return;

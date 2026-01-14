@@ -485,8 +485,8 @@ function App() {
             return;
           }
 
-          console.log("[App] Scheduling reconnect in 2 seconds...");
-          controlRetryRef.current = setTimeout(connect, 2000);
+          console.log("[App] Scheduling reconnect...");
+          controlRetryRef.current = setTimeout(connect, 600);
         };
       } catch {
         setControlConnected(false);

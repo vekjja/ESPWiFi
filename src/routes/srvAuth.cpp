@@ -7,41 +7,13 @@ void ESPWiFi::srvAuth() {
   // Login endpoint - no auth required
   registerRoute(
       "/api/auth/login", HTTP_POST,
-      [](ESPWiFi *espwifi, httpd_req_t *req,
-         const std::string &clientInfo) -> esp_err_t {
-        // Read request body
-        size_t content_len = req->content_len;
-        if (content_len > 512) {
-          httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE,
-                              "Request body too large");
-          return ESP_FAIL;
-        }
-
-        char *content = (char *)malloc(content_len + 1);
-        if (content == nullptr) {
-          httpd_resp_send_500(req);
-          return ESP_FAIL;
-        }
-
-        int ret = httpd_req_recv(req, content, content_len);
-        if (ret <= 0) {
-          free(content);
-          if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            httpd_resp_send_408(req);
-          }
-          return ESP_FAIL;
-        }
-
-        content[content_len] = '\0';
-        std::string json_body(content);
-        free(content);
-
+      [this](PsychicRequest *request) -> esp_err_t {
         // Parse JSON request body
+        String body = request->body();
         JsonDocument reqJson;
-        DeserializationError error = deserializeJson(reqJson, json_body);
+        DeserializationError error = deserializeJson(reqJson, body.c_str());
         if (error) {
-          (void)espwifi->sendJsonResponse(
-              req, 400, "{\"error\":\"Invalid JSON\"}", &clientInfo);
+          sendJsonResponse(request, 400, "{\"error\":\"Invalid JSON\"}");
           return ESP_OK;
         }
 
@@ -49,55 +21,50 @@ void ESPWiFi::srvAuth() {
         std::string password = reqJson["password"].as<std::string>();
 
         // Check if auth is enabled
-        if (!espwifi->authEnabled()) {
-          (void)espwifi->sendJsonResponse(
-              req, 200, "{\"token\":\"\",\"message\":\"Auth disabled\"}",
-              &clientInfo);
+        if (!authEnabled()) {
+          sendJsonResponse(request, 200,
+                           "{\"token\":\"\",\"message\":\"Auth disabled\"}");
           return ESP_OK;
         }
 
         // Verify username
         std::string expectedUsername =
-            espwifi->config["auth"]["username"].as<std::string>();
+            config["auth"]["username"].as<std::string>();
         if (username != expectedUsername) {
-          (void)espwifi->sendJsonResponse(
-              req, 401, "{\"error\":\"Invalid Credentials\"}", &clientInfo);
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
           return ESP_OK;
         }
 
-        // Verify password - check if password matches OR expectedPassword is
-        // empty
+        // Verify password
         std::string expectedPassword =
-            espwifi->config["auth"]["password"].as<std::string>();
+            config["auth"]["password"].as<std::string>();
         if (password != expectedPassword && expectedPassword.length() > 0) {
-          (void)espwifi->sendJsonResponse(
-              req, 401, "{\"error\":\"Invalid Credentials\"}", &clientInfo);
+          sendJsonResponse(request, 401, "{\"error\":\"Invalid Credentials\"}");
           return ESP_OK;
         }
 
         // Generate or get existing token
-        std::string token = espwifi->config["auth"]["token"].as<std::string>();
+        std::string token = config["auth"]["token"].as<std::string>();
         if (token.length() == 0) {
-          token = espwifi->generateToken();
-          espwifi->config["auth"]["token"] = token;
-          espwifi->saveConfig();
+          token = generateToken();
+          config["auth"]["token"] = token;
+          saveConfig();
         }
 
         std::string response = "{\"token\":\"" + token + "\"}";
-        (void)espwifi->sendJsonResponse(req, 200, response, &clientInfo);
+        sendJsonResponse(request, 200, response);
         return ESP_OK;
       });
 
   // Logout endpoint - invalidates token
   registerRoute("/api/auth/logout", HTTP_POST,
-                [](ESPWiFi *espwifi, httpd_req_t *req,
-                   const std::string &clientInfo) -> esp_err_t {
+                [this](PsychicRequest *request) -> esp_err_t {
                   // Invalidate token by generating a new one
-                  std::string newToken = espwifi->generateToken();
-                  espwifi->config["auth"]["token"] = newToken;
-                  espwifi->saveConfig();
-                  (void)espwifi->sendJsonResponse(
-                      req, 200, "{\"message\":\"Logged out\"}", &clientInfo);
+                  std::string newToken = generateToken();
+                  config["auth"]["token"] = newToken;
+                  saveConfig();
+                  sendJsonResponse(request, 200,
+                                   "{\"message\":\"Logged out\"}");
                   return ESP_OK;
                 });
 }

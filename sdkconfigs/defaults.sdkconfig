@@ -23,6 +23,10 @@ CONFIG_SECURE_ROM_DL_MODE_ENABLED=y
 
 
 # -----------------------------------------------------------------------------
+# FreeRTOS tick rate (required by esp32-arduino)
+# esp32-arduino requires CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_HZ=1000
+
 # System event task (ESP-IDF)
 # -----------------------------------------------------------------------------
 #
@@ -69,6 +73,8 @@ CONFIG_HTTPD_WS_SUPPORT=y
 # during high log volume (DHCP, sockets, etc).
 CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
 
-# TLS certificate bundle (required for wss:// cloud tunnel)
+# TLS certificate bundle (required by Arduino NetworkClientSecure library)
+# Use default CA bundle instead of full to avoid build generation issues
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CA=y
+# CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL is not set

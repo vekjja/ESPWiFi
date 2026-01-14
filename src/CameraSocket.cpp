@@ -3,58 +3,21 @@
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
 
-static void camOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!ws || !espwifi) {
-    return;
-  }
-
-  espwifi->log(INFO, "📷 LAN client connected to /ws/camera (fd=%d)", clientFd);
-
-#if ESPWiFi_HAS_CAMERA
-  // Auto-subscribe on connect
-  espwifi->setCameraStreamSubscribed(clientFd, true);
-  espwifi->log(DEBUG, "📷 LAN client auto-subscribed (fd=%d)", clientFd);
-#endif
-}
-
-static void camOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
-  (void)ws;
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!espwifi) {
-    return;
-  }
-
-  espwifi->log(INFO, "📷 LAN client disconnected from /ws/camera (fd=%d)",
-               clientFd);
-
-#if ESPWiFi_HAS_CAMERA
-  espwifi->clearCameraStreamSubscribed(clientFd);
-#endif
-}
-
-static void camOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
-                         const uint8_t *data, size_t len, void *userCtx) {
-  // Camera socket is binary-only, no messages expected
-  (void)ws;
-  (void)clientFd;
-  (void)type;
-  (void)data;
-  (void)len;
-  (void)userCtx;
-}
-
 // Auth check helper for WebSocket
-static bool wsAuthCheck(httpd_req_t *req, void *userCtx) {
-  ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
-  if (!espwifi || !espwifi->authEnabled() ||
-      espwifi->isExcludedPath(req->uri)) {
+static bool wsAuthCheck(PsychicRequest *request, ESPWiFi *espwifi) {
+  if (!espwifi || !espwifi->authEnabled()) {
     return true;
   }
 
-  bool ok = espwifi->authorized(req);
+  String uri = request->uri();
+  if (espwifi->isExcludedPath(uri.c_str())) {
+    return true;
+  }
+
+  bool ok = espwifi->authorized(request);
   if (!ok) {
-    const std::string tok = espwifi->getQueryParam(req, "token");
+    const std::string tok =
+        espwifi->getQueryParam(request, std::string("token"));
     const char *expectedC = espwifi->config["auth"]["token"].as<const char *>();
     const std::string expected = (expectedC != nullptr) ? expectedC : "";
     ok = (!tok.empty() && !expected.empty() && tok == expected);
@@ -69,23 +32,50 @@ void ESPWiFi::startCameraWebSocket() {
   return;
 #else
 #if ESPWiFi_HAS_CAMERA
-  if (cameraSocStarted) {
+  if (cameraSocStarted || !webServer) {
     return;
   }
 
-  cameraSocStarted = cameraSoc.begin("/ws/camera", webServer, this,
-                                     /*onMessage*/ camOnMessage,
-                                     /*onConnect*/ camOnConnect,
-                                     /*onDisconnect*/ camOnDisconnect,
-                                     /*maxMessageLen*/ 0,
-                                     /*maxBroadcastLen*/ 200 * 1024,
-                                     /*requireAuth*/ false,
-                                     /*authCheck*/ wsAuthCheck);
-  if (!cameraSocStarted) {
-    log(ERROR, "📷 Camera WebSocket failed to start");
+  // Create WebSocket handler using PsychicHttp
+  cameraSoc = new PsychicWebSocketHandler();
+
+  // Set handlers
+  ESPWiFi *self = this;
+  cameraSoc->onOpen([self](PsychicWebSocketClient *client) {
+    if (self) {
+      self->log(INFO, "📷 Camera client connected");
+    }
+  });
+
+  cameraSoc->onClose([self](PsychicWebSocketClient *client) {
+    if (self) {
+      self->log(INFO, "📷 Camera client disconnected");
+    }
+  });
+
+  cameraSoc->onFrame(
+      [](PsychicWebSocketRequest *request, httpd_ws_frame *frame) -> esp_err_t {
+        // Camera socket is binary-only, no messages expected
+        (void)request;
+        (void)frame;
+        return ESP_OK;
+      });
+
+  // Set authentication filter
+  cameraSoc->addFilter([self](PsychicRequest *request) -> bool {
+    return wsAuthCheck(request, self);
+  });
+
+  // Register endpoint with PsychicHttp server
+  PsychicEndpoint *endpoint = webServer->on("/ws/camera", cameraSoc);
+  if (endpoint == nullptr) {
+    log(ERROR, "📷 Camera WebSocket failed to register");
+    delete cameraSoc;
+    cameraSoc = nullptr;
     return;
   }
 
+  cameraSocStarted = true;
   log(INFO, "📷 Camera WebSocket started: /ws/camera");
 #endif
 #endif

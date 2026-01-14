@@ -16,7 +16,7 @@ inline int hexNibble(char c) {
   return -1;
 }
 
-std::string urlDecode(const char *in) {
+std::string urlDecodeImpl(const char *in) {
   if (in == nullptr) {
     return std::string();
   }
@@ -121,7 +121,22 @@ bool ESPWiFi::mkDir(const std::string &fullPath) {
   return dirExists(fullPath);
 }
 
+std::string ESPWiFi::getQueryParam(PsychicRequest *request,
+                                   const std::string &key) {
+  if (request == nullptr || key.empty()) {
+    return std::string();
+  }
+  PsychicWebParameter *param = request->getParam(key.c_str());
+  if (param != nullptr) {
+    return std::string(param->value().c_str());
+  }
+  return std::string();
+}
+
 std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
+  if (req == nullptr || key == nullptr) {
+    return std::string();
+  }
   size_t buf_len = httpd_req_get_url_query_len(req) + 1;
   if (buf_len > 1) {
     char *buf = (char *)malloc(buf_len);
@@ -132,7 +147,7 @@ std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
         // longer but should still fit under max_uri_len.
         char value[256];
         if (httpd_query_key_value(buf, key, value, sizeof(value)) == ESP_OK) {
-          std::string result = urlDecode(value);
+          std::string result = urlDecodeImpl(value);
           free(buf);
           return result;
         }
@@ -144,7 +159,8 @@ std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
 }
 
 std::string ESPWiFi::urlDecode(const std::string &encoded) {
-  return ::urlDecode(encoded.c_str());
+  // Call the anonymous namespace function directly (same translation unit)
+  return urlDecodeImpl(encoded.c_str());
 }
 
 std::string ESPWiFi::getContentType(std::string filename) {

@@ -559,66 +559,8 @@ void ESPWiFi::updateCameraSettings() {
   printCameraSettings();
 }
 
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
-  if (clientFd <= 0) {
-    return;
-  }
-
-  // Remove if disabling
-  if (!enable) {
-    for (size_t i = 0; i < (size_t)cameraStreamSubCount_;) {
-      if (cameraStreamSubFds_[i] == clientFd) {
-        // swap-remove
-        const size_t last = (size_t)cameraStreamSubCount_ - 1;
-        cameraStreamSubFds_[i] = cameraStreamSubFds_[last];
-        cameraStreamSubFds_[last] = 0;
-        cameraStreamSubCount_ = (size_t)cameraStreamSubCount_ - 1;
-        continue;
-      }
-      i++;
-    }
-    return;
-  }
-
-  // Add if not present
-  for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
-    if (cameraStreamSubFds_[i] == clientFd) {
-      return; // Already subscribed
-    }
-  }
-
-  if ((size_t)cameraStreamSubCount_ >= kMaxCameraStreamSubscribers) {
-    log(WARNING, "📷 Camera stream subscriber limit reached; ignoring fd=%d",
-        clientFd);
-    return;
-  }
-
-  const size_t idx = (size_t)cameraStreamSubCount_;
-  cameraStreamSubFds_[idx] = clientFd;
-  cameraStreamSubCount_ = idx + 1;
-}
-
-void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
-  // Check if already unsubscribed to prevent double-cleanup
-  bool found = false;
-
-  if (clientFd > 0) {
-    for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
-      if (cameraStreamSubFds_[i] == clientFd) {
-        found = true;
-        break;
-      }
-    }
-  }
-
-  if (!found) {
-    return; // Already cleaned up
-  }
-
-  setCameraStreamSubscribed(clientFd, false);
-}
-#endif
+// Camera subscriber tracking removed - PsychicHttp manages connections
+// automatically
 
 // ============================================================================
 // Snapshot Helper (shared by HTTP and WebSocket)
@@ -735,9 +677,8 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
  * @note Returns 500 if frame capture fails
  * @note Chunks response to stay watchdog-safe [[memory:12698303]]
  */
-esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
-                                      const std::string &clientInfo) {
-  if (req == nullptr) {
+esp_err_t ESPWiFi::sendCameraSnapshot(PsychicRequest *request) {
+  if (request == nullptr) {
     log(ERROR, "📷 sendCameraSnapshot called with null request");
     return ESP_ERR_INVALID_ARG;
   }
@@ -745,8 +686,8 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   // Check camera availability
   if (camera == nullptr) {
     log(WARNING, "📷 Snapshot request but camera not initialized");
-    return sendJsonResponse(req, 503, "{\"error\":\"Camera not available\"}",
-                            &clientInfo);
+    return sendJsonResponse(request, 503,
+                            "{\"error\":\"Camera not available\"}");
   }
 
   camera_fb_t *fb = esp_camera_fb_get();
@@ -754,75 +695,76 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   // Validate frame capture
   if (!fb) {
     log(ERROR, "📷 Frame capture failed for snapshot");
-    return sendJsonResponse(req, 500, "{\"error\":\"Capture failed\"}",
-                            &clientInfo);
+    return sendJsonResponse(request, 500, "{\"error\":\"Capture failed\"}");
   }
 
   if (fb->format != PIXFORMAT_JPEG || fb->buf == nullptr || fb->len == 0) {
     log(ERROR, "📷 Invalid frame captured: format=%d, buf=%p, len=%zu",
         fb->format, fb->buf, fb->len);
     esp_camera_fb_return(fb);
-    return sendJsonResponse(req, 500, "{\"error\":\"Invalid frame\"}",
-                            &clientInfo);
+    return sendJsonResponse(request, 500, "{\"error\":\"Invalid frame\"}");
   }
 
   log(INFO, "📷 Sending snapshot: %zu bytes", fb->len);
 
   // Check if we should save to SD card
-  char query[128];
-  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
-    char saveParam[8];
-    if (httpd_query_key_value(query, "save", saveParam, sizeof(saveParam)) ==
-        ESP_OK) {
-      if (strcmp(saveParam, "true") == 0 || strcmp(saveParam, "1") == 0) {
-        // Save snapshot to SD card if available
-        if (checkSDCard()) {
-          // Create /snapshots directory if it doesn't exist
-          char snapDir[128];
-          snprintf(snapDir, sizeof(snapDir), "%s/snapshots",
-                   sdMountPoint.c_str());
+  std::string saveParam = getQueryParam(request, "save");
+  if (!saveParam.empty() && (saveParam == "true" || saveParam == "1")) {
+    // Save snapshot to SD card if available
+    if (checkSDCard()) {
+      // Create /snapshots directory if it doesn't exist
+      char snapDir[128];
+      snprintf(snapDir, sizeof(snapDir), "%s/snapshots", sdMountPoint.c_str());
 
-          int mkdirResult = mkdir(snapDir, 0755);
-          if (mkdirResult != 0 && errno != EEXIST) {
-            log(ERROR, "📷 Failed to create snapshots directory: %s (errno=%d)",
-                snapDir, errno);
-          } else if (mkdirResult == 0) {
-            log(INFO, "📷 Created snapshots directory: %s", snapDir);
-          }
-
-          // Generate filename using milliseconds since boot
-          unsigned long timestamp = millis();
-          char filename[128];
-          snprintf(filename, sizeof(filename), "%s/snapshots/%lu.jpg",
-                   sdMountPoint.c_str(), timestamp);
-
-          // Write snapshot to file
-          FILE *file = fopen(filename, "wb");
-          if (file) {
-            size_t written = fwrite(fb->buf, 1, fb->len, file);
-            fclose(file);
-            if (written == fb->len) {
-              log(INFO, "📸 Snapshot saved to SD: %s (%zu bytes)", filename,
-                  fb->len);
-            } else {
-              log(ERROR, "📸 Failed to Write Snapshot: %zu/%zu bytes", written,
-                  fb->len);
-            }
-          } else {
-            log(ERROR, "📸 Failed to Open File for Snapshot: %s (errno=%d)",
-                filename, errno);
-          }
-        } else {
-          log(WARNING, "📸 Snapshot save requested but SD card not available");
-        }
+      int mkdirResult = mkdir(snapDir, 0755);
+      if (mkdirResult != 0 && errno != EEXIST) {
+        log(ERROR, "📷 Failed to create snapshots directory: %s (errno=%d)",
+            snapDir, errno);
+      } else if (mkdirResult == 0) {
+        log(INFO, "📷 Created snapshots directory: %s", snapDir);
       }
+
+      // Generate filename using milliseconds since boot
+      unsigned long timestamp = millis();
+      char filename[128];
+      snprintf(filename, sizeof(filename), "%s/snapshots/%lu.jpg",
+               sdMountPoint.c_str(), timestamp);
+
+      // Write snapshot to file
+      FILE *file = fopen(filename, "wb");
+      if (file) {
+        size_t written = fwrite(fb->buf, 1, fb->len, file);
+        fclose(file);
+        if (written == fb->len) {
+          log(INFO, "📸 Snapshot saved to SD: %s (%zu bytes)", filename,
+              fb->len);
+        } else {
+          log(ERROR, "📸 Failed to Write Snapshot: %zu/%zu bytes", written,
+              fb->len);
+        }
+      } else {
+        log(ERROR, "📸 Failed to Open File for Snapshot: %s (errno=%d)",
+            filename, errno);
+      }
+    } else {
+      log(WARNING, "📸 Snapshot save requested but SD card not available");
     }
+  }
+
+  // Get underlying httpd_req_t for chunked response
+  httpd_req_t *req = request->request();
+  if (req == nullptr) {
+    esp_camera_fb_return(fb);
+    return ESP_ERR_INVALID_ARG;
   }
 
   // Set response headers
   httpd_resp_set_type(req, "image/jpeg");
   // Prevent browser caching of old frames
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+
+  // Get client info for logging
+  std::string clientInfo = getClientInfo(request);
 
   // Chunk send to keep watchdog-safe (8KB chunks)
   const size_t CHUNK = 8192;
@@ -934,39 +876,38 @@ void ESPWiFi::streamCamera() {
 #if !defined(CONFIG_HTTPD_WS_SUPPORT) || !ESPWiFi_HAS_CAMERA
   return;
 #else
-  if (!cameraSocStarted) {
+  if (!cameraSocStarted || cameraSoc == nullptr) {
     return;
   }
 
-  // Check for subscribers (LAN + Cloud UI)
-  // UI controls camera start/stop via WebSocket subscription
-  const size_t lanSubs = (size_t)cameraStreamSubCount_;
-  const bool cloudUiConnected =
-      cloudMedia.isConnected() && cloudMedia.isRegistered();
+  // Get all connections from PsychicHttp handler
+  const std::list<PsychicClient *> &clients = cameraSoc->getClientList();
+  const bool hasLanClients = !clients.empty();
 
-  // If no subscribers, deinit camera and return
-  if (lanSubs == 0 && !cloudUiConnected) {
+  // If no subscribers, deinit camera
+  if (!hasLanClients) {
     if (camera != nullptr) {
       deinitCamera();
     }
     return;
   }
 
-  // Initialize camera if needed (only when we have subscribers)
+  // Initialize camera if needed
   if (camera == nullptr) {
     if (!initCamera()) {
       return;
     }
   }
 
+  // Rate limit to 30 FPS
   static IntervalTimer frameTimer(1000);
-  frameTimer.setIntervalMs((uint32_t)(1000 / 30)); // 30 FPS
+  frameTimer.setIntervalMs((uint32_t)(1000 / 30));
   if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
     return;
   }
 
+  // Capture frame
   camera_fb_t *fb = esp_camera_fb_get();
-
   if (!fb || fb->format != PIXFORMAT_JPEG || !fb->buf || fb->len == 0) {
     if (fb) {
       esp_camera_fb_return(fb);
@@ -974,18 +915,14 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  // Send to all LAN subscribers
-  for (size_t i = 0; i < lanSubs; i++) {
-    int fd = cameraStreamSubFds_[i];
-    if (fd > 0) {
-      cameraSoc.sendBinary(fd, fb->buf, fb->len);
+  // Send to all LAN clients using PsychicHttp
+  for (auto *client : clients) {
+    if (client != nullptr) {
+      PsychicWebSocketClient *wsClient = cameraSoc->getClient(client);
+      if (wsClient != nullptr) {
+        wsClient->sendMessage(HTTPD_WS_TYPE_BINARY, fb->buf, fb->len);
+      }
     }
-  }
-
-  // Send to cloud tunnel if UI is connected via cloud and registered
-  // (Cloud media tunnel only sends when there's an active UI connection)
-  if (cloudMedia.isConnected() && cloudMedia.isRegistered()) {
-    cloudMedia.sendBinary(fb->buf, fb->len);
   }
 
   esp_camera_fb_return(fb);

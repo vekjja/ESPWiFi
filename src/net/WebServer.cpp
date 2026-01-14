@@ -1,4 +1,4 @@
-// WebServer.cpp - ESP-IDF HTTP Server Implementation
+// WebServer.cpp - PsychicHttp Server Implementation
 #include "ESPWiFi.h"
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
@@ -14,6 +14,8 @@
 #include <errno.h>
 #include <string>
 #include <sys/stat.h>
+
+#include "PsychicHttp.h"
 
 // ESP-IDF includes the full request URI (including "?query") in req->uri.
 // Route matching must ignore the query string, otherwise "/api/foo" will not
@@ -33,14 +35,6 @@ static bool uri_match_no_query(const char *uri, const char *uri_template,
   pathOnly[i] = '\0';
 
   return httpd_uri_match_wildcard(pathOnly, uri_template, tpl_len);
-}
-
-static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
-                                  const std::string &clientInfo) {
-  (void)espwifi;
-  (void)req;
-  (void)clientInfo;
-  return ESP_OK;
 }
 
 bool ESPWiFi::setTlsServerCredentials(const char *certPem, size_t certPemLen,
@@ -120,78 +114,58 @@ void ESPWiFi::startWebServer() {
     return;
   }
 
-  // Configure base HTTPD server options (shared by HTTP and HTTPS)
-  httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
-  httpd_config.max_uri_len = 512;
-  httpd_config.max_open_sockets = 7;
-  httpd_config.max_uri_handlers = 32;
-  httpd_config.lru_purge_enable = true;
-  httpd_config.uri_match_fn =
-      &uri_match_no_query; // wildcard matching (path-only)
-  // HTTP server runs in its own task; stack is a common "heap killer" if set
-  // too big. 4096 is default in IDF; bump only if you see stack overflows
-  // during handlers.
-  httpd_config.stack_size = 8192;
-
   // Prefer HTTPS when TLS credentials are available on LittleFS.
   tlsServerEnabled_ = false;
   webServerPort_ = 80;
 
-  esp_err_t ret = ESP_FAIL;
   const bool haveTls = loadTlsCredentialsFromLfs(this);
   if (haveTls) {
-    httpd_ssl_config_t ssl_conf = HTTPD_SSL_CONFIG_DEFAULT();
-    ssl_conf.httpd = httpd_config;
-    ssl_conf.httpd.server_port = 443;
-
-    // IMPORTANT: these buffers must remain valid for server lifetime.
-    ssl_conf.servercert = (const unsigned char *)tlsServerCertPem_.c_str();
-    ssl_conf.servercert_len = tlsServerCertPem_.size() + 1;
-    ssl_conf.prvtkey_pem = (const unsigned char *)tlsServerKeyPem_.c_str();
-    ssl_conf.prvtkey_len = tlsServerKeyPem_.size() + 1;
-
-    ret = httpd_ssl_start(&webServer, &ssl_conf);
-    if (ret == ESP_OK) {
-      tlsServerEnabled_ = true;
-      webServerPort_ = 443;
-    } else {
-      log(ERROR, "❌ Failed to start HTTPS server: %s", esp_err_to_name(ret));
-      // Clear cert/key to free RAM if HTTPS fails.
-      clearTlsServerCredentials();
-    }
+    webServerPort_ = 443;
+    tlsServerEnabled_ = true;
+  } else {
+    webServerPort_ = 80;
   }
 
-  // Fallback to plain HTTP if HTTPS was not started.
-  if (!tlsServerEnabled_) {
-    httpd_config.server_port = 80;
-    ret = httpd_start(&webServer, &httpd_config);
-    if (ret != ESP_OK) {
-      log(ERROR, "❌ Failed to start HTTP server: %s", esp_err_to_name(ret));
-      webServerStarted = false;
-      return;
-    }
-    webServerPort_ = 80;
+  // Create PsychicHttp server with port
+  webServer = new PsychicHttpServer(webServerPort_);
+  webServerUserData =
+      this; // Store for access in handlers (via lambda captures)
+
+  if (haveTls) {
+    webServer->setCertificate(tlsServerCertPem_.c_str(),
+                              tlsServerKeyPem_.c_str());
+  }
+
+  esp_err_t ret = webServer->start();
+  if (ret != ESP_OK) {
+    log(ERROR, "❌ Failed to start %s server: %s",
+        tlsServerEnabled_ ? "HTTPS" : "HTTP", esp_err_to_name(ret));
+    delete webServer;
+    webServer = nullptr;
+    webServerStarted = false;
+    return;
   }
 
   webServerStarted = true;
 
   // Global CORS preflight handler (covers all routes)
-  // ESP-IDF requires an explicit handler for OPTIONS; otherwise preflights 404.
-  (void)registerRoute("/*", HTTP_OPTIONS, &noopRouteHandler);
+  webServer->on("*", HTTP_OPTIONS,
+                [this](PsychicRequest *request, PsychicResponse *response) {
+                  addCORS(request);
+                  response->send(200);
+                  return ESP_OK;
+                });
 
   // Restart endpoint
-  (void)registerRoute("/api/restart", HTTP_POST,
-                      [](ESPWiFi *espwifi, httpd_req_t *req,
-                         const std::string &clientInfo) -> esp_err_t {
-                        (void)espwifi->sendJsonResponse(
-                            req, 200, "{\"status\":\"restarting\"}",
-                            &clientInfo);
-                        vTaskDelay(pdMS_TO_TICKS(500));
-                        esp_restart();
-                        return ESP_OK;
-                      });
+  webServer->on("/api/restart", HTTP_POST,
+                [this](PsychicRequest *request, PsychicResponse *response) {
+                  response->send(200, "application/json",
+                                 "{\"status\":\"restarting\"}");
+                  vTaskDelay(pdMS_TO_TICKS(500));
+                  esp_restart();
+                  return ESP_OK;
+                });
 
-  webServerStarted = true;
   log(INFO, "🗄️ %s Web Server started", tlsServerEnabled_ ? "HTTPS" : "HTTP");
   const char *scheme = tlsServerEnabled_ ? "https" : "http";
   log(INFO, "🗄️\t%s://%s:%d", scheme, getHostname().c_str(), webServerPort_);
@@ -202,61 +176,40 @@ void ESPWiFi::startWebServer() {
   }
 }
 
-esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
-  RouteCtx *ctx = (RouteCtx *)req->user_ctx;
-  if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {
-    httpd_resp_send_500(req);
-    return ESP_OK;
-  }
-
-  std::string clientInfo;
-  if (ctx->self->verifyRequest(req, &clientInfo) != ESP_OK) {
-    return ESP_OK; // preflight or error already handled
-  }
-
-  return ctx->handler(ctx->self, req, clientInfo);
-}
-
 esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
-                                 RouteHandler handler) {
+                                 PsychicRouteHandler handler) {
   if (!webServer) {
     log(ERROR, "Cannot register route %s: web server not initialized",
         (uri != nullptr) ? uri : "(null)");
     return ESP_ERR_INVALID_STATE;
   }
-  if (uri == nullptr || handler == nullptr) {
+  if (uri == nullptr || !handler) {
     return ESP_ERR_INVALID_ARG;
   }
 
-  // Allocate a tiny per-route context. This runs at init time; keep it simple.
-  RouteCtx *ctx = new (std::nothrow) RouteCtx();
-  if (ctx == nullptr) {
-    log(ERROR, "Cannot register route %s: out of memory", uri);
-    return ESP_ERR_NO_MEM;
-  }
-  ctx->self = this;
-  ctx->handler = handler;
+  // Wrap handler with auth/CORS verification
+  ESPWiFi *self = this;
+  auto wrappedHandler = [self,
+                         handler](PsychicRequest *request,
+                                  PsychicResponse *response) -> esp_err_t {
+    // Verify request (auth + CORS)
+    std::string clientInfo;
+    if (self->verifyRequest(request, &clientInfo) != ESP_OK) {
+      return ESP_OK; // preflight or error already handled
+    }
 
-  httpd_uri_t route = {
-      .uri = uri,
-      .method = method,
-      .handler = &ESPWiFi::routeTrampoline,
-      .user_ctx = ctx,
-      // ESP-IDF adds fields over time;
-      // explicitly initialize the newer ones.
-      .is_websocket = false,
-      .handle_ws_control_frames = false,
-      .supported_subprotocol = nullptr,
+    // Call user handler (it returns esp_err_t, we need to adapt)
+    esp_err_t ret = handler(request);
+    return ret;
   };
 
-  esp_err_t ret = httpd_register_uri_handler(webServer, &route);
+  PsychicEndpoint *endpoint = webServer->on(uri, method, wrappedHandler);
+  esp_err_t ret = (endpoint != nullptr) ? ESP_OK : ESP_FAIL;
   if (ret != ESP_OK) {
     log(ERROR, "Failed to register route %s: %s", uri, esp_err_to_name(ret));
-    delete ctx;
     return ret;
   }
 
-  _routeContexts.push_back(ctx);
   return ESP_OK;
 }
 
@@ -282,7 +235,34 @@ const char *ESPWiFi::getMethodString(int method) {
   }
 }
 
+std::string ESPWiFi::getClientInfo(PsychicRequest *request) {
+  if (request == nullptr) {
+    return std::string("- - - -");
+  }
+
+  const char *method = getMethodString(request->method());
+  String uri = request->uri();
+  String userAgent = request->header("User-Agent");
+  if (userAgent.length() == 0) {
+    userAgent = "-";
+  }
+  IPAddress ip = request->client()->remoteIP();
+  String remoteIp = ip.toString();
+  if (remoteIp.length() == 0) {
+    remoteIp = "-";
+  }
+
+  char clientInfoBuf[1024];
+  (void)snprintf(clientInfoBuf, sizeof(clientInfoBuf), "%s - %s - %s - %s",
+                 remoteIp.c_str(), method, uri.c_str(), userAgent.c_str());
+  return std::string(clientInfoBuf);
+}
+
 std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
+  if (req == nullptr) {
+    return std::string("- - - -");
+  }
+
   // Get request information for logging
   const char *method = getMethodString(req->method);
   const char *uri = req->uri;
@@ -347,9 +327,30 @@ void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
   log(ACCESS, "%s - %s - %zu", status.c_str(), clientInfo.c_str(), bytesSent);
 }
 
-esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
-                                    const std::string &jsonBody,
-                                    const std::string *clientInfo) {
+esp_err_t ESPWiFi::sendJsonResponse(PsychicRequest *request, int statusCode,
+                                    const std::string &jsonBody) {
+  if (request == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  std::string clientInfo = getClientInfo(request);
+  PsychicResponse *response = request->response();
+  response->setCode(statusCode);
+  response->setContentType("application/json");
+  response->setContent(jsonBody.c_str());
+  esp_err_t ret = response->send();
+
+  size_t sent = (ret == ESP_OK) ? jsonBody.size() : 0;
+  logAccess(statusCode, clientInfo, sent);
+  return ret;
+}
+
+esp_err_t ESPWiFi::sendJsonResponseInternal(httpd_req_t *req, int statusCode,
+                                            const std::string &jsonBody,
+                                            const std::string *clientInfo) {
+  if (req == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
   httpd_resp_set_type(req, "application/json");
 
   // Reuse captured clientInfo when available; otherwise capture now.
@@ -395,9 +396,52 @@ esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
   return ret;
 }
 
-esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
-                                    const std::string &filePath,
-                                    const std::string *clientInfo) {
+esp_err_t ESPWiFi::sendFileResponse(PsychicRequest *request,
+                                    const std::string &filePath) {
+  if (request == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  std::string clientInfo = getClientInfo(request);
+
+  // Resolve which filesystem this path maps to
+  std::string fullPath;
+  bool fsAvailable = false;
+  if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
+    fsAvailable = (sdCard != nullptr);
+    fullPath = filePath;
+  } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
+    fsAvailable = (lfs != nullptr);
+    fullPath = filePath;
+  } else {
+    fsAvailable = (lfs != nullptr);
+    fullPath = lfsMountPoint + filePath;
+  }
+
+  if (!fsAvailable) {
+    sendJsonResponse(request, 503, "{\"error\":\"Filesystem not available\"}");
+    return ESP_OK;
+  }
+
+  // Check if file exists
+  struct stat fileStat;
+  if (stat(fullPath.c_str(), &fileStat) != 0 || S_ISDIR(fileStat.st_mode)) {
+    sendJsonResponse(request, 404, "{\"error\":\"Not found\"}");
+    return ESP_OK;
+  }
+
+  // Use underlying httpd_req_t for file serving (PsychicHttp doesn't have
+  // direct file serving with all features like range requests)
+  httpd_req_t *req = request->request();
+  if (req == nullptr) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  return sendFileResponseInternal(req, filePath, &clientInfo);
+}
+
+esp_err_t ESPWiFi::sendFileResponseInternal(httpd_req_t *req,
+                                            const std::string &filePath,
+                                            const std::string *clientInfo) {
 
   // Reuse captured clientInfo when available; otherwise capture now.
   std::string clientInfoLocal;
@@ -439,15 +483,21 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   struct stat fileStat;
   int statResult = stat(fullPath.c_str(), &fileStat);
   if (statResult != 0) {
-    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Not found\"}", HTTPD_RESP_USE_STRLEN);
+    logAccess(404, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   // Check if it's actually a file (not a directory)
   if (S_ISDIR(fileStat.st_mode)) {
     // Path is a directory, not a file
-    return sendJsonResponse(req, 404, "{\"error\":\"Not found\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Not found\"}", HTTPD_RESP_USE_STRLEN);
+    logAccess(404, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   // Open file
@@ -457,8 +507,12 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     if (fsAvailable && filePath.rfind("/sd/", 0) == 0) {
       handleSDCardError();
     }
-    return sendJsonResponse(req, 500, "{\"error\":\"Failed to open file\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Failed to open file\"}",
+                    HTTPD_RESP_USE_STRLEN);
+    logAccess(500, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   // Get file size
@@ -467,20 +521,32 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
       fclose(file);
       handleSDCardError();
-      return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
-                              &clientInfoRef);
+      httpd_resp_set_status(req, "503 Service Unavailable");
+      httpd_resp_set_type(req, "application/json");
+      httpd_resp_send(req, "{\"error\":\"SD card unavailable\"}",
+                      HTTPD_RESP_USE_STRLEN);
+      logAccess(503, clientInfoRef, 0);
+      return ESP_OK;
     }
     fclose(file);
-    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Failed to read file\"}",
+                    HTTPD_RESP_USE_STRLEN);
+    logAccess(500, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   long fileSize = ftell(file);
   if (fileSize < 0) {
     printf("ftell failed, errno: %d\n", errno);
     fclose(file);
-    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Failed to read file\"}",
+                    HTTPD_RESP_USE_STRLEN);
+    logAccess(500, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   if (fseek(file, 0, SEEK_SET) != 0) {
@@ -488,13 +554,21 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
       fclose(file);
       handleSDCardError();
-      return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
-                              &clientInfoRef);
+      httpd_resp_set_status(req, "503 Service Unavailable");
+      httpd_resp_set_type(req, "application/json");
+      httpd_resp_send(req, "{\"error\":\"SD card unavailable\"}",
+                      HTTPD_RESP_USE_STRLEN);
+      logAccess(503, clientInfoRef, 0);
+      return ESP_OK;
     }
     printf("fseek SEEK_SET failed, errno: %d\n", errno);
     fclose(file);
-    return sendJsonResponse(req, 500, "{\"error\":\"Failed to read file\"}",
-                            &clientInfoRef);
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_send(req, "{\"error\":\"Failed to read file\"}",
+                    HTTPD_RESP_USE_STRLEN);
+    logAccess(500, clientInfoRef, 0);
+    return ESP_OK;
   }
 
   if (fileSize == 0) {
@@ -558,8 +632,12 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   if (isRangeRequest && rangeStart > 0) {
     if (fseek(file, rangeStart, SEEK_SET) != 0) {
       fclose(file);
-      return sendJsonResponse(req, 500, "{\"error\":\"Failed to seek file\"}",
-                              &clientInfoRef);
+      httpd_resp_set_status(req, "500 Internal Server Error");
+      httpd_resp_set_type(req, "application/json");
+      httpd_resp_send(req, "{\"error\":\"Failed to seek file\"}",
+                      HTTPD_RESP_USE_STRLEN);
+      logAccess(500, clientInfoRef, 0);
+      return ESP_OK;
     }
   }
 
@@ -599,8 +677,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     if (!buffer) {
       fclose(file);
       log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
-      return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
-                              &clientInfoRef);
+      return sendJsonResponseInternal(req, 500, "{\"error\":\"Out of memory\"}",
+                                      &clientInfoRef);
     }
 
     while (totalSent < bytesToSend && ret == ESP_OK) {
@@ -661,8 +739,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     if (!buffer) {
       fclose(file);
       log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
-      return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
-                              &clientInfoRef);
+      return sendJsonResponseInternal(req, 500, "{\"error\":\"Out of memory\"}",
+                                      &clientInfoRef);
     }
 
     while (totalSent < bytesToSend && ret == ESP_OK) {
@@ -677,8 +755,12 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
           free(buffer);
           fclose(file);
           handleSDCardError();
-          return sendJsonResponse(
-              req, 503, "{\"error\":\"SD card unavailable\"}", &clientInfoRef);
+          httpd_resp_set_status(req, "503 Service Unavailable");
+          httpd_resp_set_type(req, "application/json");
+          httpd_resp_send(req, "{\"error\":\"SD card unavailable\"}",
+                          HTTPD_RESP_USE_STRLEN);
+          logAccess(503, clientInfoRef, totalSent);
+          return ESP_OK;
         }
         log(ERROR,
             "fread returned 0, expected %zu bytes (sent %zu of %zu so far)",

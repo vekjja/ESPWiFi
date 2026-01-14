@@ -85,135 +85,81 @@ bool ESPWiFi::isExcludedPath(const char *uri) {
   return false;
 }
 
-bool ESPWiFi::authorized(httpd_req_t *req) {
+bool ESPWiFi::authorized(PsychicRequest *request) {
+  if (request == nullptr) {
+    return false;
+  }
 
   if (!authEnabled()) {
     return true; // Auth disabled, allow all
   }
 
-  if (isExcludedPath(req->uri)) {
+  String uri = request->uri();
+  if (isExcludedPath(uri.c_str())) {
     return true; // Path is excluded, allow
   }
 
   // Check for Authorization header
-  size_t auth_hdr_len = httpd_req_get_hdr_value_len(req, "Authorization");
-  if (auth_hdr_len == 0) {
+  String authHeader = request->header("Authorization");
+  if (authHeader.length() == 0) {
     return false;
   }
-
-  // Get Authorization header
-  char *auth_hdr = (char *)malloc(auth_hdr_len + 1);
-  if (auth_hdr == nullptr) {
-    return false;
-  }
-
-  // Get Authorization header string
-  httpd_req_get_hdr_value_str(req, "Authorization", auth_hdr, auth_hdr_len + 1);
-  std::string auth_str(auth_hdr);
-  free(auth_hdr);
 
   // Check if it's a Bearer token
-  if (auth_str.find("Bearer ") != 0) {
+  if (authHeader.indexOf("Bearer ") != 0) {
     return false;
   }
 
   // Extract token
-  std::string token = auth_str.substr(7); // Remove "Bearer "
+  String token = authHeader.substring(7); // Remove "Bearer "
   std::string expectedToken = config["auth"]["token"].as<std::string>();
 
   // Compare tokens
-  return token == expectedToken && expectedToken.length() > 0;
+  return (token.c_str() == expectedToken) && expectedToken.length() > 0;
 }
 
-esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {
-  if (req == nullptr) {
+esp_err_t ESPWiFi::verifyRequest(PsychicRequest *request,
+                                 std::string *outClientInfo) {
+  if (request == nullptr) {
     return ESP_ERR_INVALID_ARG;
   }
 
   // Handle OPTIONS requests automatically (CORS preflight)
-  if (req->method == HTTP_OPTIONS) {
-    handleCorsPreflight(req);
-    return ESP_ERR_HTTPD_RESP_SEND;
+  if (request->method() == HTTP_OPTIONS) {
+    request->response()->send(200);
+    return ESP_OK;
   }
 
   // Add CORS headers to all responses
-  addCORS(req);
+  addCORS(request);
 
-  // Capture early; slow/streaming sends may lose socket/headers if client
-  // resets.
-  std::string clientInfo;
+  // Capture client info
   if (outClientInfo != nullptr) {
-    clientInfo = getClientInfo(req);
+    *outClientInfo = getClientInfo(request);
   }
 
   // Check if authorized
-  if (!authorized(req)) {
-    if (clientInfo.empty()) {
-      clientInfo = getClientInfo(req);
-    }
-    (void)sendJsonResponse(req, 401, "{\"error\":\"Unauthorized\"}",
-                           &clientInfo);
+  if (!authorized(request)) {
+    std::string clientInfo = getClientInfo(request);
+    sendJsonResponse(request, 401, "{\"error\":\"Unauthorized\"}");
     return ESP_ERR_HTTPD_INVALID_REQ; // Don't continue with handler
   }
 
-  // If the request targets a protected file via the file APIs, treat it as an
-  // invalid request (even if the token is valid).
-  //
-  // Note: some file operations (e.g. mkdir JSON body, upload multipart
-  // filename) cannot be determined here and must still be enforced inside the
-  // handler.
-  auto normalizeApiPath = [](std::string p) -> std::string {
-    if (p.empty()) {
-      return std::string("/");
-    }
-    if (p.front() != '/') {
-      p.insert(p.begin(), '/');
-    }
-    while (p.size() > 1 && p.back() == '/') {
-      p.pop_back();
-    }
-    return p;
-  };
+  return ESP_OK;
+}
 
-  const char *uri = req->uri;
-  if (uri != nullptr) {
-    std::string_view full(uri);
-    size_t q = full.find('?');
-    std::string_view pathOnly =
-        (q == std::string_view::npos) ? full : full.substr(0, q);
-
-    // Block file delete/rename targets early (query-param based).
-    if (pathOnly == "/api/files/delete") {
-      std::string fsParam = getQueryParam(req, "fs");
-      std::string filePath = normalizeApiPath(getQueryParam(req, "path"));
-      if (!fsParam.empty() && !filePath.empty() &&
-          isProtectedFile(fsParam, filePath)) {
-        if (clientInfo.empty()) {
-          clientInfo = getClientInfo(req);
-        }
-        (void)sendJsonResponse(req, 403, "{\"error\":\"Path is protected\"}",
-                               &clientInfo);
-        return ESP_ERR_HTTPD_INVALID_REQ;
-      }
-    } else if (pathOnly == "/api/files/rename") {
-      std::string fsParam = getQueryParam(req, "fs");
-      std::string oldPath = normalizeApiPath(getQueryParam(req, "oldPath"));
-      if (!fsParam.empty() && !oldPath.empty() &&
-          isProtectedFile(fsParam, oldPath)) {
-        if (clientInfo.empty()) {
-          clientInfo = getClientInfo(req);
-        }
-        (void)sendJsonResponse(req, 403, "{\"error\":\"Path is protected\"}",
-                               &clientInfo);
-        return ESP_ERR_HTTPD_INVALID_REQ;
-      }
-    }
+void ESPWiFi::addCORS(PsychicRequest *request) {
+  if (request == nullptr) {
+    return;
   }
 
-  if (outClientInfo != nullptr) {
-    *outClientInfo = std::move(clientInfo);
-  }
-  return ESP_OK; // Verification passed, continue with handler
+  PsychicResponse *response = request->response();
+  response->addHeader("Access-Control-Allow-Origin", "*");
+  response->addHeader("Access-Control-Allow-Methods",
+                      "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+  response->addHeader("Access-Control-Allow-Headers",
+                      "Content-Type, Authorization");
+  response->addHeader("Access-Control-Max-Age", "3600");
 }
 
 #endif // ESPWiFi_AUTH

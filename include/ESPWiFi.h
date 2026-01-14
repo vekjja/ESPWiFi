@@ -44,6 +44,11 @@
 #include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+
+#ifdef CONFIG_HTTPD_WS_SUPPORT
+#include "PsychicHttp.h"
+#include "PsychicWebSocket.h"
+#endif
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_system.h"
@@ -55,13 +60,7 @@
 #include "nvs_flash.h"
 
 #include <ArduinoJson.h>
-#include <Cloud.h>
 #include <IntervalTimer.h>
-#include <WebSocket.h>
-
-// Cloud classes
-#include "CloudCtl.h"
-#include "CloudMedia.h"
 
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
@@ -73,9 +72,6 @@ enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
 class ESPWiFi {
 public:
-  using RouteHandler = esp_err_t (*)(ESPWiFi *espwifi, httpd_req_t *req,
-                                     const std::string &clientInfo);
-
   // ---- Basic helpers/state
   std::string version() { return _version; }
   void feedWatchDog(int ms = 10) { vTaskDelay(pdMS_TO_TICKS(ms)); }
@@ -149,6 +145,7 @@ public:
   bool fileExists(const std::string &fullPath);
   bool dirExists(const std::string &fullPath);
   bool mkDir(const std::string &fullPath);
+  std::string getQueryParam(PsychicRequest *request, const std::string &key);
   std::string getQueryParam(httpd_req_t *req, const char *key);
   std::string urlDecode(const std::string &encoded);
 
@@ -219,7 +216,8 @@ public:
   // ---- HTTP server / routes
   void startWebServer();
   bool webServerStarted = false;
-  httpd_handle_t webServer = nullptr;
+  PsychicHttpServer *webServer = nullptr;
+  void *webServerUserData = nullptr; // Store user data for PsychicHttp
 
   // ---- HTTPS/TLS credential management
   // TLS materials are kept in-memory for the lifetime of the HTTPS server,
@@ -229,15 +227,16 @@ public:
   void clearTlsServerCredentials();
 
   // Route registration helpers
+  using PsychicRouteHandler = std::function<esp_err_t(PsychicRequest *request)>;
   esp_err_t registerRoute(const char *uri, httpd_method_t method,
-                          RouteHandler handler);
+                          PsychicRouteHandler handler);
 
   // CORS + auth verification
-  void addCORS(httpd_req_t *req);
-  void handleCorsPreflight(httpd_req_t *req);
-  esp_err_t verifyRequest(httpd_req_t *req,
+  void addCORS(PsychicRequest *request);
+  esp_err_t verifyRequest(PsychicRequest *request,
                           std::string *outClientInfo = nullptr);
-  bool authorized(httpd_req_t *req);
+  bool authorized(PsychicRequest *request);
+  void handleCorsPreflight(httpd_req_t *req);
   bool isExcludedPath(const char *uri);
   bool authEnabled();
   std::string generateToken();
@@ -251,12 +250,19 @@ public:
 
   // Response helpers
   const char *getMethodString(int method);
+  std::string getClientInfo(PsychicRequest *request);
   std::string getClientInfo(httpd_req_t *req);
-  esp_err_t sendJsonResponse(httpd_req_t *req, int statusCode,
-                             const std::string &jsonBody,
-                             const std::string *clientInfo = nullptr);
-  esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath,
-                             const std::string *clientInfo = nullptr);
+  esp_err_t sendJsonResponse(PsychicRequest *request, int statusCode,
+                             const std::string &jsonBody);
+  esp_err_t sendFileResponse(PsychicRequest *request,
+                             const std::string &filePath);
+  // Internal helpers for file serving (uses httpd_req_t for advanced features)
+  esp_err_t sendFileResponseInternal(httpd_req_t *req,
+                                     const std::string &filePath,
+                                     const std::string *clientInfo);
+  esp_err_t sendJsonResponseInternal(httpd_req_t *req, int statusCode,
+                                     const std::string &jsonBody,
+                                     const std::string *clientInfo);
   void logAccess(int statusCode, const std::string &clientInfo,
                  size_t bytesSent = 0);
   JsonDocument readRequestBody(httpd_req_t *req);
@@ -269,9 +275,9 @@ public:
   // Route groups
   void srvFiles();
   void srvAll();
-  void srvLog();
   void srvRoot();
-  void srvGPIO();
+  void srvAuth();
+  void srvWildcard();
 
   // File browser helper methods (used by both HTTP and WebSocket)
   bool listFiles(const std::string &fs, const std::string &path,
@@ -282,10 +288,6 @@ public:
                   const std::string &newName, std::string &errorMsg);
   bool deleteFile(const std::string &fs, const std::string &path,
                   std::string &errorMsg);
-  void srvAuth();
-  void srvBLE();
-  void srvBluetooth();
-  void srvWildcard();
 
   // ---- Control WebSocket (for cloud/pairing control channel)
   void startControlWebSocket();
@@ -385,24 +387,18 @@ public:
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
-  WebSocket ctrlSoc;
+  PsychicWebSocketHandler *ctrlSoc = nullptr;
   bool ctrlSocStarted = false;
 
 // ---- Camera
 #if ESPWiFi_HAS_CAMERA
-  WebSocket cameraSoc;
+  PsychicWebSocketHandler *cameraSoc = nullptr;
   bool cameraSocStarted = false;
 
   sensor_t *camera = nullptr;
   void printCameraSettings();
 
-  // Camera streaming subscribers
-  static constexpr size_t kMaxCameraStreamSubscribers = 8;
-  int cameraStreamSubFds_[kMaxCameraStreamSubscribers] = {0};
-  volatile size_t cameraStreamSubCount_ = 0;
-
-  void setCameraStreamSubscribed(int clientFd, bool enable);
-  void clearCameraStreamSubscribed(int clientFd);
+  // Camera streaming - subscribers are tracked automatically by PsychicHttp
 #endif // ESPWiFi_HAS_CAMERA
 #endif // CONFIG_HTTPD_WS_SUPPORT
 
@@ -413,7 +409,7 @@ public:
   void clearCameraBuffer();
   void updateCameraSettings();
   void cameraConfigHandler();
-  esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
+  esp_err_t sendCameraSnapshot(PsychicRequest *request);
   bool takeSnapshot(bool save, std::string &url, std::string &errorMsg);
 
   // Camera event handlers (instance methods)
@@ -441,24 +437,12 @@ private:
   std::string tlsServerCertPem_;
   std::string tlsServerKeyPem_;
 
-  // ---- Route trampoline/state
-  struct RouteCtx {
-    ESPWiFi *self = nullptr;
-    RouteHandler handler = nullptr;
-  };
-  std::vector<RouteCtx *> _routeContexts;
-  static esp_err_t routeTrampoline(httpd_req_t *req);
-
   // ---- WiFi event handling
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
   bool wifi_connection_success = false;
   bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
-
-  // ---- Cloud Client
-  CloudCtl cloudCtl;     // Control WebSocket tunnel (JSON messages)
-  CloudMedia cloudMedia; // Media WebSocket tunnel (binary streaming)
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;

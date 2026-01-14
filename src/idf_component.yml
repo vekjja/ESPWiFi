@@ -1,6 +1,10 @@
 dependencies:
+  # Arduino ESP32 core (requires CONFIG_FREERTOS_HZ=1000 in sdkconfig)
+  espressif/arduino-esp32: "*"
   espressif/mdns: ">=1.2.0"
   # Pin to avoid newer versions that assume esp_transport WS redirect APIs that
   # PlatformIO's ESP-IDF bundle may not provide.
-  espressif/esp_websocket_client: "1.5.0"
+  # espressif/esp_websocket_client: "1.5.0"
+  hoeken/psychic_http:
+    git: https://github.com/hoeken/PsychicHttp.git
 

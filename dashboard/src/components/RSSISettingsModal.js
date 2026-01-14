@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React from "react";
 import { Typography, Box } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SettingsModal from "./SettingsModal";
-import { buildWebSocketUrl } from "../utils/apiUtils";
 
 export default function RSSISettingsModal({
   config,
@@ -10,122 +9,8 @@ export default function RSSISettingsModal({
   saveConfigToDevice,
   open = false,
   onClose,
-  onRSSIDataChange,
+  rssiValue = null,
 }) {
-  // RSSI data state
-  const [rssiValue, setRssiValue] = useState(null);
-  const wsRef = useRef(null);
-
-  // WebSocket connection for RSSI data - always connect
-  useEffect(() => {
-    // Add a delay to allow the backend to start the RSSI service
-    const connectTimeout = setTimeout(() => {
-      // Construct WebSocket URL
-      // Prefer explicit hostname (usually DNS/mDNS-safe) over display name.
-      const mdnsHostname = config?.hostname || config?.deviceName;
-      const wsUrl = buildWebSocketUrl("/ws/rssi", mdnsHostname);
-
-      // Connect to RSSI WebSocket
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        if (onRSSIDataChange) {
-          onRSSIDataChange(rssiValue, true);
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          // RSSI data comes as plain text (just the number)
-          const rssiValue = parseInt(event.data);
-          if (!isNaN(rssiValue)) {
-            setRssiValue(rssiValue);
-            if (onRSSIDataChange) {
-              onRSSIDataChange(rssiValue, true);
-            }
-          }
-        } catch (error) {
-          console.error("Error parsing RSSI data:", error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error("RSSI WebSocket error:", error);
-        if (onRSSIDataChange) {
-          onRSSIDataChange(rssiValue, false);
-        }
-      };
-
-      ws.onclose = (event) => {
-        wsRef.current = null;
-        if (onRSSIDataChange) {
-          onRSSIDataChange(rssiValue, false);
-        }
-
-        // Only retry if it's not a normal closure
-        if (event.code !== 1000) {
-          setTimeout(() => {
-            // Double-check before retrying
-            if (!wsRef.current) {
-              // Retry connection
-              const retryWs = new WebSocket(wsUrl);
-              wsRef.current = retryWs;
-
-              retryWs.onopen = () => {
-                // WebSocket retry connected
-              };
-              retryWs.onmessage = (event) => {
-                try {
-                  // RSSI data comes as plain text (just the number)
-                  const rssiValue = parseInt(event.data);
-                  if (!isNaN(rssiValue)) {
-                    setRssiValue(rssiValue);
-                    if (onRSSIDataChange) {
-                      onRSSIDataChange(rssiValue, true);
-                    }
-                  }
-                } catch (error) {
-                  console.error("Error parsing RSSI data:", error);
-                }
-              };
-              retryWs.onerror = (error) => {
-                console.error("RSSI WebSocket retry error:", error);
-                if (onRSSIDataChange) {
-                  onRSSIDataChange(rssiValue, false);
-                }
-              };
-              retryWs.onclose = () => {
-                wsRef.current = null;
-                if (onRSSIDataChange) {
-                  onRSSIDataChange(rssiValue, false);
-                }
-              };
-            }
-          }, 2000);
-        }
-      };
-    }, 1000); // 1 second delay
-
-    return () => {
-      clearTimeout(connectTimeout);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, []);
-
-  // Cleanup WebSocket on unmount
-  useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, []);
-
   const handleCloseModal = () => {
     if (onClose) onClose();
   };
@@ -145,7 +30,7 @@ export default function RSSISettingsModal({
           }}
         >
           <SignalCellularAltIcon color="primary" />
-          RSSI
+          RSSI {rssiValue !== null ? `${rssiValue} dBm` : "N/A"}
         </span>
       }
       actions={null}
@@ -168,26 +53,6 @@ export default function RSSISettingsModal({
           >
             Received Signal Strength Indicator (RSSI)
           </a>
-          <br /> <br />
-          WebSocket URL: ws://
-          {config?.hostname
-            ? `${config.hostname}`
-            : config?.deviceName
-            ? `${config.deviceName}`
-            : window.location.hostname}
-          :{window.location.port || 80}/ws/rssi
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={{ marginTop: 1, color: "primary.main", display: "block" }}
-        >
-          RSSI (Received Signal Strength Indicator) is a device-reported measure
-          of radio signal power at the receiver. It’s often shown in dBm
-          (negative values), where numbers closer to 0 mean stronger signal:
-          around −30 dBm is excellent, about −67 dBm is solid for Wi‑Fi/VoIP,
-          −75 to −85 dBm is weak, and below −90 dBm is likely unusable. RSSI
-          isn’t an absolute standard—scales vary by chipset—so treat it as a
-          relative indicator for link quality, range, and placement.
         </Typography>
       </Box>
     </SettingsModal>

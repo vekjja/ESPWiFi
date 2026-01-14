@@ -19,7 +19,6 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import RSSIButton from "./RSSIButton";
 import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
-import DevicePickerButton from "./DevicePickerButton";
 import LogsButton from "./LogsButton";
 import FileBrowserButton from "./FileBrowserButton";
 import BluetoothButton from "./BluetoothButton";
@@ -31,7 +30,6 @@ const ENABLED_KEY = "settingsButtonEnabled.v1";
 
 // Button IDs that cannot be removed from the bar
 const NON_REMOVABLE_IDS = new Set([
-  "devicePicker",
   // RSSI is a core status signal; keep it visible by default.
   "rssi",
   "deviceSettings",
@@ -40,9 +38,9 @@ const NON_REMOVABLE_IDS = new Set([
 
 // Default button order priority for initial setup
 const DEFAULT_ORDER_PRIORITY = [
-  "devicePicker",
   "rssi",
   "deviceSettings",
+  "bluetooth",
   "addModule",
   "files",
   "logs",
@@ -50,7 +48,6 @@ const DEFAULT_ORDER_PRIORITY = [
 
 // Button label mapping for display
 const BUTTON_LABELS = {
-  devicePicker: "Devices",
   deviceSettings: "Device Settings",
   rssi: "RSSI",
   bluetooth: "Bluetooth",
@@ -101,43 +98,30 @@ function insertAfter(list, id, afterId) {
 /**
  * Ensure non-removable buttons are in preferred positions
  * @param {string[]} list - Current button list
- * @param {boolean} showDevicePicker - If false, do NOT force the Devices button
  * @returns {string[]} List with non-removables positioned correctly
  */
-function ensureNonRemovablesInPreferredPositions(
-  list,
-  showDevicePicker = true
-) {
+function ensureNonRemovablesInPreferredPositions(list) {
   let next = Array.isArray(list) ? [...list] : [];
-  if (showDevicePicker) {
-    // Devices button should lead when possible
-    if (!next.includes("devicePicker")) {
-      next = ["devicePicker", ...next];
-    }
-    // RSSI next (when available)
-    if (!next.includes("rssi")) {
-      next = insertAfter(next, "rssi", "devicePicker");
-    }
-  } else {
-    // If persisted state included it, strip it.
-    next = next.filter((id) => id !== "devicePicker");
-    // If no device picker, prefer RSSI at the front.
-    if (!next.includes("rssi")) {
-      next = ["rssi", ...next];
-    }
+
+  // RSSI at the front when available
+  if (!next.includes("rssi")) {
+    next = ["rssi", ...next];
   }
+
   // Settings after RSSI when possible
   if (!next.includes("deviceSettings")) {
     next = next.includes("rssi")
       ? insertAfter(next, "deviceSettings", "rssi")
       : ["deviceSettings", ...next];
   }
+
   // Add after Settings when possible
   if (!next.includes("addModule")) {
     next = next.includes("deviceSettings")
       ? insertAfter(next, "addModule", "deviceSettings")
       : [...next, "addModule"];
   }
+
   return next;
 }
 
@@ -246,20 +230,14 @@ export default function SettingsButtonBar({
   getRSSIColor,
   getRSSIIcon,
   controlRssi = null,
-  onRequestRssi = null,
   logsText = "",
   logsError = "",
   onRequestLogs = null,
-  devices,
-  selectedDeviceId,
-  onSelectDevice,
-  onRemoveDevice,
-  onPairNewDevice,
-  showDevicePicker = true,
   cloudMode = false,
   controlConnected = false,
   deviceInfoOverride = null,
   controlWs = null,
+  musicPlaybackState = { isPlaying: false, isPaused: false },
 }) {
   // Track previous visible IDs to detect newly available buttons
   const prevVisibleIdsRef = useRef(new Set());
@@ -269,12 +247,12 @@ export default function SettingsButtonBar({
    *
    * When control socket is disconnected (deviceOnline=false), all buttons
    * except devicePicker should be disabled to prevent operations that require
-   * the WebSocket connection (e.g., RSSI polling, logs, settings changes).
+   * the WebSocket connection (e.g., logs, settings changes).
    */
   const availableButtons = useMemo(() => {
     const items = [];
     const wifiMode = config?.wifi?.mode || "client";
-    // Don't mount RSSIButton until we have config; it auto-connects a WS.
+    // RSSI button is available when config exists and not in access point mode
     const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
     // In paired/tunnel mode, use the control socket to support settings/logs.
     // Keep other HTTP-backed features (files/modules) disabled for now.
@@ -282,28 +260,14 @@ export default function SettingsButtonBar({
     const httpCapable = deviceOnline && !cloudMode;
     const logsCapable = (cloudMode && controlConnected) || deviceOnline;
 
-    if (showDevicePicker) {
-      items.push({
-        id: "devicePicker",
-        render: () => (
-          <DevicePickerButton
-            devices={devices}
-            selectedId={selectedDeviceId}
-            onSelectDevice={onSelectDevice}
-            onRemoveDevice={onRemoveDevice}
-            onPairNew={onPairNewDevice}
-            onDeviceClaimed={onPairNewDevice}
-          />
-        ),
-      });
-    }
-
     items.push({
       id: "deviceSettings",
       render: () => (
         <DeviceSettingsButton
           config={config}
-          deviceOnline={httpCapable || canCloudConfigure}
+          deviceOnline={
+            (httpCapable || canCloudConfigure) && !musicPlaybackState.isPlaying
+          }
           saveConfigToDevice={saveConfigToDevice}
           onRefreshConfig={onRefreshConfig}
           cloudMode={cloudMode}
@@ -325,29 +289,17 @@ export default function SettingsButtonBar({
             getRSSIColor={getRSSIColor}
             getRSSIIcon={getRSSIIcon}
             controlRssi={controlRssi}
-            onRequestRssi={onRequestRssi}
+            musicPlaybackState={musicPlaybackState}
           />
         ),
       });
     }
 
-    if (config && config?.bluetooth?.installed !== false) {
-      items.push({
-        id: "bluetooth",
-        render: () => (
-          <BluetoothButton
-            config={config}
-            deviceOnline={httpCapable}
-            onDevicePaired={(deviceRecord, details) => {
-              // Handle device paired from BLE
-              if (onPairNewDevice) {
-                onPairNewDevice(deviceRecord, details);
-              }
-            }}
-          />
-        ),
-      });
-    }
+    // Always show Bluetooth button - never disabled (keep enabled even during music playback)
+    items.push({
+      id: "bluetooth",
+      render: () => <BluetoothButton config={config} />,
+    });
 
     // Show camera button if camera is installed and there's at least one camera module
     const hasCameraModule = config?.modules?.some((m) => m.type === "camera");
@@ -357,7 +309,7 @@ export default function SettingsButtonBar({
         render: () => (
           <CameraButton
             config={config}
-            deviceOnline={deviceOnline}
+            deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
             saveConfigToDevice={saveConfigToDevice}
           />
         ),
@@ -369,7 +321,7 @@ export default function SettingsButtonBar({
       render: () => (
         <LogsButton
           config={config}
-          deviceOnline={logsCapable}
+          deviceOnline={logsCapable && !musicPlaybackState.isPlaying}
           saveConfigToDevice={saveConfigToDevice}
           controlConnected={controlConnected}
           logsText={logsText}
@@ -384,7 +336,7 @@ export default function SettingsButtonBar({
       render: () => (
         <FileBrowserButton
           config={config}
-          deviceOnline={deviceOnline}
+          deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
           controlWs={controlWs}
         />
       ),
@@ -395,7 +347,7 @@ export default function SettingsButtonBar({
       render: () => (
         <AddModuleButton
           config={config}
-          deviceOnline={deviceOnline}
+          deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           missingSettingsButtons={[]}
@@ -414,20 +366,14 @@ export default function SettingsButtonBar({
     getRSSIColor,
     getRSSIIcon,
     controlRssi,
-    onRequestRssi,
     logsText,
     logsError,
     onRequestLogs,
-    devices,
-    selectedDeviceId,
-    onSelectDevice,
-    onRemoveDevice,
-    onPairNewDevice,
     cloudMode,
     controlConnected,
     deviceInfoOverride,
-    showDevicePicker,
     controlWs,
+    musicPlaybackState.isPlaying,
   ]);
 
   const visibleIds = useMemo(
@@ -517,9 +463,9 @@ export default function SettingsButtonBar({
         if (enabledSet.has(id) && !next.includes(id)) next.push(id);
       }
       // Ensure required ids are present without forcing them to the front.
-      return ensureNonRemovablesInPreferredPositions(next, showDevicePicker);
+      return ensureNonRemovablesInPreferredPositions(next);
     });
-  }, [enabledIds, visibleIds, showDevicePicker]);
+  }, [enabledIds, visibleIds]);
 
   /**
    * Persist button order to localStorage

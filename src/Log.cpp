@@ -105,10 +105,10 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
 int ESPWiFi::idfLogVprintfHook(const char *format, va_list args) {
 
   // Original vprintf behavior
-  int ret = vprintf(format, args);
-  if (ret < 0) {
-    return ret;
-  }
+  // int ret = vprintf(format, args);
+  // if (ret < 0) {
+  //   return ret;
+  // }
 
   // Static member function for ESP-IDF's vprintf hook
   // Captures and processes ESP-IDF log messages
@@ -125,14 +125,12 @@ int ESPWiFi::idfLogVprintfHook(const char *format, va_list args) {
     (void)vsnprintf(line, sizeof(line), format, argsCopy);
     va_end(argsCopy);
 
-    // espwifi->writeLog(line);
-
     // Format and log the IDF message
-    // LogLevel lvl = DEBUG;
-    // std::string formatted = espwifi->formatIDFtoESPWiFi(line, &lvl);
-    // if (!formatted.empty()) {
-    //   espwifi->logImpl(lvl, formatted);
-    // }
+    LogLevel lvl = DEBUG;
+    std::string formatted = espwifi->formatIDFtoESPWiFi(line, &lvl);
+    if (!formatted.empty()) {
+      espwifi->logImpl(lvl, formatted);
+    }
   }
 
   return 0;

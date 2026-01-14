@@ -126,36 +126,15 @@ export default function MusicPlayerModule({
 
   // Helper to send WebSocket command and wait for response
   const sendWsCommand = async (cmd) => {
-    return new Promise((resolve, reject) => {
-      if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
-        reject(new Error("WebSocket not connected"));
-        return;
-      }
+    if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket not connected");
+    }
 
-      const timeout = setTimeout(() => {
-        reject(new Error("WebSocket command timed out"));
-      }, 10000);
+    if (typeof controlWs.sendCommand !== "function") {
+      throw new Error("WebSocket sendCommand method not available");
+    }
 
-      const handleMessage = (event) => {
-        try {
-          const response = JSON.parse(event.data);
-          if (response.cmd === cmd.cmd) {
-            clearTimeout(timeout);
-            controlWs.removeEventListener("message", handleMessage);
-            if (response.ok === false) {
-              reject(new Error(response.error || "Command failed"));
-            } else {
-              resolve(response);
-            }
-          }
-        } catch (err) {
-          // Ignore parse errors for other messages
-        }
-      };
-
-      controlWs.addEventListener("message", handleMessage);
-      controlWs.send(JSON.stringify(cmd));
-    });
+    return await controlWs.sendCommand(cmd, 10000);
   };
 
   // Load music files from SD card using WebSocket
@@ -190,9 +169,9 @@ export default function MusicPlayerModule({
       );
 
       setMusicFiles(audioFiles);
-      console.log("🎵 Loaded music files:", audioFiles);
+      console.log("🎵 Loaded music files");
     } catch (error) {
-      console.error("🎵 Error loading music files:", error);
+      console.warn("🎵 Error loading music files:", error.message || error);
       setMusicFiles([]);
     } finally {
       setLoading(false);
@@ -200,9 +179,14 @@ export default function MusicPlayerModule({
   };
 
   // Load music files on mount and when config changes
+  // Add a small delay to ensure server is ready after WebSocket connection
   useEffect(() => {
     if (deviceOnline && controlWs && controlWs.readyState === WebSocket.OPEN) {
-      loadMusicFiles();
+      // Delay slightly to ensure server is ready
+      const timer = setTimeout(() => {
+        loadMusicFiles();
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [deviceOnline, config?.musicDir, controlWs]);
 
@@ -214,14 +198,14 @@ export default function MusicPlayerModule({
     const filePath = `${musicDir}/${file.name}`;
 
     // Encode the file path properly - split by '/' and encode each segment
-    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
     const encodedPath = filePath
       .split("/")
       .map((segment) => encodeURIComponent(segment))
       .join("/");
 
     // Use /sd prefix for SD card file system
-    let fileUrl = buildApiUrl(`/sd${encodedPath}`, mdnsHostname);
+    // Don't pass mdnsHostname - use relative path so it uses current browser location
+    let fileUrl = buildApiUrl(`/sd${encodedPath}`);
 
     // Add auth token as query parameter
     const token = getAuthToken();
@@ -276,6 +260,8 @@ export default function MusicPlayerModule({
     audioRef.current.currentTime = 0;
     setProgress(0);
     setCurrentTime(0);
+    setIsPlaying(false);
+    setIsPaused(false);
   };
 
   // Handle skip next

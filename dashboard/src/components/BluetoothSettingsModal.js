@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -12,14 +12,18 @@ import {
   Paper,
   Collapse,
   TextField,
+  IconButton,
+  InputAdornment,
 } from "@mui/material";
 import BluetoothIcon from "@mui/icons-material/Bluetooth";
+import BluetoothSearchingIcon from "@mui/icons-material/BluetoothSearching";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ReadIcon from "@mui/icons-material/Visibility";
 import WriteIcon from "@mui/icons-material/Edit";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import SettingsModal from "./SettingsModal";
-import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
 
 export default function BluetoothSettingsModal({
   open,
@@ -28,7 +32,6 @@ export default function BluetoothSettingsModal({
   saveConfig,
   saveConfigToDevice,
   deviceOnline,
-  bleStatus,
 }) {
   const [connectedDevice, setConnectedDevice] = useState(null);
   const [services, setServices] = useState([]);
@@ -37,53 +40,143 @@ export default function BluetoothSettingsModal({
   const [writeValue, setWriteValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [characteristicValues, setCharacteristicValues] = useState({});
+  const [notificationLog, setNotificationLog] = useState([]);
+  const [pairedDevices, setPairedDevices] = useState([]);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Check if BLE is actually running (not just configured)
-  const isBLERunning = bleStatus?.status !== "not_initialized";
+  // ESPWiFi Control Characteristic UUID
+  const ESPWIFI_CONTROL_UUID = "0000fff1-0000-1000-8000-00805f9b34fb";
+  const ESPWIFI_SERVICE_UUID = "0000180a-0000-1000-8000-00805f9b34fb";
+
+  // Load paired devices from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("bleConnectedDevices");
+      if (stored) {
+        const devices = JSON.parse(stored);
+        setPairedDevices(devices);
+      }
+    } catch (err) {
+      console.error("Failed to load paired devices:", err);
+    }
+  }, []);
+
+  // Save device to paired list
+  const savePairedDevice = (device) => {
+    try {
+      const deviceInfo = {
+        id: device.id,
+        name: device.name || "Unknown Device",
+        lastConnected: Date.now(),
+      };
+
+      setPairedDevices((prev) => {
+        const filtered = prev.filter((d) => d.id !== device.id);
+        const updated = [deviceInfo, ...filtered].slice(0, 10); // Keep last 10
+        localStorage.setItem("bleConnectedDevices", JSON.stringify(updated));
+        return updated;
+      });
+    } catch (err) {
+      console.error("Failed to save paired device:", err);
+    }
+  };
+
+  // Remove device from paired list
+  const removePairedDevice = (deviceId) => {
+    setPairedDevices((prev) => {
+      const updated = prev.filter((d) => d.id !== deviceId);
+      localStorage.setItem("bleConnectedDevices", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Handle ESPWiFi-specific commands
+  const handleESPWiFiCommand = async (cmd, params) => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      // Find the ESPWiFi control characteristic
+      const espWifiService = services.find(
+        (s) => s.uuid === ESPWIFI_SERVICE_UUID
+      );
+      if (!espWifiService) {
+        throw new Error("ESPWiFi service not found");
+      }
+
+      const controlChar = espWifiService.characteristics.find(
+        (c) => c.uuid === ESPWIFI_CONTROL_UUID
+      );
+      if (!controlChar) {
+        throw new Error("ESPWiFi control characteristic not found");
+      }
+
+      // Build the command JSON
+      const command = { cmd, ...params };
+      const payload = JSON.stringify(command);
+      console.log("[ESPWiFi] Sending command:", payload);
+
+      // Write the command
+      const encoder = new TextEncoder();
+      await controlChar.characteristic.writeValue(encoder.encode(payload));
+
+      // Read the response (for characteristics that support read)
+      if (controlChar.properties.includes("read")) {
+        const response = await controlChar.characteristic.readValue();
+        const decoder = new TextDecoder("utf-8");
+        const responseText = decoder.decode(response);
+        console.log("[ESPWiFi] Response:", responseText);
+
+        try {
+          const responseJson = JSON.parse(responseText);
+
+          // Add to notification log
+          setNotificationLog((prev) => [
+            {
+              timestamp: new Date().toLocaleTimeString(),
+              data: responseJson,
+              raw: responseText,
+            },
+            ...prev.slice(0, 9),
+          ]);
+
+          // Update characteristic values display
+          const key = `${ESPWIFI_SERVICE_UUID}-${ESPWIFI_CONTROL_UUID}`;
+          setCharacteristicValues((prev) => ({
+            ...prev,
+            [key]: {
+              hex: Array.from(new Uint8Array(response.buffer))
+                .map((b) => b.toString(16).padStart(2, "0"))
+                .join(" "),
+              text: responseText,
+              timestamp: new Date().toLocaleTimeString(),
+            },
+          }));
+
+          if (!responseJson.ok) {
+            setError(responseJson.error || "Command failed");
+          }
+        } catch (e) {
+          setError("Failed to parse response JSON");
+        }
+      }
+
+      // If characteristic supports notify, wait for notification
+      if (controlChar.properties.includes("notify")) {
+        // Response will come via notification handler
+        console.log("[ESPWiFi] Waiting for notification response...");
+      }
+
+      setLoading(false);
+    } catch (err) {
+      setError("Command failed: " + err.message);
+      setLoading(false);
+    }
+  };
 
   // Check if Web Bluetooth is supported
   const isWebBluetoothSupported = () => {
     return navigator.bluetooth !== undefined;
-  };
-
-  const handleToggleESPBLE = async () => {
-    if (!deviceOnline) return;
-
-    setLoading(true);
-    try {
-      // Use actual runtime status, not config
-      const endpoint = isBLERunning ? "/api/ble/stop" : "/api/ble/start";
-      const url = buildApiUrl(endpoint);
-      const options = getFetchOptions({ method: "POST" });
-      const response = await fetch(url, options);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("BLE toggle response:", data);
-
-        // Update config to match the action
-        const newEnabled = !isBLERunning;
-        const updated = {
-          ...(config || {}),
-          ble: {
-            ...(config?.ble || {}),
-            enabled: newEnabled,
-          },
-        };
-        saveConfig?.(updated);
-        if (saveConfigToDevice) {
-          await Promise.resolve(saveConfigToDevice(updated));
-        }
-        setError(null);
-      } else {
-        const data = await response.json();
-        setError(data.message || "Failed to toggle BLE");
-      }
-    } catch (err) {
-      setError("Network error: " + err.message);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleScan = async () => {
@@ -105,6 +198,7 @@ export default function BluetoothSettingsModal({
           "generic_access",
           "device_information",
           "battery_service",
+          ESPWIFI_SERVICE_UUID,
         ],
       });
 
@@ -115,6 +209,82 @@ export default function BluetoothSettingsModal({
         setError("No device selected");
       } else {
         setError("Scan failed: " + err.message);
+      }
+      setLoading(false);
+    }
+  };
+
+  const handleConnectToPaired = async (pairedDevice) => {
+    setError("");
+    setLoading(true);
+
+    try {
+      // Try to get previously authorized devices (Chrome 85+)
+      if (navigator.bluetooth.getDevices) {
+        const devices = await navigator.bluetooth.getDevices();
+        console.log("[BLE] Found authorized devices:", devices);
+
+        const device = devices.find(
+          (d) => d.id === pairedDevice.id || d.name === pairedDevice.name
+        );
+
+        if (device) {
+          console.log(
+            "[BLE] Found matching device, connecting directly:",
+            device.name
+          );
+
+          // If already connected, disconnect first to ensure clean reconnection
+          if (device.gatt && device.gatt.connected) {
+            console.log(
+              "[BLE] Device already connected, using existing connection"
+            );
+            await connectToDevice(device);
+            return;
+          }
+
+          // Connect directly without picker
+          try {
+            await connectToDevice(device);
+            console.log("[BLE] Successfully reconnected without picker");
+            return;
+          } catch (connectErr) {
+            console.error("[BLE] Direct connection failed:", connectErr);
+            // Don't fall through to picker, just show error
+            throw connectErr;
+          }
+        } else {
+          console.log(
+            "[BLE] Device not in authorized list (ID:",
+            pairedDevice.id,
+            "Name:",
+            pairedDevice.name,
+            ")"
+          );
+        }
+      } else {
+        console.log("[BLE] getDevices() not supported, will show picker");
+      }
+
+      // Fallback: If getDevices not available or device not found, show picker
+      console.log("[BLE] Opening device picker as fallback...");
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          "generic_access",
+          "device_information",
+          "battery_service",
+          ESPWIFI_SERVICE_UUID,
+        ],
+      });
+
+      console.log("[BLE] Selected device from picker:", device.name);
+      await connectToDevice(device);
+    } catch (err) {
+      if (err.name === "NotFoundError") {
+        setError("No device selected");
+      } else {
+        setError("Connection failed: " + err.message);
       }
       setLoading(false);
     }
@@ -162,6 +332,77 @@ export default function BluetoothSettingsModal({
           characteristics: charsData,
           service: service, // Store actual service object
         });
+
+        // Auto-subscribe to ESPWiFi control characteristic notifications
+        if (service.uuid === ESPWIFI_SERVICE_UUID) {
+          const controlChar = characteristics.find(
+            (c) => c.uuid === ESPWIFI_CONTROL_UUID
+          );
+          if (controlChar && controlChar.properties.notify) {
+            try {
+              await controlChar.startNotifications();
+              console.log(
+                "[ESPWiFi] Subscribed to control characteristic notifications"
+              );
+
+              controlChar.addEventListener(
+                "characteristicvaluechanged",
+                (event) => {
+                  const value = event.target.value;
+                  const decoder = new TextDecoder("utf-8");
+                  const text = decoder.decode(value);
+
+                  console.log("[ESPWiFi] Notification received:", text);
+
+                  try {
+                    const response = JSON.parse(text);
+
+                    // Add to notification log
+                    setNotificationLog((prev) => [
+                      {
+                        timestamp: new Date().toLocaleTimeString(),
+                        data: response,
+                        raw: text,
+                      },
+                      ...prev.slice(0, 9), // Keep last 10 notifications
+                    ]);
+
+                    // Update display
+                    const key = `${ESPWIFI_SERVICE_UUID}-${ESPWIFI_CONTROL_UUID}`;
+                    setCharacteristicValues((prev) => ({
+                      ...prev,
+                      [key]: {
+                        hex: Array.from(new Uint8Array(value.buffer))
+                          .map((b) => b.toString(16).padStart(2, "0"))
+                          .join(" "),
+                        text: text,
+                        timestamp: new Date().toLocaleTimeString(),
+                        subscribed: true,
+                      },
+                    }));
+                  } catch (e) {
+                    console.error("[ESPWiFi] Failed to parse notification:", e);
+                    // Log unparseable notifications too
+                    setNotificationLog((prev) => [
+                      {
+                        timestamp: new Date().toLocaleTimeString(),
+                        data: null,
+                        raw: text,
+                        error: "Failed to parse JSON",
+                      },
+                      ...prev.slice(0, 9),
+                    ]);
+                  }
+                }
+              );
+            } catch (err) {
+              console.error(
+                "[ESPWiFi] Failed to subscribe to notifications:",
+                err
+              );
+            }
+          }
+        }
       }
 
       setConnectedDevice({
@@ -171,6 +412,10 @@ export default function BluetoothSettingsModal({
         server: server,
       });
       setServices(servicesData);
+
+      // Save to paired devices list
+      savePairedDevice(device);
+
       setLoading(false);
     } catch (err) {
       setError("Connection failed: " + err.message);
@@ -186,6 +431,7 @@ export default function BluetoothSettingsModal({
     setServices([]);
     setExpandedService(null);
     setCharacteristicValues({});
+    setNotificationLog([]);
   };
 
   const handleRead = async (serviceUuid, charUuid, characteristic) => {
@@ -355,22 +601,9 @@ export default function BluetoothSettingsModal({
       "00002a29-0000-1000-8000-00805f9b34fb": "Manufacturer Name",
       "00002a37-0000-1000-8000-00805f9b34fb": "Heart Rate Measurement",
       "00002a38-0000-1000-8000-00805f9b34fb": "Body Sensor Location",
+      "0000fff1-0000-1000-8000-00805f9b34fb": "ESPWiFi Control",
     };
     return characteristics[uuid] || `Custom Characteristic`;
-  };
-
-  const getStatusChip = () => {
-    const statusMap = {
-      not_initialized: { label: "Not Initialized", color: "default" },
-      initialized: { label: "Initialized", color: "info" },
-      advertising: { label: "Advertising", color: "warning" },
-      connected: { label: "Connected", color: "success" },
-    };
-
-    const status = bleStatus?.status || "not_initialized";
-    const { label, color } = statusMap[status] || statusMap.not_initialized;
-
-    return <Chip label={label} color={color} size="small" />;
   };
 
   return (
@@ -384,44 +617,21 @@ export default function BluetoothSettingsModal({
         maxHeight: { xs: "99%", sm: "80vh" },
       }}
       title={
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+            width: "100%",
+          }}
+        >
           <BluetoothIcon color="primary" />
           Web Bluetooth
         </Box>
       }
     >
       <Box sx={{ p: 2, height: "100%", overflow: "auto" }}>
-        {/* ESP32 BLE Status Section */}
-        {deviceOnline && (
-          <Paper sx={{ p: 2, mb: 2, bgcolor: "background.default" }}>
-            <Typography variant="subtitle2" gutterBottom>
-              {config?.deviceName || "ESP32"} BLE Advertising
-            </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
-              <Typography variant="body2">Status:</Typography>
-              {getStatusChip()}
-              {bleStatus?.address && (
-                <Typography variant="caption" color="text.secondary">
-                  {bleStatus.address}
-                </Typography>
-              )}
-            </Box>
-
-            <Button
-              size="small"
-              variant="outlined"
-              color={isBLERunning ? "error" : "primary"}
-              onClick={handleToggleESPBLE}
-              disabled={!deviceOnline || loading}
-              fullWidth
-            >
-              {isBLERunning
-                ? `Stop ${config?.deviceName || "ESP32"} BLE`
-                : `Start ${config?.deviceName || "ESP32"} BLE`}
-            </Button>
-          </Paper>
-        )}
-
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
@@ -442,21 +652,77 @@ export default function BluetoothSettingsModal({
               Connect to BLE Device
             </Typography>
             <Typography variant="body2" color="text.secondary" paragraph>
-              Click the button below to scan and connect to a BLE device using
-              your browser.
+              Scan for and connect to BLE devices using Web Bluetooth. View GATT
+              services, read characteristics, and interact with BLE devices.
             </Typography>
 
             <Button
               variant="contained"
+              size="large"
               startIcon={
-                loading ? <CircularProgress size={20} /> : <BluetoothIcon />
+                loading ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <BluetoothSearchingIcon />
+                )
               }
               onClick={handleScan}
               disabled={loading || !isWebBluetoothSupported()}
               fullWidth
             >
-              {loading ? "Connecting..." : "Scan for Devices"}
+              {loading ? "Connecting..." : "Scan BT Devices"}
             </Button>
+
+            {/* Paired Devices List */}
+            {pairedDevices.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="body2" fontWeight="bold" gutterBottom>
+                  Previously Paired Devices
+                </Typography>
+                {pairedDevices.map((device) => (
+                  <Paper
+                    key={device.id}
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      mb: 1,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        {device.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Last connected:{" "}
+                        {new Date(device.lastConnected).toLocaleString()}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleConnectToPaired(device)}
+                        disabled={loading}
+                      >
+                        Connect
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="error"
+                        onClick={() => removePairedDevice(device.id)}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  </Paper>
+                ))}
+              </Box>
+            )}
           </Paper>
         )}
 
@@ -487,6 +753,177 @@ export default function BluetoothSettingsModal({
             </Box>
 
             <Divider sx={{ my: 2 }} />
+
+            {/* ESPWiFi Specialized Controls */}
+            {services.some(
+              (s) => s.uuid === "0000180a-0000-1000-8000-00805f9b34fb"
+            ) && (
+              <>
+                <Typography
+                  variant="subtitle1"
+                  gutterBottom
+                  sx={{ fontWeight: 600 }}
+                >
+                  ESPWiFi Controls
+                </Typography>
+
+                {/* Notification Log */}
+                {notificationLog.length > 0 && (
+                  <Paper sx={{ p: 2, mb: 2, bgcolor: "action.hover" }}>
+                    <Typography variant="body2" fontWeight="bold" gutterBottom>
+                      Notifications ({notificationLog.length})
+                      <Button
+                        size="small"
+                        onClick={() => setNotificationLog([])}
+                        sx={{ ml: 1, minWidth: "auto" }}
+                      >
+                        Clear
+                      </Button>
+                    </Typography>
+                    <Box
+                      sx={{
+                        maxHeight: 300,
+                        overflow: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                      }}
+                    >
+                      {notificationLog.map((log, idx) => (
+                        <Paper
+                          key={idx}
+                          variant="outlined"
+                          sx={{
+                            p: 1.5,
+                            bgcolor: log.error ? "error.dark" : "success.dark",
+                            opacity: 0.95,
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontSize: "0.7rem",
+                              color: "grey.300",
+                              fontWeight: 500,
+                            }}
+                          >
+                            {log.timestamp}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            component="pre"
+                            sx={{
+                              fontFamily: "monospace",
+                              whiteSpace: "pre",
+                              overflow: "auto",
+                              fontSize: "0.75rem",
+                              mt: 0.5,
+                              display: "block",
+                              lineHeight: 1.5,
+                              textAlign: "left",
+                            }}
+                          >
+                            {log.error
+                              ? `ERROR: ${log.error}\n${log.raw}`
+                              : JSON.stringify(log.data, null, 2)}
+                          </Typography>
+                        </Paper>
+                      ))}
+                    </Box>
+                  </Paper>
+                )}
+
+                {/* WiFi Configuration */}
+                <Paper sx={{ p: 2, mb: 2, bgcolor: "action.hover" }}>
+                  <Typography variant="body2" fontWeight="bold" gutterBottom>
+                    Configure WiFi
+                  </Typography>
+                  <Box
+                    sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
+                  >
+                    <TextField
+                      label="WiFi SSID"
+                      size="small"
+                      fullWidth
+                      value={writeValue}
+                      onChange={(e) => setWriteValue(e.target.value)}
+                      placeholder="MyNetwork"
+                      disabled={loading}
+                    />
+                    <TextField
+                      label="WiFi Password"
+                      size="small"
+                      type={showPassword ? "text" : "password"}
+                      fullWidth
+                      placeholder="password"
+                      disabled={loading}
+                      id="wifi-password-field"
+                      onKeyPress={(e) => {
+                        if (e.key === "Enter") {
+                          const password = e.target.value;
+                          handleESPWiFiCommand("set_wifi", {
+                            ssid: writeValue,
+                            password,
+                          });
+                        }
+                      }}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle password visibility"
+                              onClick={() => setShowPassword(!showPassword)}
+                              onMouseDown={(e) => e.preventDefault()}
+                              edge="end"
+                              size="small"
+                            >
+                              {showPassword ? (
+                                <VisibilityOffIcon fontSize="small" />
+                              ) : (
+                                <VisibilityIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => {
+                        const ssid = writeValue;
+                        const password =
+                          document.getElementById("wifi-password-field")
+                            ?.value || "";
+                        handleESPWiFiCommand("set_wifi", { ssid, password });
+                      }}
+                      disabled={!writeValue || loading}
+                      fullWidth
+                    >
+                      {loading ? "Sending..." : "Set WiFi Credentials"}
+                    </Button>
+                  </Box>
+                </Paper>
+
+                {/* Get Info */}
+                <Paper sx={{ p: 2, mb: 2, bgcolor: "action.hover" }}>
+                  <Typography variant="body2" fontWeight="bold" gutterBottom>
+                    Device Information
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleESPWiFiCommand("get_info", {})}
+                    disabled={loading}
+                    fullWidth
+                  >
+                    {loading ? "Loading..." : "Get Device Info"}
+                  </Button>
+                </Paper>
+
+                <Divider sx={{ my: 2 }} />
+              </>
+            )}
 
             <Typography variant="subtitle1" gutterBottom>
               Services & Characteristics ({services.length})

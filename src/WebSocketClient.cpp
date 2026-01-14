@@ -179,9 +179,9 @@ bool WebSocketClient::begin(const Config &config) {
   // Buffer size
   wsConfig.buffer_size = config.bufferSize;
 
-  // Task stack size - increase to prevent stack overflow with TLS
+  // Task stack size - reduce to fit alongside BLE during startup
   wsConfig.task_stack =
-      8192; // Default is usually 4096, double it for cloud connections
+      6144; // Reduced from 8192 to allow BLE and cloud to coexist
 
   // Ping/Pong settings
   if (config.pingInterval > 0) {

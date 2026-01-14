@@ -48,7 +48,6 @@ JsonDocument ESPWiFi::defaultConfig() {
 
   // BLE Provisioning
   doc["ble"]["enabled"] = true;
-  doc["ble"]["passkey"] = 123456;
 
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/espwifi.log";
@@ -57,7 +56,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["log"]["useSD"] = true;
   doc["log"]["maskedKeys"] = JsonArray();
   doc["log"]["maskedKeys"].add("password");
-  doc["log"]["maskedKeys"].add("passkey");
   doc["log"]["maskedKeys"].add("token");
 
   // Auth

@@ -23,12 +23,24 @@ void ESPWiFi::startCloudCtl() {
   const char *deviceId = hostname.c_str();
 
   // Get auth token from device config (used to authenticate UI connections)
-  const char *authToken = config["auth"]["token"] | nullptr;
+  const char *authToken = config["auth"]["token"].as<const char *>();
+  if (!authToken || authToken[0] == '\0') {
+    log(ERROR,
+        "☁️ Auth token not found in config - cloud will not work properly");
+    authToken = nullptr;
+  } else {
+    log(INFO, "☁️ Auth token: %s", authToken);
+  }
 
   log(INFO, "☁️ Starting cloud client");
   log(INFO, "☁️ Base URL: %s", baseUrl);
   log(INFO, "☁️ Device ID: %s", deviceId);
   log(INFO, "☁️ Tunnel: %s", tunnel);
+
+  // Delay cloud startup to reduce memory pressure during boot
+  // (BLE, HTTP, mDNS all initialize first and consume heap)
+  log(INFO, "☁️ Waiting 5s for system to stabilize...");
+  feedWatchDog(999);
 
   // Configure cloud client
   Cloud::Config cfg;

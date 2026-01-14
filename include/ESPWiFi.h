@@ -186,7 +186,7 @@ public:
   }
 
   // ---- Config
-  void saveConfig();
+  bool saveConfig();
   void readConfig();
   void handleConfigUpdate();
   void requestConfigSave();
@@ -347,12 +347,6 @@ public:
                                     void *arg);
 
   // Route-style BLE characteristic handler.
-  // Similar idea to `RouteHandler`, but for NimBLE GATT access callbacks.
-  // NOTE: must be a plain function pointer (non-capturing lambda is OK).
-  using BleRouteHandler = int (*)(ESPWiFi *espwifi, uint16_t conn_handle,
-                                  uint16_t attr_handle,
-                                  struct ble_gatt_access_ctxt *ctxt);
-
   void *ble = nullptr;
   bool startBLE();
   void deinitBLE();
@@ -372,14 +366,6 @@ public:
   bool addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                               uint16_t flags, BleAccessCallback accessCb,
                               void *arg = nullptr, uint8_t minKeySize = 0);
-
-  // Convenience helper: like registerRoute(), but for BLE GATT characteristics.
-  // - Auto-registers the service if needed.
-  // - Provides ESPWiFi* to the handler.
-  // - Stores handler context in a fixed-size pool (no heap).
-  bool registerBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
-                                   uint16_t flags, BleRouteHandler handler,
-                                   uint8_t minKeySize = 0);
 
   void clearBleServices();
   bool applyBleServiceRegistry(bool restartNow = true);
@@ -517,22 +503,6 @@ private:
 
   // BLE event handlers (instance methods)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-  // ---- BLE route-style trampoline/state (fixed pool; no heap).
-  struct BleRouteCtx {
-    ESPWiFi *self = nullptr;
-    BleRouteHandler handler = nullptr;
-    uint16_t svcUuid16 = 0;
-    uint16_t chrUuid16 = 0;
-  };
-
-  static constexpr size_t kMaxBleRouteContexts = 48;
-  BleRouteCtx bleRouteCtx_[kMaxBleRouteContexts]{};
-  size_t bleRouteCtxCount_ = 0;
-
-  static int bleGattAccessTrampoline(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt,
-                                     void *arg);
-
   void bleConnectionHandler(int status, uint16_t conn_handle, void *obj);
   void bleDisconnectionHandler(int reason, void *obj);
   void bleAdvertisingCompleteHandler(void *obj);

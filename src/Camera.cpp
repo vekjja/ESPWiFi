@@ -873,7 +873,6 @@ bool ESPWiFi::initCamera() { return false; }
 void ESPWiFi::deinitCamera() {}
 void ESPWiFi::clearCameraBuffer() {}
 void ESPWiFi::updateCameraSettings() {}
-void ESPWiFi::streamCamera() {}
 esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
                                       const std::string &clientInfo) {
   (void)req;

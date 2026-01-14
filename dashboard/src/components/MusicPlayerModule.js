@@ -254,10 +254,18 @@ export default function MusicPlayerModule({
   };
 
   // Handle stop
-  const handleStop = () => {
+  const handleStop = async () => {
     if (!audioRef.current) return;
+
+    // Stop local audio playback and abort HTTP requests
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
+
+    // Clear the source to abort ongoing HTTP range requests
+    // This prevents the device from continuing to serve the file
+    audioRef.current.src = "";
+    audioRef.current.load(); // Reset the audio element
+
     setProgress(0);
     setCurrentTime(0);
     setIsPlaying(false);

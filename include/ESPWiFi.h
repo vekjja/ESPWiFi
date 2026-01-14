@@ -291,10 +291,8 @@ public:
   void startControlWebSocket();
   void handleCloudControlMessage(const JsonDocument &req, JsonDocument &resp);
 
-#if ESPWiFi_HAS_CAMERA
   // ---- Camera WebSocket (for LAN streaming)
   void startCameraWebSocket();
-#endif
 
   // ---- Cloud Client (remote access)
   void startCloudCtl();
@@ -340,6 +338,7 @@ public:
   // Declared unconditionally because config handling calls this even when BLE
   // is compiled out; implementation is a stub when CONFIG_BT_NIMBLE_ENABLED is
   // disabled.
+  bool startBLE();
   void bleConfigHandler();
 #ifdef CONFIG_BT_NIMBLE_ENABLED
   using BleAccessCallback = int (*)(uint16_t conn_handle, uint16_t attr_handle,
@@ -348,7 +347,6 @@ public:
 
   // Route-style BLE characteristic handler.
   void *ble = nullptr;
-  bool startBLE();
   void deinitBLE();
   uint8_t getBLEStatus();
   std::string getBLEAddress();
@@ -388,7 +386,8 @@ public:
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;
 
-// ---- Camera
+  // ---- Camera
+  void streamCamera();
 #if ESPWiFi_HAS_CAMERA
   WebSocket cameraSoc;
   bool cameraSocStarted = false;
@@ -409,7 +408,6 @@ public:
   // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();
   void deinitCamera();
-  void streamCamera();
   void clearCameraBuffer();
   void updateCameraSettings();
   void cameraConfigHandler();

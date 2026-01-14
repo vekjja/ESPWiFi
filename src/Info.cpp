@@ -88,6 +88,7 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
     }
 
     // Camera endpoint info
+#if ESPWiFi_HAS_CAMERA
     JsonObject camera = endpoints["camera"].to<JsonObject>();
     camera["uri"] = "/ws/camera";
     camera["started"] = cameraSocStarted;
@@ -102,7 +103,8 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
         camera["ui_ws_url"] = std::string(mediaWsUrl);
       }
     }
-#endif
+#endif // ESPWiFi_HAS_CAMERA
+#endif // CONFIG_HTTPD_WS_SUPPORT
   }
 
   // Pairing / claim code (cloud broker claim code for iOS flows)

@@ -39,7 +39,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["type"] = "pong";
     } else if (strcmp(cmd, "get_status") == 0) {
       resp["ip"] = espwifi->ipAddress();
-      resp["hostname"] = espwifi->config["hostname"].as<std::string>();
+      resp["hostname"] = espwifi->getHostname();
       resp["wifiMode"] = espwifi->config["wifi"]["mode"].as<std::string>();
     } else if (strcmp(cmd, "get_config") == 0) {
       resp["config"] = espwifi->config;
@@ -270,10 +270,14 @@ static void ctrlOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
   if (!ws || !espwifi)
     return;
 
+  // Use getHostname() which safely retrieves hostname from network interface
+  // or config, avoiding direct config access that could cause memory issues
+  std::string hostname = espwifi->getHostname();
+
   JsonDocument hello;
   hello["type"] = "hello";
   hello["ok"] = true;
-  hello["hostname"] = espwifi->config["hostname"].as<std::string>();
+  hello["hostname"] = hostname;
   std::string out;
   serializeJson(hello, out);
   (void)ws->sendText(clientFd, out.c_str(), out.size());
@@ -288,6 +292,9 @@ static void ctrlOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
 
 // Auth check helper for WebSocket
 static bool wsAuthCheck(httpd_req_t *req, void *userCtx) {
+  if (req == nullptr) {
+    return false; // Reject if request is invalid
+  }
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
   if (!espwifi || !espwifi->authEnabled() ||
       espwifi->isExcludedPath(req->uri)) {

@@ -123,6 +123,13 @@ bool WebSocketClient::begin(const Config &config) {
   autoReconnect_ = config.autoReconnect;
   reconnectDelay_ = config.reconnectDelay;
   maxReconnectAttempts_ = config.maxReconnectAttempts;
+  
+  // Store configuration for reconnection
+  bufferSize_ = config.bufferSize;
+  pingInterval_ = config.pingInterval;
+  timeout_ = config.timeout;
+  disableCertVerify_ = config.disableCertVerify;
+  certPem_ = config.certPem;
 
   // Configure WebSocket client
   esp_websocket_client_config_t wsConfig = {};
@@ -237,6 +244,12 @@ bool WebSocketClient::connect() {
   esp_err_t err = esp_websocket_client_start(client_);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to start WebSocket client: %s", esp_err_to_name(err));
+    // Clean up failed connection attempt to prevent memory leaks
+    // Stop and destroy the client to free all resources
+    // This is safe because we're not in the client's task context
+    esp_websocket_client_stop(client_);
+    esp_websocket_client_destroy(client_);
+    client_ = nullptr;
     return false;
   }
 
@@ -260,16 +273,96 @@ void WebSocketClient::scheduleReconnect() {
       reconnectAttempts_ >= maxReconnectAttempts_) {
     ESP_LOGW(TAG, "Max reconnect attempts (%lu) reached",
              maxReconnectAttempts_);
+    // Disable auto-reconnect to prevent further attempts
+    autoReconnect_ = false;
     return;
   }
 
   reconnectAttempts_++;
+  
+  // Exponential backoff: delay increases with each attempt (capped at 60s)
+  uint32_t delay = reconnectDelay_;
+  if (reconnectAttempts_ > 1) {
+    delay = reconnectDelay_ * (1 << (reconnectAttempts_ - 1));
+    if (delay > 60000) {
+      delay = 60000; // Cap at 60 seconds
+    }
+  }
+  
   ESP_LOGI(TAG, "Scheduling reconnect attempt %lu in %lu ms",
-           reconnectAttempts_, reconnectDelay_);
+           reconnectAttempts_, delay);
+
+  // Clean up the failed client before reconnecting
+  // This prevents memory leaks from accumulated failed connection attempts
+  // Note: We're in the event handler task, so we need to be careful
+  // Just stop it - if connect() fails again, we'll handle cleanup there
+  if (client_ != nullptr && !connected_) {
+    esp_websocket_client_stop(client_);
+    // Don't destroy here - we're in the client's task context
+    // The next connect() will handle it, or we'll destroy on next failure
+  }
 
   // Schedule reconnection in a task
   // Note: In production, you might want to use a timer or event group
-  vTaskDelay(pdMS_TO_TICKS(reconnectDelay_));
+  vTaskDelay(pdMS_TO_TICKS(delay));
+  
+  // Reinitialize the client if it was destroyed
+  if (client_ == nullptr) {
+    // Recreate the client configuration
+    esp_websocket_client_config_t wsConfig = {};
+    wsConfig.uri = uri_;
+    
+    // Reapply TLS configuration if needed
+    if (strncmp(uri_, "wss://", 6) == 0) {
+      wsConfig.transport = WEBSOCKET_TRANSPORT_OVER_SSL;
+      
+      if (certPem_) {
+        wsConfig.cert_pem = certPem_;
+      } else {
+        wsConfig.crt_bundle_attach = esp_crt_bundle_attach;
+        wsConfig.skip_cert_common_name_check = false;
+      }
+      
+      if (disableCertVerify_) {
+        wsConfig.skip_cert_common_name_check = true;
+        wsConfig.crt_bundle_attach = NULL;
+      }
+    }
+    
+    wsConfig.buffer_size = bufferSize_;
+    wsConfig.task_stack = 6144;
+    wsConfig.network_timeout_ms = timeout_;
+    wsConfig.reconnect_timeout_ms = 0;
+    wsConfig.disable_auto_reconnect = true;
+    
+    if (pingInterval_ > 0) {
+      wsConfig.ping_interval_sec = pingInterval_ / 1000;
+    }
+    
+    if (authHeader_[0] != '\0') {
+      wsConfig.headers = authHeader_;
+    }
+    
+    client_ = esp_websocket_client_init(&wsConfig);
+    if (client_ == nullptr) {
+      ESP_LOGE(TAG, "Failed to reinitialize WebSocket client (out of memory?)");
+      // Give up on this reconnect attempt - wait longer before next try
+      reconnectAttempts_--; // Don't count this as an attempt since we couldn't even init
+      return;
+    }
+    
+    // Re-register event handler
+    esp_err_t err = esp_websocket_register_events(client_, WEBSOCKET_EVENT_ANY,
+                                                  eventHandlerTrampoline, this);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to register event handler: %s", esp_err_to_name(err));
+      esp_websocket_client_destroy(client_);
+      client_ = nullptr;
+      reconnectAttempts_--; // Don't count this as an attempt
+      return;
+    }
+  }
+  
   connect();
 }
 

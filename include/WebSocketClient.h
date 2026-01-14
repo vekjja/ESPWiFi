@@ -55,6 +55,13 @@ private:
   uint32_t maxReconnectAttempts_ = 0; // 0 = infinite
   uint32_t reconnectAttempts_ = 0;
 
+  // Stored configuration for reconnection
+  size_t bufferSize_ = 4096;
+  uint32_t pingInterval_ = 10000;
+  uint32_t timeout_ = 10000;
+  bool disableCertVerify_ = false;
+  const char *certPem_ = nullptr;
+
   // Authentication
   char authHeader_[256] = {0};
 

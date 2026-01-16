@@ -5,9 +5,9 @@
 
 void ESPWiFi::srvAll() {
   srvRoot();
-  // srvAuth();
+  srvAuth();
   // srvLog();
-  srvFiles();
+  // srvFiles();
   // srvGPIO();
   // srvBLE();
   // srvBluetooth();

@@ -9,7 +9,6 @@ void ESPWiFi::start() {
   startLogging();
   readConfig();
   initNVS();
-  // startBLE();
   startWiFi();
   startMDNS();
   startWebServer();

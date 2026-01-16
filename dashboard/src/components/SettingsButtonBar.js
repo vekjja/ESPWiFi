@@ -21,7 +21,7 @@ import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
 import LogsButton from "./LogsButton";
 import FileBrowserButton from "./FileBrowserButton";
-import BluetoothButton from "./BluetoothButton";
+// import BluetoothButton from "./BluetoothButton";
 import AddModuleButton from "./AddModuleButton";
 
 // Storage keys for persisting button configuration
@@ -296,10 +296,10 @@ export default function SettingsButtonBar({
     }
 
     // Always show Bluetooth button - never disabled (keep enabled even during music playback)
-    items.push({
-      id: "bluetooth",
-      render: () => <BluetoothButton config={config} />,
-    });
+    // items.push({
+    //   id: "bluetooth",
+    //   render: () => <BluetoothButton config={config} />,
+    // });
 
     // Show camera button if camera is installed and there's at least one camera module
     const hasCameraModule = config?.modules?.some((m) => m.type === "camera");

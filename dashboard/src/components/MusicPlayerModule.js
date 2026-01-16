@@ -10,7 +10,6 @@ import {
   ListItemText,
   ListItemButton,
   CircularProgress,
-  LinearProgress,
   Slider,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -48,6 +47,7 @@ export default function MusicPlayerModule({
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [seekPreviewProgress, setSeekPreviewProgress] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [isCasting, setIsCasting] = useState(false);
 
@@ -62,6 +62,8 @@ export default function MusicPlayerModule({
   const stopInProgressRef = useRef(false);
   const suppressAudioErrorRef = useRef(false);
   const streamSeqRef = useRef(0);
+  const isSeekingRef = useRef(false);
+  const pendingSeekTimeRef = useRef(null);
 
   // Supported audio file extensions
   const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"];
@@ -84,9 +86,11 @@ export default function MusicPlayerModule({
     });
 
     audio.addEventListener("timeupdate", () => {
-      setCurrentTime(audio.currentTime);
-      if (audio.duration > 0) {
-        setProgress((audio.currentTime / audio.duration) * 100);
+      if (!isSeekingRef.current) {
+        setCurrentTime(audio.currentTime);
+        if (audio.duration > 0) {
+          setProgress((audio.currentTime / audio.duration) * 100);
+        }
       }
     });
 
@@ -644,6 +648,66 @@ export default function MusicPlayerModule({
     }
   };
 
+  // Scrub/seek handlers
+  const clampToSeekable = (t) => {
+    const a = audioRef.current;
+    if (!a) return t;
+    try {
+      if (a.seekable && a.seekable.length > 0) {
+        const start = a.seekable.start(0);
+        const end = a.seekable.end(a.seekable.length - 1);
+        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+          if (t < start) return start;
+          if (t > end) return end;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // Fallback clamp to [0, duration]
+    if (duration && Number.isFinite(duration)) {
+      if (t < 0) return 0;
+      if (t > duration) return duration;
+    }
+    return t;
+  };
+
+  const applySeek = (t) => {
+    const a = audioRef.current;
+    if (!a) return false;
+    const tt = clampToSeekable(t);
+    try {
+      if (typeof a.fastSeek === "function") {
+        a.fastSeek(tt);
+      } else {
+        a.currentTime = tt;
+      }
+      pendingSeekTimeRef.current = null;
+      return true;
+    } catch {
+      // Some browsers throw if not seekable yet; retry on canplay/loadedmetadata.
+      pendingSeekTimeRef.current = tt;
+      return false;
+    }
+  };
+
+  const handleSeekChange = (event, newValue) => {
+    if (!duration || !audioRef.current) return;
+    isSeekingRef.current = true;
+    const pct = Array.isArray(newValue) ? newValue[0] : newValue;
+    setSeekPreviewProgress(pct);
+    setProgress(pct);
+    setCurrentTime((pct / 100) * duration);
+  };
+
+  const handleSeekCommit = (event, newValue) => {
+    if (!duration || !audioRef.current) return;
+    const pct = Array.isArray(newValue) ? newValue[0] : newValue;
+    const t = (pct / 100) * duration;
+    applySeek(t);
+    isSeekingRef.current = false;
+  };
+
   // Handle cast to external device (Chromecast, etc.)
   const handleCast = async () => {
     if (!audioRef.current || !currentTrack) {
@@ -864,12 +928,31 @@ export default function MusicPlayerModule({
               </Typography>
             )}
 
-            {/* Progress bar */}
-            {isPlaying && (
-              <LinearProgress
-                variant="determinate"
-                value={progress}
-                sx={{ width: "100%", mt: { xs: 0.5, sm: 1 } }}
+            {/* Scrub / seek */}
+            {currentTrack && duration > 0 && (
+              <Slider
+                value={isSeekingRef.current ? seekPreviewProgress : progress}
+                onChange={handleSeekChange}
+                onChangeCommitted={handleSeekCommit}
+                min={0}
+                max={100}
+                step={0.1}
+                size="small"
+                sx={{
+                  width: "100%",
+                  mt: { xs: 0.5, sm: 1 },
+                  "& .MuiSlider-thumb": {
+                    width: { xs: 10, sm: 12 },
+                    height: { xs: 10, sm: 12 },
+                  },
+                  "& .MuiSlider-track": {
+                    height: { xs: 2, sm: 3 },
+                  },
+                  "& .MuiSlider-rail": {
+                    height: { xs: 2, sm: 3 },
+                    opacity: 0.3,
+                  },
+                }}
               />
             )}
 

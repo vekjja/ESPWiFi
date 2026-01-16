@@ -386,12 +386,13 @@ public:
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;
 
-  // ---- Camera
-  void streamCamera();
-#if ESPWiFi_HAS_CAMERA
+  // ---- Media socket (camera + audio + future binary streams)
   WebSocket mediaSoc;
   bool mediaSocStarted = false;
 
+  // ---- Camera
+  void streamCamera();
+#if ESPWiFi_HAS_CAMERA
   sensor_t *camera = nullptr;
   void printCameraSettings();
 

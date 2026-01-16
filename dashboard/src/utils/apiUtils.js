@@ -144,7 +144,7 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
 
 /**
  * Build a full WebSocket URL
- * @param {string} path - The WebSocket endpoint path (e.g., "/ws/camera", "/ws/rssi")
+ * @param {string} path - The WebSocket endpoint path (e.g., "/ws/media", "/ws/control")
  * @param {string} mdnsHostname - Optional mDNS hostname
  * @returns {string} The full WebSocket URL
  */

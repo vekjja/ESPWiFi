@@ -14,8 +14,8 @@ void ESPWiFi::start() {
   startMDNS();
   startWebServer();
   startControlWebSocket();
-  startCameraWebSocket();
-  startCloudCtl();
+  startMediaWebSocket();
+  // startCloudCtl();
   // startCloudMedia();
   srvAll();
 }

@@ -291,8 +291,8 @@ public:
   void startControlWebSocket();
   void handleCloudControlMessage(const JsonDocument &req, JsonDocument &resp);
 
-  // ---- Camera WebSocket (for LAN streaming)
-  void startCameraWebSocket();
+  // ---- Media WebSocket (for LAN media; camera streaming on request)
+  void startMediaWebSocket();
 
   // ---- Cloud Client (remote access)
   void startCloudCtl();
@@ -389,19 +389,19 @@ public:
   // ---- Camera
   void streamCamera();
 #if ESPWiFi_HAS_CAMERA
-  WebSocket cameraSoc;
-  bool cameraSocStarted = false;
+  WebSocket mediaSoc;
+  bool mediaSocStarted = false;
 
   sensor_t *camera = nullptr;
   void printCameraSettings();
 
-  // Camera streaming subscribers
-  static constexpr size_t kMaxCameraStreamSubscribers = 8;
-  int cameraStreamSubFds_[kMaxCameraStreamSubscribers] = {0};
-  volatile size_t cameraStreamSubCount_ = 0;
+  // Media camera streaming subscribers (clients that requested camera_start)
+  static constexpr size_t kMaxMediaCameraStreamSubscribers = 8;
+  int mediaCameraStreamSubFds_[kMaxMediaCameraStreamSubscribers] = {0};
+  volatile size_t mediaCameraStreamSubCount_ = 0;
 
-  void setCameraStreamSubscribed(int clientFd, bool enable);
-  void clearCameraStreamSubscribed(int clientFd);
+  void setMediaCameraStreamSubscribed(int clientFd, bool enable);
+  void clearMediaCameraStreamSubscribed(int clientFd);
 #endif // ESPWiFi_HAS_CAMERA
 #endif // CONFIG_HTTPD_WS_SUPPORT
 

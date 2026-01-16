@@ -87,11 +87,11 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
       }
     }
 
-    // Camera endpoint info
+    // Media (camera) endpoint info
 #if ESPWiFi_HAS_CAMERA
     JsonObject camera = endpoints["camera"].to<JsonObject>();
-    camera["uri"] = "/ws/camera";
-    camera["started"] = cameraSocStarted;
+    camera["uri"] = "/ws/media";
+    camera["started"] = mediaSocStarted;
 
     // Add media cloud tunnel info
     camera["cloudEnabled"] = cloudMedia.isConnected();

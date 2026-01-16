@@ -87,7 +87,7 @@ export default function CloudInfoCard({ config, deviceInfo, onSave }) {
       },
     };
 
-    // If cloud is enabled and the device has a camera, enable it so /ws/camera can tunnel.
+    // If cloud is enabled and the device has a camera, enable it so /ws/media can tunnel.
     if (tempEnabled && config?.camera?.installed !== false) {
       next.camera = { ...(config?.camera || {}), enabled: true };
     }

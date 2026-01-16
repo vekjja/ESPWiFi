@@ -97,6 +97,8 @@ JsonDocument ESPWiFi::defaultConfig() {
 #endif
   doc["sd"]["initialized"] = false;
 
+  doc["ota"]["enabled"] = isOTAEnabled();
+
 // Camera
 #if ESPWiFi_HAS_CAMERA
   doc["camera"]["installed"] = true;
@@ -120,7 +122,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["installed"] = false;
 #endif
 
-  doc["ota"]["enabled"] = isOTAEnabled();
   return doc;
 }
 

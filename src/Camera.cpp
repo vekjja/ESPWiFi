@@ -560,20 +560,20 @@ void ESPWiFi::updateCameraSettings() {
 }
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
-void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
+void ESPWiFi::setMediaCameraStreamSubscribed(int clientFd, bool enable) {
   if (clientFd <= 0) {
     return;
   }
 
   // Remove if disabling
   if (!enable) {
-    for (size_t i = 0; i < (size_t)cameraStreamSubCount_;) {
-      if (cameraStreamSubFds_[i] == clientFd) {
+    for (size_t i = 0; i < (size_t)mediaCameraStreamSubCount_;) {
+      if (mediaCameraStreamSubFds_[i] == clientFd) {
         // swap-remove
-        const size_t last = (size_t)cameraStreamSubCount_ - 1;
-        cameraStreamSubFds_[i] = cameraStreamSubFds_[last];
-        cameraStreamSubFds_[last] = 0;
-        cameraStreamSubCount_ = (size_t)cameraStreamSubCount_ - 1;
+        const size_t last = (size_t)mediaCameraStreamSubCount_ - 1;
+        mediaCameraStreamSubFds_[i] = mediaCameraStreamSubFds_[last];
+        mediaCameraStreamSubFds_[last] = 0;
+        mediaCameraStreamSubCount_ = (size_t)mediaCameraStreamSubCount_ - 1;
         continue;
       }
       i++;
@@ -582,30 +582,30 @@ void ESPWiFi::setCameraStreamSubscribed(int clientFd, bool enable) {
   }
 
   // Add if not present
-  for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
-    if (cameraStreamSubFds_[i] == clientFd) {
+  for (size_t i = 0; i < (size_t)mediaCameraStreamSubCount_; i++) {
+    if (mediaCameraStreamSubFds_[i] == clientFd) {
       return; // Already subscribed
     }
   }
 
-  if ((size_t)cameraStreamSubCount_ >= kMaxCameraStreamSubscribers) {
-    log(WARNING, "📷 Camera stream subscriber limit reached; ignoring fd=%d",
+  if ((size_t)mediaCameraStreamSubCount_ >= kMaxMediaCameraStreamSubscribers) {
+    log(WARNING, "🎞️ Media camera subscriber limit reached; ignoring fd=%d",
         clientFd);
     return;
   }
 
-  const size_t idx = (size_t)cameraStreamSubCount_;
-  cameraStreamSubFds_[idx] = clientFd;
-  cameraStreamSubCount_ = idx + 1;
+  const size_t idx = (size_t)mediaCameraStreamSubCount_;
+  mediaCameraStreamSubFds_[idx] = clientFd;
+  mediaCameraStreamSubCount_ = idx + 1;
 }
 
-void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
+void ESPWiFi::clearMediaCameraStreamSubscribed(int clientFd) {
   // Check if already unsubscribed to prevent double-cleanup
   bool found = false;
 
   if (clientFd > 0) {
-    for (size_t i = 0; i < (size_t)cameraStreamSubCount_; i++) {
-      if (cameraStreamSubFds_[i] == clientFd) {
+    for (size_t i = 0; i < (size_t)mediaCameraStreamSubCount_; i++) {
+      if (mediaCameraStreamSubFds_[i] == clientFd) {
         found = true;
         break;
       }
@@ -616,7 +616,7 @@ void ESPWiFi::clearCameraStreamSubscribed(int clientFd) {
     return; // Already cleaned up
   }
 
-  setCameraStreamSubscribed(clientFd, false);
+  setMediaCameraStreamSubscribed(clientFd, false);
 }
 #endif
 
@@ -873,7 +873,6 @@ bool ESPWiFi::initCamera() { return false; }
 void ESPWiFi::deinitCamera() {}
 void ESPWiFi::clearCameraBuffer() {}
 void ESPWiFi::updateCameraSettings() {}
-void ESPWiFi::streamCamera() {}
 esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
                                       const std::string &clientInfo) {
   (void)req;
@@ -934,20 +933,25 @@ void ESPWiFi::streamCamera() {
 #if !defined(CONFIG_HTTPD_WS_SUPPORT) || !ESPWiFi_HAS_CAMERA
   return;
 #else
-  if (!cameraSocStarted) {
+  if (!mediaSocStarted) {
     return;
   }
 
-  // Check for subscribers
-  const size_t lanSubs = (size_t)cameraStreamSubCount_;
-  if (lanSubs == 0) {
+  // Check for subscribers (LAN + Cloud UI)
+  // UI controls camera start/stop via /ws/media commands
+  const size_t lanSubs = (size_t)mediaCameraStreamSubCount_;
+  const bool cloudUiConnected =
+      cloudMedia.isConnected() && cloudMedia.isRegistered();
+
+  // If no subscribers, deinit camera and return
+  if (lanSubs == 0 && !cloudUiConnected) {
     if (camera != nullptr) {
       deinitCamera();
     }
     return;
   }
 
-  // Initialize camera if needed
+  // Initialize camera if needed (only when we have subscribers)
   if (camera == nullptr) {
     if (!initCamera()) {
       return;
@@ -955,7 +959,16 @@ void ESPWiFi::streamCamera() {
   }
 
   static IntervalTimer frameTimer(1000);
-  frameTimer.setIntervalMs((uint32_t)(1000 / 30)); // 30 FPS
+  int fps = config["camera"]["frameRate"].isNull()
+                ? 10
+                : config["camera"]["frameRate"].as<int>();
+  if (fps < 1) {
+    fps = 1;
+  }
+  if (fps > 30) {
+    fps = 30;
+  }
+  frameTimer.setIntervalMs((uint32_t)(1000 / (uint32_t)fps));
   if (!frameTimer.shouldRunAt(esp_timer_get_time())) {
     return;
   }
@@ -969,12 +982,18 @@ void ESPWiFi::streamCamera() {
     return;
   }
 
-  // Send to all subscribers
+  // Send to all LAN subscribers
   for (size_t i = 0; i < lanSubs; i++) {
-    int fd = cameraStreamSubFds_[i];
+    int fd = mediaCameraStreamSubFds_[i];
     if (fd > 0) {
-      cameraSoc.sendBinary(fd, fb->buf, fb->len);
+      mediaSoc.sendBinary(fd, fb->buf, fb->len);
     }
+  }
+
+  // Send to cloud tunnel if UI is connected via cloud and registered
+  // (Cloud media tunnel only sends when there's an active UI connection)
+  if (cloudMedia.isConnected() && cloudMedia.isRegistered()) {
+    cloudMedia.sendBinary(fb->buf, fb->len);
   }
 
   esp_camera_fb_return(fb);

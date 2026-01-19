@@ -12,28 +12,13 @@ import Container from "@mui/material/Container";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
-import {
-  getApiUrl,
-  buildWebSocketUrl,
-  isHostedFromEspWiFiIo,
-} from "./utils/apiUtils";
+import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
-import { resolveWebSocketUrl } from "./utils/connectionUtils";
-import {
-  loadDevices,
-  saveDevices,
-  loadSelectedDeviceId,
-  saveSelectedDeviceId,
-  upsertDevice,
-  removeDevice as removeDeviceFromRegistry,
-  touchSelected,
-} from "./utils/deviceRegistry";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
 const Login = lazy(() => import("./components/Login"));
 const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
-const BlePairingFlow = lazy(() => import("./components/BlePairingFlow"));
 
 // Define the theme
 const theme = createTheme({
@@ -139,48 +124,26 @@ function App() {
   const [cloudRssi, setCloudRssi] = useState(null);
   const [cloudLogs, setCloudLogs] = useState("");
   const [cloudLogsError, setCloudLogsError] = useState("");
+  const heartbeatIntervalRef = useRef(null);
+  const heartbeatTimeoutRef = useRef(null);
 
   // Music player state for banner color
   const [musicPlaybackState, setMusicPlaybackState] = useState({
     isPlaying: false,
     isPaused: false,
   });
+  // Use a ref to track music state in the connection check interval
+  // This avoids recreating the WebSocket when music state changes
+  const musicPlaybackStateRef = useRef(musicPlaybackState);
 
-  // Device registry state for espwifi.io hosted mode
-  const [devices, setDevices] = useState([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
-  const [showInitialSetup, setShowInitialSetup] = useState(false);
-  const isHostedMode = useMemo(() => {
-    const hosted = isHostedFromEspWiFiIo();
-    console.log("[App] isHostedMode:", hosted);
-    return hosted;
-  }, []);
+  // Keep ref in sync with state
+  useEffect(() => {
+    musicPlaybackStateRef.current = musicPlaybackState;
+  }, [musicPlaybackState]);
 
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
-  const lastRssiTimeRef = useRef(Date.now());
-  const connectionCheckRef = useRef(null);
-
-  // Load device registry on mount (only in hosted mode)
-  useEffect(() => {
-    console.log("[App] Loading device registry, isHostedMode:", isHostedMode);
-    if (!isHostedMode) return;
-    const loadedDevices = loadDevices();
-    console.log("[App] Loaded devices:", loadedDevices);
-    setDevices(loadedDevices);
-    const loadedSelectedId = loadSelectedDeviceId();
-    if (
-      loadedSelectedId &&
-      loadedDevices.some((d) => d.id === loadedSelectedId)
-    ) {
-      setSelectedDeviceId(loadedSelectedId);
-      console.log("[App] Selected existing device:", loadedSelectedId);
-    } else if (loadedDevices.length === 0) {
-      // No devices configured - show initial setup
-      console.log("[App] No devices found, showing initial setup");
-      setShowInitialSetup(true);
-    }
-  }, [isHostedMode]);
+  const pendingCommandsRef = useRef(new Map()); // Map of cmd -> {resolve, reject, timeout}
 
   // Measure header height and expose as CSS var to avoid brittle vh math on mobile.
   useEffect(() => {
@@ -249,46 +212,13 @@ function App() {
   }, []);
 
   // Direct connection to control WebSocket
-  // When a device is selected and has cloud tunnel info, use tunnel URL
-  // Otherwise, use local WebSocket connection
   const controlWsUrl = useMemo(() => {
-    console.log("[App] Computing control WebSocket URL");
-    console.log("[App] isHostedMode:", isHostedMode);
-    console.log("[App] selectedDeviceId:", selectedDeviceId);
-    console.log("[App] devices:", devices);
-
-    // In hosted mode with a selected device, use cloud tunnel if available
-    if (isHostedMode && selectedDeviceId) {
-      const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
-      console.log("[App] Selected device:", selectedDevice);
-
-      if (selectedDevice) {
-        // Build a minimal config object for resolveWebSocketUrl
-        const deviceConfig = {
-          hostname: selectedDevice.hostname || selectedDevice.deviceId,
-          deviceName: selectedDevice.name || selectedDevice.deviceId,
-          auth: {
-            token: selectedDevice.authToken,
-          },
-          cloudTunnel: selectedDevice.cloudTunnel || {
-            enabled: false,
-          },
-        };
-
-        const url = resolveWebSocketUrl("control", deviceConfig, {
-          preferTunnel: true,
-        });
-        console.log("[App] Resolved WebSocket URL:", url);
-        return url;
-      }
-    }
-
-    // Fallback to local connection
+    // Use local WebSocket connection
     if (process.env.REACT_APP_API_HOST) {
       return buildWebSocketUrl("/ws/control", process.env.REACT_APP_API_HOST);
     }
     return buildWebSocketUrl("/ws/control");
-  }, [isHostedMode, selectedDeviceId, devices]);
+  }, []);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
@@ -317,22 +247,101 @@ function App() {
         controlWsRef.current = null;
       }
 
-      // Clear any existing connection check
-      if (connectionCheckRef.current) {
-        clearInterval(connectionCheckRef.current);
-        connectionCheckRef.current = null;
-      }
-
       try {
         const ws = new WebSocket(uiUrl);
         // Needed for camera streaming over /ws/control.
         ws.binaryType = "arraybuffer";
         controlWsRef.current = ws;
 
+        // Add a sendCommand method to the WebSocket for components to use
+        ws.sendCommand = (cmd, timeoutMs = 10000) => {
+          return new Promise((resolve, reject) => {
+            if (ws.readyState !== WebSocket.OPEN) {
+              reject(new Error("WebSocket not connected"));
+              return;
+            }
+
+            const timeout = setTimeout(() => {
+              pendingCommandsRef.current.delete(cmd.cmd);
+              reject(new Error("Command timeout"));
+            }, timeoutMs);
+
+            pendingCommandsRef.current.set(cmd.cmd, {
+              resolve,
+              reject,
+              timeout,
+            });
+            ws.send(JSON.stringify(cmd));
+          });
+        };
+
         ws.onopen = () => {
           console.log("[App] Control WebSocket connected");
           setControlConnected(true);
-          lastRssiTimeRef.current = Date.now();
+
+          // Clear any existing heartbeat
+          if (heartbeatIntervalRef.current) {
+            clearInterval(heartbeatIntervalRef.current);
+            heartbeatIntervalRef.current = null;
+          }
+          if (heartbeatTimeoutRef.current) {
+            clearTimeout(heartbeatTimeoutRef.current);
+            heartbeatTimeoutRef.current = null;
+          }
+
+          // Start heartbeat: poll get_rssi every 3 seconds
+          const startHeartbeat = () => {
+            if (heartbeatIntervalRef.current) {
+              clearInterval(heartbeatIntervalRef.current);
+            }
+
+            const sendHeartbeat = () => {
+              const currentWs = controlWsRef.current;
+              if (!currentWs || currentWs.readyState !== WebSocket.OPEN) {
+                return;
+              }
+
+              try {
+                // Set a timeout to detect if we don't get a response
+                if (heartbeatTimeoutRef.current) {
+                  clearTimeout(heartbeatTimeoutRef.current);
+                }
+
+                heartbeatTimeoutRef.current = setTimeout(() => {
+                  console.warn(
+                    "[App] Heartbeat timeout - no RSSI response, reconnecting..."
+                  );
+                  const wsToClose = controlWsRef.current;
+                  if (wsToClose && wsToClose.readyState === WebSocket.OPEN) {
+                    try {
+                      wsToClose.close(1006, "Heartbeat timeout");
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }, 6000); // Allow 6 seconds for response (2x heartbeat interval)
+
+                currentWs.send(JSON.stringify({ cmd: "get_rssi" }));
+              } catch (err) {
+                console.error("[App] Heartbeat send failed:", err);
+                // Close connection on send failure
+                try {
+                  currentWs.close(1006, "Heartbeat send failed");
+                } catch {
+                  // ignore
+                }
+              }
+            };
+
+            // Send initial heartbeat immediately
+            sendHeartbeat();
+
+            // Then poll every 3 seconds
+            heartbeatIntervalRef.current = setInterval(sendHeartbeat, 3000);
+          };
+
+          startHeartbeat();
+
           try {
             ws.send(JSON.stringify({ cmd: "ping" }));
             ws.send(JSON.stringify({ cmd: "get_config" }));
@@ -340,31 +349,24 @@ function App() {
           } catch {
             // ignore
           }
-
-          // Start connection health check
-          // We rely on RSSI polling (every 1s) as our heartbeat
-          // If we don't get any RSSI response for 5 seconds, connection is dead
-          connectionCheckRef.current = setInterval(() => {
-            const timeSinceLastRssi = Date.now() - lastRssiTimeRef.current;
-            if (timeSinceLastRssi > 5000 && ws.readyState === WebSocket.OPEN) {
-              console.warn(
-                "[App] No RSSI response for 5s, connection appears dead"
-              );
-              // Immediately update state before closing
-              setControlConnected(false);
-              setCloudDeviceConfig(null);
-              setCloudDeviceInfo(null);
-              setCloudRssi(null);
-              ws.close();
-            }
-          }, 2000);
         };
         ws.onmessage = (evt) => {
           try {
             const msg = JSON.parse(evt?.data || "{}");
 
-            // Update last message time on any message (indicates connection is alive)
-            lastRssiTimeRef.current = Date.now();
+            // Check if this message is a response to a pending command
+            if (msg?.cmd && pendingCommandsRef.current.has(msg.cmd)) {
+              const pending = pendingCommandsRef.current.get(msg.cmd);
+              clearTimeout(pending.timeout);
+              pendingCommandsRef.current.delete(msg.cmd);
+
+              if (msg.ok === false) {
+                pending.reject(new Error(msg.error || "Command failed"));
+              } else {
+                pending.resolve(msg);
+              }
+              return; // Don't process further
+            }
 
             if (msg?.cmd === "get_config" && msg?.config) {
               setConfig(msg.config);
@@ -375,6 +377,12 @@ function App() {
               setCloudDeviceInfo(msg.info);
             }
             if (msg?.cmd === "get_rssi") {
+              // Clear heartbeat timeout since we got a response
+              if (heartbeatTimeoutRef.current) {
+                clearTimeout(heartbeatTimeoutRef.current);
+                heartbeatTimeoutRef.current = null;
+              }
+
               if (typeof msg?.rssi === "number") {
                 setCloudRssi(msg.rssi);
               } else {
@@ -448,20 +456,37 @@ function App() {
         };
         ws.onclose = (evt) => {
           console.log("[App] Control WebSocket closed, code:", evt?.code);
+
+          // Clear heartbeat
+          if (heartbeatIntervalRef.current) {
+            clearInterval(heartbeatIntervalRef.current);
+            heartbeatIntervalRef.current = null;
+          }
+          if (heartbeatTimeoutRef.current) {
+            clearTimeout(heartbeatTimeoutRef.current);
+            heartbeatTimeoutRef.current = null;
+          }
+
           controlWsRef.current = null;
           setControlConnected(false);
           setCloudDeviceConfig(null);
           setCloudDeviceInfo(null);
           setCloudRssi(null);
 
-          // Clear connection check
-          if (connectionCheckRef.current) {
-            clearInterval(connectionCheckRef.current);
-            connectionCheckRef.current = null;
+          // Reject all pending commands
+          for (const [, pending] of pendingCommandsRef.current.entries()) {
+            clearTimeout(pending.timeout);
+            pending.reject(new Error("WebSocket closed"));
+          }
+          pendingCommandsRef.current.clear();
+
+          if (evt?.code === 1000) {
+            console.log("[App] Clean close (1000), not reconnecting");
+            return;
           }
 
-          if (evt?.code === 1000) return;
-          controlRetryRef.current = setTimeout(connect, 2000);
+          console.log("[App] Scheduling reconnect...");
+          controlRetryRef.current = setTimeout(connect, 600);
         };
       } catch {
         setControlConnected(false);
@@ -470,13 +495,19 @@ function App() {
 
     connect();
     return () => {
+      // Clear heartbeat
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
+
       if (controlRetryRef.current) {
         clearTimeout(controlRetryRef.current);
         controlRetryRef.current = null;
-      }
-      if (connectionCheckRef.current) {
-        clearInterval(connectionCheckRef.current);
-        connectionCheckRef.current = null;
       }
       if (controlWsRef.current) {
         try {
@@ -502,74 +533,6 @@ function App() {
     // Legacy: keep the handler so the Login component can still resolve.
     setAuthenticated(true);
   };
-
-  /**
-   * Handle device provisioning from initial setup
-   * Called when a new device is successfully configured via BLE
-   */
-  const handleDeviceProvisioned = useCallback(
-    (deviceRecord, details) => {
-      const updatedDevices = upsertDevice(devices, deviceRecord);
-      setDevices(updatedDevices);
-      saveDevices(updatedDevices);
-      setSelectedDeviceId(deviceRecord.id);
-      saveSelectedDeviceId(deviceRecord.id);
-      setShowInitialSetup(false);
-    },
-    [devices]
-  );
-
-  /**
-   * Handle device selection from device picker
-   */
-  const handleSelectDevice = useCallback(
-    (device) => {
-      if (!device || !device.id) return;
-      const updatedDevices = touchSelected(devices, device.id);
-      setDevices(updatedDevices);
-      saveDevices(updatedDevices);
-      setSelectedDeviceId(device.id);
-      saveSelectedDeviceId(device.id);
-    },
-    [devices]
-  );
-
-  /**
-   * Handle device removal from registry
-   */
-  const handleRemoveDevice = useCallback(
-    (device) => {
-      if (!device || !device.id) return;
-      const updatedDevices = removeDeviceFromRegistry(devices, device.id);
-      setDevices(updatedDevices);
-      saveDevices(updatedDevices);
-      if (selectedDeviceId === device.id) {
-        setSelectedDeviceId(null);
-        saveSelectedDeviceId(null);
-        // If this was the last device, show initial setup again
-        if (updatedDevices.length === 0) {
-          setShowInitialSetup(true);
-        }
-      }
-    },
-    [devices, selectedDeviceId]
-  );
-
-  /**
-   * Handle pairing a new device
-   */
-  const handlePairNewDevice = useCallback(
-    (deviceRecord, details) => {
-      // If called without arguments (from device picker), show initial setup
-      if (!deviceRecord) {
-        setShowInitialSetup(true);
-        return;
-      }
-      // Otherwise, handle the device provisioning
-      handleDeviceProvisioned(deviceRecord, details);
-    },
-    [handleDeviceProvisioned]
-  );
 
   /**
    * Update local config only (no device API calls)
@@ -666,41 +629,6 @@ function App() {
 
   const effectiveConfig = cloudDeviceConfig || localConfig;
 
-  // Show initial setup screen when hosted from espwifi.io and no devices configured
-  if (isHostedMode && showInitialSetup) {
-    return (
-      <ThemeProvider theme={theme}>
-        <Container
-          ref={headerRef}
-          sx={{
-            fontFamily: theme.typography.headerFontFamily,
-            backgroundColor: "secondary.light",
-            color: "primary.main",
-            fontSize: "3em",
-            height: "var(--app-header-height, 9vh)",
-            zIndex: 1000,
-            textAlign: "center",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minWidth: "100%",
-            position: "sticky",
-            top: 0,
-          }}
-        >
-          ESPWiFi
-        </Container>
-
-        <Suspense fallback={<LinearProgress color="inherit" />}>
-          <BlePairingFlow
-            onDeviceProvisioned={handleDeviceProvisioned}
-            onClose={() => setShowInitialSetup(false)}
-          />
-        </Suspense>
-      </ThemeProvider>
-    );
-  }
-
   return (
     <ThemeProvider theme={theme}>
       {/* Show saving progress bar at the top when saving */}
@@ -789,21 +717,6 @@ function App() {
           controlRssi={cloudRssi}
           logsText={cloudLogs}
           logsError={cloudLogsError}
-          showDevicePicker={isHostedMode}
-          devices={devices}
-          selectedDeviceId={selectedDeviceId}
-          onSelectDevice={handleSelectDevice}
-          onRemoveDevice={handleRemoveDevice}
-          onPairNewDevice={handlePairNewDevice}
-          onRequestRssi={() => {
-            const ws = controlWsRef.current;
-            if (!ws || ws.readyState !== 1) return;
-            try {
-              ws.send(JSON.stringify({ cmd: "get_rssi" }));
-            } catch {
-              // ignore
-            }
-          }}
           onRequestLogs={() => {
             const ws = controlWsRef.current;
             if (!ws || ws.readyState !== 1) return;
@@ -829,10 +742,11 @@ function App() {
               // ignore
             }
           }}
-          cloudMode={isHostedMode}
+          cloudMode={false}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
           controlWs={controlWsRef.current}
+          musicPlaybackState={musicPlaybackState}
         />
       </Suspense>
 

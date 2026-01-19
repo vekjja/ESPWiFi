@@ -41,12 +41,13 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["cloud"]["baseUrl"] = "https://cloud.espwifi.io";
   doc["cloud"]["deviceId"] = getHostname(); // Use hostname as device ID
   doc["cloud"]["tunnel"] = "ws_control";
+  doc["cloud"]["mediaEnabled"] = false; // Disabled by default due to resource
+                                        // constraints (camera, audio, etc)
   doc["cloud"]["autoReconnect"] = true;
   doc["cloud"]["reconnectDelay"] = 5000;
 
   // BLE Provisioning
   doc["ble"]["enabled"] = true;
-  doc["ble"]["passkey"] = 123456;
 
   // Logging: verbose, access, debug, info, warning, error
   doc["log"]["file"] = "/espwifi.log";
@@ -55,7 +56,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["log"]["useSD"] = true;
   doc["log"]["maskedKeys"] = JsonArray();
   doc["log"]["maskedKeys"].add("password");
-  doc["log"]["maskedKeys"].add("passkey");
   doc["log"]["maskedKeys"].add("token");
 
   // Auth
@@ -65,6 +65,8 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["auth"]["password"] = "admin";
   // - username: username for authentication
   doc["auth"]["username"] = "admin";
+  // - token: generated token for API/WebSocket authentication
+  doc["auth"]["token"] = generateToken();
 
   // CORS (auth.cors)
   // - enabled: controls whether CORS headers are emitted
@@ -95,6 +97,8 @@ JsonDocument ESPWiFi::defaultConfig() {
 #endif
   doc["sd"]["initialized"] = false;
 
+  doc["ota"]["enabled"] = isOTAEnabled();
+
 // Camera
 #if ESPWiFi_HAS_CAMERA
   doc["camera"]["installed"] = true;
@@ -118,7 +122,6 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["camera"]["installed"] = false;
 #endif
 
-  doc["ota"]["enabled"] = isOTAEnabled();
   return doc;
 }
 

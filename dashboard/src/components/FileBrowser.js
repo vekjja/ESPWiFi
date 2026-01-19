@@ -99,36 +99,17 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
   // Helper to send WebSocket command and wait for response
   const sendWsCommand = useCallback(
     (cmd) => {
-      return new Promise((resolve, reject) => {
-        if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
-          reject(new Error("WebSocket not connected"));
-          return;
-        }
+      if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
+        return Promise.reject(new Error("WebSocket not connected"));
+      }
 
-        const timeout = setTimeout(() => {
-          reject(new Error("WebSocket command timed out"));
-        }, 10000);
+      if (typeof controlWs.sendCommand !== "function") {
+        return Promise.reject(
+          new Error("WebSocket sendCommand method not available")
+        );
+      }
 
-        const handleMessage = (event) => {
-          try {
-            const response = JSON.parse(event.data);
-            if (response.cmd === cmd.cmd) {
-              clearTimeout(timeout);
-              controlWs.removeEventListener("message", handleMessage);
-              if (response.ok === false) {
-                reject(new Error(response.error || "Command failed"));
-              } else {
-                resolve(response);
-              }
-            }
-          } catch (err) {
-            // Ignore parse errors for other messages
-          }
-        };
-
-        controlWs.addEventListener("message", handleMessage);
-        controlWs.send(JSON.stringify(cmd));
-      });
+      return controlWs.sendCommand(cmd, 10000);
     },
     [controlWs]
   );

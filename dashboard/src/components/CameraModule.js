@@ -42,9 +42,9 @@ export default function CameraModule({
   }, [config?.name]);
 
   const handleStartStream = () => {
-    // LAN: connect to /ws/camera
+    // LAN: connect to /ws/media (camera streaming is request-driven)
     const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
-    const cameraWsUrl = buildWebSocketUrl("/ws/camera", mdnsHostname || null);
+    const cameraWsUrl = buildWebSocketUrl("/ws/media", mdnsHostname || null);
 
     if (!cameraWsUrl) {
       console.error("Failed to build camera WebSocket URL");
@@ -58,7 +58,13 @@ export default function CameraModule({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("📷 Camera WebSocket connected:", cameraWsUrl);
+        console.log("🎞️ Media WebSocket connected:", cameraWsUrl);
+        // Request camera streaming
+        try {
+          ws.send(JSON.stringify({ cmd: "camera_start" }));
+        } catch (e) {
+          console.warn("Failed to send camera_start:", e);
+        }
         setIsStreaming(true);
       };
 
@@ -75,7 +81,7 @@ export default function CameraModule({
       };
 
       ws.onerror = (error) => {
-        console.error("📷 Camera WebSocket error:", error);
+        console.error("🎞️ Media WebSocket error:", error);
         setIsStreaming(false);
         // Auto-reconnect on error after a delay (if not intentionally closed)
         setTimeout(() => {
@@ -84,14 +90,16 @@ export default function CameraModule({
             wsRef.current === ws &&
             !intentionalCloseRef.current
           ) {
-            console.log("📷 Attempting to reconnect camera after error...");
+            console.log(
+              "🎞️ Attempting to reconnect media socket after error..."
+            );
             handleStartStream();
           }
         }, 2000);
       };
 
       ws.onclose = (event) => {
-        console.log("📷 Camera WebSocket closed", event.code);
+        console.log("🎞️ Media WebSocket closed", event.code);
         setIsStreaming(false);
         wsRef.current = null;
 
@@ -101,7 +109,7 @@ export default function CameraModule({
           isMountedRef.current &&
           !intentionalCloseRef.current
         ) {
-          console.log("📷 Unexpected close, attempting to reconnect in 2s...");
+          console.log("🎞️ Unexpected close, attempting to reconnect in 2s...");
           setTimeout(() => {
             if (isMountedRef.current && !intentionalCloseRef.current) {
               handleStartStream();
@@ -120,6 +128,14 @@ export default function CameraModule({
 
     // Close WebSocket
     if (wsRef.current) {
+      // Best-effort request to stop streaming before disconnect.
+      try {
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ cmd: "camera_stop" }));
+        }
+      } catch (e) {
+        // ignore
+      }
       wsRef.current.close();
       wsRef.current = null;
     }

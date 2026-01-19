@@ -57,6 +57,15 @@ void ESPWiFi::readConfig() {
   }
 
   corsConfigHandler();
+
+  // Ensure auth token exists (generate if missing after config load)
+  if (config["auth"]["token"].isNull() ||
+      std::string(config["auth"]["token"].as<const char *>()).empty()) {
+    log(INFO, "⚙️ Generating missing auth token");
+    config["auth"]["token"] = generateToken();
+    saveConfig(); // Persist the new token
+  }
+
   if (configLoaded) {
     log(INFO, "⚙️ Config Read from LittleFS (size: %zu bytes)",
         measureJson(config));
@@ -143,12 +152,12 @@ std::string ESPWiFi::prettyConfig() {
   return prettyConfig;
 }
 
-void ESPWiFi::saveConfig() {
+bool ESPWiFi::saveConfig() {
   initLittleFS();
 
   if (lfs == nullptr) {
     log(ERROR, "⚙️ No filesystem available for saving config");
-    return;
+    return false;
   }
 
   feedWatchDog(); // Yield before JSON operations
@@ -157,14 +166,14 @@ void ESPWiFi::saveConfig() {
   size_t size = measureJson(config);
   if (size == 0) {
     log(ERROR, "⚙️ Failed to measure config JSON size");
-    return;
+    return false;
   }
 
   // Allocate buffer with extra space for safety
   char *buffer = (char *)malloc(size + 32);
   if (!buffer) {
     log(ERROR, "⚙️ Failed to allocate memory for config (size: %zu)", size);
-    return;
+    return false;
   }
 
   feedWatchDog(); // Yield after allocation
@@ -173,20 +182,20 @@ void ESPWiFi::saveConfig() {
   if (written == 0) {
     log(ERROR, "⚙️ Failed to serialize config JSON");
     free(buffer);
-    return;
+    return false;
   }
 
-  feedWatchDog(); // Yield after serialization
+  feedWatchDog();
 
   bool success = writeFile(configFile, (const uint8_t *)buffer, written);
   free(buffer);
 
   if (!success) {
     log(ERROR, "⚙️ Failed to write config file");
-    return;
+    return false;
   }
 
-  feedWatchDog(); // Yield after file write
+  feedWatchDog();
 
   if (config["log"]["enabled"].as<bool>()) {
     log(INFO, "⚙️ Config Saved: %s", configFile);
@@ -194,6 +203,7 @@ void ESPWiFi::saveConfig() {
   // log(DEBUG, "⚙️\n%s", prettyConfig());
 
   configNeedsSave = false;
+  return success;
 }
 
 JsonDocument ESPWiFi::mergeJson(const JsonDocument &base,
@@ -263,8 +273,8 @@ void ESPWiFi::handleConfigUpdate() {
     powerConfigHandler();
     corsConfigHandler();
     logConfigHandler();
-    bleConfigHandler();
-    bluetoothConfigHandler();
+    // bleConfigHandler();
+    // bluetoothConfigHandler();
     wifiConfigHandler();
   }
 

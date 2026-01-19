@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -12,7 +12,6 @@ import {
   CircularProgress,
   IconButton,
 } from "@mui/material";
-import QrCodeScannerIcon from "@mui/icons-material/QrCodeScanner";
 import CloseIcon from "@mui/icons-material/Close";
 import { redeemClaimCode } from "../utils/apiUtils";
 
@@ -21,7 +20,6 @@ import { redeemClaimCode } from "../utils/apiUtils";
  *
  * Supports:
  * - Manual entry of 6-character claim code
- * - QR code scanning (if browser supports it)
  * - Automatic device pairing via cloud tunnel
  */
 export default function ClaimCodeEntry({
@@ -33,32 +31,11 @@ export default function ClaimCodeEntry({
   const [claimCode, setClaimCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [showScanner, setShowScanner] = useState(false);
-  const [hasCamera, setHasCamera] = useState(false);
 
   // Get cloud base URL from an existing device, or use default
   const cloudBaseUrl =
     existingDevices.find((d) => d?.cloudTunnel?.baseUrl)?.cloudTunnel
       ?.baseUrl || "https://cloud.espwifi.io";
-
-  // Check for camera/QR scanner support
-  useEffect(() => {
-    if (!open) return;
-
-    // Check if browser supports getUserMedia (camera access)
-    const checkCamera = async () => {
-      try {
-        if (navigator.mediaDevices?.getUserMedia) {
-          // Don't actually request camera yet, just check if API exists
-          setHasCamera(true);
-        }
-      } catch (e) {
-        setHasCamera(false);
-      }
-    };
-
-    checkCamera();
-  }, [open]);
 
   const handleSubmit = async () => {
     setError("");
@@ -118,19 +95,10 @@ export default function ClaimCodeEntry({
     }
   };
 
-  const handleScanQR = () => {
-    // TODO: Implement QR code scanner
-    // This would use the browser's camera to scan a QR code containing the claim code
-    // For now, show a placeholder message
-    setShowScanner(true);
-    setError("QR scanner not yet implemented. Please enter code manually.");
-  };
-
   const handleClose = () => {
     setClaimCode("");
     setError("");
     setBusy(false);
-    setShowScanner(false);
     onClose?.();
   };
 
@@ -158,64 +126,32 @@ export default function ClaimCodeEntry({
             pair it for remote access via the cloud.
           </Alert>
 
-          {showScanner ? (
-            <Box
-              sx={{
-                width: "100%",
-                height: 300,
-                backgroundColor: "secondary.main",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 1,
-              }}
-            >
-              <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                QR Scanner placeholder
-              </Typography>
-            </Box>
-          ) : (
-            <>
-              <TextField
-                label="Claim Code"
-                value={claimCode}
-                onChange={(e) => {
-                  // Auto-uppercase and limit to 6 characters
-                  const val = e.target.value
-                    .toUpperCase()
-                    .replace(/[^A-Z0-9]/g, "");
-                  setClaimCode(val.slice(0, 6));
-                }}
-                placeholder="ABC123"
-                autoComplete="off"
-                fullWidth
-                autoFocus
-                disabled={busy}
-                inputProps={{
-                  maxLength: 6,
-                  style: {
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    fontSize: "1.5rem",
-                    textAlign: "center",
-                  },
-                }}
-                helperText="6 alphanumeric characters (e.g., ABC123)"
-              />
-
-              {hasCamera && (
-                <Button
-                  variant="outlined"
-                  startIcon={<QrCodeScannerIcon />}
-                  onClick={handleScanQR}
-                  disabled={busy}
-                  fullWidth
-                >
-                  Scan QR Code
-                </Button>
-              )}
-            </>
-          )}
+          <TextField
+            label="Claim Code"
+            value={claimCode}
+            onChange={(e) => {
+              // Auto-uppercase and limit to 6 characters
+              const val = e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "");
+              setClaimCode(val.slice(0, 6));
+            }}
+            placeholder="ABC123"
+            autoComplete="off"
+            fullWidth
+            autoFocus
+            disabled={busy}
+            inputProps={{
+              maxLength: 6,
+              style: {
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                fontSize: "1.5rem",
+                textAlign: "center",
+              },
+            }}
+            helperText="6 alphanumeric characters (e.g., ABC123)"
+          />
 
           {busy && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>

@@ -250,10 +250,10 @@ jobs:
           #   chip: esp32
           #   baud: 460800
           #   bootloader_offset: "0x1000"
-          # - environment: esp32-c3
-          #   chip: esp32c3
-          #   baud: 921600
-          #   bootloader_offset: "0x0"
+          - environment: esp32-c3
+            chip: esp32c3
+            baud: 921600
+            bootloader_offset: "0x0"
           - environment: esp32-s3
             chip: esp32s3
             baud: 921600

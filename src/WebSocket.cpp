@@ -86,17 +86,25 @@ void WebSocket::addClient_(int fd) {
   if (fd < 0) {
     return;
   }
+  // Check if already tracked
   for (size_t i = 0; i < clientCount_; ++i) {
     if (clientFds_[i] == fd) {
       return; // already tracked
     }
   }
-  if (clientCount_ >= kMaxClients) {
-    // Drop oldest to stay bounded
-    for (size_t i = 1; i < kMaxClients; ++i) {
-      clientFds_[i - 1] = clientFds_[i];
+  // Check per-endpoint limit
+  if (clientCount_ >= maxClients_) {
+    // At limit: drop oldest client to make room (enforces maxClients_)
+    if (maxClients_ > 1) {
+      // Multi-client mode: shift array
+      for (size_t i = 1; i < maxClients_; ++i) {
+        clientFds_[i - 1] = clientFds_[i];
+      }
+      clientFds_[maxClients_ - 1] = fd;
+    } else {
+      // Single-client mode: replace (old client should be closed by handler)
+      clientFds_[0] = fd;
     }
-    clientFds_[kMaxClients - 1] = fd;
     return;
   }
   clientFds_[clientCount_++] = fd;
@@ -131,13 +139,21 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
   if (req->method == HTTP_GET) {
     const int fd = httpd_req_to_sockfd(req);
 
-    // Optional auth check
+    // Optional auth check (happens before connection is accepted)
     if (requireAuth_ && authCheck_ != nullptr) {
       if (!authCheck_(req, userCtx_)) {
         // Close session immediately (handshake already upgraded)
         (void)httpd_sess_trigger_close(server_, fd);
         return ESP_OK;
       }
+    }
+
+    // For single-client mode: close existing connection before adding new one
+    // This allows specific endpoints to enforce single-client limits if needed
+    if (maxClients_ == 1 && clientCount_ >= 1 && server_ != nullptr) {
+      // Close existing client to enforce single-client limit
+      (void)httpd_sess_trigger_close(server_, clientFds_[0]);
+      clientCount_ = 0; // Reset count, new client will be added below
     }
 
     addClient_(fd);
@@ -230,7 +246,7 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
                       OnMessageCb onMessage, OnConnectCb onConnect,
                       OnDisconnectCb onDisconnect, size_t maxMessageLen,
                       size_t maxBroadcastLen, bool requireAuth,
-                      AuthCheckFn authCheck) {
+                      AuthCheckFn authCheck, size_t maxClients) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)uri;
   (void)server;
@@ -242,6 +258,7 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
   (void)maxBroadcastLen;
   (void)requireAuth;
   (void)authCheck;
+  (void)maxClients;
   return false;
 #else
   if (uri == nullptr || server == nullptr) {
@@ -264,6 +281,11 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
   maxBroadcastLen_ = (maxBroadcastLen == 0) ? 1 : maxBroadcastLen;
   if (maxBroadcastLen_ > 262144) {
     maxBroadcastLen_ = 262144;
+  }
+  // Set per-endpoint client limit (clamped to kMaxClients)
+  maxClients_ = (maxClients == 0) ? 1 : maxClients;
+  if (maxClients_ > kMaxClients) {
+    maxClients_ = kMaxClients;
   }
 
   // Copy URI

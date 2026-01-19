@@ -246,7 +246,11 @@ void ESPWiFi::deinitSDCard() {
     return;
   }
 
-#if defined(CONFIG_IDF_TARGET_ESP32)
+// Best-effort unmount on ESP32-family targets (ESP32 / ESP32-S3 / ESP32-C3).
+// This prevents SPI bus re-init conflicts and VFS inconsistencies during
+// remount.
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
+    defined(CONFIG_IDF_TARGET_ESP32C3)
   // Best-effort unmount. This can fail if card was never mounted correctly.
   // Clear sdCard pointer first to prevent other code from trying to use it
   sdmmc_card_t *card = (sdmmc_card_t *)sdCard;

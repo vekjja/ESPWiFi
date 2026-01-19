@@ -122,11 +122,6 @@ void ESPWiFi::stopWiFi() {
 void ESPWiFi::startWiFi() {
   if (!config["wifi"]["enabled"].as<bool>()) {
     log(INFO, "📶 WiFi Disabled");
-#ifdef CONFIG_BT_NIMBLE_ENABLED
-    // For now, BLE should start every boot (even if WiFi is disabled) so the UI
-    // can always pair / provision.
-    startBLE();
-#endif
     return;
   }
   initNVS();
@@ -231,9 +226,6 @@ void ESPWiFi::startClient() {
       connectSubroutine();
     }
 
-    // printf(".");
-    // fflush(stdout);
-
     if (current_netif != nullptr) {
       esp_netif_ip_info_t ip_info;
       if (esp_netif_get_ip_info(current_netif, &ip_info) == ESP_OK) {
@@ -244,7 +236,7 @@ void ESPWiFi::startClient() {
       }
     }
 
-    vTaskDelay(pdMS_TO_TICKS(30));
+    feedWatchDog(30);
   }
   printf("\n");
 
@@ -256,14 +248,7 @@ void ESPWiFi::startClient() {
     return;
   }
 
-  // WiFi connected successfully.
-  // For now, BLE should start every boot (client or AP) so the UI can always
-  // pair / provision / enable cloud tunnel.
-#ifdef CONFIG_BT_NIMBLE_ENABLED
-  // Give WiFi a moment to stabilize before enabling BLE (coexistence).
-  vTaskDelay(pdMS_TO_TICKS(200));
-  startBLE();
-#endif
+  config["wifi"]["started"] = true;
 
   std::string hostname = getHostname();
   log(INFO, "📶\tHostname: %s", hostname.c_str());
@@ -433,16 +418,16 @@ int ESPWiFi::selectBestChannel() {
 }
 
 void ESPWiFi::startAP() {
-  // std::string ssid = genHostname();
-  std::string ssid = config["wifi"]["accessPoint"]["ssid"].as<std::string>();
+  std::string ssid = genHostname();
   std::string password =
       config["wifi"]["accessPoint"]["password"].as<std::string>();
 
   log(INFO, "📡 Starting Access Point");
-  log(INFO, "📶\tSSID: %s", ssid.c_str());
+  log(INFO, "📶\tSSID: %s", genHostname().c_str());
   log(INFO, "📶\tPassword: %s", password.c_str());
 
   setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
+  initNVS();
 
   if (!event_loop_initialized) {
     esp_err_t ret = esp_event_loop_create_default();
@@ -469,7 +454,7 @@ void ESPWiFi::startAP() {
     esp_wifi_stop();
     (void)esp_wifi_deinit();
     wifi_initialized = false;
-    vTaskDelay(pdMS_TO_TICKS(100));
+    feedWatchDog(100);
   }
 
   int bestChannel =
@@ -522,19 +507,11 @@ void ESPWiFi::startAP() {
     return;
   }
 
+  config["wifi"]["started"] = true;
+
   char ip_str[16];
   snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
   log(INFO, "📶\tIP Address: %s", ip_str);
-
-  // Start BLE provisioning when in AP mode (if enabled in config)
-  // MUST be done after WiFi is fully initialized to avoid BT/WiFi coexistence
-  // issues
-#ifdef CONFIG_BT_NIMBLE_ENABLED
-  // For now, BLE should start every boot (AP mode included) so the UI can
-  // always pair / provision.
-  vTaskDelay(pdMS_TO_TICKS(200));
-  startBLE();
-#endif
 
 #ifdef LED_BUILTIN
   gpio_set_direction((gpio_num_t)LED_BUILTIN, GPIO_MODE_OUTPUT);
@@ -560,7 +537,6 @@ std::string ESPWiFi::ipAddress() {
 
 std::string ESPWiFi::getHostname() {
   std::string hostname;
-
   // // Attempt to get hostname from network interface
   if (current_netif != nullptr) {
     const char *hostname_ptr = nullptr;
@@ -570,37 +546,11 @@ std::string ESPWiFi::getHostname() {
       config["hostname"] = hostname;
     }
   }
-
-  // // "deviceName-XXXXXX" where XXXXXX is last 6 hex digits of MAC
-  // uint8_t mac[6];
-  // esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  // if (ret == ESP_OK) {
-  //   char macSuffix[7];
-  //   snprintf(macSuffix, sizeof(macSuffix), "%02x%02x%02x", mac[3], mac[4],
-  //            mac[5]);
-  //   hostname =
-  //       config["deviceName"].as<std::string>() + "-" +
-  //       std::string(macSuffix);
-  //   config["hostname"] = hostname;
-  //   return hostname;
-  // }
-
   return hostname;
 }
 
 std::string ESPWiFi::genHostname() {
-  // // Attempt to get hostname from network interface
-  // if (current_netif != nullptr) {
-  //   const char *hostname_ptr = nullptr;
-  //   esp_err_t err = esp_netif_get_hostname(current_netif, &hostname_ptr);
-  //   if (err == ESP_OK && hostname_ptr != nullptr && strlen(hostname_ptr) > 0)
-  //   {
-  //     config["hostname"] = std::string(hostname_ptr);
-  //     return std::string(hostname_ptr);
-  //   }
-  // }
-
-  std::string hostname;
+  std::string hostname = config["deviceName"].as<std::string>();
   // "deviceName-XXXXXX" where XXXXXX is last 6 hex digits of MAC
   uint8_t mac[6];
   esp_err_t ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);

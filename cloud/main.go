@@ -736,33 +736,39 @@ func (dc *deviceConn) closeWithReason(code int, reason string) {
 }
 
 func (s *server) publicBase(r *http.Request) string {
+	var base string
 	if strings.TrimSpace(s.publicBaseURL) != "" {
-		return strings.TrimRight(strings.TrimSpace(s.publicBaseURL), "/")
-	}
-
-	// Infer from reverse-proxy headers when available.
-	proto := r.Header.Get("X-Forwarded-Proto")
-	if proto == "" {
-		if r.TLS != nil {
-			proto = "https"
-		} else {
-			proto = "http"
+		base = strings.TrimRight(strings.TrimSpace(s.publicBaseURL), "/")
+	} else {
+		// Infer from reverse-proxy headers when available.
+		proto := r.Header.Get("X-Forwarded-Proto")
+		if proto == "" {
+			if r.TLS != nil {
+				proto = "https"
+			} else {
+				proto = "https" // Force HTTPS even if not detected
+			}
 		}
-	}
-	host := r.Header.Get("X-Forwarded-Host")
-	if host == "" {
-		host = r.Host
+		host := r.Header.Get("X-Forwarded-Host")
+		if host == "" {
+			host = r.Host
+		}
+		base = proto + "://" + host
 	}
 
-	// Convert http(s) -> ws(s) for convenience.
-	switch strings.ToLower(proto) {
-	case "https":
-		return "wss://" + host
-	case "http":
-		return "ws://" + host
-	default:
-		return "ws://" + host
+	// Convert https:// -> wss:// for WebSocket URLs (only support secure connections)
+	if strings.HasPrefix(base, "https://") {
+		return "wss://" + strings.TrimPrefix(base, "https://")
 	}
+	
+	// If someone configured http://, reject it - we only support secure connections
+	if strings.HasPrefix(base, "http://") {
+		// Log a warning but still upgrade to wss for security
+		return "wss://" + strings.TrimPrefix(base, "http://")
+	}
+	
+	// Already wss:// or unknown format
+	return base
 }
 
 func authOK(r *http.Request, token string) bool {

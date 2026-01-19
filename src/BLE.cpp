@@ -8,8 +8,6 @@
  *
  * Key features:
  * - NimBLE-based BLE stack (lightweight alternative to Bluedroid)
- * - Secure pairing with passkey authentication
- * - Auto-start on WiFi failure (configurable)
  * - HTTP API for manual control (start/stop/status)
  * - Thread-safe initialization and cleanup
  *
@@ -56,67 +54,28 @@ static GattServices gattServices;
 // ============================================================================
 namespace {
 
-// Standard DIS characteristic UUIDs (16-bit)
-constexpr uint16_t kDisModelNumberString = 0x2A24;
-constexpr uint16_t kDisSerialNumberString = 0x2A25;
-constexpr uint16_t kDisFirmwareRevisionString = 0x2A26;
-constexpr uint16_t kDisManufacturerNameString = 0x2A29;
-
-static int bleReadString(struct ble_gatt_access_ctxt *ctxt, const char *s) {
-  if (!ctxt || !ctxt->om || !s) {
-    return BLE_ATT_ERR_UNLIKELY;
-  }
-  return os_mbuf_append(ctxt->om, s, strlen(s)) == 0
-             ? 0
-             : BLE_ATT_ERR_INSUFFICIENT_RES;
-}
-
 // ---- ESPWiFi control characteristic request/response
-//
-// We keep a small last-response buffer that the client can read after writing a
-// JSON command. This avoids adding another notify characteristic for now.
-static char s_controlResp[512] = "ok";
-static size_t s_controlRespLen = 2;
-
-static void setControlRespStr(const char *s) {
-  if (!s) {
-    s_controlResp[0] = '\0';
-    s_controlRespLen = 0;
-    return;
-  }
-  const size_t n = strnlen(s, sizeof(s_controlResp) - 1);
-  memcpy(s_controlResp, s, n);
-  s_controlResp[n] = '\0';
-  s_controlRespLen = n;
-}
-
-static void setControlRespJson(const JsonDocument &doc) {
-  const size_t cap = sizeof(s_controlResp);
-  size_t written = serializeJson(doc, s_controlResp, cap);
-  if (written == 0) {
-    setControlRespStr("{\"ok\":false,\"error\":\"resp_too_large\"}");
-    return;
-  }
-  // serializeJson does not NUL-terminate if it exactly fills.
-  if (written >= cap) {
-    s_controlResp[cap - 1] = '\0';
-    s_controlRespLen = cap - 1;
-  } else {
-    s_controlResp[written] = '\0';
-    s_controlRespLen = written;
-  }
-}
-
-static void notifyControlResp(uint16_t conn_handle, uint16_t attr_handle) {
-  // Best-effort: only works if the client subscribed.
+// Helpers
+static void sendJsonNotify(uint16_t conn_handle, uint16_t attr_handle,
+                           const JsonDocument &doc) {
   if (conn_handle == 0 || attr_handle == 0) {
     return;
   }
-  struct os_mbuf *om = ble_hs_mbuf_from_flat(s_controlResp, s_controlRespLen);
-  if (!om) {
-    return;
+
+  // Increased buffer size to accommodate larger responses like config
+  // BLE MTU can be negotiated up to 512 bytes (including overhead)
+  char buf[480]; // Leave some room for BLE protocol overhead
+  size_t len = serializeJson(doc, buf, sizeof(buf));
+  if (len == 0 || len >= sizeof(buf)) {
+    const char *err = "{\"ok\":false,\"error\":\"resp_too_large\"}";
+    len = strlen(err);
+    memcpy(buf, err, len);
   }
-  (void)ble_gatts_notify_custom(conn_handle, attr_handle, om);
+
+  struct os_mbuf *om = ble_hs_mbuf_from_flat(buf, len);
+  if (om) {
+    (void)ble_gatts_notify_custom(conn_handle, attr_handle, om);
+  }
 }
 
 static bool readOmToBuf(struct os_mbuf *om, char *out, size_t outCap,
@@ -146,251 +105,103 @@ static bool readOmToBuf(struct os_mbuf *om, char *out, size_t outCap,
   return true;
 }
 
+// BLE Control characteristic handler
+static int bleControlHandler(uint16_t conn_handle, uint16_t attr_handle,
+                             struct ble_gatt_access_ctxt *ctxt, void *arg) {
+  if (!arg || !ctxt || ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+
+  ESPWiFi *espwifi = static_cast<ESPWiFi *>(arg);
+
+  JsonDocument resp;
+  resp["ok"] = false;
+
+  // Parse JSON command
+  char reqBuf[320];
+  size_t reqLen = 0;
+  if (!readOmToBuf(ctxt->om, reqBuf, sizeof(reqBuf), &reqLen) || reqLen == 0) {
+    resp["error"] = "empty";
+    sendJsonNotify(conn_handle, attr_handle, resp);
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+
+  JsonDocument req;
+  DeserializationError err = deserializeJson(req, reqBuf, reqLen);
+  if (err) {
+    resp["error"] = "bad_json";
+    sendJsonNotify(conn_handle, attr_handle, resp);
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+
+  const char *cmd = req["cmd"];
+  espwifi->log(INFO, "🔵 BLE cmd='%s'", cmd ? cmd : "(none)");
+
+  // Commands
+  if (strcmp(cmd, "get_info") == 0) {
+    // Full config is often too large for BLE. Return essential fields only.
+    resp["ok"] = true;
+    JsonObject cfg = resp["config"].to<JsonObject>();
+    cfg["deviceName"] = espwifi->config["deviceName"];
+    cfg["hostname"] = espwifi->config["hostname"];
+    cfg["wifi"]["mode"] = espwifi->config["wifi"]["mode"];
+    cfg["wifi"]["started"] = espwifi->config["wifi"]["started"];
+    cfg["wifi"]["client"]["ssid"] = espwifi->config["wifi"]["client"]["ssid"];
+    cfg["wifi"]["client"]["password"] =
+        espwifi->config["wifi"]["client"]["password"];
+    sendJsonNotify(conn_handle, attr_handle, resp);
+    return 0;
+  }
+
+  if (strcmp(cmd, "set_wifi") == 0) {
+    // Alias for set_wifi_credentials (more consistent naming)
+    const char *ssid = req["ssid"];
+    const char *password = req["password"];
+    if (!ssid) {
+      resp["error"] = "missing_ssid";
+      sendJsonNotify(conn_handle, attr_handle, resp);
+      return BLE_ATT_ERR_UNLIKELY;
+    }
+    espwifi->config["wifi"]["ssid"] = ssid;
+    espwifi->config["wifi"]["mode"] = "client";
+    espwifi->config["wifi"]["password"] = password ? password : "";
+    espwifi->log(INFO, "🔵 BLE WiFi set: %s", ssid);
+    bool saved = espwifi->saveConfig();
+    if (!saved) {
+      resp["error"] = "failed_to_save_config";
+      sendJsonNotify(conn_handle, attr_handle, resp);
+      return BLE_ATT_ERR_UNLIKELY;
+    }
+    resp["ok"] = true;
+    sendJsonNotify(conn_handle, attr_handle, resp);
+    espwifi->stopWiFi();
+    espwifi->feedWatchDog(99);
+    espwifi->startWiFi();
+    return 0;
+  }
+
+  resp["error"] = "unknown_cmd";
+  sendJsonNotify(conn_handle, attr_handle, resp);
+  return 0;
+}
+
 } // namespace
 
 // ============================================================================
-// ESPWiFi BLE GATT registry wrappers (registerRoute-style)
+// ESPWiFi BLE GATT registry
 // ============================================================================
 
 void ESPWiFi::startBLEServices() {
-  // Hook point: define your BLE services/characteristics here.
-  //
-  // Recommendation: clear the registry first so repeated start/stop cycles
-  // don't accumulate duplicated characteristics.
-  //
-  // Example:
-  //   clearBleServices();
-  //   registerBleService16(0x180A); // Device Information
-  //   addBleCharacteristic16(0x180A, 0xFFF2,
-  //                          BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
-  //                          myAccessCb, this);
-  //
-  // NOTE: Changes take effect for the current startBLE() call because we call
-  // this before `ble_gatts_count_cfg()` / `ble_gatts_add_svcs()`.
+  clearBleServices();
 
-  // Device Information Service (DIS) must use standard characteristics.
-  // You can still include your provisioning/control characteristic here for
-  // Web Bluetooth filtering convenience.
-  (void)registerBleService16(0x180A);
+  const uint16_t disServiceUUID = 0x180A;
+  (void)registerBleService16(disServiceUUID);
 
-  // Standard DIS characteristics (read-only strings)
-  (void)registerBleCharacteristic16(
-      0x180A, kDisManufacturerNameString, BLE_GATT_CHR_F_READ,
-      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
-         struct ble_gatt_access_ctxt *ctxt) -> int {
-        (void)espwifi;
-        (void)conn_handle;
-        (void)attr_handle;
-        return bleReadString(ctxt, "ESPWiFi");
-      });
-
-  (void)registerBleCharacteristic16(
-      0x180A, kDisModelNumberString, BLE_GATT_CHR_F_READ,
-      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
-         struct ble_gatt_access_ctxt *ctxt) -> int {
-        (void)conn_handle;
-        (void)attr_handle;
-        if (!ctxt) {
-          return BLE_ATT_ERR_UNLIKELY;
-        }
-        std::string model =
-            espwifi->config["deviceName"].isNull()
-                ? std::string("ESP32")
-                : espwifi->config["deviceName"].as<std::string>();
-        return os_mbuf_append(ctxt->om, model.c_str(), model.size()) == 0
-                   ? 0
-                   : BLE_ATT_ERR_INSUFFICIENT_RES;
-      });
-
-  (void)registerBleCharacteristic16(
-      0x180A, kDisSerialNumberString, BLE_GATT_CHR_F_READ,
-      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
-         struct ble_gatt_access_ctxt *ctxt) -> int {
-        (void)conn_handle;
-        (void)attr_handle;
-        if (!ctxt) {
-          return BLE_ATT_ERR_UNLIKELY;
-        }
-        std::string serial = espwifi->getBLEAddress();
-        return os_mbuf_append(ctxt->om, serial.c_str(), serial.size()) == 0
-                   ? 0
-                   : BLE_ATT_ERR_INSUFFICIENT_RES;
-      });
-
-  (void)registerBleCharacteristic16(
-      0x180A, kDisFirmwareRevisionString, BLE_GATT_CHR_F_READ,
-      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
-         struct ble_gatt_access_ctxt *ctxt) -> int {
-        (void)conn_handle;
-        (void)attr_handle;
-        if (!ctxt) {
-          return BLE_ATT_ERR_UNLIKELY;
-        }
-        const esp_app_desc_t *app = esp_app_get_description();
-        std::string fw = (app && app->version[0] != '\0')
-                             ? std::string(app->version)
-                             : espwifi->version();
-        return os_mbuf_append(ctxt->om, fw.c_str(), fw.size()) == 0
-                   ? 0
-                   : BLE_ATT_ERR_INSUFFICIENT_RES;
-      });
-
-  // Optional: keep a custom control characteristic under DIS for provisioning.
-  (void)registerBleCharacteristic16(
-      0x180A, GattServices::controlCharUUID.value,
-      BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY,
-      [](ESPWiFi *espwifi, uint16_t conn_handle, uint16_t attr_handle,
-         struct ble_gatt_access_ctxt *ctxt) -> int {
-        (void)espwifi;
-        (void)conn_handle;
-        (void)attr_handle;
-        if (!ctxt) {
-          return BLE_ATT_ERR_UNLIKELY;
-        }
-
-        if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-          if (s_controlRespLen == 0) {
-            return bleReadString(ctxt, "ok");
-          }
-          return os_mbuf_append(ctxt->om, s_controlResp, s_controlRespLen) == 0
-                     ? 0
-                     : BLE_ATT_ERR_INSUFFICIENT_RES;
-        }
-
-        if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
-          // Parse a small JSON request and stage config updates to be applied
-          // by runSystem() (handleConfigUpdate), not in this BLE stack
-          // callback.
-          char reqBuf[320];
-          size_t reqLen = 0;
-          if (!readOmToBuf(ctxt->om, reqBuf, sizeof(reqBuf), &reqLen) ||
-              reqLen == 0) {
-            espwifi->log(ERROR, "🔵 BLE Control: Empty request");
-            setControlRespStr("{\"ok\":false,\"error\":\"empty\"}");
-            return 0;
-          }
-
-          espwifi->log(DEBUG, "🔵 BLE Control Write: %zu bytes: %.*s", reqLen,
-                       (int)reqLen, reqBuf);
-
-          // ArduinoJson v7 uses heap allocation automatically
-          // The default constructor uses the global heap allocator
-          JsonDocument req;
-          DeserializationError err = deserializeJson(req, reqBuf, reqLen);
-          if (err) {
-            espwifi->log(ERROR, "🔵 BLE Control: JSON parse error: %s",
-                         err.c_str());
-            JsonDocument resp;
-            resp["ok"] = false;
-            resp["error"] = "bad_json";
-            resp["detail"] = err.c_str();
-            setControlRespJson(resp);
-            return 0;
-          }
-
-          const char *cmd = req["cmd"];
-          if (!cmd)
-            cmd = "";
-          espwifi->log(INFO, "🔵 BLE Control: cmd='%s'", cmd);
-
-          JsonDocument resp;
-          resp["ok"] = true;
-          resp["cmd"] = cmd;
-
-          if (strcmp(cmd, "get_identity") == 0) {
-            resp["deviceName"] =
-                espwifi->config["deviceName"].as<std::string>();
-            std::string hostname =
-                espwifi->config["hostname"].as<std::string>();
-            if (hostname.empty()) {
-              hostname = espwifi->genHostname();
-            }
-            resp["hostname"] = hostname;
-            resp["bleAddress"] = espwifi->getBLEAddress();
-            const esp_app_desc_t *app = esp_app_get_description();
-            resp["fw"] = (app && app->version[0] != '\0') ? app->version
-                                                          : espwifi->version();
-            // Include cloud configuration for dashboard pairing
-            if (espwifi->config["cloud"]["enabled"] | false) {
-              resp["cloud"]["enabled"] = true;
-              resp["cloud"]["baseUrl"] =
-                  espwifi->config["cloud"]["baseUrl"].as<const char *>();
-              resp["cloud"]["tunnel"] =
-                  espwifi->config["cloud"]["tunnel"].as<const char *>();
-            } else {
-              resp["cloud"]["enabled"] = false;
-            }
-          } else if (strcmp(cmd, "set_wifi") == 0) {
-            const char *ssid = req["ssid"];
-            const char *password = req["password"];
-            if (!password)
-              password = "";
-
-            espwifi->log(INFO, "🔵 BLE set_wifi: ssid=%s (%s), password=%s",
-                         ssid ? ssid : "(null)",
-                         ssid ? (ssid[0] == '\0' ? "empty" : "set") : "null",
-                         password[0] != '\0' ? "***" : "(empty)");
-
-            if (!ssid || ssid[0] == '\0') {
-              espwifi->log(ERROR, "🔵 BLE set_wifi: SSID is null or empty");
-              resp["ok"] = false;
-              resp["error"] = "ssid_required";
-            } else {
-              espwifi->log(
-                  INFO,
-                  "🔵 BLE set_wifi: Configuring WiFi client mode, SSID='%s'",
-                  ssid);
-
-              JsonDocument updates;
-              updates["wifi"]["enabled"] = true;
-              updates["wifi"]["mode"] = "client";
-              updates["wifi"]["client"]["ssid"] = ssid;
-              updates["wifi"]["client"]["password"] = password;
-
-              JsonDocument next = espwifi->mergeJson(espwifi->config, updates);
-              espwifi->configUpdate = next;
-              espwifi->requestConfigSave();
-
-              espwifi->log(INFO, "🔵 BLE set_wifi: Config queued for save, "
-                                 "WiFi restart pending");
-              resp["wifi_restart_queued"] = true;
-            }
-          } else if (strcmp(cmd, "get_status") == 0) {
-            resp["wifiMode"] =
-                espwifi->config["wifi"]["mode"].as<std::string>();
-            resp["ip"] = espwifi->ipAddress();
-            resp["bleStatus"] = espwifi->getBLEStatus();
-            resp["claim_code"] = espwifi->getClaimCode(false);
-            resp["claim_expires_in_ms"] = espwifi->claimExpiresInMs();
-          } else if (strcmp(cmd, "get_claim") == 0) {
-            const bool rotate = req["rotate"] | false;
-            resp["code"] = espwifi->getClaimCode(rotate);
-            resp["expires_in_ms"] = espwifi->claimExpiresInMs();
-          } else {
-            espwifi->log(WARNING, "🔵 BLE Control: Unknown command '%s'", cmd);
-            resp["ok"] = false;
-            resp["error"] = "unknown_cmd";
-          }
-
-          setControlRespJson(resp);
-
-          // Log the response being sent
-          char respPreview[128];
-          size_t respLen =
-              serializeJson(resp, respPreview, sizeof(respPreview));
-          if (respLen < sizeof(respPreview)) {
-            espwifi->log(DEBUG, "🔵 BLE Control Response: %s", respPreview);
-          } else {
-            espwifi->log(DEBUG, "🔵 BLE Control Response: (truncated) %.*s...",
-                         100, respPreview);
-          }
-
-          notifyControlResp(conn_handle, attr_handle);
-          return 0;
-        }
-
-        return BLE_ATT_ERR_UNLIKELY;
-      });
+  // Control characteristic - write with notify for responses
+  // Pass 'this' as arg so handler can access the ESPWiFi instance
+  (void)addBleCharacteristic16(
+      disServiceUUID, GattServices::controlCharUUID.value,
+      BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_NOTIFY, bleControlHandler, this);
 }
 
 bool ESPWiFi::registerBleService16(uint16_t svcUuid16) {
@@ -409,44 +220,7 @@ bool ESPWiFi::addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                                           arg, minKeySize);
 }
 
-bool ESPWiFi::registerBleCharacteristic16(uint16_t svcUuid16,
-                                          uint16_t chrUuid16, uint16_t flags,
-                                          BleRouteHandler handler,
-                                          uint8_t minKeySize) {
-  if (!handler) {
-    return false;
-  }
-
-  // Ensure service exists (idempotent) WITHOUT resetting characteristics.
-  (void)gattServices.ensureService16(svcUuid16);
-
-  if (bleRouteCtxCount_ >= kMaxBleRouteContexts) {
-    log(ERROR, "🔵 BLE GATT route ctx pool exhausted (%u)",
-        (unsigned)kMaxBleRouteContexts);
-    return false;
-  }
-
-  BleRouteCtx *ctx = &bleRouteCtx_[bleRouteCtxCount_++];
-  *ctx = BleRouteCtx{this, handler, svcUuid16, chrUuid16};
-
-  return addBleCharacteristic16(svcUuid16, chrUuid16, flags,
-                                bleGattAccessTrampoline, ctx, minKeySize);
-}
-
-void ESPWiFi::clearBleServices() {
-  gattServices.clear();
-  bleRouteCtxCount_ = 0;
-}
-
-int ESPWiFi::bleGattAccessTrampoline(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt,
-                                     void *arg) {
-  BleRouteCtx *ctx = static_cast<BleRouteCtx *>(arg);
-  if (!ctx || !ctx->self || !ctx->handler) {
-    return BLE_ATT_ERR_UNLIKELY;
-  }
-  return ctx->handler(ctx->self, conn_handle, attr_handle, ctxt);
-}
+void ESPWiFi::clearBleServices() { gattServices.clear(); }
 
 bool ESPWiFi::applyBleServiceRegistry(bool restartNow) {
   if (!restartNow) {
@@ -527,142 +301,6 @@ esp_err_t ESPWiFi::startBLEAdvertising() {
 
   log(INFO, "🔵 BLE Advertising started");
   return ESP_OK;
-}
-
-/**
- * @brief Initialize and start BLE provisioning
- *
- * Initializes the NimBLE stack, configures GATT services, and starts
- * advertising. This function is idempotent - calling it multiple times is safe.
- *
- * @return true if BLE is started (or was already running), false on failure
- *
- * @note Does not abort on failure per ESP32 robustness best practices
- * @note Cannot run simultaneously with Classic Bluetooth (A2DP)
- */
-bool ESPWiFi::startBLE() {
-  // Early return if already started
-  if (bleStarted) {
-    log(DEBUG, "🔵 BLE Already running");
-    return true;
-  }
-
-#ifdef CONFIG_BT_A2DP_ENABLE
-  // Check if Bluetooth A2DP is running (mutual exclusion)
-  if (btStarted) {
-    log(WARNING, "🔵 Cannot start BLE: Bluetooth A2DP is running");
-    return false;
-  }
-#endif
-
-  // Re-entrancy guard
-  static bool initInProgress = false;
-  if (initInProgress) {
-    log(WARNING, "🔵 BLE initialization already in progress");
-    return false;
-  }
-  initInProgress = true;
-
-  log(INFO, "🔵 Starting BLE Provisioning");
-
-  esp_err_t ret;
-
-  // Configure the host callbacks BEFORE nimble_port_init (required)
-  ble_hs_cfg.sync_cb = [](void) {
-    extern ESPWiFi espwifi;
-    espwifi.bleHostSyncHandler(&espwifi);
-  };
-
-  ble_hs_cfg.reset_cb = [](int reason) {
-    extern ESPWiFi espwifi;
-    espwifi.bleHostResetHandler(reason, &espwifi);
-  };
-
-  // Configure BLE security for encrypted connections
-  // "Just Works" pairing - no PIN required, but connection is encrypted
-  ble_hs_cfg.sm_bonding = 1; // Enable bonding (stores keys)
-  ble_hs_cfg.sm_mitm = 0;    // No Man-in-the-Middle protection (Just Works)
-  ble_hs_cfg.sm_sc = 1;      // Secure Connections (LE Secure Connections)
-  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT; // Just Works pairing
-  ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
-  ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
-
-  log(INFO, "🔵 🔐 BLE Security: Just Works pairing enabled (encrypted "
-            "connection) ✨");
-
-  // Initialize NimBLE host - but only if not already initialized
-  // Double-init causes ESP_ERR_INVALID_STATE
-  if (!nimbleInitialized) {
-    log(DEBUG, "🔵 Initializing NimBLE stack");
-    ret = nimble_port_init();
-    if (ret == ESP_ERR_INVALID_STATE) {
-      // On some ESP-IDF versions this can mean NimBLE/controller was already
-      // initialized elsewhere. Treat it as already-initialized.
-      log(WARNING,
-          "🔵 NimBLE port already initialized (ESP_ERR_INVALID_STATE), "
-          "continuing");
-    } else if (ret != ESP_OK) {
-      log(ERROR, "🔵 Failed to initialize NimBLE port: %s",
-          esp_err_to_name(ret));
-
-      initInProgress = false;
-      return false;
-    }
-
-    nimbleInitialized = true;
-
-    // NimBLE initialized successfully
-    // Allow time for WiFi/BT coexistence to stabilize if WiFi is running
-    if (isWiFiInitialized()) {
-      log(DEBUG, "🔵 WiFi coexistence: allowing stabilization period");
-      vTaskDelay(pdMS_TO_TICKS(200));
-      feedWatchDog();
-    }
-  } else {
-    log(DEBUG,
-        "🔵 NimBLE stack already initialized, skipping nimble_port_init");
-  }
-
-  // Set device name from config
-  std::string deviceName = config["deviceName"].as<std::string>();
-  ret = ble_svc_gap_device_name_set(deviceName.c_str());
-  if (ret != 0) {
-    log(WARNING, "🔵 Failed to set BLE device name: %d", ret);
-    // Continue anyway, not fatal
-  }
-
-  // Initialize GATT services
-  ble_svc_gap_init();
-  ble_svc_gatt_init();
-
-  // Allow user code to register services/characteristics for this start.
-  startBLEServices();
-
-  // Register application services/characteristics
-  const ble_gatt_svc_def *svcs = gattServices.serviceDefs(this);
-  int rc = ble_gatts_count_cfg(svcs);
-  if (rc != 0) {
-    log(ERROR, "🔵 Failed to count GATT services, rc=%d", rc);
-    initInProgress = false;
-    return false;
-  }
-  rc = ble_gatts_add_svcs(svcs);
-  if (rc != 0) {
-    log(ERROR, "🔵 Failed to add GATT services, rc=%d", rc);
-    initInProgress = false;
-    return false;
-  }
-
-  feedWatchDog();
-
-  // Start the host task
-  nimble_port_freertos_init(bleHostTaskStatic);
-
-  bleStarted = true;
-  initInProgress = false;
-  log(INFO, "🔵 BLE Provisioning Started");
-
-  return true;
 }
 
 /**
@@ -761,6 +399,7 @@ std::string ESPWiFi::getBLEAddress() {
 }
 
 #endif // CONFIG_BT_NIMBLE_ENABLED
+       // =======================================================
 /**
  * @brief Handle BLE configuration changes
  *
@@ -777,6 +416,126 @@ void ESPWiFi::bleConfigHandler() {
   }
   feedWatchDog();
 #endif
+}
+
+/**
+ * @brief Initialize and start BLE provisioning
+ *
+ * Initializes the NimBLE stack, configures GATT services, and starts
+ * advertising. This function is idempotent - calling it multiple times is safe.
+ *
+ * @return true if BLE is started (or was already running), false on failure
+ *
+ * @note Does not abort on failure per ESP32 robustness best practices
+ * @note Cannot run simultaneously with Classic Bluetooth (A2DP)
+ */
+bool ESPWiFi::startBLE() {
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+  // Early return if already started
+  if (bleStarted) {
+    log(DEBUG, "🔵 BLE Already running");
+    return true;
+  }
+
+  log(INFO, "🔵 Starting Bluetooth Low Energy");
+
+  esp_err_t ret;
+
+  // Configure the host callbacks BEFORE nimble_port_init (required)
+  ble_hs_cfg.sync_cb = [](void) {
+    extern ESPWiFi espwifi;
+    espwifi.log(INFO, "🔵 BLE Host and Controller synced");
+    espwifi.log(INFO, "🔵 BLE Address: %s", espwifi.getBLEAddress().c_str());
+    espwifi.startBLEAdvertising();
+  };
+
+  ble_hs_cfg.reset_cb = [](int reason) {
+    extern ESPWiFi espwifi;
+    espwifi.log(WARNING, "🔵 BLE Host reset, reason=%d", reason);
+  };
+
+  // Configure BLE security for encrypted connections
+  // "Just Works" pairing - no PIN required, but connection is encrypted
+  ble_hs_cfg.sm_bonding = 1; // Enable bonding (stores keys)
+  ble_hs_cfg.sm_mitm = 0;    // No Man-in-the-Middle protection (Just Works)
+  ble_hs_cfg.sm_sc = 1;      // Secure Connections (LE Secure Connections)
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT; // Just Works pairing
+  ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
+  ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC;
+
+  // Initialize NimBLE host - but only if not already initialized
+  // Double-init causes ESP_ERR_INVALID_STATE
+  if (!nimbleInitialized) {
+    log(DEBUG, "🔵 Initializing NimBLE stack");
+    ret = nimble_port_init();
+    if (ret == ESP_ERR_INVALID_STATE) {
+      // On some ESP-IDF versions this can mean NimBLE/controller was already
+      // initialized elsewhere. Treat it as already-initialized.
+      log(WARNING,
+          "🔵 NimBLE port already initialized (ESP_ERR_INVALID_STATE), "
+          "continuing");
+    } else if (ret != ESP_OK) {
+      log(ERROR, "🔵 Failed to initialize NimBLE port: %s",
+          esp_err_to_name(ret));
+      return false;
+    }
+
+    nimbleInitialized = true;
+    log(INFO, "🔵 🔐 BLE Security: Just Works pairing enabled (encrypted "
+              "connection)");
+
+    // NimBLE initialized successfully
+    // Allow time for WiFi/BT coexistence to stabilize if WiFi is running
+    if (isWiFiInitialized()) {
+      log(DEBUG, "🔵 WiFi coexistence: allowing stabilization period");
+      feedWatchDog(200);
+    }
+  } else {
+    log(DEBUG,
+        "🔵 NimBLE stack already initialized, skipping nimble_port_init");
+  }
+
+  // Set device name from config
+  std::string deviceName = config["deviceName"].as<std::string>();
+  ret = ble_svc_gap_device_name_set(deviceName.c_str());
+  if (ret != 0) {
+    log(WARNING, "🔵 Failed to set BLE device name: %d", ret);
+    // Continue anyway, not fatal
+  }
+
+  // Initialize GATT services
+  ble_svc_gap_init();
+  ble_svc_gatt_init();
+
+  // register services/characteristics.
+  startBLEServices();
+
+  // Register application services/characteristics
+  const ble_gatt_svc_def *svcs = gattServices.serviceDefs(this);
+  int rc = ble_gatts_count_cfg(svcs);
+  if (rc != 0) {
+    log(ERROR, "🔵 Failed to count GATT services, rc=%d", rc);
+    return false;
+  }
+  rc = ble_gatts_add_svcs(svcs);
+  if (rc != 0) {
+    log(ERROR, "🔵 Failed to add GATT services, rc=%d", rc);
+    return false;
+  }
+
+  feedWatchDog();
+
+  // Start the host task
+  nimble_port_freertos_init(bleHostTaskStatic);
+
+  bleStarted = true;
+  log(INFO, "🔵 BLE Initialization complete (advertising will start when host "
+            "syncs)");
+
+  return true;
+#else
+  return false;
+#endif // CONFIG_BT_NIMBLE_ENABLED
 }
 
 #endif // ESPWiFi_BLE_H

@@ -59,6 +59,10 @@
 #include <IntervalTimer.h>
 #include <WebSocket.h>
 
+// Cloud classes
+#include "CloudCtl.h"
+#include "CloudMedia.h"
+
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 struct ble_gap_event;
@@ -182,7 +186,7 @@ public:
   }
 
   // ---- Config
-  void saveConfig();
+  bool saveConfig();
   void readConfig();
   void handleConfigUpdate();
   void requestConfigSave();
@@ -285,14 +289,14 @@ public:
 
   // ---- Control WebSocket (for cloud/pairing control channel)
   void startControlWebSocket();
+  void handleCloudControlMessage(const JsonDocument &req, JsonDocument &resp);
 
-#if ESPWiFi_HAS_CAMERA
-  // ---- Camera WebSocket (for LAN streaming)
-  void startCameraWebSocket();
-#endif
+  // ---- Media WebSocket (for LAN media; camera streaming on request)
+  void startMediaWebSocket();
 
   // ---- Cloud Client (remote access)
-  void startCloud();
+  void startCloudCtl();
+  void startCloudMedia();
 
   // ---- Power Management
   void powerConfigHandler();
@@ -334,6 +338,7 @@ public:
   // Declared unconditionally because config handling calls this even when BLE
   // is compiled out; implementation is a stub when CONFIG_BT_NIMBLE_ENABLED is
   // disabled.
+  bool startBLE();
   void bleConfigHandler();
 #ifdef CONFIG_BT_NIMBLE_ENABLED
   using BleAccessCallback = int (*)(uint16_t conn_handle, uint16_t attr_handle,
@@ -341,14 +346,7 @@ public:
                                     void *arg);
 
   // Route-style BLE characteristic handler.
-  // Similar idea to `RouteHandler`, but for NimBLE GATT access callbacks.
-  // NOTE: must be a plain function pointer (non-capturing lambda is OK).
-  using BleRouteHandler = int (*)(ESPWiFi *espwifi, uint16_t conn_handle,
-                                  uint16_t attr_handle,
-                                  struct ble_gatt_access_ctxt *ctxt);
-
   void *ble = nullptr;
-  bool startBLE();
   void deinitBLE();
   uint8_t getBLEStatus();
   std::string getBLEAddress();
@@ -366,14 +364,6 @@ public:
   bool addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                               uint16_t flags, BleAccessCallback accessCb,
                               void *arg = nullptr, uint8_t minKeySize = 0);
-
-  // Convenience helper: like registerRoute(), but for BLE GATT characteristics.
-  // - Auto-registers the service if needed.
-  // - Provides ESPWiFi* to the handler.
-  // - Stores handler context in a fixed-size pool (no heap).
-  bool registerBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
-                                   uint16_t flags, BleRouteHandler handler,
-                                   uint8_t minKeySize = 0);
 
   void clearBleServices();
   bool applyBleServiceRegistry(bool restartNow = true);
@@ -396,28 +386,29 @@ public:
   WebSocket ctrlSoc;
   bool ctrlSocStarted = false;
 
-// ---- Camera
-#if ESPWiFi_HAS_CAMERA
-  WebSocket cameraSoc;
-  bool cameraSocStarted = false;
+  // ---- Media socket (camera + audio + future binary streams)
+  WebSocket mediaSoc;
+  bool mediaSocStarted = false;
 
+  // ---- Camera
+  void streamCamera();
+#if ESPWiFi_HAS_CAMERA
   sensor_t *camera = nullptr;
   void printCameraSettings();
 
-  // Camera streaming subscribers
-  static constexpr size_t kMaxCameraStreamSubscribers = 8;
-  int cameraStreamSubFds_[kMaxCameraStreamSubscribers] = {0};
-  volatile size_t cameraStreamSubCount_ = 0;
+  // Media camera streaming subscribers (clients that requested camera_start)
+  static constexpr size_t kMaxMediaCameraStreamSubscribers = 8;
+  int mediaCameraStreamSubFds_[kMaxMediaCameraStreamSubscribers] = {0};
+  volatile size_t mediaCameraStreamSubCount_ = 0;
 
-  void setCameraStreamSubscribed(int clientFd, bool enable);
-  void clearCameraStreamSubscribed(int clientFd);
+  void setMediaCameraStreamSubscribed(int clientFd, bool enable);
+  void clearMediaCameraStreamSubscribed(int clientFd);
 #endif // ESPWiFi_HAS_CAMERA
 #endif // CONFIG_HTTPD_WS_SUPPORT
 
   // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();
   void deinitCamera();
-  void streamCamera();
   void clearCameraBuffer();
   void updateCameraSettings();
   void cameraConfigHandler();
@@ -465,7 +456,8 @@ private:
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
   // ---- Cloud Client
-  Cloud cloud;
+  CloudCtl cloudCtl;     // Control WebSocket tunnel (JSON messages)
+  CloudMedia cloudMedia; // Media WebSocket tunnel (binary streaming)
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;
@@ -510,22 +502,6 @@ private:
 
   // BLE event handlers (instance methods)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-  // ---- BLE route-style trampoline/state (fixed pool; no heap).
-  struct BleRouteCtx {
-    ESPWiFi *self = nullptr;
-    BleRouteHandler handler = nullptr;
-    uint16_t svcUuid16 = 0;
-    uint16_t chrUuid16 = 0;
-  };
-
-  static constexpr size_t kMaxBleRouteContexts = 48;
-  BleRouteCtx bleRouteCtx_[kMaxBleRouteContexts]{};
-  size_t bleRouteCtxCount_ = 0;
-
-  static int bleGattAccessTrampoline(uint16_t conn_handle, uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt,
-                                     void *arg);
-
   void bleConnectionHandler(int status, uint16_t conn_handle, void *obj);
   void bleDisconnectionHandler(int reason, void *obj);
   void bleAdvertisingCompleteHandler(void *obj);

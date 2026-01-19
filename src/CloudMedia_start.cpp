@@ -1,0 +1,66 @@
+#include "ESPWiFi.h"
+#include "esp_mac.h"
+
+void ESPWiFi::startCloudMedia() {
+  // Check if cloud client is enabled in config
+  bool enabled = config["cloud"]["enabled"] | false;
+  if (!enabled) {
+    log(INFO, "☁️ Media cloud tunnel disabled (cloud not enabled)");
+    return;
+  }
+
+  // Check if media tunnel is explicitly enabled
+  bool mediaTunnelEnabled =
+      config["cloud"]["mediaEnabled"] |
+      false; // Default false initially due to resource constraints
+  if (!mediaTunnelEnabled) {
+    log(INFO, "☁️ Media cloud tunnel disabled in config");
+    return;
+  }
+
+  // Get configuration
+  const char *baseUrl = config["cloud"]["baseUrl"];
+  bool autoReconnect = config["cloud"]["autoReconnect"];
+  uint32_t reconnectDelay = config["cloud"]["reconnectDelay"];
+
+  // Use current hostname as device ID
+  std::string hostname = config["hostname"].as<std::string>();
+  if (hostname.empty()) {
+    hostname = genHostname();
+  }
+  const char *deviceId = hostname.c_str();
+
+  // Get auth token from device config
+  const char *authToken = config["auth"]["token"] | nullptr;
+
+  log(INFO, "☁️ Starting media cloud tunnel");
+  log(INFO, "☁️ Base URL: %s", baseUrl);
+  log(INFO, "☁️ Device ID: %s", deviceId);
+  log(INFO, "☁️ Tunnel: ws_media");
+
+  // Wait for control tunnel TLS handshake to complete
+  // (avoids memory contention during simultaneous TLS connections)
+  log(INFO, "☁️ Waiting 3s for control tunnel to establish...");
+  feedWatchDog(3000);
+
+  // Configure media cloud client
+  CloudMedia::Config cfg;
+  cfg.enabled = true;
+  cfg.baseUrl = baseUrl;
+  cfg.deviceId = deviceId;
+  cfg.authToken = authToken;
+  cfg.tunnel = "ws_media"; // Separate tunnel for media (camera, audio, etc)
+  cfg.autoReconnect = autoReconnect;
+  cfg.reconnectDelay = reconnectDelay;
+
+  // No message handler needed for media tunnel - it only sends binary frames
+  // Media frames will be sent via cloudMedia.sendBinary()
+
+  // Initialize and connect
+  if (!cloudMedia.begin(cfg)) {
+    log(ERROR, "☁️ Failed to initialize media cloud tunnel");
+    return;
+  }
+
+  log(INFO, "☁️ Media cloud tunnel started");
+}

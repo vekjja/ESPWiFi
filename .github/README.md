@@ -21,7 +21,7 @@ It supports both Station (STA) and Access Point (AP) modes, JSON-based configura
 - 🧩 Modular: add pins, WebSockets, and more via dashboard
 - 🔐 Configurable authentication (username/password)
 - 🔄 Over-the-air (OTA) firmware and filesystem updates
-- 🛠️ PlatformIO and Arduino IDE compatible
+- 🛠️ ESP-IDF / PlatformIO (ESP-IDF) compatible
 
 ---
 
@@ -33,10 +33,6 @@ Add to `platformio.ini`:
 lib_deps = 
   https://github.com/vekjja/ESPWiFi.git
 ```
-
-### Arduino IDE
-1. Download or clone this repo
-2. Move the folder into your Arduino `libraries/` directory
 
 ---
 
@@ -74,23 +70,28 @@ ESPWiFi/
 
 ---
 
-## 🔧 Firmware Usage (C++/Arduino)
+## 🔧 Firmware Usage (ESP-IDF)
 
 ### Quick Start (Default Configuration)
 
-The simplest way to use ESPWiFi is with the default `start()` and `runSystem()` methods:
+The simplest way to run ESPWiFi is using the default `start()` and `runSystem()` methods from your ESP-IDF entrypoint.
+
 ###### ESPWiFi will generate a default `config.json` file if not present.
 ```cpp
-#include <ESPWiFi.h>
+#include "ESPWiFi.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
 
 ESPWiFi espwifi;
 
-void setup() {
+extern "C" void app_main(void) {
   espwifi.start();
-}
-
-void loop() {
-  espwifi.runSystem();
+  while (1) {
+    espwifi.runSystem();
+    espwifi.feedWatchDog();
+  }
 }
 ```
 
@@ -139,19 +140,19 @@ For more control, you can use `config.json` to configure the device and start se
 
 ### Example Custom Firmware Usage
 ```cpp
-#include <ESPWiFi.h>
+#include "ESPWiFi.h"
 
 ESPWiFi espwifi;
 
-void setup() {
+extern "C" void app_main(void) {
   espwifi.readConfig();      // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
   espwifi.startAP();         // Explicitly Start Access Point Only
   espwifi.srvGPIO();         // Register Only GPIO endpoints 
-}
 
-void loop() {
-  feedWatchDog();                 // Allow other tasks to run
-  // Custom main loop logic here
+  while (1) {
+    espwifi.feedWatchDog();       // Allow other tasks to run
+    // Custom main loop logic here
+  }
 }
 ```
 

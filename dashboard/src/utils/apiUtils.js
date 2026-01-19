@@ -28,12 +28,44 @@ const normalizeProtocol = (protocol) => {
   return protocol.endsWith(":") ? protocol : `${protocol}:`;
 };
 
+const isPrivateIp = (hostname) => {
+  // Basic check for typical LAN ranges; good enough for routing logic.
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname || "");
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+};
+
+const isDeviceHostedOrigin = () => {
+  const hostname = (window.location.hostname || "").toLowerCase();
+  const isLocalhost =
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const isCloudHost =
+    hostname === "espwifi.io" || hostname.endsWith(".espwifi.io");
+
+  // If you're viewing the UI from the device itself (mDNS `.local` or direct LAN IP),
+  // always prefer same-origin. This avoids breakage when the device hostname changes
+  // (e.g. espwifi.local -> spark.local) and avoids relying on baked env vars.
+  return (
+    !isLocalhost &&
+    !isCloudHost &&
+    (hostname.endsWith(".local") || isPrivateIp(hostname))
+  );
+};
+
 /**
  * Get the API base URL for HTTP requests
  * Uses environment variables or falls back to localhost:80
  * @returns {string} The API base URL
  */
 export const getApiUrl = () => {
+  // When served from the device, always use same-origin (relative URLs).
+  if (isDeviceHostedOrigin()) return "";
+
   // Allow explicit API override even in production (e.g. app on espwifi.io,
   // API on espwifi.local).
   const forcedHost = process.env.REACT_APP_API_HOST;
@@ -85,6 +117,12 @@ export const getWebSocketUrl = (mdnsHostname = null) => {
   // to avoid Mixed Content / SecurityError spam.
   if (window.location.protocol === "https:" && protocol === "ws:") {
     protocol = "wss:";
+  }
+
+  // When the UI is served from the device, always use same-origin.
+  // This keeps control/camera sockets working even if the device hostname changes.
+  if (isDeviceHostedOrigin()) {
+    return `${protocol}//${window.location.host}`;
   }
 
   // If an API host is explicitly forced, prefer it over any passed hostname.
@@ -144,7 +182,7 @@ export const buildApiUrl = (path, mdnsHostname = null) => {
 
 /**
  * Build a full WebSocket URL
- * @param {string} path - The WebSocket endpoint path (e.g., "/ws/camera", "/ws/rssi")
+ * @param {string} path - The WebSocket endpoint path (e.g., "/ws/media", "/ws/control")
  * @param {string} mdnsHostname - Optional mDNS hostname
  * @returns {string} The full WebSocket URL
  */

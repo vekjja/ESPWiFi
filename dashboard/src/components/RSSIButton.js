@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Fab, Tooltip } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
 import SignalCellularAlt1BarIcon from "@mui/icons-material/SignalCellularAlt1Bar";
@@ -13,59 +13,24 @@ export default function RSSIButton({
   onRSSIDataChange,
   getRSSIColor,
   controlRssi = null,
-  onRequestRssi = null,
+  musicPlaybackState = { isPlaying: false, isPaused: false },
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [rssiValue, setRssiValue] = useState(null);
-  const pollRef = useRef(null);
 
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, []);
-
-  // RSSI comes from /ws/control via {cmd:"get_rssi"}.
-  // Poll while device is online (lightweight; no extra websocket).
-  useEffect(() => {
-    if (!deviceOnline) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      setRssiValue(null);
-      if (onRSSIDataChange) onRSSIDataChange(null, false);
-      return;
-    }
-
-    // Kick once immediately, then poll.
-    if (typeof onRequestRssi === "function") {
-      onRequestRssi();
-    }
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => {
-      if (typeof onRequestRssi === "function") onRequestRssi();
-    }, 1000);
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [deviceOnline, onRequestRssi, onRSSIDataChange]);
-
-  // Consume latest RSSI from control channel
+  // Consume latest RSSI from control channel (polling is handled in App.js)
   useEffect(() => {
     if (typeof controlRssi === "number") {
       setRssiValue(controlRssi);
       if (onRSSIDataChange) onRSSIDataChange(controlRssi, true);
+    } else if (controlRssi === null) {
+      // Clear RSSI value when device is offline
+      if (!deviceOnline) {
+        setRssiValue(null);
+        if (onRSSIDataChange) onRSSIDataChange(null, false);
+      }
     }
-  }, [controlRssi, onRSSIDataChange]);
+  }, [controlRssi, deviceOnline, onRSSIDataChange]);
 
   // Get the appropriate signal icon based on RSSI value
   const getRSSIIconComponent = (rssiValue) => {
@@ -80,6 +45,8 @@ export default function RSSIButton({
 
   // Get RSSI status text
   const getRSSIStatusText = (rssiValue) => {
+    if (musicPlaybackState.isPlaying)
+      return "RSSI disabled during music playback";
     if (!deviceOnline) return "Control socket disconnected";
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
@@ -92,7 +59,7 @@ export default function RSSIButton({
   };
 
   const handleClick = () => {
-    if (deviceOnline) {
+    if (deviceOnline && !musicPlaybackState.isPlaying) {
       setModalOpen(true);
     }
   };
@@ -101,22 +68,23 @@ export default function RSSIButton({
     setModalOpen(false);
   };
 
+  // Button is disabled if device offline OR music is playing
+  const isDisabled = !deviceOnline || musicPlaybackState.isPlaying;
+
   const button = (
     <Fab
       {...buttonProps}
-      onClick={deviceOnline ? handleClick : undefined}
-      disabled={!deviceOnline}
+      onClick={isDisabled ? undefined : handleClick}
+      disabled={isDisabled}
       sx={{
-        color: !deviceOnline
+        color: isDisabled
           ? "text.disabled"
           : getRSSIColor
           ? getRSSIColor(rssiValue)
           : "primary.main",
-        backgroundColor: !deviceOnline ? "action.disabled" : "action.hover",
+        backgroundColor: isDisabled ? "action.disabled" : "action.hover",
         "&:hover": {
-          backgroundColor: !deviceOnline
-            ? "action.disabled"
-            : "action.selected",
+          backgroundColor: isDisabled ? "action.disabled" : "action.selected",
         },
       }}
     >
@@ -125,7 +93,7 @@ export default function RSSIButton({
   );
 
   // Wrap disabled buttons in a span to fix MUI Tooltip warning
-  if (!deviceOnline) {
+  if (isDisabled) {
     return (
       <Tooltip title={getRSSIStatusText(rssiValue)}>
         <span>{button}</span>
@@ -142,15 +110,9 @@ export default function RSSIButton({
           config={config}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
-          deviceOnline={deviceOnline}
           open={modalOpen}
           onClose={handleCloseModal}
-          onRSSIDataChange={(value, connected) => {
-            setRssiValue(value);
-            if (onRSSIDataChange) {
-              onRSSIDataChange(value, connected);
-            }
-          }}
+          rssiValue={rssiValue}
         />
       )}
     </>

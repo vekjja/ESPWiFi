@@ -103,19 +103,44 @@ export function resolveWebSocketUrl(endpoint, config, opts = {}) {
 
   const preferTunnel = opts.preferTunnel !== false; // default true
 
-  if (preferTunnel && isTunnelReady(config)) {
-    const baseUrl = config?.cloudTunnel?.baseUrl || "";
-    const deviceId = config?.hostname || config?.deviceName || "";
-    const token = config?.auth?.token || getAuthToken() || "";
-    return buildTunnelWsUrl({
-      baseUrl,
-      deviceId,
-      tunnelKey: def.tunnelKey,
-      token,
-    });
+  // If the UI is served from the device itself, always use same-origin WebSockets.
+  // This avoids breakage when the device's mDNS hostname changes (e.g. espwifi.local -> spark.local)
+  // and avoids relying on any stored/baked hostname values.
+  const hostCtx = getHostContext();
+  if (
+    hostCtx.isDeviceLikeHost &&
+    !hostCtx.isCloudHost &&
+    !hostCtx.isLocalhost
+  ) {
+    return buildWebSocketUrl(def.localPath);
   }
 
-  // LAN/local WS
+  // If device provided a cloud tunnel URL, use it
+  if (preferTunnel && config?.cloudTunnel?.wsUrl) {
+    let url = config.cloudTunnel.wsUrl;
+
+    // Ensure auth token is appended if available
+    // Check both flat (config.authToken) and nested (config.auth.token) locations
+    const token =
+      config?.authToken || config?.auth?.token || getAuthToken() || "";
+    console.log("[connectionUtils] Cloud URL token check:", {
+      hasConfigAuthToken: !!config?.authToken,
+      hasNestedAuthToken: !!config?.auth?.token,
+      hasStorageToken: !!getAuthToken(),
+      finalToken: token ? `${token.substring(0, 4)}...` : "none",
+      urlHasToken: url.includes("token="),
+    });
+
+    if (token && !url.includes("token=")) {
+      const separator = url.includes("?") ? "&" : "?";
+      url = `${url}${separator}token=${encodeURIComponent(token)}`;
+      console.log("[connectionUtils] Appended token to cloud URL:", url);
+    }
+
+    return url;
+  }
+
+  // Otherwise, use local/LAN WebSocket
   const mdnsHostname = config?.hostname || config?.deviceName || null;
   return buildWebSocketUrl(def.localPath, mdnsHostname);
 }

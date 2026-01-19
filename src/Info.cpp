@@ -47,20 +47,27 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
   std::string deviceName = config["deviceName"].as<std::string>();
   jsonDoc["mdns"] = deviceName + ".local";
 
-  // Cloud tunnel status (config + runtime)
+  // Cloud status (config + runtime)
   {
-    JsonObject ct = jsonDoc["cloudTunnel"].to<JsonObject>();
-    ct["enabled"] = config["cloudTunnel"]["enabled"].isNull()
+    JsonObject ct = jsonDoc["cloud"].to<JsonObject>();
+    ct["enabled"] = config["cloud"]["enabled"].isNull()
                         ? false
-                        : config["cloudTunnel"]["enabled"].as<bool>();
-    const char *baseUrlC = config["cloudTunnel"]["baseUrl"].as<const char *>();
+                        : config["cloud"]["enabled"].as<bool>();
+    const char *baseUrlC = config["cloud"]["baseUrl"].as<const char *>();
     ct["baseUrl"] = (baseUrlC != nullptr) ? std::string(baseUrlC) : "";
-    ct["tunnelAll"] = config["cloudTunnel"]["tunnelAll"].isNull()
+    ct["tunnelAll"] = config["cloud"]["tunnelAll"].isNull()
                           ? false
-                          : config["cloudTunnel"]["tunnelAll"].as<bool>();
-    ct["maxFps"] = config["cloudTunnel"]["maxFps"].isNull()
-                       ? 0
-                       : config["cloudTunnel"]["maxFps"].as<int>();
+                          : config["cloud"]["tunnelAll"].as<bool>();
+
+    // Cloud claim code from cloudCtl (for cloud broker pairing)
+    if (cloudCtl.isConnected()) {
+      const char *claimCode = cloudCtl.getClaimCode();
+      if (claimCode && claimCode[0] != '\0') {
+        ct["claimCode"] = std::string(claimCode);
+      }
+    }
+    // For now, claim expiry is not tracked in Cloud class
+    // ct["claimExpiresInMs"] = 600000; // 10 minutes
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
     JsonObject endpoints = ct["endpoints"].to<JsonObject>();
@@ -68,14 +75,49 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
     JsonObject control = endpoints["control"].to<JsonObject>();
     control["uri"] = "/ws/control";
     control["started"] = ctrlSocStarted;
-#endif
+
+    // Add cloud connection status and UI WebSocket URL
+    control["cloudEnabled"] = cloudCtl.isConnected();
+    control["cloudConnected"] =
+        cloudCtl.isConnected() && cloudCtl.isRegistered();
+    if (cloudCtl.isConnected() && cloudCtl.isRegistered()) {
+      const char *uiWsUrl = cloudCtl.getUiWebSocketUrl();
+      if (uiWsUrl && uiWsUrl[0] != '\0') {
+        control["ui_ws_url"] = std::string(uiWsUrl);
+      }
+    }
+
+    // Media (camera) endpoint info
+#if ESPWiFi_HAS_CAMERA
+    JsonObject camera = endpoints["camera"].to<JsonObject>();
+    camera["uri"] = "/ws/media";
+    camera["started"] = mediaSocStarted;
+
+    // Add media cloud tunnel info
+    camera["cloudEnabled"] = cloudMedia.isConnected();
+    camera["cloudConnected"] =
+        cloudMedia.isConnected() && cloudMedia.isRegistered();
+    if (cloudMedia.isConnected() && cloudMedia.isRegistered()) {
+      const char *mediaWsUrl = cloudMedia.getUiWebSocketUrl();
+      if (mediaWsUrl && mediaWsUrl[0] != '\0') {
+        camera["ui_ws_url"] = std::string(mediaWsUrl);
+      }
+    }
+#endif // ESPWiFi_HAS_CAMERA
+#endif // CONFIG_HTTPD_WS_SUPPORT
   }
 
-  // Pairing / claim code (for iOS flows)
+  // Pairing / claim code (cloud broker claim code for iOS flows)
   {
     JsonObject p = jsonDoc["pairing"].to<JsonObject>();
-    p["claim_code"] = getClaimCode(false);
-    p["claim_expires_in_ms"] = claimExpiresInMs();
+    if (cloudCtl.isConnected()) {
+      const char *claimCode = cloudCtl.getClaimCode();
+      if (claimCode && claimCode[0] != '\0') {
+        p["claim_code"] = std::string(claimCode);
+      }
+    }
+    // For now, claim expiry is not tracked in Cloud class
+    // p["claim_expires_in_ms"] = 600000; // 10 minutes
   }
 
   maybeYield();

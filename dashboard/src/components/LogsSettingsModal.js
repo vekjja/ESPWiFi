@@ -904,9 +904,7 @@ export default function LogsSettingsModal({
               {logLoading && logs === "" ? (
                 <Typography color="text.secondary">Loading logs...</Typography>
               ) : logs === "" ? (
-                <Typography color="text.secondary">
-                  No logs available. Click "Refresh" to fetch.
-                </Typography>
+                <Typography color="text.secondary">Loading logs...</Typography>
               ) : (
                 <>
                   {logs}

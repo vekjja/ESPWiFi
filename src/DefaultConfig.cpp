@@ -41,20 +41,15 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["cloud"]["baseUrl"] = "https://cloud.espwifi.io";
   doc["cloud"]["deviceId"] = getHostname(); // Use hostname as device ID
   doc["cloud"]["tunnel"] = "ws_control";
-  doc["cloud"]["mediaEnabled"] = false; // Disabled by default due to resource
-                                        // constraints (camera, audio, etc)
-  doc["cloud"]["autoReconnect"] = true;
-  doc["cloud"]["reconnectDelay"] = 5000;
 
   // BLE Provisioning
-  doc["ble"]["enabled"] = true;
+  // doc["ble"]["enabled"] = true;
 
   // Logging: verbose, access, debug, info, warning, error
-  doc["log"]["file"] = "/espwifi.log";
-  doc["log"]["level"] = "debug";
   doc["log"]["enabled"] = true;
   doc["log"]["useSD"] = true;
-  doc["log"]["maskedKeys"] = JsonArray();
+  doc["log"]["level"] = "debug";
+  doc["log"]["file"] = "/espwifi.log";
   doc["log"]["maskedKeys"].add("password");
   doc["log"]["maskedKeys"].add("token");
 

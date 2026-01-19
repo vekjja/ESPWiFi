@@ -142,7 +142,40 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
     // Optional auth check (happens before connection is accepted)
     if (requireAuth_ && authCheck_ != nullptr) {
       if (!authCheck_(req, userCtx_)) {
-        // Close session immediately (handshake already upgraded)
+        // Auth failed.
+        //
+        // If we just drop the TCP session, most clients report code 1006
+        // (abnormal closure). Instead, best-effort send a proper WebSocket
+        // Close control frame so clients can show a meaningful error.
+        //
+        // Use 1008 (Policy Violation) with a short reason string.
+        // Note: browsers don't surface this reason to JS for security, but
+        // CLI tools (wscat) and logs will.
+        constexpr uint16_t kCloseCode = 1008; // Policy Violation
+        const char *reason = "unauthorized";
+        const size_t reasonLen = (reason != nullptr) ? strlen(reason) : 0;
+
+        // Close payload = 2-byte network-order code + UTF-8 reason.
+        uint8_t payload[2 + 32];
+        size_t n = 0;
+        payload[n++] = (uint8_t)((kCloseCode >> 8) & 0xff);
+        payload[n++] = (uint8_t)(kCloseCode & 0xff);
+
+        // Bound reason length to keep stack usage fixed.
+        const size_t copyLen = (reasonLen > 32) ? 32 : reasonLen;
+        if (copyLen > 0 && reason != nullptr) {
+          memcpy(payload + n, reason, copyLen);
+          n += copyLen;
+        }
+
+        httpd_ws_frame_t closeFrame;
+        memset(&closeFrame, 0, sizeof(closeFrame));
+        closeFrame.type = HTTPD_WS_TYPE_CLOSE;
+        closeFrame.payload = payload;
+        closeFrame.len = n;
+        (void)httpd_ws_send_frame_async(server_, fd, &closeFrame);
+
+        // Close the session after sending the close frame (best-effort).
         (void)httpd_sess_trigger_close(server_, fd);
         return ESP_OK;
       }

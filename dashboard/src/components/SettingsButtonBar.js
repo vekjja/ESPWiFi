@@ -237,7 +237,6 @@ export default function SettingsButtonBar({
   controlConnected = false,
   deviceInfoOverride = null,
   controlWs = null,
-  musicPlaybackState = { isPlaying: false, isPaused: false },
 }) {
   // Track previous visible IDs to detect newly available buttons
   const prevVisibleIdsRef = useRef(new Set());
@@ -265,9 +264,7 @@ export default function SettingsButtonBar({
       render: () => (
         <DeviceSettingsButton
           config={config}
-          deviceOnline={
-            (httpCapable || canCloudConfigure) && !musicPlaybackState.isPlaying
-          }
+          deviceOnline={httpCapable || canCloudConfigure}
           saveConfigToDevice={saveConfigToDevice}
           onRefreshConfig={onRefreshConfig}
           cloudMode={cloudMode}
@@ -289,7 +286,6 @@ export default function SettingsButtonBar({
             getRSSIColor={getRSSIColor}
             getRSSIIcon={getRSSIIcon}
             controlRssi={controlRssi}
-            musicPlaybackState={musicPlaybackState}
           />
         ),
       });
@@ -309,7 +305,7 @@ export default function SettingsButtonBar({
         render: () => (
           <CameraButton
             config={config}
-            deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
+            deviceOnline={deviceOnline}
             saveConfigToDevice={saveConfigToDevice}
           />
         ),
@@ -321,7 +317,7 @@ export default function SettingsButtonBar({
       render: () => (
         <LogsButton
           config={config}
-          deviceOnline={logsCapable && !musicPlaybackState.isPlaying}
+          deviceOnline={logsCapable}
           saveConfigToDevice={saveConfigToDevice}
           controlConnected={controlConnected}
           logsText={logsText}
@@ -336,7 +332,7 @@ export default function SettingsButtonBar({
       render: () => (
         <FileBrowserButton
           config={config}
-          deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
+          deviceOnline={deviceOnline}
           controlWs={controlWs}
         />
       ),
@@ -347,7 +343,7 @@ export default function SettingsButtonBar({
       render: () => (
         <AddModuleButton
           config={config}
-          deviceOnline={deviceOnline && !musicPlaybackState.isPlaying}
+          deviceOnline={deviceOnline}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           missingSettingsButtons={[]}
@@ -373,7 +369,6 @@ export default function SettingsButtonBar({
     controlConnected,
     deviceInfoOverride,
     controlWs,
-    musicPlaybackState.isPlaying,
   ]);
 
   const visibleIds = useMemo(

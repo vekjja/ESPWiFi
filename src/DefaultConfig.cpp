@@ -80,6 +80,7 @@ JsonDocument ESPWiFi::defaultConfig() {
   // Paths that are excluded from authentication (supports '*' and '?')
   doc["auth"]["excludePaths"].add("/");
   doc["auth"]["excludePaths"].add("/static/*");
+  doc["auth"]["excludePaths"].add("/index.html");
   doc["auth"]["excludePaths"].add("/favicon.ico");
   doc["auth"]["excludePaths"].add("/api/auth/login");
   doc["auth"]["excludePaths"].add("/asset-manifest.json");

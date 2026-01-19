@@ -67,7 +67,7 @@ export default function Module({
           boxSizing: "border-box",
         }}
       >
-        <Typography variant="body1" align="center">
+        <Typography variant="body1" align="center" component="div">
           {title}
         </Typography>
         {children}

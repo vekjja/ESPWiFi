@@ -14,6 +14,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
 import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
+import { getAuthToken, clearAuthToken } from "./utils/authUtils";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
@@ -191,8 +192,6 @@ function App() {
     const enable = () => {
       const run = () => {
         setNetworkEnabled(true);
-        setAuthChecked(true);
-        setAuthenticated(true);
       };
       // Prefer idle time so render/layout settles before network work begins.
       if (window.requestIdleCallback) {
@@ -211,6 +210,65 @@ function App() {
     return () => window.removeEventListener("load", enable);
   }, []);
 
+  // Determine whether auth is required (and whether we already have a token).
+  // We intentionally probe /api/auth/login since it is excluded from auth.
+  useEffect(() => {
+    if (!networkEnabled) return;
+
+    let cancelled = false;
+
+    const bootstrapAuth = async () => {
+      setCheckingAuth(true);
+      try {
+        const existing = getAuthToken();
+        if (existing && existing !== "null" && existing !== "undefined") {
+          if (!cancelled) {
+            setAuthenticated(true);
+            setAuthChecked(true);
+            setCheckingAuth(false);
+          }
+          return;
+        }
+
+        // Probe: if auth is disabled, this returns 200 with token:""
+        // If auth is enabled, this returns 401.
+        const resp = await fetch(`${apiURL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "", password: "" }),
+        });
+
+        if (cancelled) return;
+
+        if (resp.ok) {
+          // Auth disabled → allow access without storing a token.
+          setAuthenticated(true);
+        } else if (resp.status === 401) {
+          // Auth enabled → require Login modal.
+          setAuthenticated(false);
+        } else {
+          // Unexpected response; don't hard-block the UI.
+          setAuthenticated(true);
+        }
+        setAuthChecked(true);
+        setCheckingAuth(false);
+      } catch (err) {
+        // If we're offline / device not reachable, don't trap the UI in login.
+        if (!cancelled) {
+          console.warn("[App] Auth bootstrap failed:", err);
+          setAuthenticated(true);
+          setAuthChecked(true);
+          setCheckingAuth(false);
+        }
+      }
+    };
+
+    bootstrapAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, [networkEnabled, apiURL]);
+
   // Direct connection to control WebSocket
   const controlWsUrl = useMemo(() => {
     // Use local WebSocket connection
@@ -218,11 +276,14 @@ function App() {
       return buildWebSocketUrl("/ws/control", process.env.REACT_APP_API_HOST);
     }
     return buildWebSocketUrl("/ws/control");
-  }, []);
+    // Recompute when auth state changes so the URL picks up ?token=...
+    // (buildWebSocketUrl reads the token from storage).
+  }, [authenticated]);
 
   // Once boot phase is complete, connect the control socket.
   useEffect(() => {
     if (!networkEnabled) return;
+    if (!authenticated) return;
     if (!controlWsUrl) return;
 
     console.log(
@@ -480,6 +541,21 @@ function App() {
           }
           pendingCommandsRef.current.clear();
 
+          // If auth is enabled and our token is invalid/rotated, the device will
+          // immediately close the socket. Stop the reconnect loop and prompt login.
+          if (evt?.code === 1006) {
+            const tok = getAuthToken();
+            if (tok && tok !== "null" && tok !== "undefined") {
+              console.warn(
+                "[App] WS closed (1006). Clearing token and requiring login."
+              );
+              clearAuthToken();
+              setAuthenticated(false);
+              setAuthChecked(true);
+              return;
+            }
+          }
+
           if (evt?.code === 1000) {
             console.log("[App] Clean close (1000), not reconnecting");
             return;
@@ -518,20 +594,13 @@ function App() {
         controlWsRef.current = null;
       }
     };
-  }, [networkEnabled, controlWsUrl]);
-
-  // No HTTP config endpoint in the dashboard anymore. Config/info are sourced from
-  // /ws/control only.
-  useEffect(() => {
-    if (!networkEnabled) return;
-    setAuthChecked(true);
-    setCheckingAuth(false);
-    setAuthenticated(true);
-  }, [networkEnabled]);
+  }, [networkEnabled, authenticated, controlWsUrl]);
 
   const handleLoginSuccess = () => {
-    // Legacy: keep the handler so the Login component can still resolve.
+    // Login component stores the token; now allow WS connection.
     setAuthenticated(true);
+    setAuthChecked(true);
+    setCheckingAuth(false);
   };
 
   /**
@@ -746,7 +815,6 @@ function App() {
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
           controlWs={controlWsRef.current}
-          musicPlaybackState={musicPlaybackState}
         />
       </Suspense>
 

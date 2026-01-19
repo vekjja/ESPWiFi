@@ -225,7 +225,15 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         .split("/")
         .map((segment) => encodeURIComponent(segment))
         .join("/");
-      const fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
+      let fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
+
+      // Add auth token as query parameter as a fallback (some endpoints/hosts
+      // may not accept Authorization headers depending on routing/CORS).
+      const token = localStorage.getItem("espwifi.token");
+      if (token) {
+        const sep = fileUrl.includes("?") ? "&" : "?";
+        fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
+      }
 
       setIsDownloading(true);
       setDownloadProgress(0);
@@ -239,6 +247,16 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
 
         xhr.open("GET", fileUrl, true);
         xhr.responseType = "blob";
+
+        // Add authentication header (preferred when available).
+        const authHeader = getAuthHeader();
+        if (authHeader) {
+          try {
+            xhr.setRequestHeader("Authorization", authHeader);
+          } catch {
+            // ignore
+          }
+        }
 
         // Track download progress
         xhr.addEventListener("progress", (event) => {
@@ -257,13 +275,18 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
-              const contentType =
-                xhr.getResponseHeader("content-type") ||
-                "application/octet-stream";
-              const blob = xhr.response;
-              const blobUrl = URL.createObjectURL(
-                new Blob([blob], { type: contentType })
-              );
+              // Force a "save as" download rather than letting the browser
+              // stream/preview media types (e.g. audio/mpeg, video/mp4).
+              const responseBlob =
+                xhr.response instanceof Blob
+                  ? xhr.response
+                  : new Blob([xhr.response], {
+                      type: "application/octet-stream",
+                    });
+              const downloadBlob = new Blob([responseBlob], {
+                type: "application/octet-stream",
+              });
+              const blobUrl = URL.createObjectURL(downloadBlob);
 
               const a = document.createElement("a");
               a.href = blobUrl;

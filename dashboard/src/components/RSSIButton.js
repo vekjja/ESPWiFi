@@ -13,7 +13,6 @@ export default function RSSIButton({
   onRSSIDataChange,
   getRSSIColor,
   controlRssi = null,
-  musicPlaybackState = { isPlaying: false, isPaused: false },
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [rssiValue, setRssiValue] = useState(null);
@@ -45,8 +44,6 @@ export default function RSSIButton({
 
   // Get RSSI status text
   const getRSSIStatusText = (rssiValue) => {
-    if (musicPlaybackState.isPlaying)
-      return "RSSI disabled during music playback";
     if (!deviceOnline) return "Control socket disconnected";
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
@@ -59,7 +56,7 @@ export default function RSSIButton({
   };
 
   const handleClick = () => {
-    if (deviceOnline && !musicPlaybackState.isPlaying) {
+    if (deviceOnline) {
       setModalOpen(true);
     }
   };
@@ -68,8 +65,8 @@ export default function RSSIButton({
     setModalOpen(false);
   };
 
-  // Button is disabled if device offline OR music is playing
-  const isDisabled = !deviceOnline || musicPlaybackState.isPlaying;
+  // Button is disabled if device is offline
+  const isDisabled = !deviceOnline;
 
   const button = (
     <Fab

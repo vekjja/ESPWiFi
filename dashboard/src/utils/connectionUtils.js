@@ -103,6 +103,18 @@ export function resolveWebSocketUrl(endpoint, config, opts = {}) {
 
   const preferTunnel = opts.preferTunnel !== false; // default true
 
+  // If the UI is served from the device itself, always use same-origin WebSockets.
+  // This avoids breakage when the device's mDNS hostname changes (e.g. espwifi.local -> spark.local)
+  // and avoids relying on any stored/baked hostname values.
+  const hostCtx = getHostContext();
+  if (
+    hostCtx.isDeviceLikeHost &&
+    !hostCtx.isCloudHost &&
+    !hostCtx.isLocalhost
+  ) {
+    return buildWebSocketUrl(def.localPath);
+  }
+
   // If device provided a cloud tunnel URL, use it
   if (preferTunnel && config?.cloudTunnel?.wsUrl) {
     let url = config.cloudTunnel.wsUrl;

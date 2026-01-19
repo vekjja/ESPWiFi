@@ -607,27 +607,6 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
     }
   } else {
     icon = "📶"; // Add wifi icon for untagged logs
-    // No standard IDF tag found - check if it's a raw wifi driver log
-    // These logs don't have the IDF format but are still useful
-    // if (prefix != nullptr) {
-    //   // Check for wifi-related keywords in untagged logs
-    //   if (std::strstr(prefix, "wifi") != nullptr ||
-    //       std::strstr(prefix, "mode :") != nullptr ||
-    //       std::strstr(prefix, "enable tsf") != nullptr ||
-    //       std::strstr(prefix, "Set ps") != nullptr ||
-    //       std::strstr(prefix, "state:") != nullptr ||
-    //       std::strstr(prefix, "dp:") != nullptr ||
-    //       std::strstr(prefix, "connected with") != nullptr ||
-    //       std::strstr(prefix, "security:") != nullptr ||
-    //       std::strstr(prefix, "pm start") != nullptr ||
-    //       std::strstr(prefix, "beacon") != nullptr ||
-    //       std::strstr(prefix, "ba-add") != nullptr ||
-    //       std::strstr(prefix, "Init") != nullptr ||
-    //       std::strstr(prefix, "config") != nullptr ||
-    //       std::strstr(prefix, "Coexist") != nullptr) {
-    //     icon = "📶"; // Add wifi icon for untagged wifi logs
-    //   }
-    // }
   }
 
   // Build the formatted log line

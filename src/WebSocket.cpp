@@ -1,76 +1,18 @@
 #include <WebSocket.h>
 
-#include <arpa/inet.h>
-#include <cerrno>
 #include <cstring>
 #include <memory>
-#include <netinet/in.h>
 #include <new>
-#include <sys/socket.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-
-// ============================================================================
-// Helper: Get remote peer info
-// ============================================================================
-
-void WebSocket::getRemoteInfo_(int fd, char *outIp, size_t outIpLen,
-                               uint16_t *outPort) {
-#ifdef CONFIG_HTTPD_WS_SUPPORT
-  if (outIp && outIpLen > 0) {
-    outIp[0] = '\0';
-  }
-  if (outPort) {
-    *outPort = 0;
-  }
-  if (fd < 0 || outIp == nullptr || outIpLen == 0) {
-    return;
-  }
-
-  struct sockaddr_storage addr;
-  socklen_t addr_len = sizeof(addr);
-  if (getpeername(fd, (struct sockaddr *)&addr, &addr_len) != 0) {
-    return;
-  }
-
-  if (addr.ss_family == AF_INET) {
-    struct sockaddr_in *a = (struct sockaddr_in *)&addr;
-    (void)inet_ntop(AF_INET, &a->sin_addr, outIp, outIpLen);
-    if (outPort) {
-      *outPort = ntohs(a->sin_port);
-    }
-  } else if (addr.ss_family == AF_INET6) {
-    struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)&addr;
-    // Handle IPv4-mapped IPv6 addresses
-    const uint8_t *b = (const uint8_t *)&a6->sin6_addr;
-    const bool isV4Mapped =
-        (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 && b[4] == 0 &&
-         b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0 &&
-         b[10] == 0xff && b[11] == 0xff);
-    if (isV4Mapped) {
-      struct in_addr v4;
-      memcpy(&v4, b + 12, sizeof(v4));
-      (void)inet_ntop(AF_INET, &v4, outIp, outIpLen);
-    } else {
-      (void)inet_ntop(AF_INET6, &a6->sin6_addr, outIp, outIpLen);
-    }
-    if (outPort) {
-      *outPort = ntohs(a6->sin6_port);
-    }
-  }
-#else
-  (void)fd;
-  (void)outIp;
-  (void)outIpLen;
-  (void)outPort;
-#endif
-}
-
-// ============================================================================
-// Request handler trampoline
-// ============================================================================
-
+/**
+ * @brief HTTP server trampoline that routes requests to a WebSocket instance.
+ *
+ * ESP-IDF expects a C-style handler signature. We store `this` in `user_ctx`
+ * and forward the request to `handleWsRequest()`.
+ *
+ * @param req Incoming HTTPD request (WebSocket handshake or data frame).
+ * @return esp_err_t ESP_OK on success, ESP_ERR_INVALID_ARG on bad inputs.
+ */
 esp_err_t WebSocket::wsHandlerTrampoline(httpd_req_t *req) {
   if (req == nullptr || req->user_ctx == nullptr) {
     return ESP_ERR_INVALID_ARG;
@@ -78,31 +20,31 @@ esp_err_t WebSocket::wsHandlerTrampoline(httpd_req_t *req) {
   return static_cast<WebSocket *>(req->user_ctx)->handleWsRequest(req);
 }
 
-// ============================================================================
-// Client management
-// ============================================================================
-
+/**
+ * @brief Track a connected client socket FD for this endpoint.
+ *
+ * Keeps a bounded list of active client FDs. If at capacity, the oldest client
+ * FD is dropped from tracking to make room (actual socket close is handled
+ * elsewhere).
+ *
+ * @param fd Socket FD for the connected client.
+ */
 void WebSocket::addClient_(int fd) {
   if (fd < 0) {
     return;
   }
-  // Check if already tracked
   for (size_t i = 0; i < clientCount_; ++i) {
     if (clientFds_[i] == fd) {
-      return; // already tracked
+      return;
     }
   }
-  // Check per-endpoint limit
   if (clientCount_ >= maxClients_) {
-    // At limit: drop oldest client to make room (enforces maxClients_)
     if (maxClients_ > 1) {
-      // Multi-client mode: shift array
       for (size_t i = 1; i < maxClients_; ++i) {
         clientFds_[i - 1] = clientFds_[i];
       }
       clientFds_[maxClients_ - 1] = fd;
     } else {
-      // Single-client mode: replace (old client should be closed by handler)
       clientFds_[0] = fd;
     }
     return;
@@ -110,6 +52,11 @@ void WebSocket::addClient_(int fd) {
   clientFds_[clientCount_++] = fd;
 }
 
+/**
+ * @brief Remove a client socket FD from tracking.
+ *
+ * @param fd Socket FD to remove.
+ */
 void WebSocket::removeClient_(int fd) {
   for (size_t i = 0; i < clientCount_; ++i) {
     if (clientFds_[i] == fd) {
@@ -122,51 +69,46 @@ void WebSocket::removeClient_(int fd) {
   }
 }
 
-// ============================================================================
-// WebSocket request handler
-// ============================================================================
-
+/**
+ * @brief Handle a WebSocket request (handshake GET or a WS frame).
+ *
+ * - On HTTP_GET: performs optional auth, enforces per-endpoint client limits,
+ *   registers the client, and calls `onConnect_`.
+ * - On WS frames: receives metadata, optionally receives payload, invokes
+ *   `onMessage_`, and handles CLOSE frames by removing the client and calling
+ *   `onDisconnect_`.
+ *
+ * @param req HTTPD request.
+ * @return esp_err_t ESP_OK on success, or an ESP-IDF error code.
+ */
 esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)req;
   return ESP_ERR_NOT_SUPPORTED;
 #else
-  if (server_ == nullptr || req == nullptr) {
+  if (req == nullptr || server_ == nullptr) {
     return ESP_ERR_INVALID_STATE;
   }
 
-  // WebSocket handshake (HTTP GET)
+  // Handshake (HTTP GET)
   if (req->method == HTTP_GET) {
     const int fd = httpd_req_to_sockfd(req);
 
-    // Optional auth check (happens before connection is accepted)
     if (requireAuth_ && authCheck_ != nullptr) {
       if (!authCheck_(req, userCtx_)) {
-        // Auth failed.
-        //
-        // If we just drop the TCP session, most clients report code 1006
-        // (abnormal closure). Instead, best-effort send a proper WebSocket
-        // Close control frame so clients can show a meaningful error.
-        //
-        // Use 1008 (Policy Violation) with a short reason string.
-        // Note: browsers don't surface this reason to JS for security, but
-        // CLI tools (wscat) and logs will.
+        // Best-effort send a proper Close frame so clients don't see 1006.
         constexpr uint16_t kCloseCode = 1008; // Policy Violation
-        const char *reason = "unauthorized";
-        const size_t reasonLen = (reason != nullptr) ? strlen(reason) : 0;
+        constexpr const char *kReason = "unauthorized";
 
-        // Close payload = 2-byte network-order code + UTF-8 reason.
+        // Close payload = 2-byte code (network-order) + UTF-8 reason.
         uint8_t payload[2 + 32];
         size_t n = 0;
         payload[n++] = (uint8_t)((kCloseCode >> 8) & 0xff);
         payload[n++] = (uint8_t)(kCloseCode & 0xff);
 
-        // Bound reason length to keep stack usage fixed.
-        const size_t copyLen = (reasonLen > 32) ? 32 : reasonLen;
-        if (copyLen > 0 && reason != nullptr) {
-          memcpy(payload + n, reason, copyLen);
-          n += copyLen;
-        }
+        const size_t copyLen = strnlen(kReason, 32);
+        memcpy(payload + n, kReason, copyLen);
+        n += copyLen;
 
         httpd_ws_frame_t closeFrame;
         memset(&closeFrame, 0, sizeof(closeFrame));
@@ -175,26 +117,18 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
         closeFrame.len = n;
         (void)httpd_ws_send_frame_async(server_, fd, &closeFrame);
 
-        // Close the session after sending the close frame (best-effort).
         (void)httpd_sess_trigger_close(server_, fd);
         return ESP_OK;
       }
     }
 
-    // For single-client mode: close existing connection before adding new one
-    // This allows specific endpoints to enforce single-client limits if needed
-    if (maxClients_ == 1 && clientCount_ >= 1 && server_ != nullptr) {
-      // Close existing client to enforce single-client limit
+    // Enforce single-client endpoints by dropping the existing connection.
+    if (maxClients_ == 1 && clientCount_ >= 1) {
       (void)httpd_sess_trigger_close(server_, clientFds_[0]);
-      clientCount_ = 0; // Reset count, new client will be added below
+      clientCount_ = 0;
     }
 
     addClient_(fd);
-
-    // Log connection
-    char ip[64];
-    uint16_t port = 0;
-    getRemoteInfo_(fd, ip, sizeof(ip), &port);
 
     if (onConnect_) {
       onConnect_(this, fd, userCtx_);
@@ -202,11 +136,10 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
     return ESP_OK;
   }
 
-  // WebSocket data frame
+  // Data frame
   httpd_ws_frame_t frame;
   memset(&frame, 0, sizeof(frame));
 
-  // Get frame metadata
   esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
   if (ret != ESP_OK) {
     return ret;
@@ -214,7 +147,6 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
 
   const int fd = httpd_req_to_sockfd(req);
 
-  // Client closing
   if (frame.type == HTTPD_WS_TYPE_CLOSE) {
     removeClient_(fd);
     if (onDisconnect_) {
@@ -223,12 +155,10 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
     return ESP_OK;
   }
 
-  // Frame too large
   if (frame.len > maxMessageLen_) {
     return ESP_FAIL;
   }
 
-  // Allocate buffer (stack for small, heap for large)
   uint8_t stackBuf[256];
   std::unique_ptr<uint8_t[]> heapBuf;
   uint8_t *buf = nullptr;
@@ -243,7 +173,6 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
     return ESP_ERR_NO_MEM;
   }
 
-  // Read frame payload
   if (frame.len > 0) {
     frame.payload = buf;
     ret = httpd_ws_recv_frame(req, &frame, frame.len);
@@ -252,7 +181,6 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
     }
   }
 
-  // Invoke user callback
   if (onMessage_) {
     onMessage_(this, fd, frame.type,
                (frame.len > 0) ? (const uint8_t *)frame.payload : nullptr,
@@ -263,10 +191,9 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
 #endif
 }
 
-// ============================================================================
-// Lifecycle
-// ============================================================================
-
+/**
+ * @brief Destructor. Unregisters the URI handler when applicable.
+ */
 WebSocket::~WebSocket() {
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   if (started_ && server_ != nullptr && uri_[0] != '\0') {
@@ -275,6 +202,22 @@ WebSocket::~WebSocket() {
 #endif
 }
 
+/**
+ * @brief Register a WebSocket endpoint on the ESP-IDF HTTP server.
+ *
+ * @param uri URI path for this WS endpoint (e.g. "/ws/control").
+ * @param server HTTPD server handle.
+ * @param userCtx Opaque context pointer passed back to callbacks.
+ * @param onMessage Called for each received WS message frame.
+ * @param onConnect Called after a client successfully connects.
+ * @param onDisconnect Called when a client disconnects/closes.
+ * @param maxMessageLen Max inbound frame payload bytes accepted (clamped).
+ * @param maxBroadcastLen Max outbound frame payload bytes accepted (clamped).
+ * @param requireAuth Whether to call `authCheck` during handshake.
+ * @param authCheck Auth callback used when `requireAuth` is true.
+ * @param maxClients Per-endpoint client cap (clamped to internal max).
+ * @return true on success; false if registration fails or WS support is off.
+ */
 bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
                       OnMessageCb onMessage, OnConnectCb onConnect,
                       OnDisconnectCb onDisconnect, size_t maxMessageLen,
@@ -306,7 +249,6 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
   requireAuth_ = requireAuth;
   authCheck_ = authCheck;
 
-  // Keep limits sane and bounded
   maxMessageLen_ = (maxMessageLen == 0) ? 1 : maxMessageLen;
   if (maxMessageLen_ > 8192) {
     maxMessageLen_ = 8192;
@@ -321,7 +263,6 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
     maxClients_ = kMaxClients;
   }
 
-  // Copy URI
   uri_[0] = '\0';
   (void)snprintf(uri_, sizeof(uri_), "%s", uri);
 
@@ -346,10 +287,13 @@ bool WebSocket::begin(const char *uri, httpd_handle_t server, void *userCtx,
 #endif
 }
 
-// ============================================================================
-// Send operations
-// ============================================================================
-
+/**
+ * @brief Send a UTF-8 text frame to a single client.
+ *
+ * @param clientFd Target client socket FD.
+ * @param message NUL-terminated message text.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::sendText(int clientFd, const char *message) {
   if (message == nullptr) {
     return ESP_ERR_INVALID_ARG;
@@ -357,6 +301,14 @@ esp_err_t WebSocket::sendText(int clientFd, const char *message) {
   return sendText(clientFd, message, strlen(message));
 }
 
+/**
+ * @brief Send a text frame to a single client.
+ *
+ * @param clientFd Target client socket FD.
+ * @param message Message bytes (may be non-NUL; must be valid for len).
+ * @param len Number of bytes to send.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::sendText(int clientFd, const char *message, size_t len) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)clientFd;
@@ -377,7 +329,6 @@ esp_err_t WebSocket::sendText(int clientFd, const char *message, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  // Direct async send - no job queue, no memcpy
   httpd_ws_frame_t frame;
   memset(&frame, 0, sizeof(frame));
   frame.type = HTTPD_WS_TYPE_TEXT;
@@ -395,6 +346,14 @@ esp_err_t WebSocket::sendText(int clientFd, const char *message, size_t len) {
 #endif
 }
 
+/**
+ * @brief Send a binary frame to a single client.
+ *
+ * @param clientFd Target client socket FD.
+ * @param data Payload bytes.
+ * @param len Payload size in bytes.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)clientFd;
@@ -415,7 +374,6 @@ esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  // Direct async send - no job queue, no memcpy
   httpd_ws_frame_t frame;
   memset(&frame, 0, sizeof(frame));
   frame.type = HTTPD_WS_TYPE_BINARY;
@@ -433,6 +391,12 @@ esp_err_t WebSocket::sendBinary(int clientFd, const uint8_t *data, size_t len) {
 #endif
 }
 
+/**
+ * @brief Broadcast a UTF-8 text message to all tracked clients.
+ *
+ * @param message NUL-terminated message text.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::broadcastText(const char *message) {
   if (message == nullptr) {
     return ESP_ERR_INVALID_ARG;
@@ -440,6 +404,16 @@ esp_err_t WebSocket::broadcastText(const char *message) {
   return broadcastText(message, strlen(message));
 }
 
+/**
+ * @brief Broadcast a text frame to all tracked clients.
+ *
+ * Clients that fail to receive the frame are removed from tracking and trigger
+ * `onDisconnect_`.
+ *
+ * @param message Message bytes.
+ * @param len Number of bytes to send.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::broadcastText(const char *message, size_t len) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)message;
@@ -459,14 +433,12 @@ esp_err_t WebSocket::broadcastText(const char *message, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  // Direct broadcast - no job queue
   httpd_ws_frame_t frame;
   memset(&frame, 0, sizeof(frame));
   frame.type = HTTPD_WS_TYPE_TEXT;
   frame.payload = (uint8_t *)message;
   frame.len = len;
 
-  // Send to all clients
   for (size_t i = 0; i < clientCount_;) {
     int fd = clientFds_[i];
     esp_err_t err = httpd_ws_send_frame_async(server_, fd, &frame);
@@ -484,6 +456,13 @@ esp_err_t WebSocket::broadcastText(const char *message, size_t len) {
 #endif
 }
 
+/**
+ * @brief Broadcast a binary frame to all tracked clients.
+ *
+ * @param data Payload bytes.
+ * @param len Payload size in bytes.
+ * @return esp_err_t ESP_OK on success; otherwise an ESP-IDF error code.
+ */
 esp_err_t WebSocket::broadcastBinary(const uint8_t *data, size_t len) {
 #ifndef CONFIG_HTTPD_WS_SUPPORT
   (void)data;
@@ -503,7 +482,6 @@ esp_err_t WebSocket::broadcastBinary(const uint8_t *data, size_t len) {
     return ESP_ERR_INVALID_SIZE;
   }
 
-  // Direct broadcast - no job queue
   httpd_ws_frame_t frame;
   memset(&frame, 0, sizeof(frame));
   frame.type = HTTPD_WS_TYPE_BINARY;
@@ -528,6 +506,11 @@ esp_err_t WebSocket::broadcastBinary(const uint8_t *data, size_t len) {
 #endif
 }
 
+/**
+ * @brief Close all tracked client sessions for this endpoint.
+ *
+ * Uses `httpd_sess_trigger_close()` and removes clients from internal tracking.
+ */
 void WebSocket::closeAll() {
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   if (!started_ || server_ == nullptr) {

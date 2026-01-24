@@ -270,8 +270,6 @@ static void ctrlOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
   if (!ws || !espwifi)
     return;
 
-  // Use getHostname() which safely retrieves hostname from network interface
-  // or config, avoiding direct config access that could cause memory issues
   std::string hostname = espwifi->getHostname();
 
   JsonDocument hello;

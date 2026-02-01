@@ -38,6 +38,7 @@ import HomeIcon from "@mui/icons-material/Home";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material";
 import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
+import { getAuthToken } from "../utils/authUtils";
 
 // Helper function to format bytes
 const formatBytes = (bytes) => {
@@ -183,24 +184,24 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         .join("/");
       let fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
 
-      // Add auth token as query parameter for window.open (can't set headers)
-      const token = localStorage.getItem("espwifi.token");
-      if (token) {
-        const sep = fileUrl.includes("?") ? "&" : "?";
-        fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
-      }
-
       setError(null);
 
       try {
         console.log(`📂 Opening file: ${fileUrl}`);
 
-        // Open URL directly in new tab - let browser handle streaming
-        // This is much more efficient for large files (videos, PDFs, etc.)
-        const newWindow = window.open(fileUrl, "_blank");
+        // If auth is enabled, browsers can't attach Authorization headers to
+        // navigation requests. Use ?token=... so the firmware can authorize the
+        // GET while still supporting Range/streaming.
+        const authEnabled = config?.auth?.enabled === true;
+        const token = getAuthToken();
+        if (authEnabled && token) {
+          const sep = fileUrl.includes("?") ? "&" : "?";
+          fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
+        }
 
+        // Open URL directly in new tab (supports streaming/range).
+        const newWindow = window.open(fileUrl, "_blank");
         if (!newWindow) {
-          // Popup was blocked
           setError(
             `Popup blocked. Please allow popups for this site, or try downloading the file instead.`
           );
@@ -212,6 +213,8 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         console.error("Error opening file:", err);
       }
     },
+    // Note: downloadFileWithAuth is declared later in this component; we avoid
+    // referencing it in the dependency array to prevent TDZ issues.
     [fileSystem, config]
   );
 
@@ -225,15 +228,7 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
         .split("/")
         .map((segment) => encodeURIComponent(segment))
         .join("/");
-      let fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
-
-      // Add auth token as query parameter as a fallback (some endpoints/hosts
-      // may not accept Authorization headers depending on routing/CORS).
-      const token = localStorage.getItem("espwifi.token");
-      if (token) {
-        const sep = fileUrl.includes("?") ? "&" : "?";
-        fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
-      }
+      const fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
 
       setIsDownloading(true);
       setDownloadProgress(0);

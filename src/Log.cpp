@@ -96,9 +96,6 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
   if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
     return "🔐";
   }
-  if (tagEquals(tag, tagLen, "cloud") || tagEquals(tag, tagLen, "Cloud")) {
-    return "☁️";
-  }
   return "";
 }
 

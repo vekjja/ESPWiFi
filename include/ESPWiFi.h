@@ -55,13 +55,8 @@
 #include "nvs_flash.h"
 
 #include <ArduinoJson.h>
-#include <Cloud.h>
 #include <IntervalTimer.h>
 #include <WebSocket.h>
-
-// Cloud classes
-#include "CloudCtl.h"
-#include "CloudMedia.h"
 
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
@@ -242,13 +237,6 @@ public:
   bool authEnabled();
   std::string generateToken();
 
-  // ---- Pairing / claim code (short-lived, one-time)
-  // Used to pair iOS devices without exposing the long auth token in tools like
-  // nRF Connect. The claim code is exchanged server-side for a tunnel
-  // URL/token.
-  std::string getClaimCode(bool rotate = false);
-  uint32_t claimExpiresInMs();
-
   // Response helpers
   const char *getMethodString(int method);
   std::string getClientInfo(httpd_req_t *req);
@@ -287,16 +275,11 @@ public:
   void srvBluetooth();
   void srvWildcard();
 
-  // ---- Control WebSocket (for cloud/pairing control channel)
+  // ---- Control WebSocket (LAN)
   void startControlWebSocket();
-  void handleCloudControlMessage(const JsonDocument &req, JsonDocument &resp);
 
   // ---- Media WebSocket (for LAN media; camera streaming on request)
   void startMediaWebSocket();
-
-  // ---- Cloud Client (remote access)
-  void startCloudCtl();
-  void startCloudMedia();
 
   // ---- Power Management
   void powerConfigHandler();
@@ -454,10 +437,6 @@ private:
   bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
-
-  // ---- Cloud Client
-  CloudCtl cloudCtl;     // Control WebSocket tunnel (JSON messages)
-  CloudMedia cloudMedia; // Media WebSocket tunnel (binary streaming)
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;

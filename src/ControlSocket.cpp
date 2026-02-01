@@ -43,16 +43,9 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["wifiMode"] = espwifi->config["wifi"]["mode"].as<std::string>();
     } else if (strcmp(cmd, "get_config") == 0) {
       resp["config"] = espwifi->config;
-      // Add claim code info
-      resp["cloud_claim_code"] = espwifi->getClaimCode(false);
-      resp["cloud_claim_expires_in_ms"] = espwifi->claimExpiresInMs();
     } else if (strcmp(cmd, "get_info") == 0) {
       JsonDocument infoDoc = espwifi->buildInfoJson(false);
       resp["info"] = infoDoc.as<JsonVariantConst>();
-    } else if (strcmp(cmd, "get_claim") == 0) {
-      const bool rotate = req["rotate"] | false;
-      resp["code"] = espwifi->getClaimCode(rotate);
-      resp["expires_in_ms"] = espwifi->claimExpiresInMs();
     } else if (strcmp(cmd, "get_rssi") == 0) {
       wifi_ap_record_t ap_info;
       if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -339,60 +332,4 @@ void ESPWiFi::startControlWebSocket() {
 
   log(INFO, "🎛️ Control WebSocket started: /ws/control");
 #endif
-}
-
-// Handle control messages from cloud tunnel
-// This processes the same commands as the local WebSocket but sends responses
-// back via cloud
-void ESPWiFi::handleCloudControlMessage(const JsonDocument &req,
-                                        JsonDocument &resp) {
-  // For now, just handle the most common commands
-  // TODO: Refactor ctrlOnMessage to share logic with this method
-  const char *cmd = req["cmd"] | "";
-  resp["ok"] = true;
-  resp["cmd"] = cmd;
-
-  if (strcmp(cmd, "ping") == 0) {
-    resp["type"] = "pong";
-  } else if (strcmp(cmd, "get_rssi") == 0) {
-    wifi_ap_record_t ap_info;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-      char ssid_str[33];
-      memcpy(ssid_str, ap_info.ssid, 32);
-      ssid_str[32] = '\0';
-      resp["connected"] = true;
-      resp["ssid"] = std::string(ssid_str);
-      resp["rssi"] = ap_info.rssi;
-    } else {
-      resp["connected"] = false;
-      resp["rssi"] = 0;
-    }
-  } else if (strcmp(cmd, "get_status") == 0) {
-    resp["ip"] = ipAddress();
-    resp["hostname"] = config["hostname"].as<std::string>();
-    resp["wifiMode"] = config["wifi"]["mode"].as<std::string>();
-  } else if (strcmp(cmd, "get_config") == 0) {
-    resp["config"] = config;
-    // Add claim code info
-    resp["cloud_claim_code"] = getClaimCode(false);
-    resp["cloud_claim_expires_in_ms"] = claimExpiresInMs();
-  } else if (strcmp(cmd, "get_info") == 0) {
-    JsonDocument infoDoc = buildInfoJson(false);
-    resp["info"] = infoDoc.as<JsonVariantConst>();
-  } else if (strcmp(cmd, "list_files") == 0) {
-    std::string fs = req["fs"] | "lfs";
-    std::string path = req["path"] | "/";
-    std::string errorMsg;
-
-    JsonDocument filesDoc;
-    if (listFiles(fs, path, filesDoc, errorMsg)) {
-      resp["files"] = filesDoc["files"];
-    } else {
-      resp["ok"] = false;
-      resp["error"] = errorMsg;
-    }
-  } else {
-    resp["ok"] = false;
-    resp["error"] = "unknown_cmd";
-  }
 }

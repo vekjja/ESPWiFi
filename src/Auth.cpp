@@ -95,6 +95,19 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
     return true; // Path is excluded, allow
   }
 
+  const std::string expectedToken = config["auth"]["token"].as<std::string>();
+  if (expectedToken.empty()) {
+    return false;
+  }
+
+  // Browser navigations (window.open, <img>, <audio>, etc.) cannot attach custom
+  // Authorization headers. Allow passing the bearer token via `?token=...`.
+  // This is also used by WebSocket endpoints for auth.
+  const std::string tokenParam = getQueryParam(req, "token");
+  if (!tokenParam.empty() && tokenParam == expectedToken) {
+    return true;
+  }
+
   // Check for Authorization header
   size_t auth_hdr_len = httpd_req_get_hdr_value_len(req, "Authorization");
   if (auth_hdr_len == 0) {
@@ -119,10 +132,9 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
 
   // Extract token
   std::string token = auth_str.substr(7); // Remove "Bearer "
-  std::string expectedToken = config["auth"]["token"].as<std::string>();
 
   // Compare tokens
-  return token == expectedToken && expectedToken.length() > 0;
+  return token == expectedToken;
 }
 
 esp_err_t ESPWiFi::verifyRequest(httpd_req_t *req, std::string *outClientInfo) {

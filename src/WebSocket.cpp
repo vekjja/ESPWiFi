@@ -98,7 +98,8 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
       if (!authCheck_(req, userCtx_)) {
         // Best-effort send a proper Close frame so clients don't see 1006.
         constexpr uint16_t kCloseCode = 1008; // Policy Violation
-        constexpr const char *kReason = "unauthorized";
+        // Keep as an array so sizeof() is compile-time safe.
+        constexpr char kReason[] = "unauthorized";
 
         // Close payload = 2-byte code (network-order) + UTF-8 reason.
         uint8_t payload[2 + 32];
@@ -106,9 +107,11 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
         payload[n++] = (uint8_t)((kCloseCode >> 8) & 0xff);
         payload[n++] = (uint8_t)(kCloseCode & 0xff);
 
-        const size_t copyLen = strnlen(kReason, 32);
-        memcpy(payload + n, kReason, copyLen);
-        n += copyLen;
+        // Avoid strnlen() on a literal with a larger bound; some toolchains
+        // warn about possible over-read (-Wstringop-overread).
+        constexpr size_t kReasonLen = sizeof(kReason) - 1; // exclude NUL
+        memcpy(payload + n, kReason, kReasonLen);
+        n += kReasonLen;
 
         httpd_ws_frame_t closeFrame;
         memset(&closeFrame, 0, sizeof(closeFrame));

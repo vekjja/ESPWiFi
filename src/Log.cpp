@@ -93,6 +93,9 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
       tagEquals(tag, tagLen, "nimble")) {
     return "🔵";
   }
+  if (tagEquals(tag, tagLen, "TFT")) {
+    return "🖥️";
+  }
   if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
     return "🔐";
   }

@@ -9,8 +9,11 @@
 #include "esp_lcd_ili9341.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+
+static const char *TAG = "TFT";
 
 namespace {
 constexpr int kW = 240;
@@ -31,6 +34,12 @@ static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
 
   esp_lcd_panel_draw_bitmap(panel, x1, y1, x2, y2, px_map);
   lv_display_flush_ready(disp);
+
+  static int flushCount = 0;
+  if (flushCount < 5) {
+    ESP_LOGI(TAG, "LVGL flush #%d: (%d,%d)->(%d,%d)", ++flushCount, x1, y1, x2,
+             y2);
+  }
 }
 
 static uint32_t lastTickMs = 0;
@@ -71,12 +80,12 @@ void ESPWiFi::initTFT() {
 
     if (spi_bus_initialize((spi_host_device_t)TFT_SPI_HOST, &buscfg,
                            SPI_DMA_CH_AUTO) != ESP_OK) {
-      printf("[TFT] Failed to init SPI bus\n");
+      ESP_LOGE(TAG, "Failed to init SPI bus");
       return;
     }
-    printf("[TFT] SPI bus initialized\n");
+    ESP_LOGI(TAG, "SPI bus initialized");
   } else {
-    printf("[TFT] SPI bus already initialized (shared with SD card)\n");
+    ESP_LOGI(TAG, "SPI bus already initialized (shared with SD card)");
   }
 
   // Panel IO config - let esp_lcd handle the init
@@ -119,7 +128,7 @@ void ESPWiFi::initTFT() {
   tftPanel_ = (void *)panel_handle;
   tftInitialized = true;
 
-  printf("[TFT] Panel initialized\n");
+  ESP_LOGI(TAG, "Panel initialized");
 
   // Initialize LVGL
   lv_init();
@@ -128,6 +137,7 @@ void ESPWiFi::initTFT() {
   lv_display_t *disp = lv_display_create(kW, kH);
   lv_display_set_flush_cb(disp, lvglFlushCb);
   lv_display_set_user_data(disp, panel_handle);
+  lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
 
   // Allocate draw buffers (1/10 screen size each)
   const size_t buf_size = kW * kH / 10;
@@ -144,7 +154,7 @@ void ESPWiFi::initTFT() {
   lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), LV_PART_MAIN);
   lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
-  printf("[TFT] LVGL initialized\n");
+  ESP_LOGI(TAG, "LVGL initialized");
 }
 
 void ESPWiFi::runTFT() {

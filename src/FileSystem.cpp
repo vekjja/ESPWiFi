@@ -84,22 +84,19 @@ static esp_err_t initSpiBus(spi_host_device_t hostId, int mosi, int miso,
 
   esp_err_t ret = spi_bus_initialize(hostId, &bus_cfg, SPI_DMA_CH_AUTO);
   if (ret == ESP_OK) {
+    // On ESP32-2432S028R, SD and TFT commonly share the same SPI host (same
+    // SCK/MOSI/MISO, different CS). Treat the bus as shared so SD never frees
+    // it out from under the TFT (and vice-versa).
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
+    busOwned = false;
+#else
     busOwned = true;
+#endif
     return ESP_OK;
   } else if (ret == ESP_ERR_INVALID_STATE) {
     // Bus already initialized elsewhere.
-    //
-    // For ESP32-2432S028R, the SD slot is expected to own its SPI bus. If the
-    // bus is already initialized, free and re-init with the SD pins so the SD
-    // driver isn't bound to a mismatched pin mapping.
-#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
-    (void)spi_bus_free(hostId);
-    ret = spi_bus_initialize(hostId, &bus_cfg, SPI_DMA_CH_AUTO);
-    if (ret == ESP_OK) {
-      busOwned = true;
-      return ESP_OK;
-    }
-#endif
+    // Treat it as a shared bus (e.g. TFT + SD on same SCK/MOSI with different
+    // CS).
     busOwned = false;
     return ESP_OK; // treat as shared bus
   }

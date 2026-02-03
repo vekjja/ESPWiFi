@@ -131,6 +131,19 @@ public:
   void initTFT();
   void runTFT();
 #if ESPWiFi_HAS_TFT
+  // Public accessors for TFT internals (useful for other modules).
+  // These are intentionally untyped (void*) to avoid pulling esp_lcd headers
+  // into the public header.
+  bool isTftInitialized() const { return tftInitialized; }
+  void *tftPanelHandle() const { return tftPanel_; } // esp_lcd_panel_handle_t
+  void *tftPanelIoHandle() const {
+    return tftPanelIo_;
+  } // esp_lcd_panel_io_handle_t
+  void *tftSpiBusHandle() const {
+    return tftSpiBus_;
+  } // esp_lcd_spi_bus_handle_t
+#endif
+#if ESPWiFi_HAS_TFT
   bool tftInitialized = false;
   IntervalTimer tftRefresh = IntervalTimer(250); // UI refresh cadence
   void *tftSpiBus_ = nullptr;                    // esp_lcd_spi_bus_handle_t

@@ -36,7 +36,9 @@
 
 #define ESPWiFi_TFT_MODEL_SELECTED 1
 
-// TFT on HSPI (SPI2): matches common ESPHome configs for this board
+// ESP32-2432S028R pin mapping (as provided):
+// TFT_BL: 21, TFT_MISO: 12, TFT_MOSI: 13, TFT_SCLK: 14, TFT_CS: 15, TFT_DC: 2,
+// TFT_RST: -1
 #define TFT_SPI_HOST SPI2_HOST
 #define TFT_SPI_SCK_GPIO_NUM 14
 #define TFT_SPI_MOSI_GPIO_NUM 13
@@ -49,8 +51,7 @@
 
 #define TFT_CS_GPIO_NUM 15
 #define TFT_DC_GPIO_NUM 2
-// Board revisions vary: many have reset on GPIO4 or GPIO12.
-// We perform a manual reset pulse in TFT.cpp, so keep this as "not connected".
+// No dedicated reset GPIO on some variants; use software reset.
 #define TFT_RST_GPIO_NUM -1
 #define TFT_BL_GPIO_NUM 21
 
@@ -67,7 +68,7 @@
 #define TOUCH_IRQ_GPIO_NUM 36
 
 // Manual reset candidate pins for ESP32-2432S028R variants
-#define TFT_RST_CANDIDATE0_GPIO_NUM 4
+#define TFT_RST_CANDIDATE0_GPIO_NUM -1
 #define TFT_RST_CANDIDATE1_GPIO_NUM -1
 
 // -----------------------------------------------------------------------------

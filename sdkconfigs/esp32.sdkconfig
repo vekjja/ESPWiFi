@@ -8,6 +8,23 @@ SDCARD_MODEL_ESP32_2432S028R
 # Increased to avoid overflow when SD/logging are enabled.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
+# -----------------------------------------------------------------------------
+# LVGL (keep DRAM footprint small)
+# -----------------------------------------------------------------------------
+#
+# LVGL's "built-in malloc" uses a static memory pool in DRAM. With classic ESP32
+# (no PSRAM) this can starve FreeRTOS task creation early in boot. Use the
+# system allocator instead and disable LVGL demo/example builds.
+#
+CONFIG_LV_CONF_SKIP=y
+CONFIG_LV_COLOR_DEPTH=16
+CONFIG_LV_USE_CLIB_MALLOC=y
+# CONFIG_LV_USE_BUILTIN_MALLOC is not set
+CONFIG_LV_MEM_SIZE_KILOBYTES=0
+CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=0
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# CONFIG_LV_BUILD_DEMOS is not set
+
 # Optimization (size optimized for Classic ESP32)
 # CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 # CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y

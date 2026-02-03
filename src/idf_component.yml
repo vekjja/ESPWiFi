@@ -5,4 +5,9 @@ dependencies:
   espressif/esp_websocket_client: "1.5.0"
   # Touch driver (XPT2046) compatible with esp_lcd_touch API
   atanisoft/esp_lcd_touch_xpt2046: "~1.0.0"
+  # ILI9341 panel driver (works for many ST7789 displays too)
+  espressif/esp_lcd_ili9341: ">=1.0.0"
+  lvgl/lvgl:
+    version: "^9"
+    public: true
 

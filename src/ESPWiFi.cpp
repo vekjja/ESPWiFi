@@ -8,13 +8,13 @@ void ESPWiFi::start() {
   initFilesystem();
   startLogging();
   readConfig();
-  initNVS();
-  startWiFi();
-  startMDNS();
-  startWebServer();
-  startControlWebSocket();
-  startMediaWebSocket();
-  srvAll();
+  // initNVS();
+  // startWiFi();
+  // startMDNS();
+  // startWebServer();
+  // startControlWebSocket();
+  // startMediaWebSocket();
+  // srvAll();
   initTFT();
 }
 

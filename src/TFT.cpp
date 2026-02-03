@@ -1,74 +1,39 @@
-// TFT.cpp - Minimal TFT bring-up (ESP-IDF esp_lcd)
-//
-// Goal: init once + fill solid RED, nothing else.
-//
+// TFT.cpp - LVGL display with esp_lcd backend
 #include "ESPWiFi.h"
 
 #if ESPWiFi_HAS_TFT
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "esp_err.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_ili9341.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_vendor.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include <algorithm>
-
-#if !defined(TFT_DC_LOW_ON_DATA)
-#define TFT_DC_LOW_ON_DATA 0
-#endif
+#include "esp_timer.h"
+#include "lvgl.h"
 
 namespace {
 constexpr int kW = 240;
 constexpr int kH = 320;
-constexpr int kChunkRows = 40;
 
-SemaphoreHandle_t s_txDone = nullptr;
+// LVGL flush callback
+static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
+                        uint8_t *px_map) {
+  esp_lcd_panel_handle_t panel =
+      (esp_lcd_panel_handle_t)lv_display_get_user_data(disp);
+  if (!panel)
+    return;
 
-bool onColorDone(esp_lcd_panel_io_handle_t /*panel_io*/,
-                 esp_lcd_panel_io_event_data_t * /*edata*/, void *user_ctx) {
-  BaseType_t high_task_wakeup = pdFALSE;
-  if (user_ctx) {
-    xSemaphoreGiveFromISR((SemaphoreHandle_t)user_ctx, &high_task_wakeup);
-  }
-  return high_task_wakeup == pdTRUE;
+  const int x1 = area->x1;
+  const int y1 = area->y1;
+  const int x2 = area->x2 + 1;
+  const int y2 = area->y2 + 1;
+
+  esp_lcd_panel_draw_bitmap(panel, x1, y1, x2, y2, px_map);
+  lv_display_flush_ready(disp);
 }
 
-void fillSolidRed(esp_lcd_panel_handle_t panel) {
-  if (!panel) {
-    return;
-  }
-
-  if (!s_txDone) {
-    // Should never happen once IO is created, but keep it safe.
-    return;
-  }
-
-  const size_t pixels = (size_t)kW * (size_t)kChunkRows;
-  const size_t bytes = pixels * 2;
-  uint8_t *buf = (uint8_t *)heap_caps_malloc(bytes, MALLOC_CAP_DMA);
-  if (!buf) {
-    return;
-  }
-
-  // RGB565 red = 0xF800 (MSB first).
-  for (size_t i = 0; i < pixels; ++i) {
-    buf[i * 2 + 0] = 0xF8;
-    buf[i * 2 + 1] = 0x00;
-  }
-
-  for (int y = 0; y < kH; y += kChunkRows) {
-    const int rows = std::min(kChunkRows, kH - y);
-    (void)xSemaphoreTake(s_txDone, 0);
-    (void)esp_lcd_panel_draw_bitmap(panel, 0, y, kW, y + rows, buf);
-    (void)xSemaphoreTake(s_txDone, pdMS_TO_TICKS(1000));
-  }
-
-  heap_caps_free(buf);
-}
+static uint32_t lastTickMs = 0;
 } // namespace
 
 void ESPWiFi::initTFT() {
@@ -79,28 +44,22 @@ void ESPWiFi::initTFT() {
     return;
   }
 
-  // Key pins (expected):
-  // BL=21, MISO=12, MOSI=13, SCLK=14, CS=15, DC=2, RST=-1
-  if (TFT_SPI_SCK_GPIO_NUM < 0 || TFT_SPI_MOSI_GPIO_NUM < 0 ||
-      TFT_CS_GPIO_NUM < 0 || TFT_DC_GPIO_NUM < 0) {
-    return;
-  }
-
   // Backlight ON
   if (TFT_BL_GPIO_NUM >= 0) {
     gpio_config_t io_conf = {};
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1ULL << TFT_BL_GPIO_NUM);
-    (void)gpio_config(&io_conf);
+    gpio_config(&io_conf);
     gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 1);
     tftBacklightOn_ = true;
   }
 
-  // Init SPI bus if needed (shared-bus safe)
+  // Init SPI bus if not already initialized
   size_t maxTransLen = 0;
   const bool busReady =
       (spi_bus_get_max_transaction_len((spi_host_device_t)TFT_SPI_HOST,
                                        &maxTransLen) == ESP_OK);
+
   if (!busReady) {
     spi_bus_config_t buscfg = {};
     buscfg.sclk_io_num = TFT_SPI_SCK_GPIO_NUM;
@@ -108,68 +67,102 @@ void ESPWiFi::initTFT() {
     buscfg.miso_io_num = TFT_SPI_MISO_GPIO_NUM;
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
-    buscfg.max_transfer_sz = kW * kChunkRows * 2;
+    buscfg.max_transfer_sz = kW * 40 * 2;
+
     if (spi_bus_initialize((spi_host_device_t)TFT_SPI_HOST, &buscfg,
                            SPI_DMA_CH_AUTO) != ESP_OK) {
+      printf("[TFT] Failed to init SPI bus\n");
       return;
     }
+    printf("[TFT] SPI bus initialized\n");
+  } else {
+    printf("[TFT] SPI bus already initialized (shared with SD card)\n");
   }
 
-  // Panel IO
+  // Panel IO config - let esp_lcd handle the init
   esp_lcd_panel_io_handle_t io_handle = nullptr;
-  esp_lcd_panel_handle_t panel_handle = nullptr;
-
-  if (!s_txDone) {
-    s_txDone = xSemaphoreCreateBinary();
-  }
-
   esp_lcd_panel_io_spi_config_t io_config = {};
   io_config.cs_gpio_num = TFT_CS_GPIO_NUM;
   io_config.dc_gpio_num = TFT_DC_GPIO_NUM;
-  io_config.spi_mode = TFT_SPI_MODE;
-  io_config.pclk_hz = TFT_PCLK_HZ;
-  io_config.trans_queue_depth = 1;
+  io_config.spi_mode = 0;
+  io_config.pclk_hz = 40 * 1000 * 1000; // 40MHz
+  io_config.trans_queue_depth = 10;
   io_config.lcd_cmd_bits = 8;
   io_config.lcd_param_bits = 8;
-  io_config.on_color_trans_done = onColorDone;
-  io_config.user_ctx = s_txDone;
-  io_config.flags.dc_low_on_data = TFT_DC_LOW_ON_DATA ? 1 : 0;
 
   if (esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)TFT_SPI_HOST,
                                &io_config, &io_handle) != ESP_OK) {
     return;
   }
 
-  // Panel driver (minimal; no probing)
+  // Panel driver - let the driver handle init
+  esp_lcd_panel_handle_t panel_handle = nullptr;
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = TFT_RST_GPIO_NUM;
-  panel_config.color_space = ESP_LCD_COLOR_SPACE_RGB;
-  panel_config.bits_per_pixel = TFT_BITS_PER_PIXEL;
+  panel_config.rgb_ele_order =
+      LCD_RGB_ELEMENT_ORDER_BGR; // ST7789 typically uses BGR
+  panel_config.bits_per_pixel = 16;
 
-  if (esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle) !=
+  if (esp_lcd_new_panel_ili9341(io_handle, &panel_config, &panel_handle) !=
       ESP_OK) {
-    (void)esp_lcd_panel_io_del(io_handle);
+    esp_lcd_panel_io_del(io_handle);
     return;
   }
 
-  (void)esp_lcd_panel_reset(panel_handle);
-  (void)esp_lcd_panel_init(panel_handle);
-  (void)esp_lcd_panel_disp_on_off(panel_handle, true);
+  // Let the driver do its thing
+  esp_lcd_panel_reset(panel_handle);
+  esp_lcd_panel_init(panel_handle);
+  esp_lcd_panel_disp_on_off(panel_handle, true);
 
   tftSpiBus_ = (void *)TFT_SPI_HOST;
   tftPanelIo_ = (void *)io_handle;
   tftPanel_ = (void *)panel_handle;
-  tftTouch_ = nullptr;
   tftInitialized = true;
 
-  // One-shot RED fill.
-  fillSolidRed(panel_handle);
+  printf("[TFT] Panel initialized\n");
+
+  // Initialize LVGL
+  lv_init();
+
+  // Create display
+  lv_display_t *disp = lv_display_create(kW, kH);
+  lv_display_set_flush_cb(disp, lvglFlushCb);
+  lv_display_set_user_data(disp, panel_handle);
+
+  // Allocate draw buffers (1/10 screen size each)
+  const size_t buf_size = kW * kH / 10;
+  void *buf1 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
+  void *buf2 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
+  lv_display_set_buffers(disp, buf1, buf2, buf_size * sizeof(uint16_t),
+                         LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+  // Draw "Hello world" label
+  lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x003a57),
+                            LV_PART_MAIN);
+  lv_obj_t *label = lv_label_create(lv_screen_active());
+  lv_label_set_text(label, "Hello world");
+  lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), LV_PART_MAIN);
+  lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+  printf("[TFT] LVGL initialized\n");
 }
 
 void ESPWiFi::runTFT() {
   if (!tftInitialized) {
     initTFT();
+    return;
   }
+
+  // Update LVGL tick
+  uint32_t nowMs = esp_timer_get_time() / 1000;
+  uint32_t elapsed = nowMs - lastTickMs;
+  if (elapsed > 0) {
+    lv_tick_inc(elapsed);
+    lastTickMs = nowMs;
+  }
+
+  // Handle LVGL tasks
+  lv_timer_handler();
 }
 
 #else

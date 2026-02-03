@@ -32,6 +32,9 @@
 // model is selected (it will set ESPWiFi_SDCARD_MODEL_SELECTED=0 and pins=-1).
 #include "SDCardPins.h"
 
+// TFT model selection helper (safe when no TFT model is selected).
+#include "TFTPins.h"
+
 // Camera model selection helper. This is safe to include even when no camera
 // model is selected (it will set ESPWiFi_CAMERA_MODEL_SELECTED=0 and pins=-1).
 #include "CameraPins.h"
@@ -119,6 +122,24 @@ public:
   bool sdSpiBusOwned = false;
   int sdSpiHost = -1;
   IntervalTimer sdCardCheck = IntervalTimer(5000);
+  // Avoid spamming logs/CPU when no SD is present: after a failed mount
+  // attempt, wait before retrying.
+  unsigned long sdNextRetryMs_ = 0;
+  unsigned long sdRetryIntervalMs_ = 60000;
+
+  // ---- TFT + Touch (optional; ESP-IDF esp_lcd based)
+  void initTFT();
+  void runTFT();
+#if ESPWiFi_HAS_TFT
+  bool tftInitialized = false;
+  IntervalTimer tftRefresh = IntervalTimer(250); // UI refresh cadence
+  void *tftSpiBus_ = nullptr;                    // esp_lcd_spi_bus_handle_t
+  void *tftPanelIo_ = nullptr;                   // esp_lcd_panel_io_handle_t
+  void *tftPanel_ = nullptr;                     // esp_lcd_panel_handle_t
+  void *tftTouch_ = nullptr;                     // esp_lcd_touch_handle_t
+  bool tftBacklightOn_ = true;
+  int64_t tftLastTouchMs_ = 0;
+#endif
 
   bool deleteDirectoryRecursive(const std::string &dirPath);
   void handleFileUpload(void *req, const std::string &filename, size_t index,

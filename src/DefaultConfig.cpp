@@ -87,6 +87,15 @@ JsonDocument ESPWiFi::defaultConfig() {
 #endif
   doc["sd"]["initialized"] = false;
 
+// TFT + Touch
+#if ESPWiFi_HAS_TFT
+  doc["tft"]["installed"] = true;
+  doc["tft"]["enabled"] = true;
+#else
+  doc["tft"]["installed"] = false;
+  doc["tft"]["enabled"] = false;
+#endif
+
   doc["ota"]["enabled"] = isOTAEnabled();
 
 // Camera

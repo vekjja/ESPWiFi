@@ -87,9 +87,21 @@ static esp_err_t initSpiBus(spi_host_device_t hostId, int mosi, int miso,
     busOwned = true;
     return ESP_OK;
   } else if (ret == ESP_ERR_INVALID_STATE) {
-    // Bus already initialized elsewhere (e.g., by LCD driver)
+    // Bus already initialized elsewhere.
+    //
+    // For ESP32-2432S028R, the SD slot is expected to own its SPI bus. If the
+    // bus is already initialized, free and re-init with the SD pins so the SD
+    // driver isn't bound to a mismatched pin mapping.
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
+    (void)spi_bus_free(hostId);
+    ret = spi_bus_initialize(hostId, &bus_cfg, SPI_DMA_CH_AUTO);
+    if (ret == ESP_OK) {
+      busOwned = true;
+      return ESP_OK;
+    }
+#endif
     busOwned = false;
-    return ESP_OK;
+    return ESP_OK; // treat as shared bus
   }
   return ret;
 }
@@ -106,6 +118,12 @@ void ESPWiFi::initSDCard() {
   // Early return if already initialized
   if (sdCard != nullptr || !config["sd"]["installed"].as<bool>()) {
     config["sd"]["initialized"] = false;
+    return;
+  }
+
+  // Backoff after previous failures to avoid constant retries/log spam.
+  const unsigned long now = millis();
+  if (sdNextRetryMs_ != 0 && now < sdNextRetryMs_) {
     return;
   }
 
@@ -198,6 +216,10 @@ void ESPWiFi::initSDCard() {
 // Try SDMMC (native interface) if SPI failed
 // Note: Only ESP32 and ESP32-S3 support SDMMC, ESP32-C3 does not
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
+  // Some boards (e.g., ESP32-2432S028R smart displays) wire microSD via SPI
+  // only. Attempting SDMMC on those boards just creates long timeouts and noisy
+  // error logs.
+#if !defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
   if (ret != ESP_OK) {
     feedWatchDog(1); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -215,13 +237,15 @@ void ESPWiFi::initSDCard() {
       log(WARNING, "💾 SD(SDMMC) Mount Failed: %s", esp_err_to_name(ret));
     }
   }
+#endif // !ESPWiFi_SDCARD_MODEL_ESP32_2432S028R
 #endif
 
   // Handle final error state
   if (ret != ESP_OK) {
     sdCard = nullptr;
     sdInitLastErr = ret;
-    sdNotSupported = false;
+    // Back off retries after a failed mount to avoid log spam.
+    sdNextRetryMs_ = millis() + sdRetryIntervalMs_;
     // Final cleanup of any remaining SPI state
     if (sdSpiHost >= 0 && sdSpiBusOwned) {
       cleanupSpiBus((spi_host_device_t)sdSpiHost, sdSpiBusOwned);
@@ -301,6 +325,11 @@ bool ESPWiFi::checkSDCard() {
       }
       return true;
     } else if (!sdNotSupported) {
+      // If we previously failed, wait for backoff before retrying.
+      const unsigned long now = millis();
+      if (sdNextRetryMs_ != 0 && now < sdNextRetryMs_) {
+        return true;
+      }
       // Card was removed - try to reinitialize if it's been reinserted
       initSDCard();
       if (sdCard != nullptr) {

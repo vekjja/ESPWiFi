@@ -107,7 +107,7 @@ public:
   void initLittleFS();
   void initFilesystem() {
     initLittleFS();
-    initSDCard();
+    // initSDCard();
   }
   bool checkSDCard();
   void deinitSDCard();

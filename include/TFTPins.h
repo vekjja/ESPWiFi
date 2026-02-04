@@ -37,13 +37,14 @@
 #define ESPWiFi_TFT_MODEL_SELECTED 1
 
 // ESP32-2432S028R pin mapping (from ESPHome - TFT uses HSPI):
-// TFT uses HSPI (SPI2_HOST): SCLK=14, MOSI=13, MISO=12
+// TFT uses HSPI (SPI2_HOST): SCLK=14, MOSI=13, MISO=12 (shared with RST)
 // Touch uses VSPI (SPI3_HOST): SCLK=25, MOSI=32, MISO=39
-// TFT_BL: 21, TFT_CS: 15, TFT_DC: 2, TFT_RST: -1
+// TFT_BL: 21, TFT_CS: 15, TFT_DC: 2, TFT_RST: 12
+// NOTE: GPIO12 is used for RST, not MISO (display is write-only)
 #define TFT_SPI_HOST SPI2_HOST
 #define TFT_SPI_SCK_GPIO_NUM 14
 #define TFT_SPI_MOSI_GPIO_NUM 13
-#define TFT_SPI_MISO_GPIO_NUM 12
+#define TFT_SPI_MISO_GPIO_NUM -1 // Not used - GPIO 12 is for RST instead
 
 // Keep bring-up simple and conservative.
 #define TFT_SPI_MODE 0
@@ -52,8 +53,8 @@
 
 #define TFT_CS_GPIO_NUM 15
 #define TFT_DC_GPIO_NUM 2
-// No dedicated reset GPIO on some variants; use software reset.
-#define TFT_RST_GPIO_NUM -1
+// RST on GPIO 12 (standard for ESP32-2432S028R)
+#define TFT_RST_GPIO_NUM 12
 #define TFT_BL_GPIO_NUM 21
 
 // Touch (XPT2046) on a separate SPI bus (matches common ESPHome configs)

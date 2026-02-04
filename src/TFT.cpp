@@ -109,7 +109,7 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = TFT_RST_GPIO_NUM;
   panel_config.rgb_ele_order =
-      LCD_RGB_ELEMENT_ORDER_BGR; // ST7789 typically uses BGR
+      LCD_RGB_ELEMENT_ORDER_RGB; // ILI9341 on ESP32-2432S028R uses RGB
   panel_config.bits_per_pixel = 16;
 
   if (esp_lcd_new_panel_ili9341(io_handle, &panel_config, &panel_handle) !=
@@ -121,6 +121,19 @@ void ESPWiFi::initTFT() {
   // Let the driver do its thing
   esp_lcd_panel_reset(panel_handle);
   esp_lcd_panel_init(panel_handle);
+
+  // ESP32-2432S028R requires inversion ON
+  esp_lcd_panel_invert_color(panel_handle, true);
+
+  // Set proper orientation for portrait mode (240 wide x 320 tall)
+  esp_lcd_panel_swap_xy(panel_handle, true); // Swap XY for portrait
+
+  // Adjust mirroring for portrait
+  esp_lcd_panel_mirror(panel_handle, true, true);
+
+  // Set gap to 0 to use full screen (some ILI9341 need this)
+  esp_lcd_panel_set_gap(panel_handle, 0, 0);
+
   esp_lcd_panel_disp_on_off(panel_handle, true);
 
   tftSpiBus_ = (void *)TFT_SPI_HOST;
@@ -160,6 +173,10 @@ void ESPWiFi::initTFT() {
 void ESPWiFi::runTFT() {
   if (!tftInitialized) {
     initTFT();
+    // Initialize tick counter after init
+    if (tftInitialized) {
+      lastTickMs = esp_timer_get_time() / 1000;
+    }
     return;
   }
 

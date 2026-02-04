@@ -4,6 +4,7 @@
 #if ESPWiFi_HAS_TFT
 
 #include "driver/gpio.h"
+#include "driver/spi_common.h"
 #include "driver/spi_master.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_ili9341.h"
@@ -53,14 +54,22 @@ void ESPWiFi::initTFT() {
     return;
   }
 
-  // Backlight ON
+  // Configure GPIO 12 as input with pull-up (needed for SD card compatibility)
+  // Even though we don't use it for TFT MISO, it must be in a known state
+  gpio_reset_pin(GPIO_NUM_12);
+  gpio_set_direction(GPIO_NUM_12, GPIO_MODE_INPUT);
+  gpio_set_pull_mode(GPIO_NUM_12, GPIO_PULLUP_ONLY);
+  ESP_LOGI(TAG, "GPIO 12 configured as input with pull-up");
+
+  // Configure backlight GPIO first (but keep it OFF initially)
   if (TFT_BL_GPIO_NUM >= 0) {
+    gpio_reset_pin((gpio_num_t)TFT_BL_GPIO_NUM); // Reset pin state first
     gpio_config_t io_conf = {};
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1ULL << TFT_BL_GPIO_NUM);
     gpio_config(&io_conf);
-    gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 1);
-    tftBacklightOn_ = true;
+    gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 0); // OFF initially
+    ESP_LOGI(TAG, "Backlight GPIO configured (OFF)");
   }
 
   // Init SPI bus if not already initialized
@@ -73,7 +82,7 @@ void ESPWiFi::initTFT() {
     spi_bus_config_t buscfg = {};
     buscfg.sclk_io_num = TFT_SPI_SCK_GPIO_NUM;
     buscfg.mosi_io_num = TFT_SPI_MOSI_GPIO_NUM;
-    buscfg.miso_io_num = TFT_SPI_MISO_GPIO_NUM;
+    buscfg.miso_io_num = -1; // DO NOT USE GPIO 12 - causes SD/Touch conflicts
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
     buscfg.max_transfer_sz = kW * 40 * 2;
@@ -85,7 +94,7 @@ void ESPWiFi::initTFT() {
     }
     ESP_LOGI(TAG, "SPI bus initialized");
   } else {
-    ESP_LOGI(TAG, "SPI bus already initialized (shared with SD card)");
+    ESP_LOGI(TAG, "SPI bus already initialized");
   }
 
   // Panel IO config - let esp_lcd handle the init
@@ -94,7 +103,7 @@ void ESPWiFi::initTFT() {
   io_config.cs_gpio_num = TFT_CS_GPIO_NUM;
   io_config.dc_gpio_num = TFT_DC_GPIO_NUM;
   io_config.spi_mode = 0;
-  io_config.pclk_hz = 40 * 1000 * 1000; // 40MHz
+  io_config.pclk_hz = 40 * 1000 * 1000; // 40MHz (official CYD example)
   io_config.trans_queue_depth = 10;
   io_config.lcd_cmd_bits = 8;
   io_config.lcd_param_bits = 8;
@@ -109,7 +118,8 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = TFT_RST_GPIO_NUM;
   panel_config.rgb_ele_order =
-      LCD_RGB_ELEMENT_ORDER_RGB; // ILI9341 on ESP32-2432S028R uses RGB
+      LCD_RGB_ELEMENT_ORDER_BGR; // ILI9341 on ESP32-2432S028R uses BGR (per
+                                 // official example)
   panel_config.bits_per_pixel = 16;
 
   if (esp_lcd_new_panel_ili9341(io_handle, &panel_config, &panel_handle) !=
@@ -121,19 +131,11 @@ void ESPWiFi::initTFT() {
   // Let the driver do its thing
   esp_lcd_panel_reset(panel_handle);
   esp_lcd_panel_init(panel_handle);
-
-  // ESP32-2432S028R requires inversion ON
-  esp_lcd_panel_invert_color(panel_handle, true);
-
   // Set proper orientation for portrait mode (240 wide x 320 tall)
   esp_lcd_panel_swap_xy(panel_handle, true); // Swap XY for portrait
-
-  // Adjust mirroring for portrait
-  esp_lcd_panel_mirror(panel_handle, true, true);
-
-  // Set gap to 0 to use full screen (some ILI9341 need this)
+  // esp_lcd_panel_mirror(panel_handle, false, true); // Mirror Y only for
+  // portrait Set gap to 0 to use full screen
   esp_lcd_panel_set_gap(panel_handle, 0, 0);
-
   esp_lcd_panel_disp_on_off(panel_handle, true);
 
   tftSpiBus_ = (void *)TFT_SPI_HOST;
@@ -168,6 +170,17 @@ void ESPWiFi::initTFT() {
   lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
   ESP_LOGI(TAG, "LVGL initialized");
+
+  // NOW turn on backlight - display is fully configured
+  if (TFT_BL_GPIO_NUM >= 0) {
+    gpio_config_t io_conf = {};
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1ULL << TFT_BL_GPIO_NUM);
+    gpio_config(&io_conf);
+    gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 1);
+    tftBacklightOn_ = true;
+    ESP_LOGI(TAG, "Backlight ON");
+  }
 }
 
 void ESPWiFi::runTFT() {

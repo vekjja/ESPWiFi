@@ -67,7 +67,13 @@ static void getSpiPinConfig(int &mosi, int &miso, int &sclk, int &cs,
   miso = SDCARD_SPI_MISO_GPIO_NUM;
   sclk = SDCARD_SPI_SCK_GPIO_NUM;
   cs = SDCARD_SPI_CS_GPIO_NUM;
-  hostId = SDCARD_SPI_HOST; // Use default SPI host from SDCardPins.h
+  // CRITICAL: Force SPI3_HOST (VSPI) for ESP32-2432S028R
+  // TFT uses SPI2_HOST (HSPI), SD MUST use SPI3_HOST (VSPI)
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
+  hostId = SPI3_HOST; // VSPI = 2, explicitly set
+#else
+  hostId = SDCARD_SPI_HOST; // Use default from SDCardPins.h
+#endif
 }
 
 // Helper: Initialize SPI bus for SD card
@@ -84,21 +90,16 @@ static esp_err_t initSpiBus(spi_host_device_t hostId, int mosi, int miso,
 
   esp_err_t ret = spi_bus_initialize(hostId, &bus_cfg, SPI_DMA_CH_AUTO);
   if (ret == ESP_OK) {
-    // On ESP32-2432S028R, SD and TFT commonly share the same SPI host (same
-    // SCK/MOSI/MISO, different CS). Treat the bus as shared so SD never frees
-    // it out from under the TFT (and vice-versa).
-#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
-    busOwned = false;
-#else
+    // SD card owns its own SPI bus (VSPI/SPI3_HOST)
+    // TFT uses separate bus (HSPI/SPI2_HOST)
     busOwned = true;
-#endif
     return ESP_OK;
   } else if (ret == ESP_ERR_INVALID_STATE) {
-    // Bus already initialized elsewhere.
-    // Treat it as a shared bus (e.g. TFT + SD on same SCK/MOSI with different
-    // CS).
+    // Bus already initialized elsewhere - this is an error for separate buses
+    ESP_LOGW("SD", "SPI bus %d already initialized - this shouldn't happen!",
+             hostId);
     busOwned = false;
-    return ESP_OK; // treat as shared bus
+    return ESP_OK; // Continue anyway
   }
   return ret;
 }
@@ -181,16 +182,21 @@ void ESPWiFi::initSDCard() {
     // Allow SD card to stabilize after SPI bus initialization
     // SD cards need time after SPI bus is initialized to be ready for commands
     // This delay is critical for first-attempt success
-    feedWatchDog(300); // 300ms stabilization delay after SPI bus init
+    feedWatchDog(500); // 500ms stabilization delay after SPI bus init
+                       // (increased from 300ms)
 
     // Configure SD card device - SDSPI driver will handle CS pin configuration
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = spiHost;
+    // Set max frequency to 20MHz (SDMMC_FREQ_DEFAULT) for ESP32-2432S028R
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT; // 20MHz - standard default
+
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = (gpio_num_t)cs;
     slot_config.host_id = spiHost;
 
     // Mount SD card (this can use significant stack)
+    log(INFO, "💾 Attempting SD card mount on SPI%d (CS=%d)...", spiHost, cs);
     ret = esp_vfs_fat_sdspi_mount(sdMountPoint.c_str(), &host, &slot_config,
                                   &mount_config, &card);
     if (ret != ESP_OK) {

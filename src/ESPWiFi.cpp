@@ -5,9 +5,13 @@
 
 void ESPWiFi::start() {
   config = defaultConfig();
-  initFilesystem();
+  initLittleFS();
+  feedWatchDog(100);
   startLogging();
   readConfig();
+  initTFT();
+  feedWatchDog(100);
+  initSDCard();
   // initNVS();
   // startWiFi();
   // startMDNS();
@@ -15,7 +19,6 @@ void ESPWiFi::start() {
   // startControlWebSocket();
   // startMediaWebSocket();
   // srvAll();
-  initTFT();
 }
 
 void ESPWiFi::runSystem() {

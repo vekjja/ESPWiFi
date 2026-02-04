@@ -51,11 +51,9 @@
 #define SDCARD_SPI_CS_GPIO_NUM 5
 
 // Prefer VSPI (SPI3_HOST) on classic ESP32 when available
-#ifdef SPI3_HOST
-#define SDCARD_SPI_HOST SPI3_HOST
-#else
-#define SDCARD_SPI_HOST SPI2_HOST
-#endif
+// Force SPI3_HOST (VSPI) for ESP32-2432S028R to avoid conflict with TFT on
+// SPI2_HOST
+#define SDCARD_SPI_HOST SPI3_HOST // VSPI = 2
 
 // -----------------------------------------------------------------------------
 // No SD model selected: mark pins invalid so SD stays disabled unless enabled

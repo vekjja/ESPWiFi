@@ -5,13 +5,10 @@
 
 void ESPWiFi::start() {
   config = defaultConfig();
-  initLittleFS();
-  feedWatchDog(100);
+  initFilesystem();
   startLogging();
   readConfig();
   initTFT();
-  feedWatchDog(100);
-  initSDCard();
   // initNVS();
   // startWiFi();
   // startMDNS();

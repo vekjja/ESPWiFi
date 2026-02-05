@@ -28,7 +28,7 @@ fi
 # RM existing sdkconfig files
 echo "🗑️  Removing existing sdkconfig files"
 # macOS/BSD find lacks -verbose; print then delete for visibility
-find "$PROJECT_DIR" -maxdepth 1 -name 'sdkconfig*' -type f -print -delete
+find "$PROJECT_DIR" -maxdepth 1 -name '*sdkconfig*' -type f -print -delete
 
 # generate sdkconfig for target environment
 cp "$SDKCONFIG_DEFAULTS" "$PROJECT_SDKCONFIG"

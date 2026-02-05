@@ -133,8 +133,11 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_init(panel_handle);
   // Set proper orientation for portrait mode (240 wide x 320 tall)
   esp_lcd_panel_swap_xy(panel_handle, true); // Swap XY for portrait
-  // esp_lcd_panel_mirror(panel_handle, false, true); // Mirror Y only for
-  // portrait Set gap to 0 to use full screen
+
+  // Mirror to flip the display for portrait mode
+  esp_lcd_panel_mirror(panel_handle, true, true);
+
+  // Set gap to 0 to use full screen
   esp_lcd_panel_set_gap(panel_handle, 0, 0);
   esp_lcd_panel_disp_on_off(panel_handle, true);
 

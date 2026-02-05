@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_Screen1 = NULL;lv_obj_t *ui_Checkbox1 = NULL;lv_obj_t *ui_Checkbox2 = NULL;
+lv_obj_t *ui_Screen1 = NULL;lv_obj_t *ui_Checkbox1 = NULL;lv_obj_t *ui_Label1 = NULL;
 // event funtions
 
 // build funtions
@@ -21,33 +21,28 @@ ui_Checkbox1 = lv_checkbox_create(ui_Screen1);
 lv_checkbox_set_text(ui_Checkbox1,"WiFi");
 lv_obj_set_width( ui_Checkbox1, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Checkbox1, LV_SIZE_CONTENT);   /// 1
-lv_obj_set_x( ui_Checkbox1, 70 );
-lv_obj_set_y( ui_Checkbox1, 2 );
+lv_obj_set_x( ui_Checkbox1, 8 );
+lv_obj_set_y( ui_Checkbox1, 137 );
 lv_obj_set_align( ui_Checkbox1, LV_ALIGN_LEFT_MID );
 lv_obj_add_flag( ui_Checkbox1, LV_OBJ_FLAG_SCROLL_ON_FOCUS );   /// Flags
-lv_obj_set_style_text_color(ui_Checkbox1, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT );
-lv_obj_set_style_text_opa(ui_Checkbox1, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
+ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Text);
+ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Text);
 
 ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
 ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
 ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BORDER_COLOR, _ui_theme_color_Primary);
 ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BORDER_OPA, _ui_theme_alpha_Primary);
 
-ui_Checkbox2 = lv_checkbox_create(ui_Screen1);
-lv_checkbox_set_text(ui_Checkbox2,"Bluetooth");
-lv_obj_set_width( ui_Checkbox2, LV_SIZE_CONTENT);  /// 1
-lv_obj_set_height( ui_Checkbox2, LV_SIZE_CONTENT);   /// 1
-lv_obj_set_x( ui_Checkbox2, 70 );
-lv_obj_set_y( ui_Checkbox2, 35 );
-lv_obj_set_align( ui_Checkbox2, LV_ALIGN_LEFT_MID );
-lv_obj_add_flag( ui_Checkbox2, LV_OBJ_FLAG_SCROLL_ON_FOCUS );   /// Flags
-lv_obj_set_style_text_color(ui_Checkbox2, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT );
-lv_obj_set_style_text_opa(ui_Checkbox2, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
-
-ui_object_set_themeable_style_property(ui_Checkbox2, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
-ui_object_set_themeable_style_property(ui_Checkbox2, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
-ui_object_set_themeable_style_property(ui_Checkbox2, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BORDER_COLOR, _ui_theme_color_Error);
-ui_object_set_themeable_style_property(ui_Checkbox2, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BORDER_OPA, _ui_theme_alpha_Error);
+ui_Label1 = lv_label_create(ui_Screen1);
+lv_obj_set_width( ui_Label1, LV_SIZE_CONTENT);  /// 1
+lv_obj_set_height( ui_Label1, LV_SIZE_CONTENT);   /// 1
+lv_obj_set_x( ui_Label1, 0 );
+lv_obj_set_y( ui_Label1, -140 );
+lv_obj_set_align( ui_Label1, LV_ALIGN_CENTER );
+lv_label_set_text(ui_Label1,"ESPWiFi");
+ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Primary);
+ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Primary);
+lv_obj_set_style_text_font(ui_Label1, &lv_font_montserrat_36, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 }
 
@@ -58,6 +53,6 @@ void ui_Screen1_screen_destroy(void)
 // NULL screen variables
 ui_Screen1= NULL;
 ui_Checkbox1= NULL;
-ui_Checkbox2= NULL;
+ui_Label1= NULL;
 
 }

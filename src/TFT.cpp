@@ -1,4 +1,7 @@
 // TFT.cpp - LVGL display with esp_lcd backend
+// ESP32-2432S028R (CYD): SquareLine Studio → Depth: 16 bit | Res.: 240×320 |
+// LVGL: 9.x Byte swap for correct colors is in firmware:
+// CONFIG_LV_COLOR_16_SWAP=y (sdkconfig).
 #include "ESPWiFi.h"
 
 #if ESPWiFi_HAS_TFT
@@ -36,12 +39,6 @@ static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
 
   esp_lcd_panel_draw_bitmap(panel, x1, y1, x2, y2, px_map);
   lv_display_flush_ready(disp);
-
-  static int flushCount = 0;
-  if (flushCount < 5) {
-    ESP_LOGI(TAG, "LVGL flush #%d: (%d,%d)->(%d,%d)", ++flushCount, x1, y1, x2,
-             y2);
-  }
 }
 
 static uint32_t lastTickMs = 0;
@@ -118,9 +115,7 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_handle_t panel_handle = nullptr;
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = TFT_RST_GPIO_NUM;
-  panel_config.rgb_ele_order =
-      LCD_RGB_ELEMENT_ORDER_BGR; // ILI9341 on ESP32-2432S028R uses BGR (per
-                                 // official example)
+  panel_config.rgb_ele_order = LCD_RGB_ENDIAN_BGR;
   panel_config.bits_per_pixel = 16;
 
   if (esp_lcd_new_panel_ili9341(io_handle, &panel_config, &panel_handle) !=
@@ -132,6 +127,7 @@ void ESPWiFi::initTFT() {
   // Let the driver do its thing
   esp_lcd_panel_reset(panel_handle);
   esp_lcd_panel_init(panel_handle);
+
   // Set proper orientation for portrait mode (240 wide x 320 tall)
   esp_lcd_panel_swap_xy(panel_handle, true); // Swap XY for portrait
 
@@ -166,8 +162,8 @@ void ESPWiFi::initTFT() {
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
 
   // Draw "Hello world" label
-  lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000),
-                            LV_PART_MAIN);
+  // lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000),
+  //                           LV_PART_MAIN);
 
   // In SquareLine Studio: File → Export → Export UI Files to src/ui/
   ui_init();

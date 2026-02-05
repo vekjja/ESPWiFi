@@ -21,9 +21,9 @@ ui_Checkbox1 = lv_checkbox_create(ui_Screen1);
 lv_checkbox_set_text(ui_Checkbox1,"WiFi");
 lv_obj_set_width( ui_Checkbox1, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Checkbox1, LV_SIZE_CONTENT);   /// 1
-lv_obj_set_x( ui_Checkbox1, -2 );
-lv_obj_set_y( ui_Checkbox1, -16 );
-lv_obj_set_align( ui_Checkbox1, LV_ALIGN_CENTER );
+lv_obj_set_x( ui_Checkbox1, 70 );
+lv_obj_set_y( ui_Checkbox1, 2 );
+lv_obj_set_align( ui_Checkbox1, LV_ALIGN_LEFT_MID );
 lv_obj_add_flag( ui_Checkbox1, LV_OBJ_FLAG_SCROLL_ON_FOCUS );   /// Flags
 lv_obj_set_style_text_color(ui_Checkbox1, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_text_opa(ui_Checkbox1, 255, LV_PART_MAIN| LV_STATE_DEFAULT);
@@ -34,12 +34,12 @@ ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE
 ui_object_set_themeable_style_property(ui_Checkbox1, LV_PART_INDICATOR| LV_STATE_DEFAULT, LV_STYLE_BORDER_OPA, _ui_theme_alpha_Primary);
 
 ui_Checkbox2 = lv_checkbox_create(ui_Screen1);
-lv_checkbox_set_text(ui_Checkbox2,"WiFi");
+lv_checkbox_set_text(ui_Checkbox2,"Bluetooth");
 lv_obj_set_width( ui_Checkbox2, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Checkbox2, LV_SIZE_CONTENT);   /// 1
-lv_obj_set_x( ui_Checkbox2, -2 );
-lv_obj_set_y( ui_Checkbox2, 18 );
-lv_obj_set_align( ui_Checkbox2, LV_ALIGN_CENTER );
+lv_obj_set_x( ui_Checkbox2, 70 );
+lv_obj_set_y( ui_Checkbox2, 35 );
+lv_obj_set_align( ui_Checkbox2, LV_ALIGN_LEFT_MID );
 lv_obj_add_flag( ui_Checkbox2, LV_OBJ_FLAG_SCROLL_ON_FOCUS );   /// Flags
 lv_obj_set_style_text_color(ui_Checkbox2, lv_color_hex(0x808080), LV_PART_MAIN | LV_STATE_DEFAULT );
 lv_obj_set_style_text_opa(ui_Checkbox2, 255, LV_PART_MAIN| LV_STATE_DEFAULT);

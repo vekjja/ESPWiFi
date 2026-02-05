@@ -11,7 +11,7 @@ const ui_theme_variable_t _ui_theme_alpha_Background[2] = {255, 255};
 const ui_theme_variable_t _ui_theme_color_Primary[2] = {0x47FFF0, 0x47FFF0};
 const ui_theme_variable_t _ui_theme_alpha_Primary[2] = {255, 255};
 
-const ui_theme_variable_t _ui_theme_color_Error[2] = {0xFE4245, 0xFE4245};
+const ui_theme_variable_t _ui_theme_color_Error[2] = {0xC50003, 0xC50003};
 const ui_theme_variable_t _ui_theme_alpha_Error[2] = {255, 255};
 uint8_t ui_theme_idx = UI_THEME_ESPWIFI;
 

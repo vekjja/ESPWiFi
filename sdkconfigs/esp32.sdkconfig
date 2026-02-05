@@ -16,10 +16,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 # (no PSRAM) this can starve FreeRTOS task creation early in boot. Use the
 # system allocator instead and disable LVGL demo/example builds.
 #
+# ESP32-2432S028R (CYD): byte swap for RGB565 done in TFT flush callback (LVGL 9 removed CONFIG_LV_COLOR_16_SWAP)
 CONFIG_LV_CONF_SKIP=y
 CONFIG_LV_COLOR_DEPTH=16
-# ESP32-2432S028R (CYD): byte swap required for correct RGB565 colors
-CONFIG_LV_COLOR_16_SWAP=y
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_OBSERVERS=y
 CONFIG_LV_THEME_DEFAULT_DARK=y

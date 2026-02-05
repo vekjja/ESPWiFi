@@ -1,7 +1,5 @@
 // TFT.cpp - LVGL display with esp_lcd backend
-// ESP32-2432S028R (CYD): SquareLine Studio → Depth: 16 bit | Res.: 240×320 |
-// LVGL: 9.x Byte swap for correct colors is in firmware:
-// CONFIG_LV_COLOR_16_SWAP=y (sdkconfig).
+
 #include "ESPWiFi.h"
 
 #if ESPWiFi_HAS_TFT
@@ -16,6 +14,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "src/draw/sw/lv_draw_sw_utils.h"
 #include "ui/ui.h"
 
 static const char *TAG = "TFT";
@@ -24,7 +23,7 @@ namespace {
 constexpr int kW = 240;
 constexpr int kH = 320;
 
-// LVGL flush callback
+// LVGL flush callback (signature must match lv_display_flush_cb_t: uint8_t*)
 static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
                         uint8_t *px_map) {
   esp_lcd_panel_handle_t panel =
@@ -32,11 +31,11 @@ static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
   if (!panel)
     return;
 
-  const int x1 = area->x1;
-  const int y1 = area->y1;
-  const int x2 = area->x2 + 1;
-  const int y2 = area->y2 + 1;
+  const int x1 = area->x1, y1 = area->y1;
+  const int x2 = area->x2 + 1, y2 = area->y2 + 1;
+  const uint32_t px_count = (uint32_t)(x2 - x1) * (y2 - y1);
 
+  lv_draw_sw_rgb565_swap(px_map, px_count);
   esp_lcd_panel_draw_bitmap(panel, x1, y1, x2, y2, px_map);
   lv_display_flush_ready(disp);
 }
@@ -115,7 +114,7 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_handle_t panel_handle = nullptr;
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = TFT_RST_GPIO_NUM;
-  panel_config.rgb_ele_order = LCD_RGB_ENDIAN_BGR;
+  panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
   panel_config.bits_per_pixel = 16;
 
   if (esp_lcd_new_panel_ili9341(io_handle, &panel_config, &panel_handle) !=

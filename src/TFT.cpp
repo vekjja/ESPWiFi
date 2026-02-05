@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "ui/ui.h"
 
 static const char *TAG = "TFT";
 
@@ -167,10 +168,9 @@ void ESPWiFi::initTFT() {
   // Draw "Hello world" label
   lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000),
                             LV_PART_MAIN);
-  lv_obj_t *label = lv_label_create(lv_screen_active());
-  lv_label_set_text(label, "ESPWiFi");
-  lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), LV_PART_MAIN);
-  lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+  // In SquareLine Studio: File → Export → Export UI Files to src/ui/
+  ui_init();
 
   ESP_LOGI(TAG, "LVGL initialized");
 
@@ -186,7 +186,7 @@ void ESPWiFi::initTFT() {
   }
 }
 
-void ESPWiFi::runTFT() {
+void ESPWiFi::renderTFT() {
   if (!tftInitialized) {
     initTFT();
     // Initialize tick counter after init
@@ -210,5 +210,5 @@ void ESPWiFi::runTFT() {
 
 #else
 void ESPWiFi::initTFT() {}
-void ESPWiFi::runTFT() {}
+void ESPWiFi::renderTFT() {}
 #endif

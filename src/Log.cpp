@@ -170,11 +170,6 @@ void ESPWiFi::startLogging() {
     deferredLogMutex = xSemaphoreCreateMutex();
   }
 
-  // Config-driven logging:
-  // - log.enabled
-  // - log.level
-  // - log.useSD
-  // - log.file (string path, e.g. "/espwifi.log")
   std::string cfgLogFile = config["log"]["file"].as<std::string>();
   std::string filePath = logFilePath;
 

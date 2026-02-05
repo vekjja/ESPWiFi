@@ -129,7 +129,7 @@ public:
 
   // ---- TFT + Touch (optional; ESP-IDF esp_lcd based)
   void initTFT();
-  void runTFT();
+  void renderTFT();
 #if ESPWiFi_HAS_TFT
   // Public accessors for TFT internals (useful for other modules).
   // These are intentionally untyped (void*) to avoid pulling esp_lcd headers

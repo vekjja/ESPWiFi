@@ -93,7 +93,7 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
       tagEquals(tag, tagLen, "nimble")) {
     return "🔵";
   }
-  if (tagEquals(tag, tagLen, "TFT")) {
+  if (tagEquals(tag, tagLen, "TFT") || tagEquals(tag, tagLen, "ili9341")) {
     return "🖥️";
   }
   if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
@@ -103,12 +103,6 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
 }
 
 int ESPWiFi::idfLogVprintfHook(const char *format, va_list args) {
-
-  // Original vprintf behavior
-  // int ret = vprintf(format, args);
-  // if (ret < 0) {
-  //   return ret;
-  // }
 
   // Static member function for ESP-IDF's vprintf hook
   // Captures and processes ESP-IDF log messages

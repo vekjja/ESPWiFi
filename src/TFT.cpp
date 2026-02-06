@@ -4,6 +4,7 @@
 
 #if ESPWiFi_HAS_TFT
 
+#include "Touch.h"
 #include "driver/gpio.h"
 #include "driver/spi_common.h"
 #include "driver/spi_master.h"
@@ -12,7 +13,6 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -48,159 +48,12 @@ static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
 
 static uint32_t lastTickMs = 0;
 
-// -----------------------------------------------------------------------------
-// XPT2046 software (bitbang) SPI - for CYD when display and SD use the two
-// hardware SPI buses. Based on XPT2046_Bitbang_Slim / ESP32-CYD 8-Buttons
-// example.
-// -----------------------------------------------------------------------------
 #if (TOUCH_CS_GPIO_NUM >= 0)
-static constexpr uint8_t kCmdReadX = 0x91;
-static constexpr uint8_t kCmdReadY = 0xD1;
-static constexpr uint8_t kCmdReadZ1 = 0xB1;
-static constexpr uint8_t kCmdReadZ2 = 0xC1;
-static constexpr int kBitbangDelayUs = 5;
-// Idle/noise: only report touch when z exceeds this (tune per panel)
-static constexpr uint16_t kTouchPressureThreshold = 400;
-// Require this many consecutive "pressed" samples before reporting touch
-static constexpr unsigned kTouchDebounceCount = 2;
-
-static inline void bitbangDelay() { esp_rom_delay_us(kBitbangDelayUs); }
-
-static void xpt2046BitbangWrite(uint8_t cmd) {
-  for (int i = 7; i >= 0; i--) {
-    gpio_set_level((gpio_num_t)TOUCH_SPI_MOSI_GPIO_NUM, (cmd >> i) & 1);
-    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
-    bitbangDelay();
-    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 1);
-    bitbangDelay();
-  }
-  gpio_set_level((gpio_num_t)TOUCH_SPI_MOSI_GPIO_NUM, 0);
-  gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
-}
-
-// Sample MISO after CLK goes low (matches Arduino XPT2046_Bitbang library)
-static uint16_t xpt2046BitbangRead(uint8_t cmd) {
-  xpt2046BitbangWrite(cmd);
-  uint16_t result = 0;
-  for (int i = 15; i >= 0; i--) {
-    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 1);
-    bitbangDelay();
-    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
-    bitbangDelay();
-    result |= (uint16_t)gpio_get_level((gpio_num_t)TOUCH_SPI_MISO_GPIO_NUM)
-              << i;
-  }
-  return result >> 4;
-}
-
-struct TouchPoint {
-  int32_t x;
-  int32_t y;
-  bool pressed;
-};
-
-static TouchPoint xpt2046BitbangGetTouch() {
-  TouchPoint out = {0, 0, false};
-  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 0);
-  uint16_t z1 = xpt2046BitbangRead(kCmdReadZ1);
-  uint16_t z2 = xpt2046BitbangRead(kCmdReadZ2);
-  uint16_t z = z1 + 4095 - z2;
-  if (z < kTouchPressureThreshold) {
-    gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
-    return out;
-  }
-  uint16_t xRaw = xpt2046BitbangRead(kCmdReadX);
-  uint16_t yRaw = xpt2046BitbangRead(kCmdReadY & 0xFE);
-  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
-
-  // Map 0..4095 to 0..(kW-1) and 0..(kH-1). Panel has swap_xy + mirror.
-  int32_t tx = (int32_t)xRaw * (kW - 1) / 4095;
-  int32_t ty = (int32_t)yRaw * (kH - 1) / 4095;
-  if (tx < 0)
-    tx = 0;
-  if (tx >= kW)
-    tx = kW - 1;
-  if (ty < 0)
-    ty = 0;
-  if (ty >= kH)
-    ty = kH - 1;
-  // Swap XY and mirror to match display orientation (portrait, swap_xy, mirror)
-  out.x = (kH - 1) - ty;
-  out.y = (kW - 1) - tx;
-  out.pressed = true;
-  return out;
-}
-
-static bool xpt2046BitbangInited = false;
-
-static void xpt2046BitbangBegin() {
-  gpio_config_t io = {};
-  io.pin_bit_mask = (1ULL << TOUCH_SPI_MOSI_GPIO_NUM) |
-                    (1ULL << TOUCH_SPI_SCK_GPIO_NUM) |
-                    (1ULL << TOUCH_CS_GPIO_NUM);
-  io.mode = GPIO_MODE_OUTPUT;
-  io.pull_up_en = GPIO_PULLUP_DISABLE;
-  io.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  io.intr_type = GPIO_INTR_DISABLE;
-  gpio_config(&io);
-  io.pin_bit_mask = (1ULL << TOUCH_SPI_MISO_GPIO_NUM);
-  io.mode = GPIO_MODE_INPUT;
-  gpio_config(&io);
-  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
-  gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
-  xpt2046BitbangInited = true;
-
-  // Diagnostic: read once with screen not touched (expect low z)
-  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 0);
-  uint16_t z1 = xpt2046BitbangRead(kCmdReadZ1);
-  uint16_t z2 = xpt2046BitbangRead(kCmdReadZ2);
-  uint16_t z = z1 + 4095 - z2;
-  uint16_t xR = xpt2046BitbangRead(kCmdReadX);
-  uint16_t yR = xpt2046BitbangRead(kCmdReadY & 0xFE);
-  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
-  ESP_LOGI(
-      TAG,
-      "Touch init: z1=%u z2=%u z=%u xRaw=%u yRaw=%u (no touch; threshold=%u)",
-      (unsigned)z1, (unsigned)z2, (unsigned)z, (unsigned)xR, (unsigned)yR,
-      (unsigned)kTouchPressureThreshold);
+// Wrapper with LVGL callback signature so lv_indev_set_read_cb accepts it
+static void touchIndevReadCbWrapper(lv_indev_t *indev, lv_indev_data_t *data) {
+  touchIndevReadCb(indev, data);
 }
 #endif
-
-// Debounce: require consecutive pressed samples before reporting touch
-static unsigned s_touchConsecutivePressed = 0;
-static int32_t s_touchLastX = 0, s_touchLastY = 0;
-
-// Touch read callback for LVGL. user_data: (void*)1 = bitbang, else unused.
-static void touchIndevReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
-#if (TOUCH_CS_GPIO_NUM >= 0)
-  if (xpt2046BitbangInited) {
-    TouchPoint p = xpt2046BitbangGetTouch();
-    if (p.pressed) {
-      s_touchLastX = p.x;
-      s_touchLastY = p.y;
-      if (s_touchConsecutivePressed < 255)
-        s_touchConsecutivePressed++;
-      if (s_touchConsecutivePressed >= kTouchDebounceCount) {
-        data->point.x = p.x;
-        data->point.y = p.y;
-        data->state = LV_INDEV_STATE_PRESSED;
-        ESP_LOGI(TAG, "Touch (%ld, %ld)", (long)p.x, (long)p.y);
-      } else {
-        data->point.x = s_touchLastX;
-        data->point.y = s_touchLastY;
-        data->state = LV_INDEV_STATE_RELEASED;
-      }
-    } else {
-      s_touchConsecutivePressed = 0;
-      data->point.x = s_touchLastX;
-      data->point.y = s_touchLastY;
-      data->state = LV_INDEV_STATE_RELEASED;
-    }
-    return;
-  }
-#endif
-  data->state = LV_INDEV_STATE_RELEASED;
-}
 } // namespace
 
 void ESPWiFi::initTFT() {
@@ -305,11 +158,11 @@ void ESPWiFi::initTFT() {
   ESP_LOGI(TAG, "Panel initialized");
 
 #if (TOUCH_CS_GPIO_NUM >= 0)
-  // Touch (XPT2046) via software SPI so display and SD keep the two hardware
-  // buses. CYD pins: CLK=25, MOSI=32, MISO=39, CS=33 (from TFTPins.h).
-  xpt2046BitbangBegin();
-  tftTouch_ = (void *)1; // Signal LVGL to use bitbang in touch read callback
-  ESP_LOGI(TAG, "Touch (XPT2046 bitbang) initialized");
+  touchBegin();
+  if (touchIsActive()) {
+    tftTouch_ = (void *)1;
+    ESP_LOGI(TAG, "Touch (XPT2046 bitbang) initialized");
+  }
 #endif
 
   // Initialize LVGL
@@ -332,7 +185,7 @@ void ESPWiFi::initTFT() {
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_display(indev, disp);
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(indev, touchIndevReadCb);
+    lv_indev_set_read_cb(indev, touchIndevReadCbWrapper);
     lv_indev_set_user_data(indev, tftTouch_);
     ESP_LOGI(TAG, "Touch input device registered");
   }

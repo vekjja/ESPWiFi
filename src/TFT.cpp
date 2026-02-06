@@ -12,10 +12,16 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "jpeg_decoder.h"
 #include "lvgl.h"
 #include "src/draw/sw/lv_draw_sw_utils.h"
 #include "ui/ui.h"
+#include <cerrno>
+#include <cstdio>
 
 static const char *TAG = "TFT";
 
@@ -41,6 +47,160 @@ static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
 }
 
 static uint32_t lastTickMs = 0;
+
+// -----------------------------------------------------------------------------
+// XPT2046 software (bitbang) SPI - for CYD when display and SD use the two
+// hardware SPI buses. Based on XPT2046_Bitbang_Slim / ESP32-CYD 8-Buttons
+// example.
+// -----------------------------------------------------------------------------
+#if (TOUCH_CS_GPIO_NUM >= 0)
+static constexpr uint8_t kCmdReadX = 0x91;
+static constexpr uint8_t kCmdReadY = 0xD1;
+static constexpr uint8_t kCmdReadZ1 = 0xB1;
+static constexpr uint8_t kCmdReadZ2 = 0xC1;
+static constexpr int kBitbangDelayUs = 5;
+// Idle/noise: only report touch when z exceeds this (tune per panel)
+static constexpr uint16_t kTouchPressureThreshold = 400;
+// Require this many consecutive "pressed" samples before reporting touch
+static constexpr unsigned kTouchDebounceCount = 2;
+
+static inline void bitbangDelay() { esp_rom_delay_us(kBitbangDelayUs); }
+
+static void xpt2046BitbangWrite(uint8_t cmd) {
+  for (int i = 7; i >= 0; i--) {
+    gpio_set_level((gpio_num_t)TOUCH_SPI_MOSI_GPIO_NUM, (cmd >> i) & 1);
+    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
+    bitbangDelay();
+    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 1);
+    bitbangDelay();
+  }
+  gpio_set_level((gpio_num_t)TOUCH_SPI_MOSI_GPIO_NUM, 0);
+  gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
+}
+
+// Sample MISO after CLK goes low (matches Arduino XPT2046_Bitbang library)
+static uint16_t xpt2046BitbangRead(uint8_t cmd) {
+  xpt2046BitbangWrite(cmd);
+  uint16_t result = 0;
+  for (int i = 15; i >= 0; i--) {
+    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 1);
+    bitbangDelay();
+    gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
+    bitbangDelay();
+    result |= (uint16_t)gpio_get_level((gpio_num_t)TOUCH_SPI_MISO_GPIO_NUM)
+              << i;
+  }
+  return result >> 4;
+}
+
+struct TouchPoint {
+  int32_t x;
+  int32_t y;
+  bool pressed;
+};
+
+static TouchPoint xpt2046BitbangGetTouch() {
+  TouchPoint out = {0, 0, false};
+  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 0);
+  uint16_t z1 = xpt2046BitbangRead(kCmdReadZ1);
+  uint16_t z2 = xpt2046BitbangRead(kCmdReadZ2);
+  uint16_t z = z1 + 4095 - z2;
+  if (z < kTouchPressureThreshold) {
+    gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
+    return out;
+  }
+  uint16_t xRaw = xpt2046BitbangRead(kCmdReadX);
+  uint16_t yRaw = xpt2046BitbangRead(kCmdReadY & 0xFE);
+  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
+
+  // Map 0..4095 to 0..(kW-1) and 0..(kH-1). Panel has swap_xy + mirror.
+  int32_t tx = (int32_t)xRaw * (kW - 1) / 4095;
+  int32_t ty = (int32_t)yRaw * (kH - 1) / 4095;
+  if (tx < 0)
+    tx = 0;
+  if (tx >= kW)
+    tx = kW - 1;
+  if (ty < 0)
+    ty = 0;
+  if (ty >= kH)
+    ty = kH - 1;
+  // Swap XY and mirror to match display orientation (portrait, swap_xy, mirror)
+  out.x = (kH - 1) - ty;
+  out.y = (kW - 1) - tx;
+  out.pressed = true;
+  return out;
+}
+
+static bool xpt2046BitbangInited = false;
+
+static void xpt2046BitbangBegin() {
+  gpio_config_t io = {};
+  io.pin_bit_mask = (1ULL << TOUCH_SPI_MOSI_GPIO_NUM) |
+                    (1ULL << TOUCH_SPI_SCK_GPIO_NUM) |
+                    (1ULL << TOUCH_CS_GPIO_NUM);
+  io.mode = GPIO_MODE_OUTPUT;
+  io.pull_up_en = GPIO_PULLUP_DISABLE;
+  io.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  io.intr_type = GPIO_INTR_DISABLE;
+  gpio_config(&io);
+  io.pin_bit_mask = (1ULL << TOUCH_SPI_MISO_GPIO_NUM);
+  io.mode = GPIO_MODE_INPUT;
+  gpio_config(&io);
+  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
+  gpio_set_level((gpio_num_t)TOUCH_SPI_SCK_GPIO_NUM, 0);
+  xpt2046BitbangInited = true;
+
+  // Diagnostic: read once with screen not touched (expect low z)
+  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 0);
+  uint16_t z1 = xpt2046BitbangRead(kCmdReadZ1);
+  uint16_t z2 = xpt2046BitbangRead(kCmdReadZ2);
+  uint16_t z = z1 + 4095 - z2;
+  uint16_t xR = xpt2046BitbangRead(kCmdReadX);
+  uint16_t yR = xpt2046BitbangRead(kCmdReadY & 0xFE);
+  gpio_set_level((gpio_num_t)TOUCH_CS_GPIO_NUM, 1);
+  ESP_LOGI(
+      TAG,
+      "Touch init: z1=%u z2=%u z=%u xRaw=%u yRaw=%u (no touch; threshold=%u)",
+      (unsigned)z1, (unsigned)z2, (unsigned)z, (unsigned)xR, (unsigned)yR,
+      (unsigned)kTouchPressureThreshold);
+}
+#endif
+
+// Debounce: require consecutive pressed samples before reporting touch
+static unsigned s_touchConsecutivePressed = 0;
+static int32_t s_touchLastX = 0, s_touchLastY = 0;
+
+// Touch read callback for LVGL. user_data: (void*)1 = bitbang, else unused.
+static void touchIndevReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
+#if (TOUCH_CS_GPIO_NUM >= 0)
+  if (xpt2046BitbangInited) {
+    TouchPoint p = xpt2046BitbangGetTouch();
+    if (p.pressed) {
+      s_touchLastX = p.x;
+      s_touchLastY = p.y;
+      if (s_touchConsecutivePressed < 255)
+        s_touchConsecutivePressed++;
+      if (s_touchConsecutivePressed >= kTouchDebounceCount) {
+        data->point.x = p.x;
+        data->point.y = p.y;
+        data->state = LV_INDEV_STATE_PRESSED;
+        ESP_LOGI(TAG, "Touch (%ld, %ld)", (long)p.x, (long)p.y);
+      } else {
+        data->point.x = s_touchLastX;
+        data->point.y = s_touchLastY;
+        data->state = LV_INDEV_STATE_RELEASED;
+      }
+    } else {
+      s_touchConsecutivePressed = 0;
+      data->point.x = s_touchLastX;
+      data->point.y = s_touchLastY;
+      data->state = LV_INDEV_STATE_RELEASED;
+    }
+    return;
+  }
+#endif
+  data->state = LV_INDEV_STATE_RELEASED;
+}
 } // namespace
 
 void ESPWiFi::initTFT() {
@@ -144,6 +304,14 @@ void ESPWiFi::initTFT() {
 
   ESP_LOGI(TAG, "Panel initialized");
 
+#if (TOUCH_CS_GPIO_NUM >= 0)
+  // Touch (XPT2046) via software SPI so display and SD keep the two hardware
+  // buses. CYD pins: CLK=25, MOSI=32, MISO=39, CS=33 (from TFTPins.h).
+  xpt2046BitbangBegin();
+  tftTouch_ = (void *)1; // Signal LVGL to use bitbang in touch read callback
+  ESP_LOGI(TAG, "Touch (XPT2046 bitbang) initialized");
+#endif
+
   // Initialize LVGL
   lv_init();
 
@@ -160,16 +328,18 @@ void ESPWiFi::initTFT() {
   lv_display_set_buffers(disp, buf1, buf2, buf_size * sizeof(uint16_t),
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-  // Draw "Hello world" label
-  // lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000),
-  //                           LV_PART_MAIN);
-
-  // In SquareLine Studio: File → Export → Export UI Files to src/ui/
-  ui_init();
+  if (tftTouch_) {
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_display(indev, disp);
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, touchIndevReadCb);
+    lv_indev_set_user_data(indev, tftTouch_);
+    ESP_LOGI(TAG, "Touch input device registered");
+  }
 
   ESP_LOGI(TAG, "LVGL initialized");
 
-  // NOW turn on backlight - display is fully configured
+  // Backlight on before boot animation so video is visible
   if (TFT_BL_GPIO_NUM >= 0) {
     gpio_config_t io_conf = {};
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -178,6 +348,172 @@ void ESPWiFi::initTFT() {
     gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 1);
     tftBacklightOn_ = true;
     ESP_LOGI(TAG, "Backlight ON");
+  }
+
+  // Play boot video (or default splash) before loading main UI so it isn't
+  // overwritten
+  playBootAnimation();
+
+  // Now load SquareLine UI (File → Export → Export UI Files to src/ui/)
+  ui_init();
+  registerUiEventHandlers();
+}
+
+// LVGL click callback for ui_WiFiButton (user_data = ESPWiFi*)
+static void on_ui_WiFiButton_clicked(lv_event_t *e) {
+  void *ud = lv_event_get_user_data(e);
+  if (ud)
+    static_cast<ESPWiFi *>(ud)->onUiWiFiButtonClicked();
+}
+
+void ESPWiFi::registerUiEventHandlers() {
+  if (ui_WiFiButton) {
+    lv_obj_add_event_cb(ui_WiFiButton, on_ui_WiFiButton_clicked,
+                        LV_EVENT_CLICKED, this);
+  }
+}
+
+void ESPWiFi::onUiWiFiButtonClicked() {
+  ESP_LOGI(TAG, "WiFi button pressed");
+  // Add your logic here (e.g. toggle WiFi, open settings).
+}
+
+bool ESPWiFi::playMJPG(const std::string &filepath) {
+  if (filepath.empty())
+    return false;
+  std::string fullPath = resolvePathOnSD(filepath);
+  initSDCard();
+  FILE *f = fopen(fullPath.c_str(), "rb");
+  if (!f) {
+    if (sdCard == nullptr) {
+      vTaskDelay(pdMS_TO_TICKS(400));
+      initSDCard();
+      f = fopen(fullPath.c_str(), "rb");
+    }
+    if (!f) {
+      ESP_LOGW(TAG, "playMJPG: cannot open %s (errno=%d)", fullPath.c_str(),
+               errno);
+      return false;
+    }
+  }
+
+  esp_lcd_panel_handle_t panel = (esp_lcd_panel_handle_t)tftPanel_;
+  if (!panel) {
+    fclose(f);
+    return false;
+  }
+
+  constexpr size_t kJpegMax = 96 * 1024;
+  constexpr size_t kRgb565Size = (size_t)kW * kH * 2;
+  constexpr size_t kRgb888Size = (size_t)kW * kH * 3;
+  uint8_t *jpegBuf = (uint8_t *)heap_caps_malloc(kJpegMax, MALLOC_CAP_INTERNAL);
+  uint8_t *rgb888Buf =
+      (uint8_t *)heap_caps_malloc(kRgb888Size, MALLOC_CAP_INTERNAL);
+  uint8_t *rgbBuf = (uint8_t *)heap_caps_malloc(kRgb565Size, MALLOC_CAP_DMA);
+  if (!jpegBuf || !rgb888Buf || !rgbBuf) {
+    if (jpegBuf)
+      free(jpegBuf);
+    if (rgb888Buf)
+      free(rgb888Buf);
+    if (rgbBuf)
+      free(rgbBuf);
+    fclose(f);
+    return false;
+  }
+
+  constexpr size_t kJpegWorkBuf = 3100;
+  uint8_t *workBuf =
+      (uint8_t *)heap_caps_malloc(kJpegWorkBuf, MALLOC_CAP_INTERNAL);
+  if (!workBuf) {
+    free(jpegBuf);
+    free(rgb888Buf);
+    free(rgbBuf);
+    fclose(f);
+    return false;
+  }
+
+  constexpr uint32_t kFrameDelayMs = 50;
+  int framesShown = 0;
+
+  while (true) {
+    int c = fgetc(f);
+    if (c != 0xFF) {
+      if (c == EOF)
+        break;
+      continue;
+    }
+    if (fgetc(f) != 0xD8)
+      continue;
+    jpegBuf[0] = 0xFF;
+    jpegBuf[1] = 0xD8;
+    size_t len = 2;
+    while (len < kJpegMax) {
+      int b = fgetc(f);
+      if (b == EOF)
+        break;
+      jpegBuf[len++] = (uint8_t)b;
+      if (len >= 4 && jpegBuf[len - 2] == 0xFF && jpegBuf[len - 1] == 0xD9)
+        break;
+    }
+    if (len < 4 || jpegBuf[len - 2] != 0xFF || jpegBuf[len - 1] != 0xD9)
+      continue;
+
+    esp_jpeg_image_cfg_t jpeg_cfg = {};
+    jpeg_cfg.indata = jpegBuf;
+    jpeg_cfg.indata_size = len;
+    jpeg_cfg.outbuf = rgb888Buf;
+    jpeg_cfg.outbuf_size = kRgb888Size;
+    jpeg_cfg.out_format = JPEG_IMAGE_FORMAT_RGB888;
+    jpeg_cfg.out_scale = JPEG_IMAGE_SCALE_0;
+    jpeg_cfg.flags.swap_color_bytes = 0;
+    jpeg_cfg.advanced.working_buffer = workBuf;
+    jpeg_cfg.advanced.working_buffer_size = kJpegWorkBuf;
+
+    esp_jpeg_image_output_t out_info;
+    if (esp_jpeg_decode(&jpeg_cfg, &out_info) != ESP_OK)
+      continue;
+
+    uint32_t w = out_info.width;
+    uint32_t h = out_info.height;
+    if (w > (uint32_t)kW)
+      w = kW;
+    if (h > (uint32_t)kH)
+      h = kH;
+    if (w == 0 || h == 0)
+      continue;
+
+    const uint32_t npx = w * h;
+    const uint8_t *src = rgb888Buf;
+    uint16_t *dst = (uint16_t *)rgbBuf;
+    for (uint32_t i = 0; i < npx; i++) {
+      uint16_t r = src[0] >> 3, g = src[1] >> 2, b = src[2] >> 3;
+      *dst++ = (r << 11) | (g << 5) | b;
+      src += 3;
+    }
+    lv_draw_sw_rgb565_swap(rgbBuf, npx);
+    esp_lcd_panel_draw_bitmap(panel, 0, 0, (int)w, (int)h, rgbBuf);
+    framesShown++;
+    vTaskDelay(pdMS_TO_TICKS(kFrameDelayMs));
+  }
+
+  free(workBuf);
+  free(jpegBuf);
+  free(rgb888Buf);
+  free(rgbBuf);
+  fclose(f);
+  return framesShown > 0;
+}
+
+void ESPWiFi::playBootAnimation() {
+  const char *path = nullptr;
+  if (config["tft"]["bootVideo"].is<const char *>())
+    path = config["tft"]["bootVideo"].as<const char *>();
+  if (!path || path[0] == '\0')
+    return;
+
+  ESP_LOGI(TAG, "Boot video: %s", path);
+  if (!playMJPG(path)) {
+    ESP_LOGW(TAG, "Boot video failed: %s", path);
   }
 }
 
@@ -206,4 +542,8 @@ void ESPWiFi::renderTFT() {
 #else
 void ESPWiFi::initTFT() {}
 void ESPWiFi::renderTFT() {}
+void ESPWiFi::playBootAnimation() {}
+bool ESPWiFi::playMJPG(const std::string &) { return false; }
+void ESPWiFi::registerUiEventHandlers() {}
+void ESPWiFi::onUiWiFiButtonClicked() {}
 #endif

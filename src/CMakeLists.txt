@@ -22,7 +22,7 @@ foreach(_flags_var IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
 endforeach()
 
 if(ESPWiFi_HAS_TFT)
-    list(APPEND COMPONENT_REQUIRES esp_lcd esp_lcd_touch_xpt2046)
+    list(APPEND COMPONENT_REQUIRES esp_lcd esp_jpeg)
 endif()
 
 # Add Camera dependencies when a camera model is selected (via -DESPWiFi_CAMERA_MODEL_*)

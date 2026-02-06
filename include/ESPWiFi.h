@@ -130,6 +130,14 @@ public:
   // ---- TFT + Touch (optional; ESP-IDF esp_lcd based)
   void initTFT();
   void renderTFT();
+  void playBootAnimation();
+  /** Play MJPEG from file (path relative to SD or full path). Returns true if
+   * >= 1 frame played. */
+  bool playMJPG(const std::string &filepath);
+  /** Register LVGL event callbacks for SquareLine UI (called after ui_init). */
+  void registerUiEventHandlers();
+  /** Called when Screen1 WiFiButton is pressed. Override or add logic here. */
+  void onUiWiFiButtonClicked();
 #if ESPWiFi_HAS_TFT
   // Public accessors for TFT internals (useful for other modules).
   // These are intentionally untyped (void*) to avoid pulling esp_lcd headers
@@ -178,6 +186,9 @@ public:
   bool fileExists(const std::string &fullPath);
   bool dirExists(const std::string &fullPath);
   bool mkDir(const std::string &fullPath);
+  /** If path is not already under sdMountPoint, prepends it (for SD card
+   * paths). */
+  std::string resolvePathOnSD(const std::string &path);
   std::string getQueryParam(httpd_req_t *req, const char *key);
   std::string urlDecode(const std::string &encoded);
 

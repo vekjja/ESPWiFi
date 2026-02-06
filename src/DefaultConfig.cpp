@@ -91,6 +91,9 @@ JsonDocument ESPWiFi::defaultConfig() {
 #if ESPWiFi_HAS_TFT
   doc["tft"]["installed"] = true;
   doc["tft"]["enabled"] = true;
+  // Path to boot video on SD (MJPEG file). Empty = default splash. Convert MP4
+  // with: ffmpeg -i boot.mp4 -c:v mjpeg -q:v 5 -s 240x320 boot.mjpg
+  doc["tft"]["bootVideo"] = "/movies/guitar.mjpg";
 #else
   doc["tft"]["installed"] = false;
   doc["tft"]["enabled"] = false;

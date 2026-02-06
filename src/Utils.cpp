@@ -121,6 +121,26 @@ bool ESPWiFi::mkDir(const std::string &fullPath) {
   return dirExists(fullPath);
 }
 
+std::string ESPWiFi::resolvePathOnSD(const std::string &path) {
+  if (path.empty()) {
+    return sdMountPoint;
+  }
+  if (path.size() >= sdMountPoint.size() &&
+      path.compare(0, sdMountPoint.size(), sdMountPoint) == 0) {
+    char next =
+        (path.size() > sdMountPoint.size()) ? path[sdMountPoint.size()] : '\0';
+    if (next == '/' || next == '\0') {
+      return path;
+    }
+  }
+  std::string out = sdMountPoint;
+  if (path[0] != '/') {
+    out += '/';
+  }
+  out += path;
+  return out;
+}
+
 std::string ESPWiFi::getQueryParam(httpd_req_t *req, const char *key) {
   size_t buf_len = httpd_req_get_url_query_len(req) + 1;
   if (buf_len > 1) {

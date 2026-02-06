@@ -1,10 +1,8 @@
 dependencies:
+  espressif/esp_jpeg: ">=1.0.0"
   espressif/mdns: ">=1.2.0"
   # Pin to avoid newer versions that assume esp_transport WS redirect APIs that
-  # PlatformIO's ESP-IDF bundle may not provide.
   espressif/esp_websocket_client: "1.5.0"
-  # Touch driver (XPT2046) compatible with esp_lcd_touch API
-  atanisoft/esp_lcd_touch_xpt2046: "~1.0.0"
   # ILI9341 panel driver (works for many ST7789 displays too)
   espressif/esp_lcd_ili9341: ">=1.0.0"
   lvgl/lvgl:

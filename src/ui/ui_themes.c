@@ -8,7 +8,7 @@
 const ui_theme_variable_t _ui_theme_color_Background[2] = {0x0B0B0B, 0x0B0B0B};
 const ui_theme_variable_t _ui_theme_alpha_Background[2] = {255, 255};
 
-const ui_theme_variable_t _ui_theme_color_Primary[2] = {0x47FFF0, 0x47FFF0};
+const ui_theme_variable_t _ui_theme_color_Primary[2] = {0x0CC3A2, 0x0CC3A2};
 const ui_theme_variable_t _ui_theme_alpha_Primary[2] = {255, 255};
 
 const ui_theme_variable_t _ui_theme_color_Error[2] = {0xC50003, 0xC50003};

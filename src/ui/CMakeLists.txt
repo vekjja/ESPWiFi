@@ -1,4 +1,6 @@
-SET(SOURCES screens/ui_Screen1.c
+SET(SOURCES components/ui_comp_button1.c
+    components/ui_comp.c
+    screens/ui_Screen1.c
     ui_theme_manager.c
     ui_themes.c
     ui.c

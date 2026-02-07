@@ -136,8 +136,6 @@ public:
   bool playMJPG(const std::string &filepath);
   /** Register LVGL event callbacks for SquareLine UI (called after ui_init). */
   void registerUiEventHandlers();
-  /** Called when Screen1 WiFiButton is pressed. Override or add logic here. */
-  void onUiWiFiButtonClicked();
 #if ESPWiFi_HAS_TFT
   // Public accessors for TFT internals (useful for other modules).
   // These are intentionally untyped (void*) to avoid pulling esp_lcd headers

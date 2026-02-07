@@ -215,20 +215,18 @@ void ESPWiFi::initTFT() {
 // LVGL click callback for ui_WiFiButton (user_data = ESPWiFi*)
 static void on_ui_WiFiButton_clicked(lv_event_t *e) {
   void *ud = lv_event_get_user_data(e);
-  if (ud)
-    static_cast<ESPWiFi *>(ud)->onUiWiFiButtonClicked();
+  if (ud) {
+    ESPWiFi *espwifi = static_cast<ESPWiFi *>(ud);
+    ESP_LOGI(TAG, "WiFi button pressed");
+  }
 }
 
 void ESPWiFi::registerUiEventHandlers() {
   if (ui_WiFiButton) {
+    ESP_LOGI(TAG, "Registering UI event handler for WiFi button");
     lv_obj_add_event_cb(ui_WiFiButton, on_ui_WiFiButton_clicked,
                         LV_EVENT_CLICKED, this);
   }
-}
-
-void ESPWiFi::onUiWiFiButtonClicked() {
-  ESP_LOGI(TAG, "WiFi button pressed");
-  // Add your logic here (e.g. toggle WiFi, open settings).
 }
 
 bool ESPWiFi::playMJPG(const std::string &filepath) {

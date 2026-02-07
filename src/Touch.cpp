@@ -89,22 +89,31 @@ static TouchPoint getTouch() {
   if (!raw.pressed)
     return out;
 
-  // Map raw 0..4095 to display 0..(kW-1), 0..(kH-1). Mirror X and Y so (0,0) =
-  // top-left.
+  // Portrait: display X = 0..239 (short axis), Y = 0..319 (long axis). Top-left
+  // origin. Map raw 0..4095 -> display size, then mirror to match panel
+  // orientation. CYD (2432S028R) in portrait: touch connector X/Y often swapped
+  // vs display axes
+#if defined(ESPWiFi_TFT_MODEL_ESP32_2432S028R)
+  int32_t tx =
+      (int32_t)raw.yRaw * (kW - 1) / 4095; // touch Y -> display X (240)
+  int32_t ty =
+      (int32_t)raw.xRaw * (kH - 1) / 4095; // touch X -> display Y (320)
+#else
   int32_t tx = (int32_t)raw.xRaw * (kW - 1) / 4095;
   int32_t ty = (int32_t)raw.yRaw * (kH - 1) / 4095;
-  int32_t dx = (kW - 1) - tx;
-  int32_t dy = (kH - 1) - ty;
-  if (dx < 0)
-    dx = 0;
-  if (dx >= kW)
-    dx = kW - 1;
-  if (dy < 0)
-    dy = 0;
-  if (dy >= kH)
-    dy = kH - 1;
+#endif
+  int32_t dx = (kW - 1) - tx; // mirror X
+  int32_t dy = ty;            // Y not mirrored (portrait)
   out.x = dx;
   out.y = dy;
+  if (out.x < 0)
+    out.x = 0;
+  if (out.x >= kW)
+    out.x = kW - 1;
+  if (out.y < 0)
+    out.y = 0;
+  if (out.y >= kH)
+    out.y = kH - 1;
   out.pressed = true;
   return out;
 }

@@ -5,13 +5,13 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_SettingsButton = NULL;
+lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_WiFiSettingsButton = NULL;
 // event funtions
-void ui_event_SettingsButton( lv_event_t * e) {
+void ui_event_WiFiSettingsButton( lv_event_t * e) {
     lv_event_code_t event_code = lv_event_get_code(e);
 
 if ( event_code == LV_EVENT_CLICKED) {
-      _ui_screen_change( &ui_SettingsScreen, LV_SCR_LOAD_ANIM_NONE, 500, 0, &ui_SettingsScreen_screen_init);
+      _ui_screen_change( &ui_WiFiSettingsScreen, LV_SCR_LOAD_ANIM_NONE, 500, 0, &ui_WiFiSettingsScreen_screen_init);
 }
 }
 
@@ -35,15 +35,16 @@ ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT
 ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Primary);
 lv_obj_set_style_text_font(ui_Label1, &lv_font_montserrat_36, LV_PART_MAIN| LV_STATE_DEFAULT);
 
-ui_SettingsButton = lv_imagebutton_create(ui_MainScreen);
-lv_imagebutton_set_src(ui_SettingsButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_settings_png, NULL);
-lv_obj_set_width( ui_SettingsButton, 48);
-lv_obj_set_height( ui_SettingsButton, 48);
-lv_obj_set_x( ui_SettingsButton, -84 );
-lv_obj_set_y( ui_SettingsButton, 120 );
-lv_obj_set_align( ui_SettingsButton, LV_ALIGN_CENTER );
+ui_WiFiSettingsButton = lv_imagebutton_create(ui_MainScreen);
+lv_imagebutton_set_src(ui_WiFiSettingsButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_wifi_off_png, NULL);
+lv_imagebutton_set_src(ui_WiFiSettingsButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL, &ui_img_wifi_on_png, NULL);
+lv_obj_set_width( ui_WiFiSettingsButton, 48);
+lv_obj_set_height( ui_WiFiSettingsButton, 48);
+lv_obj_set_x( ui_WiFiSettingsButton, -84 );
+lv_obj_set_y( ui_WiFiSettingsButton, 120 );
+lv_obj_set_align( ui_WiFiSettingsButton, LV_ALIGN_CENTER );
 
-lv_obj_add_event_cb(ui_SettingsButton, ui_event_SettingsButton, LV_EVENT_ALL, NULL);
+lv_obj_add_event_cb(ui_WiFiSettingsButton, ui_event_WiFiSettingsButton, LV_EVENT_ALL, NULL);
 
 }
 
@@ -54,6 +55,6 @@ void ui_MainScreen_screen_destroy(void)
 // NULL screen variables
 ui_MainScreen= NULL;
 ui_Label1= NULL;
-ui_SettingsButton= NULL;
+ui_WiFiSettingsButton= NULL;
 
 }

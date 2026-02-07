@@ -249,11 +249,14 @@ public:
   void startMDNS();
   void stopMDNS();
   void startClient();
+  void updateWiFiInfo(std::string info = "");
   int selectBestChannel();
   void wifiConfigHandler();
   std::string getHostname();
   std::string genHostname();
   std::string ipAddress();
+  /** MAC address as "AA:BB:CC:DD:EE:FF", or empty on failure. */
+  std::string getMacAddress();
   void setHostname(std::string hostname);
 
   // ---- HTTP server / routes

@@ -20,20 +20,7 @@ JsonDocument ESPWiFi::buildInfoJson(bool yieldForWatchdog) {
   // IP address
   jsonDoc["ip"] = ipAddress();
 
-  // MAC address - try WiFi interface first, fallback to reading MAC directly
-  uint8_t mac[6];
-  esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
-  if (mac_ret != ESP_OK) {
-    mac_ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  }
-  if (mac_ret == ESP_OK) {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0],
-             mac[1], mac[2], mac[3], mac[4], mac[5]);
-    jsonDoc["mac"] = std::string(macStr);
-  } else {
-    jsonDoc["mac"] = "";
-  }
+  jsonDoc["mac"] = getMacAddress();
 
   // Hostname
   std::string hostname = getHostname();

@@ -2,11 +2,9 @@
 #ifndef ESPWiFi_AUTH
 #define ESPWiFi_AUTH
 #include "ESPWiFi.h"
-#include "esp_mac.h"
-#include "esp_wifi.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
-#include <iomanip>
+#include <algorithm>
 #include <sstream>
 #include <vector>
 
@@ -14,24 +12,10 @@ bool ESPWiFi::authEnabled() { return config["auth"]["enabled"].as<bool>(); }
 
 std::string ESPWiFi::generateToken() {
   // Generate a simple token from MAC address + timestamp
-  // In production, you might want a more secure token generation
-  uint8_t mac[6];
-  esp_err_t mac_ret = esp_wifi_get_mac(WIFI_IF_STA, mac);
-  if (mac_ret != ESP_OK) {
-    // Fallback: read MAC directly from hardware
-    mac_ret = esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  }
-
-  std::string macStr;
-  if (mac_ret == ESP_OK) {
-    // Format MAC without colons
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (int i = 0; i < 6; i++) {
-      ss << std::setw(2) << (int)mac[i];
-    }
-    macStr = ss.str();
-  } else {
+  std::string macStr = getMacAddress();
+  // Strip colons for compact token
+  macStr.erase(std::remove(macStr.begin(), macStr.end(), ':'), macStr.end());
+  if (macStr.empty()) {
     macStr = "000000000000";
   }
 
@@ -100,9 +84,9 @@ bool ESPWiFi::authorized(httpd_req_t *req) {
     return false;
   }
 
-  // Browser navigations (window.open, <img>, <audio>, etc.) cannot attach custom
-  // Authorization headers. Allow passing the bearer token via `?token=...`.
-  // This is also used by WebSocket endpoints for auth.
+  // Browser navigations (window.open, <img>, <audio>, etc.) cannot attach
+  // custom Authorization headers. Allow passing the bearer token via
+  // `?token=...`. This is also used by WebSocket endpoints for auth.
   const std::string tokenParam = getQueryParam(req, "token");
   if (!tokenParam.empty() && tokenParam == expectedToken) {
     return true;

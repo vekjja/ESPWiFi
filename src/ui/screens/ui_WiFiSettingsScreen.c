@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_SettingsScreen = NULL;lv_obj_t *ui_Label2 = NULL;lv_obj_t *ui_HomeButton = NULL;lv_obj_t *ui_WiFiButton = NULL;lv_obj_t *ui_BluetoothButton = NULL;
+lv_obj_t *ui_WiFiSettingsScreen = NULL;lv_obj_t *ui_Label2 = NULL;lv_obj_t *ui_HomeButton = NULL;lv_obj_t *ui_WiFiButton = NULL;lv_obj_t *ui_WiFiInfoLabel = NULL;
 // event funtions
 void ui_event_HomeButton( lv_event_t * e) {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -17,25 +17,25 @@ if ( event_code == LV_EVENT_CLICKED) {
 
 // build funtions
 
-void ui_SettingsScreen_screen_init(void)
+void ui_WiFiSettingsScreen_screen_init(void)
 {
-ui_SettingsScreen = lv_obj_create(NULL);
-lv_obj_remove_flag( ui_SettingsScreen, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
-ui_object_set_themeable_style_property(ui_SettingsScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
-ui_object_set_themeable_style_property(ui_SettingsScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
+ui_WiFiSettingsScreen = lv_obj_create(NULL);
+lv_obj_remove_flag( ui_WiFiSettingsScreen, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
+ui_object_set_themeable_style_property(ui_WiFiSettingsScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
+ui_object_set_themeable_style_property(ui_WiFiSettingsScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
 
-ui_Label2 = lv_label_create(ui_SettingsScreen);
+ui_Label2 = lv_label_create(ui_WiFiSettingsScreen);
 lv_obj_set_width( ui_Label2, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Label2, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_Label2, 0 );
 lv_obj_set_y( ui_Label2, -123 );
 lv_obj_set_align( ui_Label2, LV_ALIGN_CENTER );
-lv_label_set_text(ui_Label2,"Settings");
+lv_label_set_text(ui_Label2,"WiFi");
 ui_object_set_themeable_style_property(ui_Label2, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Primary);
 ui_object_set_themeable_style_property(ui_Label2, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Primary);
 lv_obj_set_style_text_font(ui_Label2, &lv_font_montserrat_36, LV_PART_MAIN| LV_STATE_DEFAULT);
 
-ui_HomeButton = lv_imagebutton_create(ui_SettingsScreen);
+ui_HomeButton = lv_imagebutton_create(ui_WiFiSettingsScreen);
 lv_imagebutton_set_src(ui_HomeButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_home_png, NULL);
 lv_obj_set_width( ui_HomeButton, 48);
 lv_obj_set_height( ui_HomeButton, 48);
@@ -43,37 +43,39 @@ lv_obj_set_x( ui_HomeButton, -84 );
 lv_obj_set_y( ui_HomeButton, 120 );
 lv_obj_set_align( ui_HomeButton, LV_ALIGN_CENTER );
 
-ui_WiFiButton = lv_imagebutton_create(ui_SettingsScreen);
+ui_WiFiButton = lv_imagebutton_create(ui_WiFiSettingsScreen);
 lv_imagebutton_set_src(ui_WiFiButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_wifi_off_png, NULL);
 lv_imagebutton_set_src(ui_WiFiButton, LV_IMAGEBUTTON_STATE_CHECKED_PRESSED, NULL, &ui_img_wifi_on_png, NULL);
 lv_imagebutton_set_src(ui_WiFiButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL, &ui_img_wifi_on_png, NULL);
 lv_obj_set_width( ui_WiFiButton, 48);
 lv_obj_set_height( ui_WiFiButton, 48);
-lv_obj_set_x( ui_WiFiButton, -48 );
-lv_obj_set_y( ui_WiFiButton, 0 );
+lv_obj_set_x( ui_WiFiButton, 84 );
+lv_obj_set_y( ui_WiFiButton, 120 );
 lv_obj_set_align( ui_WiFiButton, LV_ALIGN_CENTER );
 
-ui_BluetoothButton = lv_imagebutton_create(ui_SettingsScreen);
-lv_imagebutton_set_src(ui_BluetoothButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_bluetooth_1_png, NULL);
-lv_obj_set_width( ui_BluetoothButton, 48);
-lv_obj_set_height( ui_BluetoothButton, 50);
-lv_obj_set_x( ui_BluetoothButton, 48 );
-lv_obj_set_y( ui_BluetoothButton, 0 );
-lv_obj_set_align( ui_BluetoothButton, LV_ALIGN_CENTER );
+ui_WiFiInfoLabel = lv_label_create(ui_WiFiSettingsScreen);
+lv_obj_set_width( ui_WiFiInfoLabel, 198);
+lv_obj_set_height( ui_WiFiInfoLabel, 193);
+lv_obj_set_align( ui_WiFiInfoLabel, LV_ALIGN_CENTER );
+lv_label_set_text(ui_WiFiInfoLabel,"");
+lv_obj_add_flag( ui_WiFiInfoLabel, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_WITH_ARROW );   /// Flags
+lv_obj_remove_flag( ui_WiFiInfoLabel, LV_OBJ_FLAG_SCROLL_MOMENTUM );    /// Flags
+ui_object_set_themeable_style_property(ui_WiFiInfoLabel, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Text);
+ui_object_set_themeable_style_property(ui_WiFiInfoLabel, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Text);
 
 lv_obj_add_event_cb(ui_HomeButton, ui_event_HomeButton, LV_EVENT_ALL, NULL);
 
 }
 
-void ui_SettingsScreen_screen_destroy(void)
+void ui_WiFiSettingsScreen_screen_destroy(void)
 {
-   if (ui_SettingsScreen) lv_obj_del(ui_SettingsScreen);
+   if (ui_WiFiSettingsScreen) lv_obj_del(ui_WiFiSettingsScreen);
 
 // NULL screen variables
-ui_SettingsScreen= NULL;
+ui_WiFiSettingsScreen= NULL;
 ui_Label2= NULL;
 ui_HomeButton= NULL;
 ui_WiFiButton= NULL;
-ui_BluetoothButton= NULL;
+ui_WiFiInfoLabel= NULL;
 
 }

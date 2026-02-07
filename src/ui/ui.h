@@ -13,15 +13,13 @@ extern "C" {
     #include "lvgl.h"
 
 #include "ui_helpers.h"
-#include "components/ui_comp.h"
-#include "components/ui_comp_hook.h"
 #include "ui_events.h"
 #include "ui_theme_manager.h"
 #include "ui_themes.h"
 
 ///////////////////// SCREENS ////////////////////
 #include "screens/ui_MainScreen.h"
-#include "screens/ui_SettingsScreen.h"
+#include "screens/ui_WiFiSettingsScreen.h"
 
 ///////////////////// VARIABLES ////////////////////
 
@@ -29,11 +27,9 @@ extern "C" {
 extern lv_obj_t *ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE( ui_img_settings_png);   // assets/settings.png
-LV_IMG_DECLARE( ui_img_home_png);   // assets/home.png
 LV_IMG_DECLARE( ui_img_wifi_off_png);   // assets/wifi_off.png
 LV_IMG_DECLARE( ui_img_wifi_on_png);   // assets/wifi_on.png
-LV_IMG_DECLARE( ui_img_bluetooth_1_png);   // assets/bluetooth_1.png
+LV_IMG_DECLARE( ui_img_home_png);   // assets/home.png
 
 // UI INIT
 void ui_init(void);

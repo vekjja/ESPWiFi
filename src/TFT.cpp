@@ -52,6 +52,7 @@ static uint32_t lastTickMs = 0;
 // Wrapper with LVGL callback signature so lv_indev_set_read_cb accepts it
 static void touchIndevReadCbWrapper(lv_indev_t *indev, lv_indev_data_t *data) {
   touchIndevReadCb(indev, data);
+  vTaskDelay(pdMS_TO_TICKS(1)); // yield after touch read so watchdog can be fed
 }
 #endif
 } // namespace
@@ -217,22 +218,30 @@ static void on_ui_WiFiButton_clicked(lv_event_t *e) {
   void *ud = lv_event_get_user_data(e);
   if (ud) {
     ESPWiFi *espwifi = static_cast<ESPWiFi *>(ud);
+    espwifi->feedWatchDog();
+    espwifi->updateWiFiInfo("Updating WiFi...");
+    if (ui_WiFiInfoLabel) {
+      lv_obj_invalidate(ui_WiFiInfoLabel);
+    }
+    for (int i = 0; i < 3; i++) {
+      espwifi->renderTFT();
+      espwifi->feedWatchDog(20);
+    }
     ESP_LOGI(TAG, "WiFi button pressed");
     espwifi->toggleWiFi();
+    espwifi->feedWatchDog();
     // set button to checked if WiFi is on (wifi_on icon), unchecked if off
     if (espwifi->isWiFiInitialized()) {
       lv_obj_add_state(ui_WiFiButton, LV_STATE_CHECKED);
+      lv_obj_add_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
+      espwifi->feedWatchDog();
     } else {
       lv_obj_remove_state(ui_WiFiButton, LV_STATE_CHECKED);
+      lv_obj_remove_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
+      espwifi->feedWatchDog();
     }
-  }
-}
-
-static void on_ui_BluetoothButton_clicked(lv_event_t *e) {
-  void *ud = lv_event_get_user_data(e);
-  if (ud) {
-    (void)static_cast<ESPWiFi *>(ud);
-    ESP_LOGI(TAG, "Bluetooth button pressed");
+    espwifi->feedWatchDog();
+    espwifi->updateWiFiInfo();
   }
 }
 
@@ -242,10 +251,35 @@ void ESPWiFi::registerUiEventHandlers() {
     lv_obj_add_event_cb(ui_WiFiButton, on_ui_WiFiButton_clicked,
                         LV_EVENT_CLICKED, this);
   }
-  if (ui_BluetoothButton) {
-    ESP_LOGI(TAG, "Registering UI event handler for Back button");
-    lv_obj_add_event_cb(ui_BluetoothButton, on_ui_BluetoothButton_clicked,
-                        LV_EVENT_CLICKED, this);
+  updateWiFiInfo();
+}
+
+void ESPWiFi::updateWiFiInfo(std::string info) {
+  if (ui_WiFiInfoLabel) {
+    if (isWiFiInitialized()) {
+      feedWatchDog();
+      // add wifi info to label (combined so all show)
+      if (info.empty()) {
+        info = "Hostname:\n    " + getHostname() + "\n" + "\nMode:\n    " +
+               config["wifi"]["mode"].as<std::string>() + "\n" +
+               "\nIP Address:\n    " + ipAddress() + "\n" +
+               "\nMAC Address:\n    " + getMacAddress() + "\n" +
+               "\nClient SSID:\n    " +
+               config["wifi"]["client"]["ssid"].as<std::string>() + "\n" +
+               "\nClient Password:\n    " +
+               config["wifi"]["client"]["password"].as<std::string>();
+      }
+      feedWatchDog();
+      lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
+      feedWatchDog();
+    } else {
+      feedWatchDog();
+      if (info.empty()) {
+        info = "           DISABLED";
+      }
+      lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
+      feedWatchDog();
+    }
   }
 }
 
@@ -389,6 +423,8 @@ void ESPWiFi::playBootAnimation() {
 }
 
 void ESPWiFi::renderTFT() {
+  // Handle LVGL tasks (can be heavy; yield so watchdog is fed)
+  feedWatchDog();
   if (!tftInitialized) {
     initTFT();
     // Initialize tick counter after init
@@ -397,17 +433,19 @@ void ESPWiFi::renderTFT() {
     }
     return;
   }
-
+  feedWatchDog();
   // Update LVGL tick
   uint32_t nowMs = esp_timer_get_time() / 1000;
   uint32_t elapsed = nowMs - lastTickMs;
   if (elapsed > 0) {
     lv_tick_inc(elapsed);
     lastTickMs = nowMs;
+    feedWatchDog();
   }
 
-  // Handle LVGL tasks
-  lv_timer_handler();
+  feedWatchDog();
+  lv_timer_handler(); // runs touch + click callbacks + draw
+  feedWatchDog();     // yield after so IDLE can run and watchdog is fed
 }
 
 #else

@@ -15,8 +15,8 @@ extern void ui_MainScreen_screen_init(void);
 extern void ui_MainScreen_screen_destroy(void);
 extern lv_obj_t *ui_MainScreen;
 extern lv_obj_t *ui_Label1;
-extern void ui_event_SettingsButton( lv_event_t * e);
-extern lv_obj_t *ui_SettingsButton;
+extern void ui_event_WiFiSettingsButton( lv_event_t * e);
+extern lv_obj_t *ui_WiFiSettingsButton;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

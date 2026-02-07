@@ -12,12 +12,18 @@ void ESPWiFi::start() {
 }
 
 void ESPWiFi::runSystem() {
-  flushDeferredLog();   // Process deferred ESP-IDF log messages
-  handleConfigUpdate(); // Handle config updates from dashboard
-  checkSDCard();        // Check if SD card is present and mount it if it is
-  streamCamera();       // Stream camera frames to WebSocket clients
-  renderTFT();          // Render TFT UI + handle touch
-  feedWatchDog();       // Feed the watchdog to prevent it from timing out
+  feedWatchDog(
+      10); // Feed early so long-running work cannot starve the watchdog
+  flushDeferredLog();
+  feedWatchDog(1);
+  handleConfigUpdate();
+  feedWatchDog(1);
+  checkSDCard();
+  feedWatchDog(1);
+  streamCamera();
+  feedWatchDog(1);
+  renderTFT();      // can run click handlers and LVGL draw (long)
+  feedWatchDog(10); // Feed after render so next iteration is covered
 }
 
 #endif // ESPWiFi_DEVICE

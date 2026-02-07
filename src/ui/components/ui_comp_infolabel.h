@@ -3,12 +3,19 @@
 // LVGL version: 9.1.0
 // Project name: ESPWiFi
 
-#ifndef _UI_EVENTS_H
-#define _UI_EVENTS_H
+#ifndef _UI_COMP_INFOLABEL_H
+#define _UI_COMP_INFOLABEL_H
+
+#include "../ui.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// COMPONENT InfoLabel
+#define UI_COMP_INFOLABEL_INFOLABEL 0
+#define _UI_COMP_INFOLABEL_NUM 1
+lv_obj_t *ui_InfoLabel_create(lv_obj_t *comp_parent);
 
 #ifdef __cplusplus
 } /*extern "C"*/

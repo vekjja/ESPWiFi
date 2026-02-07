@@ -22,6 +22,9 @@
 #include "ui/ui.h"
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
 
 static const char *TAG = "TFT";
 
@@ -214,73 +217,220 @@ void ESPWiFi::initTFT() {
 }
 
 // LVGL click callback for ui_WiFiButton (user_data = ESPWiFi*)
-static void on_ui_WiFiButton_clicked(lv_event_t *e) {
+// static void ui_WiFiButtonClicked(lv_event_t *e) {
+//   void *ud = lv_event_get_user_data(e);
+//   if (ud) {
+//     ESPWiFi *espwifi = static_cast<ESPWiFi *>(ud);
+//     espwifi->feedWatchDog();
+//     espwifi->updateWiFiInfo("Updating WiFi...");
+//     if (ui_WiFiInfoLabel) {
+//       lv_obj_invalidate(ui_WiFiInfoLabel);
+//     }
+//     for (int i = 0; i < 3; i++) {
+//       espwifi->renderTFT();
+//       espwifi->feedWatchDog(20);
+//     }
+//     ESP_LOGI(TAG, "WiFi button pressed");
+//     espwifi->toggleWiFi();
+//     espwifi->feedWatchDog();
+//     // set button to checked if WiFi is on (wifi_on icon), unchecked if off
+//     if (espwifi->isWiFiInitialized()) {
+//       lv_obj_add_state(ui_WiFiButton, LV_STATE_CHECKED);
+//       lv_obj_add_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
+//       espwifi->feedWatchDog();
+//     } else {
+//       lv_obj_remove_state(ui_WiFiButton, LV_STATE_CHECKED);
+//       lv_obj_remove_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
+//       espwifi->feedWatchDog();
+//     }
+//     espwifi->feedWatchDog();
+//     espwifi->updateWiFiInfo();
+//   }
+// }
+
+static void ui_BluetootButtonClicked(lv_event_t *e) {
+  ESP_LOGI(TAG, "Bluetooth button pressed");
   void *ud = lv_event_get_user_data(e);
   if (ud) {
     ESPWiFi *espwifi = static_cast<ESPWiFi *>(ud);
     espwifi->feedWatchDog();
-    espwifi->updateWiFiInfo("Updating WiFi...");
-    if (ui_WiFiInfoLabel) {
-      lv_obj_invalidate(ui_WiFiInfoLabel);
-    }
-    for (int i = 0; i < 3; i++) {
-      espwifi->renderTFT();
-      espwifi->feedWatchDog(20);
-    }
-    ESP_LOGI(TAG, "WiFi button pressed");
-    espwifi->toggleWiFi();
+#ifdef CONFIG_BT_A2DP_ENABLE
+    espwifi->startBluetooth();
     espwifi->feedWatchDog();
-    // set button to checked if WiFi is on (wifi_on icon), unchecked if off
-    if (espwifi->isWiFiInitialized()) {
-      lv_obj_add_state(ui_WiFiButton, LV_STATE_CHECKED);
-      lv_obj_add_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
-      espwifi->feedWatchDog();
-    } else {
-      lv_obj_remove_state(ui_WiFiButton, LV_STATE_CHECKED);
-      lv_obj_remove_state(ui_WiFiSettingsButton, LV_STATE_CHECKED);
-      espwifi->feedWatchDog();
-    }
+    espwifi->startBluetoothScanAsync();
     espwifi->feedWatchDog();
-    espwifi->updateWiFiInfo();
+    if (espwifi->isBluetoothScanInProgress())
+      espwifi->updateBluetoothInfo("Scanning (9 s)...");
+    else
+      espwifi->updateBluetoothInfo();
+#else
+    espwifi->updateBluetoothInfo();
+#endif
   }
 }
 
+namespace {
+static std::vector<std::string> s_bt_dropdown_addresses;
+static bool s_bt_has_scanned_at_least_once = false;
+
+static void ui_BluetoothDropdownChanged(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code != LV_EVENT_VALUE_CHANGED)
+    return;
+  /* Use the dropdown we registered on; event target can be the list when
+   * user clicks an option, and get_selected() must be called on the dropdown.
+   */
+  if (!ui_BluetoothDropdown)
+    return;
+  ESPWiFi *espwifi = static_cast<ESPWiFi *>(lv_event_get_user_data(e));
+  if (!espwifi || s_bt_dropdown_addresses.empty())
+    return;
+  uint32_t sel = lv_dropdown_get_selected(ui_BluetoothDropdown);
+  if (sel >= s_bt_dropdown_addresses.size())
+    return;
+  const std::string &addr = s_bt_dropdown_addresses[sel];
+  if (!addr.empty())
+    espwifi->connectBluetooth(addr);
+}
+} // namespace
+
 void ESPWiFi::registerUiEventHandlers() {
-  if (ui_WiFiButton) {
-    ESP_LOGI(TAG, "Registering UI event handler for WiFi button");
-    lv_obj_add_event_cb(ui_WiFiButton, on_ui_WiFiButton_clicked,
-                        LV_EVENT_CLICKED, this);
-  }
+  // if (ui_WiFiButton) {
+  //   ESP_LOGI(TAG, "Registering UI event handler for WiFi button");
+  //   lv_obj_add_event_cb(ui_WiFiButton, ui_WiFiButtonClicked,
+  //   LV_EVENT_CLICKED,
+  //                       this);
+  // }
   updateWiFiInfo();
+  if (ui_BluetoothButton) {
+    ESP_LOGI(TAG, "Registering UI event handler for Bluetooth button");
+    lv_obj_add_event_cb(ui_BluetoothButton, ui_BluetootButtonClicked,
+                        LV_EVENT_CLICKED, this);
+    updateBluetoothInfo();
+  }
+  if (ui_BluetoothDropdown) {
+    lv_obj_add_event_cb(ui_BluetoothDropdown, ui_BluetoothDropdownChanged,
+                        LV_EVENT_VALUE_CHANGED, this);
+  }
 }
 
 void ESPWiFi::updateWiFiInfo(std::string info) {
-  if (ui_WiFiInfoLabel) {
-    if (isWiFiInitialized()) {
-      feedWatchDog();
-      // add wifi info to label (combined so all show)
-      if (info.empty()) {
-        info = "Hostname:\n    " + getHostname() + "\n" + "\nMode:\n    " +
-               config["wifi"]["mode"].as<std::string>() + "\n" +
-               "\nIP Address:\n    " + ipAddress() + "\n" +
-               "\nMAC Address:\n    " + getMacAddress() + "\n" +
-               "\nClient SSID:\n    " +
-               config["wifi"]["client"]["ssid"].as<std::string>() + "\n" +
-               "\nClient Password:\n    " +
-               config["wifi"]["client"]["password"].as<std::string>();
-      }
-      feedWatchDog();
-      lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
-      feedWatchDog();
+  // if (ui_WiFiInfoLabel) {
+  //   if (isWiFiInitialized()) {
+  //     feedWatchDog();
+  //     // add wifi info to label (combined so all show)
+  //     if (info.empty()) {
+  //       info = "Hostname:\n    " + getHostname() + "\n" + "\nMode:\n    " +
+  //              config["wifi"]["mode"].as<std::string>() + "\n" +
+  //              "\nIP Address:\n    " + ipAddress() + "\n" +
+  //              "\nMAC Address:\n    " + getMacAddress() + "\n" +
+  //              "\nClient SSID:\n    " +
+  //              config["wifi"]["client"]["ssid"].as<std::string>() + "\n" +
+  //              "\nClient Password:\n    " +
+  //              config["wifi"]["client"]["password"].as<std::string>();
+  //     }
+  //     feedWatchDog();
+  //     lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
+  //     feedWatchDog();
+  //   } else {
+  //     feedWatchDog();
+  //     if (info.empty()) {
+  //       info = "DISABLED";
+  //     }
+  //     lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
+  //     feedWatchDog();
+  //   }
+  // }
+}
+
+void ESPWiFi::updateBluetoothInfo(std::string info) {
+  if (!ui_BluetoothInfoLabel) {
+    return;
+  }
+  feedWatchDog();
+#ifdef CONFIG_BT_A2DP_ENABLE
+  if (!info.empty()) {
+    lv_label_set_text(ui_BluetoothInfoLabel, info.c_str());
+    if (ui_BluetoothDropdown) {
+      lv_dropdown_set_options(ui_BluetoothDropdown, "");
+      lv_dropdown_set_text(ui_BluetoothDropdown, "Devices");
+      s_bt_dropdown_addresses.clear();
+    }
+    feedWatchDog();
+    return;
+  }
+
+  std::string status;
+  if (!s_bt_has_scanned_at_least_once) {
+    status = "Put device in pairing mode and click the BT to scan";
+  } else if (connectBluetoothed) {
+    status = "Connected\n";
+  } else {
+    status = "Select device to connect";
+  }
+  lv_label_set_text(ui_BluetoothInfoLabel, status.c_str());
+
+  s_bt_dropdown_addresses.clear();
+  if (ui_BluetoothDropdown) {
+    std::string options;
+    size_t n = getDiscoveredDeviceCount();
+    /* First option is placeholder so selecting the only device triggers
+     * VALUE_CHANGED */
+    options = "Select device...";
+    s_bt_dropdown_addresses.push_back("");
+    for (size_t i = 0; i < n; i++) {
+      std::string addr = getDiscoveredDeviceAddress(i);
+      if (addr.empty())
+        continue;
+      std::string name = getDiscoveredDeviceName(i);
+      if (name.empty())
+        name = addr;
+      else
+        name = name + " (" + addr + ")";
+      options += "\n";
+      options += name;
+      s_bt_dropdown_addresses.push_back(addr);
+    }
+    if (s_bt_dropdown_addresses.size() <= 1u) {
+      options = "No devices";
+      s_bt_dropdown_addresses.clear();
+      lv_dropdown_set_options(ui_BluetoothDropdown, options.c_str());
     } else {
-      feedWatchDog();
-      if (info.empty()) {
-        info = "           DISABLED";
+      lv_dropdown_set_options(ui_BluetoothDropdown, options.c_str());
+      if (connectBluetoothed) {
+        const char *addr =
+            config["bluetooth"]["last_paired_address"].as<const char *>();
+        const char *name =
+            config["bluetooth"]["last_paired_name"].as<const char *>();
+        const char *display_name = (name && name[0]) ? name : addr;
+        if (addr && addr[0]) {
+          uint32_t idx = 0;
+          for (size_t i = 1; i < s_bt_dropdown_addresses.size(); i++) {
+            if (s_bt_dropdown_addresses[i] == addr) {
+              idx = (uint32_t)i;
+              break;
+            }
+          }
+          if (idx)
+            lv_dropdown_set_selected(ui_BluetoothDropdown, idx);
+          lv_dropdown_set_text(ui_BluetoothDropdown,
+                               display_name ? display_name : "Connected");
+        } else {
+          lv_dropdown_set_text(ui_BluetoothDropdown, "Connected");
+        }
+      } else {
+        lv_dropdown_set_selected(ui_BluetoothDropdown, 0);
+        /* Text shows "Select device..." from option 0 */
       }
-      lv_label_set_text(ui_WiFiInfoLabel, info.c_str());
-      feedWatchDog();
     }
   }
+#else
+  if (info.empty()) {
+    info = "Not available\n(Firmware built without A2DP support)";
+  }
+  lv_label_set_text(ui_BluetoothInfoLabel, info.c_str());
+#endif
+  feedWatchDog();
 }
 
 bool ESPWiFi::playMJPG(const std::string &filepath) {
@@ -443,6 +593,36 @@ void ESPWiFi::renderTFT() {
     feedWatchDog();
   }
 
+#ifdef CONFIG_BT_A2DP_ENABLE
+  if (getAndClearBluetoothScanCompleteFlag()) {
+    s_bt_has_scanned_at_least_once = true;
+    updateBluetoothInfo();
+  }
+  int btState = getAndClearPendingBluetoothConnectionState();
+  if (btState >= 0) {
+    connectBluetoothed = (btState == (int)ESP_A2D_CONNECTION_STATE_CONNECTED);
+    if (btState == (int)ESP_A2D_CONNECTION_STATE_CONNECTING)
+      log(INFO, "🛜 Bluetooth Connecting... 🔄");
+    else if (btState == (int)ESP_A2D_CONNECTION_STATE_CONNECTED) {
+      log(INFO, "🛜 Bluetooth Connected 🔗");
+      const char *attempt_addr =
+          config["bluetooth"]["last_connect_attempt_address"]
+              .as<const char *>();
+      if (attempt_addr && attempt_addr[0]) {
+        config["bluetooth"]["last_paired_address"] = attempt_addr;
+        const char *attempt_name =
+            config["bluetooth"]["last_connect_attempt_name"].as<const char *>();
+        config["bluetooth"]["last_paired_name"] =
+            attempt_name ? attempt_name : attempt_addr;
+        saveConfig();
+      }
+    } else if (btState == (int)ESP_A2D_CONNECTION_STATE_DISCONNECTED)
+      log(INFO, "🛜 Bluetooth Disconnected ⛓️‍💥");
+    else if (btState == (int)ESP_A2D_CONNECTION_STATE_DISCONNECTING)
+      log(INFO, "🛜 Bluetooth Disconnecting... ⏳");
+    updateBluetoothInfo();
+  }
+#endif
   feedWatchDog();
   lv_timer_handler(); // runs touch + click callbacks + draw
   feedWatchDog();     // yield after so IDLE can run and watchdog is fed
@@ -455,4 +635,5 @@ void ESPWiFi::playBootAnimation() {}
 bool ESPWiFi::playMJPG(const std::string &) { return false; }
 void ESPWiFi::registerUiEventHandlers() {}
 void ESPWiFi::onUiWiFiButtonClicked() {}
+void ESPWiFi::updateBluetoothInfo(std::string) {}
 #endif

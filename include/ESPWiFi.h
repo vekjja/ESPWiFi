@@ -23,8 +23,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// ESP-IDF
-#ifdef ESPWiFi_BT_ENABLED
+// ESP-IDF (esp_a2dp_api.h only exists when CONFIG_BT_A2DP_ENABLE is set in
+// sdkconfig)
+#if defined(ESPWiFi_BT_ENABLED) && defined(CONFIG_BT_A2DP_ENABLE)
 #include "esp_a2dp_api.h"
 #endif
 
@@ -250,6 +251,7 @@ public:
   void stopMDNS();
   void startClient();
   void updateWiFiInfo(std::string info = "");
+  void updateBluetoothInfo(std::string info = "");
   int selectBestChannel();
   void wifiConfigHandler();
   std::string getHostname();
@@ -410,10 +412,28 @@ public:
   bool btStarted = false;
   void startBluetooth();
   void stopBluetooth();
-  void scanBluetooth();
-  void connectBluetooth(const std::string &address);
+  /** Blocking scan for up to timeout_sec (max 12); populates device list. */
+  void scanBluetooth(int timeout_sec = 9);
+  /** Start a 9s scan in background; returns immediately. No-op if scan already
+   * running. */
+  void startBluetoothScanAsync();
+  bool isBluetoothScanInProgress() const;
+  /** True once when last async scan finished; clears flag. Call from UI to
+   * refresh. */
+  bool getAndClearBluetoothScanCompleteFlag();
+  /** Returns pending A2DP connection state (0–3) or -1; clears pending. */
+  int getAndClearPendingBluetoothConnectionState();
+  /** Connect by address "AA:BB:CC:DD:EE:FF", 1-based index, or name. */
+  void connectBluetooth(const std::string &nameOrNumberOrAddress);
+  size_t getDiscoveredDeviceCount() const;
+  std::string getDiscoveredDeviceName(size_t index) const;
+  std::string getDiscoveredDeviceAddress(size_t index) const;
+  int getDiscoveredDeviceRssi(size_t index) const;
   esp_err_t RegisterBluetoothHandlers();
   void UnregisterBluetoothHandlers();
+  /** If config has last_paired_address, prepend it to the device list when not
+   * already present. */
+  void ensureLastPairedInDeviceList();
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT

@@ -4,9 +4,16 @@
 
 SDCARD_MODEL_ESP32_2432S028R
 
-# Main task stack (SD card initialization + runtime)
-# Increased to avoid overflow when SD/logging are enabled.
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+# Main task stack (SD card + runtime); minimal to fit DRAM with WiFi+BT A2DP+LVGL
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
+
+# Task stacks and buffers reduced to fit DRAM (WiFi+BT A2DP+LVGL on classic ESP32, no PSRAM)
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2560
+CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=12
+CONFIG_MDNS_MAX_SERVICES=6
+CONFIG_MDNS_TASK_STACK_SIZE=2560
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=2560
 
 # -----------------------------------------------------------------------------
 # LVGL (keep DRAM footprint small)
@@ -26,10 +33,10 @@ CONFIG_LV_MEM_SIZE_KILOBYTES=0
 CONFIG_XPT2046_INTERRUPT_MODE=y
 CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=0
 # CONFIG_LV_USE_BUILTIN_MALLOC is not set
-CONFIG_LV_USE_PERF_MONITOR=y
+# CONFIG_LV_USE_PERF_MONITOR is not set
 # CONFIG_LV_BUILD_EXAMPLES is not set
 # CONFIG_LV_BUILD_DEMOS is not set
-CONFIG_LV_USE_SYSMON=y
+# CONFIG_LV_USE_SYSMON is not set
 
 
 # Default font
@@ -67,9 +74,13 @@ CONFIG_LV_FONT_MONTSERRAT_36=y
 # CONFIG_LV_FONT_UNSCII_16 is not set
 # end of Enable built-in fonts
 
-# Optimization (size optimized for Classic ESP32)
-# CONFIG_COMPILER_OPTIMIZATION_SIZE=y
-# CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
+# Optimization (size optimized for Classic ESP32; required to fit IRAM/DRAM with WiFi+BT A2DP+LVGL)
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
+# Free IRAM: WiFi and heap in flash (slight perf cost)
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
 
 # Partition Table
 # CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/espwifi_esp32.csv"
@@ -86,40 +97,38 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
 # Bluetooth (Classic / Bluedroid - A2DP Source)
 # ==========================================================
-# ESP32 (classic) supports both Classic Bluetooth and BLE, but not simultaneously
-# with the same stack. This project uses:
-# - Classic Bluetooth (Bluedroid) for A2DP audio output
-# - BLE is disabled when using Classic Bluetooth (mutual exclusion)
+# ESP32 (including 2432S028R/CYD) supports Classic BT and BLE, but not both
+# with the same stack. For A2DP audio (stream to BT speaker) use these settings.
 #
-# Note: If you need BLE provisioning instead of A2DP, you would need to:
-# 1. Disable Bluedroid: CONFIG_BT_BLUEDROID_ENABLED=n
-# 2. Enable NimBLE: CONFIG_BT_NIMBLE_ENABLED=y
-# 3. Disable A2DP: CONFIG_BT_A2DP_ENABLE=n
+# To use BLE provisioning instead: disable Bluedroid, enable NimBLE, disable A2DP.
 #
-# CONFIG_BT_ENABLED=y
-# CONFIG_BT_BLUEDROID_ENABLED=y
+CONFIG_BT_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=y
 # CONFIG_BT_NIMBLE_ENABLED is not set
 # CONFIG_BT_CONTROLLER_ONLY is not set
-# CONFIG_BT_CONTROLLER_ENABLED=y
+CONFIG_BT_CONTROLLER_ENABLED=y
 # CONFIG_BT_CONTROLLER_DISABLED is not set
 
-# CONFIG_BT_BTC_TASK_STACK_SIZE=3072
-# CONFIG_BT_BLUEDROID_PINNED_TO_CORE_0=y
+# BT task stacks (BTC_TASK overflows during discovery at 2560; use IDF-style defaults)
+CONFIG_BT_BTC_TASK_STACK_SIZE=3072
+CONFIG_BT_BLUEDROID_PINNED_TO_CORE_0=y
 # CONFIG_BT_BLUEDROID_PINNED_TO_CORE_1 is not set
-# CONFIG_BT_BLUEDROID_PINNED_TO_CORE=0
-# CONFIG_BT_BTU_TASK_STACK_SIZE=4352
+CONFIG_BT_BLUEDROID_PINNED_TO_CORE=0
+CONFIG_BT_BTU_TASK_STACK_SIZE=4352
 # CONFIG_BT_BLUEDROID_MEM_DEBUG is not set
 # CONFIG_BT_BLUEDROID_ESP_COEX_VSC=y
-# CONFIG_BT_CLASSIC_ENABLED=y
+
+# Classic Bluetooth (required for A2DP on ESP32 / 2432S028R)
+CONFIG_BT_CLASSIC_ENABLED=y
 # CONFIG_BT_ENC_KEY_SIZE_CTRL_VSC=y
 # CONFIG_BT_ENC_KEY_SIZE_CTRL_NONE is not set
 # CONFIG_BT_CLASSIC_BQB_ENABLED is not set
 
-# A2DP / AVRCP (required for ESP32-A2DP source)
-# CONFIG_BT_A2DP_ENABLE=y
+# A2DP + AVRCP + SMP (required for ESP32-A2DP source and pairing)
+CONFIG_BT_A2DP_ENABLE=y
 # CONFIG_BT_A2DP_USE_EXTERNAL_CODEC is not set
-# CONFIG_BT_AVRCP_ENABLED=y
-# CONFIG_BT_SMP_ENABLE=y
+CONFIG_BT_AVRCP_ENABLED=y
+CONFIG_BT_SMP_ENABLE=y
 
 # Explicitly disable non-audio BT profiles/features (RAM saver)
 # Keep: Classic BT + A2DP Source + AVRCP + SMP (pairing)
@@ -142,6 +151,8 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 # CONFIG_BT_BLE_SMP_ENABLE=n
 # CONFIG_BT_BLE_BLUFI_ENABLE=n
 
-# Controller mode: Classic only (saves RAM/flash)
-# CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
+# Controller: BR/EDR only, single ACL (A2DP source needs 1 connection; saves ~7KB+ DRAM)
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
 # CONFIG_BTDM_CTRL_MODE_BTDM is not set
+CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN=1
+CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN=0

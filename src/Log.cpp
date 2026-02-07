@@ -88,6 +88,10 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
       tagEquals(tag, tagLen, "sccb-ng") || tagEquals(tag, tagLen, "ov3660")) {
     return "📷";
   }
+  if (tagEquals(tag, tagLen, "BT_AV") || tagEquals(tag, tagLen, "BT_APP") ||
+      tagEquals(tag, tagLen, "BT_BTC")) {
+    return "🛜";
+  }
   if (tagEquals(tag, tagLen, "BTDM_INIT") || tagEquals(tag, tagLen, "BT") ||
       tagEquals(tag, tagLen, "BLE_INIT") || tagEquals(tag, tagLen, "NimBLE") ||
       tagEquals(tag, tagLen, "nimble")) {

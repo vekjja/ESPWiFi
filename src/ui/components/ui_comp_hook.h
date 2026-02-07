@@ -3,12 +3,15 @@
 // LVGL version: 9.1.0
 // Project name: ESPWiFi
 
-#ifndef _UI_EVENTS_H
-#define _UI_EVENTS_H
+#ifndef _ESPWIFI_UI_COMP_HOOK_H
+#define _ESPWIFI_UI_COMP_HOOK_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void ui_comp_HomeButton_create_hook( lv_obj_t *comp );
+void ui_comp_InfoLabel_create_hook( lv_obj_t *comp );
 
 #ifdef __cplusplus
 } /*extern "C"*/

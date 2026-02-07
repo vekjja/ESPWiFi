@@ -8,3 +8,11 @@
 void ui_comp_Button1_create_hook( lv_obj_t * comp)
 {
 }
+
+void ui_comp_HomeButton_create_hook( lv_obj_t * comp)
+{
+}
+
+void ui_comp_InfoLabel_create_hook( lv_obj_t * comp)
+{
+}

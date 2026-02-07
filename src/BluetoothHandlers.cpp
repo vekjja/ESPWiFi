@@ -1,6 +1,6 @@
 
 #include "ESPWiFi.h"
-#ifdef ESPWiFi_BT_ENABLED
+#if defined(ESPWiFi_BT_ENABLED) && defined(CONFIG_BT_A2DP_ENABLE)
 
 #ifndef ESPWiFi_BLUETOOTH_HANDLERS
 #define ESPWiFi_BLUETOOTH_HANDLERS
@@ -17,67 +17,61 @@
 
 static const char *BT_HANDLER_TAG = "ESPWiFi_BT_Handler";
 
+// Pending connection state: set from BT task callback, consumed on main loop
+// to avoid StoreProhibited (callback runs in library task with limited context).
+static volatile int s_pending_bt_connection_state = -1;
+
 // Forward declaration - a2dp_source is defined in Bluetooth.cpp
 extern BluetoothA2DPSource *a2dp_source;
 
 // ========== Bluetooth Event Handler Callbacks ==========
 
-// Connection state change callback (instance method)
+// Connection state change callback: only set pending state and log.
+// Main loop applies state (connectBluetoothed, updateBluetoothInfo) in renderTFT.
 void ESPWiFi::bluetoothConnectionSC(esp_a2d_connection_state_t state,
                                     void *obj) {
-  ESPWiFi_OBJ_CAST(obj);
-
+  (void)obj;
   const char *stateStr = "UNKNOWN";
   switch (state) {
   case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
     stateStr = "DISCONNECTED";
-    espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜 Bluetooth Disconnected ⛓️‍💥");
     break;
   case ESP_A2D_CONNECTION_STATE_CONNECTING:
     stateStr = "CONNECTING";
-    espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜 Bluetooth Connecting... 🔄");
     break;
   case ESP_A2D_CONNECTION_STATE_CONNECTED:
     stateStr = "CONNECTED";
-    espwifi->connectBluetoothed = true;
-    espwifi->log(INFO, "🛜 Bluetooth Connected 🔗");
     break;
   case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
     stateStr = "DISCONNECTING";
-    espwifi->connectBluetoothed = false;
-    espwifi->log(INFO, "🛜 Bluetooth Disconnecting... ⏳");
     break;
   default:
     break;
   }
-
   ESP_LOGI(BT_HANDLER_TAG, "Connection state: %s", stateStr);
+  s_pending_bt_connection_state = (int)state;
 }
 
-// Audio state change callback (instance method)
-void ESPWiFi::btAudioStateChange(esp_a2d_audio_state_t state, void *obj) {
-  ESPWiFi_OBJ_CAST(obj);
+int ESPWiFi::getAndClearPendingBluetoothConnectionState() {
+  int v = s_pending_bt_connection_state;
+  s_pending_bt_connection_state = -1;
+  return v;
+}
 
+// Audio state change callback: only log (no espwifi access to avoid crash in library task).
+void ESPWiFi::btAudioStateChange(esp_a2d_audio_state_t state, void *obj) {
+  (void)obj;
   const char *stateStr = "UNKNOWN";
   switch (state) {
-    //   case ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND:
-    //     stateStr = "REMOTE_SUSPEND";
-    //     espwifi->log(INFO, "🛜⏸️ Bluetooth Audio Suspended (Remote)");
-    //     break;
   case ESP_A2D_AUDIO_STATE_STOPPED:
     stateStr = "STOPPED";
-    espwifi->log(INFO, "🛜⏹️ Bluetooth Audio Stopped");
     break;
   case ESP_A2D_AUDIO_STATE_STARTED:
     stateStr = "STARTED";
-    espwifi->log(INFO, "🛜▶️ Bluetooth Audio Started");
     break;
   default:
     break;
   }
-
   ESP_LOGI(BT_HANDLER_TAG, "Audio state: %s", stateStr);
 }
 
@@ -115,18 +109,17 @@ void ESPWiFi::UnregisterBluetoothHandlers() {
   }
 }
 
-// Static wrapper functions to forward to instance methods
-// These match the callback signature expected by the library
+// Static wrapper functions (callbacks run in library app task; keep them minimal).
 void ESPWiFi::bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
                                           void *obj) {
-  ESPWiFi_OBJ_CAST(obj);
-  espwifi->bluetoothConnectionSC(state, obj);
+  if (obj)
+    static_cast<ESPWiFi *>(obj)->bluetoothConnectionSC(state, obj);
 }
 
 void ESPWiFi::btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj) {
-  ESPWiFi_OBJ_CAST(obj);
-  espwifi->btAudioStateChange(state, obj);
+  if (obj)
+    static_cast<ESPWiFi *>(obj)->btAudioStateChange(state, obj);
 }
 
 #endif // ESPWiFi_BLUETOOTH_HANDLERS
-#endif // CONFIG_BT_A2DP_ENABLE
+#endif // ESPWiFi_BT_ENABLED && CONFIG_BT_A2DP_ENABLE

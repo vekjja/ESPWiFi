@@ -12,8 +12,8 @@ void ESPWiFi::start() {
 }
 
 void ESPWiFi::runSystem() {
-  feedWatchDog(
-      10); // Feed early so long-running work cannot starve the watchdog
+  // Feed early so long-running work cannot starve the watchdog
+  feedWatchDog();
   flushDeferredLog();
   feedWatchDog(1);
   handleConfigUpdate();
@@ -22,8 +22,8 @@ void ESPWiFi::runSystem() {
   feedWatchDog(1);
   streamCamera();
   feedWatchDog(1);
-  renderTFT();      // can run click handlers and LVGL draw (long)
-  feedWatchDog(10); // Feed after render so next iteration is covered
+  renderTFT();    // can run click handlers and LVGL draw (long)
+  feedWatchDog(); // Feed after render so next iteration is covered
 }
 
 #endif // ESPWiFi_DEVICE

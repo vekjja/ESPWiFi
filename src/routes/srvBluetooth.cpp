@@ -25,7 +25,7 @@ void ESPWiFi::srvBluetooth() {
   registerRoute("/api/bt/scan", HTTP_POST,
                 [](ESPWiFi *espwifi, httpd_req_t *req,
                    const std::string &clientInfo) -> esp_err_t {
-                  espwifi->scanBluetooth();
+                  espwifi->scanBluetooth(9);
                   return espwifi->sendJsonResponse(
                       req, 200, "{\"status\":\"Success\"}", &clientInfo);
                 });

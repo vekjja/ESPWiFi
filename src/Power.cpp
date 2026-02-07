@@ -59,20 +59,20 @@ void ESPWiFi::applyWiFiPowerSettings() {
   // Validate and clamp to hardware limits
   if (txPowerDbm < 2.0) {
     log(WARNING,
-        "🔋 WiFi Power: TX power %.1f dBm below minimum, clamping to 2 dBm",
+        "📶🔋 WiFi Power: TX power %.1f dBm below minimum, clamping to 2 dBm",
         txPowerDbm);
     txPowerDbm = 2.0;
   } else if (txPowerDbm > 20.0 && txPowerDbm <= 21.0) {
     // Ultra mode: 20.5-21 dBm
     log(WARNING,
-        "⚠️ 🔋 WiFi Power: ULTRA MODE %.1f dBm - Exceeds regulatory limits! "
+        "📶🔋 WiFi Power: ULTRA MODE %.1f dBm - Exceeds regulatory limits! "
         "Use only in shielded lab environment. May cause interference and "
         "hardware degradation.",
         txPowerDbm);
   } else if (txPowerDbm > 21.0) {
     // Beyond hardware maximum - clamp and warn
     log(WARNING,
-        "🔋 WiFi Power: TX power %.1f dBm exceeds hardware maximum, "
+        "📶🔋 WiFi Power: TX power %.1f dBm exceeds hardware maximum, "
         "clamping to 21 dBm",
         txPowerDbm);
     txPowerDbm = 21.0;
@@ -92,7 +92,7 @@ void ESPWiFi::applyWiFiPowerSettings() {
   esp_err_t err = esp_wifi_set_max_tx_power(txPowerQuarters);
   if (err != ESP_OK) {
     // Non-critical failure - WiFi will use default power
-    log(WARNING, "🔋 WiFi Power: Failed to set TX power: %s",
+    log(WARNING, "📶🔋 WiFi Power: Failed to set TX power: %s",
         esp_err_to_name(err));
   } else {
     // Read back actual applied power from driver to verify
@@ -100,22 +100,23 @@ void ESPWiFi::applyWiFiPowerSettings() {
     esp_err_t readErr = esp_wifi_get_max_tx_power(&appliedPower);
     if (readErr == ESP_OK) {
       double actualPowerDbm = appliedPower / 4.0;
-      log(INFO, "🔋 WiFi Power: TX power set to %.1f dBm (requested: %.1f dBm)",
+      log(INFO,
+          "📶🔋 WiFi Power: TX power set to %.1f dBm (requested: %.1f dBm)",
           actualPowerDbm, txPowerDbm);
-      log(DEBUG, "🔋\tRaw driver value: %d quarter-dBm units", appliedPower);
+      log(DEBUG, "📶🔋\tRaw driver value: %d quarter-dBm units", appliedPower);
 
       double difference = std::abs(actualPowerDbm - txPowerDbm);
       if (difference > 0.5) {
         log(WARNING,
-            "🔋 WiFi Power: Applied power differs from requested by %.1f dBm "
+            "📶🔋 WiFi Power: Applied power differs from requested by %.1f dBm "
             "(hardware limitation)",
             difference);
       }
     } else {
       // Fallback if read fails
       double requestedPower = txPowerQuarters / 4.0;
-      log(INFO, "🔋 WiFi Power: Current TX: %.1f dBm", requestedPower);
-      log(WARNING, "🔋\tFailed to read back power from driver: %s",
+      log(INFO, "📶🔋 WiFi Power: Current TX: %.1f dBm", requestedPower);
+      log(WARNING, "📶🔋\tFailed to read back power from driver: %s",
           esp_err_to_name(readErr));
     }
     anySettingApplied = true;
@@ -139,7 +140,7 @@ void ESPWiFi::applyWiFiPowerSettings() {
     psType = WIFI_PS_MAX_MODEM;
     psDescription = "maximum modem sleep (lowest power)";
   } else if (powerSaveMode != "none") {
-    log(WARNING, "🔋 WiFi Power: Invalid power save mode '%s', using 'none'",
+    log(WARNING, "📶🔋 WiFi Power: Invalid power save mode '%s', using 'none'",
         powerSaveMode.c_str());
     // Continue with WIFI_PS_NONE (already set)
   }
@@ -148,17 +149,17 @@ void ESPWiFi::applyWiFiPowerSettings() {
   if (err != ESP_OK) {
     // Log as WARNING since WiFi should be initialized at this point
     log(WARNING,
-        "🔋 WiFi Power: Failed to set power save mode: %s (will use default)",
+        "📶🔋 WiFi Power: Failed to set power save mode: %s (will use default)",
         esp_err_to_name(err));
   } else {
-    log(INFO, "🔋 WiFi Power: Power Save Mode: %s", psDescription);
+    log(INFO, "📶🔋 WiFi Power: Power Save Mode: %s", psDescription);
     anySettingApplied = true;
   }
 
   // ---- Summary ----
   if (!anySettingApplied) {
     log(DEBUG,
-        "🔋 WiFi Power: Settings not applied (WiFi may not be initialized)");
+        "📶🔋 WiFi Power: Settings not applied (WiFi may not be initialized)");
   }
 }
 
@@ -247,7 +248,7 @@ void ESPWiFi::powerConfigHandler() {
   bool powerSaveChanged = (currentPowerSave != lastPowerSave);
 
   if (txPowerChanged || powerSaveChanged) {
-    log(INFO, "🔋 WiFi TX Power Changed:  %.1f dBm → %.1f dBm", lastTxPower,
+    log(INFO, "📶🔋 WiFi TX Power Changed:  %.1f dBm → %.1f dBm", lastTxPower,
         currentTxPower);
 
     if (powerSaveChanged) {
@@ -264,7 +265,7 @@ void ESPWiFi::powerConfigHandler() {
           return "unknown";
         }
       };
-      log(DEBUG, "🔋\tPower Save: %s → %s", psToStr(lastPowerSave),
+      log(DEBUG, "📶🔋\tPower Save: %s → %s", psToStr(lastPowerSave),
           psToStr(currentPowerSave));
     }
 

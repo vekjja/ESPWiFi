@@ -218,6 +218,21 @@ static void on_ui_WiFiButton_clicked(lv_event_t *e) {
   if (ud) {
     ESPWiFi *espwifi = static_cast<ESPWiFi *>(ud);
     ESP_LOGI(TAG, "WiFi button pressed");
+    espwifi->toggleWiFi();
+    // set button to checked if WiFi is on (wifi_on icon), unchecked if off
+    if (espwifi->isWiFiInitialized()) {
+      lv_obj_add_state(ui_WiFiButton, LV_STATE_CHECKED);
+    } else {
+      lv_obj_remove_state(ui_WiFiButton, LV_STATE_CHECKED);
+    }
+  }
+}
+
+static void on_ui_BluetoothButton_clicked(lv_event_t *e) {
+  void *ud = lv_event_get_user_data(e);
+  if (ud) {
+    (void)static_cast<ESPWiFi *>(ud);
+    ESP_LOGI(TAG, "Bluetooth button pressed");
   }
 }
 
@@ -225,6 +240,11 @@ void ESPWiFi::registerUiEventHandlers() {
   if (ui_WiFiButton) {
     ESP_LOGI(TAG, "Registering UI event handler for WiFi button");
     lv_obj_add_event_cb(ui_WiFiButton, on_ui_WiFiButton_clicked,
+                        LV_EVENT_CLICKED, this);
+  }
+  if (ui_BluetoothButton) {
+    ESP_LOGI(TAG, "Registering UI event handler for Back button");
+    lv_obj_add_event_cb(ui_BluetoothButton, on_ui_BluetoothButton_clicked,
                         LV_EVENT_CLICKED, this);
   }
 }

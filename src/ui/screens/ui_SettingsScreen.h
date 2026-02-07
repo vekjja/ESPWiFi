@@ -14,6 +14,7 @@ extern "C" {
 extern void ui_SettingsScreen_screen_init(void);
 extern void ui_SettingsScreen_screen_destroy(void);
 extern lv_obj_t *ui_SettingsScreen;
+extern lv_obj_t *ui_Label2;
 extern void ui_event_HomeButton( lv_event_t * e);
 extern lv_obj_t *ui_HomeButton;
 extern lv_obj_t *ui_WiFiButton;

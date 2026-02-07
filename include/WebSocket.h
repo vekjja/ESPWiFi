@@ -98,6 +98,9 @@ public:
   // Close all connections
   void closeAll();
 
+  // Unregister the WebSocket URI and clear state (e.g. before stopping server)
+  void end();
+
   // Get client FDs (for external management, e.g., CloudTunnel)
   const int *getClientFds() const { return clientFds_; }
 };

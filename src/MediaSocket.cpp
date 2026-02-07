@@ -426,3 +426,16 @@ void ESPWiFi::startMediaWebSocket() {
   log(INFO, "🎞️ Media WebSocket started: /ws/media");
 #endif
 }
+
+void ESPWiFi::stopMediaWebSocket() {
+#ifndef CONFIG_HTTPD_WS_SUPPORT
+  return;
+#else
+  if (!mediaSocStarted) {
+    return;
+  }
+  mediaSoc.end();
+  mediaSocStarted = false;
+  log(INFO, "🎞️ Media WebSocket stopped");
+#endif
+}

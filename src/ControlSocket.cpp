@@ -333,3 +333,16 @@ void ESPWiFi::startControlWebSocket() {
   log(INFO, "🎛️ Control WebSocket started: /ws/control");
 #endif
 }
+
+void ESPWiFi::stopControlWebSocket() {
+#ifndef CONFIG_HTTPD_WS_SUPPORT
+  return;
+#else
+  if (!ctrlSocStarted) {
+    return;
+  }
+  ctrlSoc.end();
+  ctrlSocStarted = false;
+  log(INFO, "🎛️ Control WebSocket stopped");
+#endif
+}

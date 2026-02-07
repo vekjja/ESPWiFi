@@ -25,6 +25,27 @@ static esp_netif_t *current_netif = nullptr;
 
 bool ESPWiFi::isWiFiInitialized() const { return wifi_initialized; }
 
+void ESPWiFi::toggleWiFi() {
+  if (isWiFiInitialized()) {
+    config["wifi"]["enabled"] = false;
+    stopMediaWebSocket();
+    stopControlWebSocket();
+    stopWebServer();
+    stopMDNS();
+    stopWiFi();
+  } else {
+    config["wifi"]["enabled"] = true;
+    initNVS();
+    startWiFi();
+    startMDNS();
+    startWebServer();
+    startControlWebSocket();
+    startMediaWebSocket();
+    srvAll();
+  }
+  saveConfig();
+}
+
 void ESPWiFi::wifiConfigHandler() {
   // Determine whether WiFi needs a restart based on changed settings.
   //

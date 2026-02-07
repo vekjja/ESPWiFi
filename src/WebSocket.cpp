@@ -197,11 +197,21 @@ esp_err_t WebSocket::handleWsRequest(httpd_req_t *req) {
 /**
  * @brief Destructor. Unregisters the URI handler when applicable.
  */
-WebSocket::~WebSocket() {
+WebSocket::~WebSocket() { end(); }
+
+/**
+ * @brief Unregister the WebSocket URI and clear state. Call before stopping
+ * the HTTP server so the handle remains valid for unregister.
+ */
+void WebSocket::end() {
 #ifdef CONFIG_HTTPD_WS_SUPPORT
   if (started_ && server_ != nullptr && uri_[0] != '\0') {
+    closeAll();
     (void)httpd_unregister_uri_handler(server_, uri_, HTTP_GET);
   }
+  started_ = false;
+  server_ = nullptr;
+  uri_[0] = '\0';
 #endif
 }
 

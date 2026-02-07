@@ -202,6 +202,20 @@ void ESPWiFi::startWebServer() {
   }
 }
 
+void ESPWiFi::stopWebServer() {
+  if (!webServerStarted || webServer == nullptr) {
+    return;
+  }
+  if (tlsServerEnabled_) {
+    httpd_ssl_stop(webServer);
+  } else {
+    httpd_stop(webServer);
+  }
+  webServer = nullptr;
+  webServerStarted = false;
+  log(INFO, "🗄️ Web Server stopped");
+}
+
 esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
   RouteCtx *ctx = (RouteCtx *)req->user_ctx;
   if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {

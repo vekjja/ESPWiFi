@@ -134,4 +134,9 @@ void ESPWiFi::startMDNS() {
   log(INFO, "🏷️\tServices: HTTP (80), WebSocket (80), Arduino OTA (3232)");
 }
 
+void ESPWiFi::stopMDNS() {
+  mdns_free();
+  log(INFO, "🏷️ mDNS: Stopped");
+}
+
 #endif // ESPWiFi_MDNS

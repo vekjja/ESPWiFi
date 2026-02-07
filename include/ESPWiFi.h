@@ -245,7 +245,9 @@ public:
   void startAP();
   void startWiFi();
   void stopWiFi();
+  void toggleWiFi();
   void startMDNS();
+  void stopMDNS();
   void startClient();
   int selectBestChannel();
   void wifiConfigHandler();
@@ -256,6 +258,7 @@ public:
 
   // ---- HTTP server / routes
   void startWebServer();
+  void stopWebServer();
   bool webServerStarted = false;
   httpd_handle_t webServer = nullptr;
 
@@ -320,9 +323,11 @@ public:
 
   // ---- Control WebSocket (LAN)
   void startControlWebSocket();
+  void stopControlWebSocket();
 
   // ---- Media WebSocket (for LAN media; camera streaming on request)
   void startMediaWebSocket();
+  void stopMediaWebSocket();
 
   // ---- Power Management
   void powerConfigHandler();

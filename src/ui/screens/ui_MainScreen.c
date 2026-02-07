@@ -28,7 +28,7 @@ ui_Label1 = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_Label1, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Label1, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_Label1, 0 );
-lv_obj_set_y( ui_Label1, -122 );
+lv_obj_set_y( ui_Label1, -123 );
 lv_obj_set_align( ui_Label1, LV_ALIGN_CENTER );
 lv_label_set_text(ui_Label1,"ESPWiFi");
 ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Primary);
@@ -39,6 +39,8 @@ ui_SettingsButton = lv_imagebutton_create(ui_MainScreen);
 lv_imagebutton_set_src(ui_SettingsButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_settings_png, NULL);
 lv_obj_set_width( ui_SettingsButton, 48);
 lv_obj_set_height( ui_SettingsButton, 48);
+lv_obj_set_x( ui_SettingsButton, -84 );
+lv_obj_set_y( ui_SettingsButton, 120 );
 lv_obj_set_align( ui_SettingsButton, LV_ALIGN_CENTER );
 
 lv_obj_add_event_cb(ui_SettingsButton, ui_event_SettingsButton, LV_EVENT_ALL, NULL);

@@ -1,0 +1,140 @@
+{
+  "deftheme": {
+    "name": "Default",
+    "properties": [
+      {
+        "nid": 1000412,
+        "strtype": "THEME_COLOR",
+        "strval": "Background",
+        "intarray": [
+          0,
+          0,
+          0,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000413,
+        "strtype": "THEME_COLOR",
+        "strval": "Primary",
+        "intarray": [
+          0,
+          212,
+          174,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000827,
+        "strtype": "THEME_COLOR",
+        "strval": "Error",
+        "intarray": [
+          226,
+          0,
+          68,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000828,
+        "strtype": "THEME_COLOR",
+        "strval": "Text",
+        "intarray": [
+          255,
+          255,
+          255,
+          255
+        ],
+        "InheritedType": 0
+      },
+      {
+        "nid": 1000912,
+        "strtype": "THEME_COLOR",
+        "strval": "Secondary",
+        "intarray": [
+          51,
+          51,
+          51,
+          255
+        ],
+        "InheritedType": 0
+      }
+    ]
+  },
+  "themes": [
+    {
+      "name": "ESPWiFi",
+      "properties": [
+        {
+          "nid": 1000412,
+          "flags": 2097152,
+          "strtype": "THEME_COLOR",
+          "strval": "Background",
+          "intarray": [
+            0,
+            0,
+            0,
+            255
+          ],
+          "InheritedType": 0
+        },
+        {
+          "nid": 1000413,
+          "flags": 2097152,
+          "strtype": "THEME_COLOR",
+          "strval": "Primary",
+          "intarray": [
+            0,
+            212,
+            174,
+            255
+          ],
+          "InheritedType": 0
+        },
+        {
+          "nid": 1000827,
+          "flags": 2097152,
+          "strtype": "THEME_COLOR",
+          "strval": "Error",
+          "intarray": [
+            226,
+            0,
+            68,
+            255
+          ],
+          "InheritedType": 0
+        },
+        {
+          "nid": 1000828,
+          "flags": 2097152,
+          "strtype": "THEME_COLOR",
+          "strval": "Text",
+          "intarray": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "InheritedType": 0
+        },
+        {
+          "nid": 1000912,
+          "flags": 2097152,
+          "strtype": "THEME_COLOR",
+          "strval": "Secondary",
+          "intarray": [
+            51,
+            51,
+            51,
+            255
+          ],
+          "InheritedType": 0
+        }
+      ]
+    }
+  ],
+  "selected_theme": "ESPWiFi"
+}

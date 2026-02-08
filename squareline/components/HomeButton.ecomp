@@ -1,0 +1,239 @@
+{
+  "guid": "GUID75921906-662984S676537",
+  "properties": [
+    {
+      "nid": 10,
+      "strtype": "OBJECT/Name",
+      "strval": "HomeButton",
+      "InheritedType": 10
+    },
+    {
+      "nid": 20,
+      "strtype": "OBJECT/Layout",
+      "InheritedType": 1
+    },
+    {
+      "Flow": 0,
+      "Wrap": false,
+      "Reversed": false,
+      "MainAlignment": 0,
+      "CrossAlignment": 0,
+      "TrackAlignment": 0,
+      "LayoutType": 0,
+      "nid": 30,
+      "strtype": "OBJECT/Layout_type",
+      "strval": "No_layout",
+      "InheritedType": 13
+    },
+    {
+      "nid": 40,
+      "strtype": "OBJECT/Transform",
+      "InheritedType": 1
+    },
+    {
+      "nid": 50,
+      "flags": 17,
+      "strtype": "OBJECT/Position",
+      "intarray": [
+        -81,
+        120
+      ],
+      "InheritedType": 7
+    },
+    {
+      "nid": 60,
+      "flags": 17,
+      "strtype": "OBJECT/Size",
+      "intarray": [
+        48,
+        48
+      ],
+      "InheritedType": 7
+    },
+    {
+      "nid": 70,
+      "strtype": "OBJECT/Align",
+      "strval": "CENTER",
+      "InheritedType": 3
+    },
+    {
+      "nid": 75,
+      "strtype": "OBJECT/Extend_click_area",
+      "InheritedType": 6
+    },
+    {
+      "nid": 90,
+      "flags": 1048576,
+      "strtype": "OBJECT/Flags",
+      "InheritedType": 1
+    },
+    {
+      "nid": 225,
+      "flags": 1048576,
+      "strtype": "OBJECT/Scrolling",
+      "InheritedType": 1
+    },
+    {
+      "nid": 300,
+      "strtype": "OBJECT/Scrollbar_mode",
+      "strval": "AUTO",
+      "InheritedType": 3
+    },
+    {
+      "nid": 310,
+      "strtype": "OBJECT/Scroll_direction",
+      "strval": "ALL",
+      "InheritedType": 3
+    },
+    {
+      "nid": 314,
+      "strtype": "OBJECT/Scroll_snap_x",
+      "strval": "NONE",
+      "InheritedType": 3
+    },
+    {
+      "nid": 315,
+      "strtype": "OBJECT/Scroll_snap_y",
+      "strval": "NONE",
+      "InheritedType": 3
+    },
+    {
+      "nid": 320,
+      "flags": 1048576,
+      "strtype": "OBJECT/States",
+      "InheritedType": 1
+    },
+    {
+      "nid": 1010,
+      "strtype": "IMGBUTTON/Images",
+      "InheritedType": 1
+    },
+    {
+      "nid": 1020,
+      "strtype": "IMGBUTTON/Button_state",
+      "strval": "RELEASED",
+      "InheritedType": 3
+    },
+    {
+      "nid": 1030,
+      "strtype": "IMGBUTTON/Image_released",
+      "strval": "assets/home.png",
+      "InheritedType": 5
+    },
+    {
+      "nid": 1040,
+      "strtype": "IMGBUTTON/Image_pressed",
+      "strval": "",
+      "InheritedType": 5
+    },
+    {
+      "nid": 1050,
+      "strtype": "IMGBUTTON/Image_disabled",
+      "strval": "",
+      "InheritedType": 5
+    },
+    {
+      "nid": 1060,
+      "strtype": "IMGBUTTON/Image_checked_released",
+      "strval": "",
+      "InheritedType": 5
+    },
+    {
+      "nid": 1070,
+      "strtype": "IMGBUTTON/Image_checked_pressed",
+      "strval": "",
+      "InheritedType": 5
+    },
+    {
+      "nid": 1080,
+      "strtype": "IMGBUTTON/Image_checked_disabled",
+      "strval": "",
+      "InheritedType": 5
+    },
+    {
+      "part": "lv.PART.MAIN",
+      "childs": [],
+      "nid": 1090,
+      "strtype": "IMGBUTTON/Style_main",
+      "strval": "lv.PART.MAIN, Rectangle, Image, Text, Transform",
+      "InheritedType": 11
+    },
+    {
+      "disabled": false,
+      "nid": 1000869,
+      "strtype": "_event/EventHandler",
+      "strval": "CLICKED",
+      "childs": [
+        {
+          "nid": 1000870,
+          "strtype": "_event/name",
+          "strval": "Event2",
+          "InheritedType": 10
+        },
+        {
+          "nid": 1000871,
+          "strtype": "_event/condition_C",
+          "strval": "",
+          "InheritedType": 10
+        },
+        {
+          "nid": 1000872,
+          "strtype": "_event/condition_P",
+          "strval": "",
+          "InheritedType": 10
+        },
+        {
+          "nid": 1000873,
+          "strtype": "_event/action",
+          "strval": "CHANGE SCREEN",
+          "childs": [
+            {
+              "nid": 1000874,
+              "strtype": "CHANGE SCREEN/Name",
+              "strval": "CHANGE SCREEN",
+              "InheritedType": 10
+            },
+            {
+              "nid": 1000875,
+              "strtype": "CHANGE SCREEN/Call",
+              "strval": "ChangeScreen( <{Screen_to}>, lv.SCR_LOAD_ANIM.<{Fade_mode}>, <{Speed}>, <{Delay}>)",
+              "InheritedType": 10
+            },
+            {
+              "nid": 1000876,
+              "strtype": "CHANGE SCREEN/CallC",
+              "strval": "_ui_screen_change( &<{Screen_to}>, LV_SCR_LOAD_ANIM_<{Fade_mode}>, <{Speed}>, <{Delay}>, &<{Screen_to}>_screen_init);",
+              "InheritedType": 10
+            },
+            {
+              "nid": 1000877,
+              "strtype": "CHANGE SCREEN/Screen_to",
+              "strval": "GUID18182204-168073S542535",
+              "InheritedType": 9
+            },
+            {
+              "nid": 1000878,
+              "strtype": "CHANGE SCREEN/Fade_mode",
+              "strval": "MOVE_RIGHT",
+              "InheritedType": 3
+            },
+            {
+              "nid": 1000879,
+              "strtype": "CHANGE SCREEN/Speed",
+              "integer": 500,
+              "InheritedType": 6
+            },
+            {
+              "nid": 1000880,
+              "strtype": "CHANGE SCREEN/Delay",
+              "InheritedType": 6
+            }
+          ],
+          "InheritedType": 10
+        }
+      ],
+      "InheritedType": 4
+    }
+  ],
+  "saved_objtypeKey": "IMGBUTTON"
+}

@@ -434,6 +434,12 @@ public:
   /** If config has last_paired_address, prepend it to the device list when not
    * already present. */
   void ensureLastPairedInDeviceList();
+  /** Start streaming audio to the connected BT device (Play button). */
+  void startBluetoothStream();
+  /** Stop streaming audio to the connected BT device. */
+  void stopBluetoothStream();
+  /** True while streaming the MP3 file to the connected device. */
+  bool isBluetoothStreamPlaying() const;
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT

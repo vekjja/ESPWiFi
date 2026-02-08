@@ -8,14 +8,18 @@
 #include "BluetoothA2DPSource.h"
 #include "esp_gap_bt_api.h"
 #include "esp_log.h"
+#define MINIMP3_IMPLEMENTATION
+#define MINIMP3_NO_SIMD
+#include "minimp3.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <ctype.h>
 
 static const char *BT_TAG = "ESPWiFi_BT";
 
 /** Scan duration in seconds (ESP-IDF inquiry allows up to 12). */
-static constexpr int kBTScanDurationSec = 9;
+static constexpr int kBTScanDurationSec = 3;
 
 struct BTHost {
   std::string name;
@@ -62,9 +66,103 @@ static bool bt_scan_collector(const char *ssid, esp_bd_addr_t address,
   return false;
 }
 
-static int32_t get_data(uint8_t *data, int32_t len) {
-  memset(data, 0, len);
-  return len;
+/** When true, get_data_frames streams PCM; otherwise silence. */
+static volatile bool s_bt_stream_playing = false;
+
+/** Path to the MP3 file to play when Play is pressed (on SD card). */
+static const char *const kBTStreamMp3Path = "/sd/music/we r.mp3";
+
+/* Simple ring buffer for PCM samples. Decode task writes, callback reads. */
+#define PCM_RING_SIZE 4096
+static int16_t s_pcm_ring[PCM_RING_SIZE];
+static volatile int s_pcm_ring_read = 0;
+static volatile int s_pcm_ring_write = 0;
+static FILE *s_mp3_file = nullptr;
+static TaskHandle_t s_decode_task = nullptr;
+
+static int32_t get_data_frames(Frame *frame, int32_t frame_count) {
+  for (int32_t i = 0; i < frame_count; i++)
+    frame[i] = Frame(0);
+  if (!s_bt_stream_playing)
+    return frame_count;
+
+  int32_t out = 0;
+  while (out < frame_count && s_pcm_ring_read != s_pcm_ring_write) {
+    int16_t L = s_pcm_ring[s_pcm_ring_read];
+    s_pcm_ring_read = (s_pcm_ring_read + 1) % PCM_RING_SIZE;
+    int16_t R = s_pcm_ring[s_pcm_ring_read];
+    s_pcm_ring_read = (s_pcm_ring_read + 1) % PCM_RING_SIZE;
+    frame[out++] = Frame(L, R);
+  }
+  return frame_count;
+}
+
+static int pcm_ring_space() {
+  int r = s_pcm_ring_read;
+  int w = s_pcm_ring_write;
+  if (w >= r)
+    return PCM_RING_SIZE - (w - r) - 1;
+  return r - w - 1;
+}
+
+static void decode_task(void *arg) {
+  mp3dec_t dec;
+  mp3dec_init(&dec);
+  uint8_t mp3_buf[2048];
+  int16_t pcm_buf[MINIMP3_MAX_SAMPLES_PER_FRAME];
+
+  while (s_bt_stream_playing && s_mp3_file) {
+    int mp3_len = (int)fread(mp3_buf, 1, sizeof(mp3_buf), s_mp3_file);
+    if (mp3_len <= 0)
+      break;
+
+    int mp3_pos = 0;
+    while (mp3_pos < mp3_len && s_bt_stream_playing) {
+      mp3dec_frame_info_t info;
+      int samples = mp3dec_decode_frame(&dec, mp3_buf + mp3_pos,
+                                        mp3_len - mp3_pos, pcm_buf, &info);
+      if (samples <= 0 || info.frame_bytes <= 0)
+        break;
+      mp3_pos += info.frame_bytes;
+
+      int total = samples * info.channels;
+      if (info.channels == 1) {
+        for (int i = samples - 1; i >= 0; i--) {
+          pcm_buf[i * 2] = pcm_buf[i * 2 + 1] = pcm_buf[i];
+        }
+        total = samples * 2;
+      }
+
+      while (s_bt_stream_playing && pcm_ring_space() < total)
+        vTaskDelay(pdMS_TO_TICKS(5));
+
+      if (!s_bt_stream_playing)
+        break;
+
+      for (int i = 0; i < total; i++) {
+        s_pcm_ring[s_pcm_ring_write] = pcm_buf[i];
+        s_pcm_ring_write = (s_pcm_ring_write + 1) % PCM_RING_SIZE;
+      }
+    }
+  }
+  s_decode_task = nullptr;
+  vTaskDelete(nullptr);
+}
+
+static void bt_stream_cleanup() {
+  s_bt_stream_playing = false;
+  if (s_decode_task) {
+    vTaskDelay(pdMS_TO_TICKS(50));
+    if (s_decode_task)
+      vTaskDelete(s_decode_task);
+    s_decode_task = nullptr;
+  }
+  if (s_mp3_file) {
+    fclose(s_mp3_file);
+    s_mp3_file = nullptr;
+  }
+  s_pcm_ring_read = 0;
+  s_pcm_ring_write = 0;
 }
 
 static void button_handler(uint8_t key, bool isReleased) {
@@ -79,7 +177,7 @@ void ESPWiFi::startBluetooth() {
     s_scan_mutex = xSemaphoreCreateMutex();
   if (a2dp_source == nullptr)
     a2dp_source = new BluetoothA2DPSource();
-  a2dp_source->set_data_callback(get_data);
+  a2dp_source->set_data_callback_in_frames(get_data_frames);
   a2dp_source->set_avrc_passthru_command_callback(button_handler);
   a2dp_source->set_auto_reconnect(false);
   a2dp_source->start("My vision");
@@ -139,6 +237,7 @@ void ESPWiFi::scanBluetooth(int timeout_sec) {
     s_btDiscoveredDevices = s_scan_results;
     xSemaphoreGive(s_scan_mutex);
   }
+  ensureLastPairedInDeviceList();
   log(INFO, "🛜 Bluetooth Scan found %zu device(s)",
       s_btDiscoveredDevices.size());
 }
@@ -221,9 +320,14 @@ void ESPWiFi::connectBluetooth(const std::string &nameOrNumberOrAddress) {
       break;
     }
   }
-  config["bluetooth"]["last_connect_attempt_address"] = addr.c_str();
+  // Persist so config has valid pointers (ArduinoJson stores ptr, not copy)
+  static std::string s_last_attempt_addr, s_last_attempt_name;
+  s_last_attempt_addr = addr;
+  s_last_attempt_name = name.empty() ? addr : name;
+  config["bluetooth"]["last_connect_attempt_address"] =
+      s_last_attempt_addr.c_str();
   config["bluetooth"]["last_connect_attempt_name"] =
-      name.empty() ? addr.c_str() : name.c_str();
+      s_last_attempt_name.c_str();
 
   esp_bd_addr_t bda;
   int a[6];
@@ -278,6 +382,34 @@ int ESPWiFi::getDiscoveredDeviceRssi(size_t index) const {
     return 0;
   return s_btDiscoveredDevices[index].rssi;
 }
+
+void ESPWiFi::startBluetoothStream() {
+  bt_stream_cleanup();
+  initSDCard();
+  s_mp3_file = fopen(kBTStreamMp3Path, "rb");
+  if (!s_mp3_file) {
+    log(WARNING, "🛜 Cannot open %s", kBTStreamMp3Path);
+    return;
+  }
+  s_pcm_ring_read = 0;
+  s_pcm_ring_write = 0;
+  s_bt_stream_playing = true;
+  BaseType_t ok = xTaskCreate(decode_task, "mp3_decode", 4096, nullptr,
+                              tskIDLE_PRIORITY + 2, &s_decode_task);
+  if (ok != pdPASS) {
+    log(WARNING, "🛜 Failed to create decode task");
+    bt_stream_cleanup();
+    return;
+  }
+  log(INFO, "🛜 Bluetooth stream started: %s", kBTStreamMp3Path);
+}
+
+void ESPWiFi::stopBluetoothStream() {
+  bt_stream_cleanup();
+  log(INFO, "🛜 Bluetooth stream stopped");
+}
+
+bool ESPWiFi::isBluetoothStreamPlaying() const { return s_bt_stream_playing; }
 
 void BTHost::connect(ESPWiFi *espwifi) const {
   if (espwifi)

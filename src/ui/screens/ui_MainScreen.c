@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_BluetoothSettingsButton = NULL;
+lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_BluetoothSettingsButton = NULL;lv_obj_t *ui_PlayButton = NULL;
 // event funtions
 void ui_event_BluetoothSettingsButton( lv_event_t * e) {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -38,10 +38,16 @@ lv_obj_set_style_text_font(ui_Label1, &lv_font_montserrat_36, LV_PART_MAIN| LV_S
 ui_BluetoothSettingsButton = lv_imagebutton_create(ui_MainScreen);
 lv_imagebutton_set_src(ui_BluetoothSettingsButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_bluetooth_1_png, NULL);
 lv_obj_set_width( ui_BluetoothSettingsButton, 48);
-lv_obj_set_height( ui_BluetoothSettingsButton, 50);
+lv_obj_set_height( ui_BluetoothSettingsButton, 48);
 lv_obj_set_x( ui_BluetoothSettingsButton, 81 );
 lv_obj_set_y( ui_BluetoothSettingsButton, 120 );
 lv_obj_set_align( ui_BluetoothSettingsButton, LV_ALIGN_CENTER );
+
+ui_PlayButton = lv_imagebutton_create(ui_MainScreen);
+lv_imagebutton_set_src(ui_PlayButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_play_png, NULL);
+lv_obj_set_width( ui_PlayButton, 48);
+lv_obj_set_height( ui_PlayButton, 48);
+lv_obj_set_align( ui_PlayButton, LV_ALIGN_CENTER );
 
 lv_obj_add_event_cb(ui_BluetoothSettingsButton, ui_event_BluetoothSettingsButton, LV_EVENT_ALL, NULL);
 
@@ -55,5 +61,6 @@ void ui_MainScreen_screen_destroy(void)
 ui_MainScreen= NULL;
 ui_Label1= NULL;
 ui_BluetoothSettingsButton= NULL;
+ui_PlayButton= NULL;
 
 }

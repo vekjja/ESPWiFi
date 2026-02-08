@@ -272,7 +272,6 @@ static void ui_BluetootButtonClicked(lv_event_t *e) {
 namespace {
 static std::vector<std::string> s_bt_dropdown_addresses;
 static bool s_bt_has_scanned_at_least_once = false;
-
 static void ui_BluetoothDropdownChanged(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   if (code != LV_EVENT_VALUE_CHANGED)
@@ -291,6 +290,19 @@ static void ui_BluetoothDropdownChanged(lv_event_t *e) {
   const std::string &addr = s_bt_dropdown_addresses[sel];
   if (!addr.empty())
     espwifi->connectBluetooth(addr);
+}
+
+static void ui_PlayButtonClicked(lv_event_t *e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED)
+    return;
+  ESPWiFi *espwifi = static_cast<ESPWiFi *>(lv_event_get_user_data(e));
+  if (!espwifi)
+    return;
+  if (!espwifi->connectBluetoothed) {
+    espwifi->log(INFO, "🛜 Connect a device first, then tap Play");
+    return;
+  }
+  espwifi->startBluetoothStream();
 }
 } // namespace
 
@@ -312,6 +324,12 @@ void ESPWiFi::registerUiEventHandlers() {
     lv_obj_add_event_cb(ui_BluetoothDropdown, ui_BluetoothDropdownChanged,
                         LV_EVENT_VALUE_CHANGED, this);
   }
+#ifdef CONFIG_BT_A2DP_ENABLE
+  if (ui_PlayButton) {
+    lv_obj_add_event_cb(ui_PlayButton, ui_PlayButtonClicked, LV_EVENT_CLICKED,
+                        this);
+  }
+#endif
 }
 
 void ESPWiFi::updateWiFiInfo(std::string info) {
@@ -370,6 +388,7 @@ void ESPWiFi::updateBluetoothInfo(std::string info) {
   }
   lv_label_set_text(ui_BluetoothInfoLabel, status.c_str());
 
+  ensureLastPairedInDeviceList();
   s_bt_dropdown_addresses.clear();
   if (ui_BluetoothDropdown) {
     std::string options;

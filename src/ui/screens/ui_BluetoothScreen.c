@@ -35,7 +35,7 @@ lv_obj_set_y( ui_HomeButton1, 120 );
 ui_BluetoothButton = lv_imagebutton_create(ui_BluetoothScreen);
 lv_imagebutton_set_src(ui_BluetoothButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_bluetooth_1_png, NULL);
 lv_obj_set_width( ui_BluetoothButton, 48);
-lv_obj_set_height( ui_BluetoothButton, 50);
+lv_obj_set_height( ui_BluetoothButton, 48);
 lv_obj_set_x( ui_BluetoothButton, 80 );
 lv_obj_set_y( ui_BluetoothButton, 122 );
 lv_obj_set_align( ui_BluetoothButton, LV_ALIGN_CENTER );

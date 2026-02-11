@@ -9,6 +9,7 @@ void ESPWiFi::start() {
   startLogging();
   readConfig();
   initTFT();
+  startBluetooth();
 }
 
 void ESPWiFi::runSystem() {

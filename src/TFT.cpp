@@ -613,6 +613,7 @@ void ESPWiFi::renderTFT() {
   }
 
 #ifdef CONFIG_BT_A2DP_ENABLE
+  processPendingBluetoothConnect();
   if (getAndClearBluetoothScanCompleteFlag()) {
     s_bt_has_scanned_at_least_once = true;
     updateBluetoothInfo();

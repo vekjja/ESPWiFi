@@ -18,7 +18,6 @@
 #include <vector>
 
 // POSIX / libc
-
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -425,6 +424,8 @@ public:
   int getAndClearPendingBluetoothConnectionState();
   /** Connect by address "AA:BB:CC:DD:EE:FF", 1-based index, or name. */
   void connectBluetooth(const std::string &nameOrNumberOrAddress);
+  /** Call from main loop: runs any connect deferred until after library 10s delay. */
+  void processPendingBluetoothConnect();
   size_t getDiscoveredDeviceCount() const;
   std::string getDiscoveredDeviceName(size_t index) const;
   std::string getDiscoveredDeviceAddress(size_t index) const;

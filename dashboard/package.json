@@ -8,7 +8,7 @@
     "clean": " npm run cleanSDKConfig && cd .. && pio run -t clean",
     "cleanSDKConfig": "../sdkconfigs/sdkconfig.sh",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build && rm ../data/static/js/*.LICENSE.txt",
-    "monitor": "cd .. && pio device monitor",
+    "monitor": "cd .. && pio device monitor --filter esp32_exception_decoder",
     "menuconfig": "cd .. && pio run -t menuconfig",
     "upload": "npm run cleanSDKConfig && cd .. && pio run -t upload",
     "upload:monitor": "clear && npm run upload && npm run monitor",

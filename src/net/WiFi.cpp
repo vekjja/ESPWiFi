@@ -41,18 +41,14 @@ void ESPWiFi::toggleWiFi() {
     startWiFi(); // can block during connect
     feedWatchDog(50);
     startMDNS();
-    feedWatchDog();
     startWebServer();
-    feedWatchDog();
     startControlWebSocket();
     startMediaWebSocket();
-    feedWatchDog();
-    srvAll(); // registers many routes
-    feedWatchDog();
+    srvAuth();
+    srvRoot();
+    srvWildcard();
   }
-  feedWatchDog();
   saveConfig();
-  feedWatchDog();
 }
 
 void ESPWiFi::wifiConfigHandler() {

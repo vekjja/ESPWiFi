@@ -25,6 +25,7 @@
 // ESP-IDF (esp_a2dp_api.h only exists when CONFIG_BT_A2DP_ENABLE is set in
 // sdkconfig)
 #if defined(ESPWiFi_BT_ENABLED) && defined(CONFIG_BT_A2DP_ENABLE)
+#include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
 #endif
 
@@ -134,8 +135,10 @@ public:
   /** Play MJPEG from file (path relative to SD or full path). Returns true if
    * >= 1 frame played. */
   bool playMJPG(const std::string &filepath);
-  /** Register LVGL event callbacks for SquareLine UI (called after ui_init). */
-  void registerUiEventHandlers();
+  /** Set from your app (e.g. in main). Called by the library after ui_init()
+   * so you can register LVGL event handlers. Pass your ESPWiFi* as user_data.
+   */
+  std::function<void(ESPWiFi *)> registerUiEventHandlers;
 #if ESPWiFi_HAS_TFT
   // Public accessors for TFT internals (useful for other modules).
   // These are intentionally untyped (void*) to avoid pulling esp_lcd headers
@@ -249,8 +252,6 @@ public:
   void startMDNS();
   void stopMDNS();
   void startClient();
-  void updateWiFiInfo(std::string info = "");
-  void updateBluetoothInfo(std::string info = "");
   int selectBestChannel();
   void wifiConfigHandler();
   std::string getHostname();
@@ -260,11 +261,16 @@ public:
   std::string getMacAddress();
   void setHostname(std::string hostname);
 
-  // ---- HTTP server / routes
+  // ---- HTTP Web Server
   void startWebServer();
   void stopWebServer();
   bool webServerStarted = false;
   httpd_handle_t webServer = nullptr;
+
+  // ---- HTTP Web Server Routes
+  void srvAuth();
+  void srvRoot();
+  void srvWildcard();
 
   // ---- HTTPS/TLS credential management
   // TLS materials are kept in-memory for the lifetime of the HTTPS server,
@@ -304,13 +310,6 @@ public:
   bool getGPIO(int pin, int &state, std::string &errorMsg);
   bool setPWM(int pin, int duty, int freq, std::string &errorMsg);
 
-  // Route groups
-  void srvFiles();
-  void srvAll();
-  void srvLog();
-  void srvRoot();
-  void srvGPIO();
-
   // File browser helper methods (used by both HTTP and WebSocket)
   bool listFiles(const std::string &fs, const std::string &path,
                  JsonDocument &outDoc, std::string &errorMsg);
@@ -320,10 +319,6 @@ public:
                   const std::string &newName, std::string &errorMsg);
   bool deleteFile(const std::string &fs, const std::string &path,
                   std::string &errorMsg);
-  void srvAuth();
-  void srvBLE();
-  void srvBluetooth();
-  void srvWildcard();
 
   // ---- Control WebSocket (LAN)
   void startControlWebSocket();
@@ -337,13 +332,12 @@ public:
   void powerConfigHandler();
   void applyWiFiPowerSettings();
   JsonDocument getWiFiPowerInfo();
+  // ---- Utils
   std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);
   std::string bytesToHumanReadable(size_t bytes);
   std::string getFileExtension(const std::string &filename);
   bool matchPattern(std::string_view uri, std::string_view pattern);
-
-  // ---- JSON helpers (implemented in Utils.cpp)
   void deepMerge(JsonVariant dst, JsonVariantConst src, int depth = 0);
   void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
                      std::function<void()> functionToRun);
@@ -370,9 +364,6 @@ public:
   std::string otaMD5Hash;
 
   // ---- BLE Provisioning
-  // Declared unconditionally because config handling calls this even when BLE
-  // is compiled out; implementation is a stub when CONFIG_BT_NIMBLE_ENABLED is
-  // disabled.
   bool startBLE();
   void bleConfigHandler();
 #ifdef CONFIG_BT_NIMBLE_ENABLED
@@ -388,11 +379,6 @@ public:
   esp_err_t startBLEAdvertising();
 
   // ---- BLE GATT registry (registerRoute-style API)
-  //
-  // NOTE: With current NimBLE settings, adding/removing services takes effect
-  // on the next BLE restart (deinitBLE -> startBLE).
-  // Hook called by startBLE() to allow registering services/characteristics.
-  // Override by editing the implementation in `src/BLE.cpp`.
   void startBLEServices();
   bool registerBleService16(uint16_t svcUuid16);
   bool unregisterBleService16(uint16_t svcUuid16);
@@ -407,40 +393,15 @@ public:
   // ---- Bluetooth Audio
   void bluetoothConfigHandler();
 #ifdef CONFIG_BT_A2DP_ENABLE
-  bool connectBluetoothed = false;
-  bool btStarted = false;
+  std::vector<std::string> bluetoothScannedHosts = {};
+  BluetoothA2DPSource *a2dp_source = nullptr;
+  /// Optional: set to a lambda (name, address, rssi) -> true to connect to this
+  /// device, false to keep scanning.
+  std::function<bool(const char *name, esp_bd_addr_t address, int rssi)>
+      onBluetoothDeviceDiscovered;
   void startBluetooth();
   void stopBluetooth();
-  /** Blocking scan for up to timeout_sec (max 12); populates device list. */
-  void scanBluetooth(int timeout_sec = 9);
-  /** Start a 9s scan in background; returns immediately. No-op if scan already
-   * running. */
-  void startBluetoothScanAsync();
-  bool isBluetoothScanInProgress() const;
-  /** True once when last async scan finished; clears flag. Call from UI to
-   * refresh. */
-  bool getAndClearBluetoothScanCompleteFlag();
-  /** Returns pending A2DP connection state (0–3) or -1; clears pending. */
-  int getAndClearPendingBluetoothConnectionState();
-  /** Connect by address "AA:BB:CC:DD:EE:FF", 1-based index, or name. */
-  void connectBluetooth(const std::string &nameOrNumberOrAddress);
-  /** Call from main loop: runs any connect deferred until after library 10s delay. */
-  void processPendingBluetoothConnect();
-  size_t getDiscoveredDeviceCount() const;
-  std::string getDiscoveredDeviceName(size_t index) const;
-  std::string getDiscoveredDeviceAddress(size_t index) const;
-  int getDiscoveredDeviceRssi(size_t index) const;
-  esp_err_t RegisterBluetoothHandlers();
-  void UnregisterBluetoothHandlers();
-  /** If config has last_paired_address, prepend it to the device list when not
-   * already present. */
-  void ensureLastPairedInDeviceList();
-  /** Start streaming audio to the connected BT device (Play button). */
-  void startBluetoothStream();
-  /** Stop streaming audio to the connected BT device. */
-  void stopBluetoothStream();
-  /** True while streaming the MP3 file to the connected device. */
-  bool isBluetoothStreamPlaying() const;
+  void toggleBluetooth();
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
@@ -547,15 +508,6 @@ private:
                                      int32_t event_id, void *event_data);
   static void ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
                                    int32_t event_id, void *event_data);
-
-  // Bluetooth event handlers
-#ifdef CONFIG_BT_A2DP_ENABLE
-  void bluetoothConnectionSC(esp_a2d_connection_state_t state, void *obj);
-  void btAudioStateChange(esp_a2d_audio_state_t state, void *obj);
-  static void bluetoothConnectionSCStatic(esp_a2d_connection_state_t state,
-                                          void *obj);
-  static void btAudioStateChangeStatic(esp_a2d_audio_state_t state, void *obj);
-#endif
 
   // BLE event handlers (instance methods)
 #ifdef CONFIG_BT_NIMBLE_ENABLED

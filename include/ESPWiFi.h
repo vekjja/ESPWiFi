@@ -5,6 +5,7 @@
 #include "sdkconfig.h"
 
 // Standard library
+#include <array>
 #include <cctype>
 #include <cstdarg>
 #include <cstddef>
@@ -257,7 +258,6 @@ public:
   std::string getHostname();
   std::string genHostname();
   std::string ipAddress();
-  /** MAC address as "AA:BB:CC:DD:EE:FF", or empty on failure. */
   std::string getMacAddress();
   void setHostname(std::string hostname);
 
@@ -395,6 +395,9 @@ public:
 #ifdef CONFIG_BT_A2DP_ENABLE
   std::vector<std::string> bluetoothScannedHosts = {};
   BluetoothA2DPSource *a2dp_source = nullptr;
+  /// When set, the ssid_callback returns true for this device so the library
+  /// cancels discovery and connects. Cleared when the callback matches.
+  std::string bluetoothConnectTargetName;
   /// Optional: set to a lambda (name, address, rssi) -> true to connect to this
   /// device, false to keep scanning.
   std::function<bool(const char *name, esp_bd_addr_t address, int rssi)>

@@ -89,7 +89,8 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
     return "📷";
   }
   if (tagEquals(tag, tagLen, "BT_AV") || tagEquals(tag, tagLen, "BT_APP") ||
-      tagEquals(tag, tagLen, "BT_BTC")) {
+      tagEquals(tag, tagLen, "BT_BTC") || tagEquals(tag, tagLen, "BT_BTM") ||
+      tagEquals(tag, tagLen, "BT_HCI")) {
     return "🛜";
   }
   if (tagEquals(tag, tagLen, "BTDM_INIT") || tagEquals(tag, tagLen, "BT") ||
@@ -99,6 +100,10 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
   }
   if (tagEquals(tag, tagLen, "TFT") || tagEquals(tag, tagLen, "ili9341")) {
     return "🖥️";
+  }
+  if (tagEquals(tag, tagLen, "mp3dec") ||
+      tagEquals(tag, tagLen, "audio-tools")) {
+    return "🎵";
   }
   if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
     return "🔐";

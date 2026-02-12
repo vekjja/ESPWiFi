@@ -153,8 +153,6 @@ class ESPWiFi {
   void* tftSpiBusHandle() const {
     return tftSpiBus_;
   }  // esp_lcd_spi_bus_handle_t
-#endif
-#if ESPWiFi_HAS_TFT
   bool tftInitialized = false;
   IntervalTimer tftRefresh = IntervalTimer(250);  // UI refresh cadence
   void* tftSpiBus_ = nullptr;                     // esp_lcd_spi_bus_handle_t

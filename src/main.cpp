@@ -4,13 +4,13 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-// #if ESPWiFi_HAS_TFT
+#if ESPWiFi_HAS_TFT
 #include "ui/ui.h"
-// #endif
+#endif
 
 ESPWiFi espwifi;
 
-// #if ESPWiFi_HAS_TFT
+#if ESPWiFi_HAS_TFT
 static void uiUpdateBluetoothInfo(std::string info) {
   if (ui_BluetoothInfoLabel) {
     lv_label_set_text(
@@ -61,7 +61,7 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
   static const char* kDefaultMp3Path = "/sd/music/we r.mp3";
   espwifi.startBluetoothMp3Playback(kDefaultMp3Path);
 }
-// #endif
+#endif
 
 extern "C" void app_main(void) {
 #if ESPWiFi_HAS_TFT

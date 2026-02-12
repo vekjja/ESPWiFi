@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_BluetoothScreen = NULL;lv_obj_t *ui_Label4 = NULL;lv_obj_t *ui_HomeButton1 = NULL;lv_obj_t *ui_BluetoothButton = NULL;lv_obj_t *ui_BluetoothInfoLabel = NULL;lv_obj_t *ui_BluetoothDropdown = NULL;
+lv_obj_t *ui_BluetoothScreen = NULL;lv_obj_t *ui_Label4 = NULL;lv_obj_t *ui_HomeButton1 = NULL;lv_obj_t *ui_BluetoothInfoLabel = NULL;lv_obj_t *ui_BluetoothDropdown = NULL;
 // event funtions
 
 // build funtions
@@ -32,14 +32,6 @@ ui_HomeButton1 = ui_HomeButton_create(ui_BluetoothScreen);
 lv_obj_set_x( ui_HomeButton1, -81 );
 lv_obj_set_y( ui_HomeButton1, 120 );
 
-ui_BluetoothButton = lv_imagebutton_create(ui_BluetoothScreen);
-lv_imagebutton_set_src(ui_BluetoothButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_bluetooth_1_png, NULL);
-lv_obj_set_width( ui_BluetoothButton, 48);
-lv_obj_set_height( ui_BluetoothButton, 48);
-lv_obj_set_x( ui_BluetoothButton, 80 );
-lv_obj_set_y( ui_BluetoothButton, 122 );
-lv_obj_set_align( ui_BluetoothButton, LV_ALIGN_CENTER );
-
 ui_BluetoothInfoLabel = ui_InfoLabel_create(ui_BluetoothScreen);
 lv_obj_set_width( ui_BluetoothInfoLabel, 198);
 lv_obj_set_height( ui_BluetoothInfoLabel, 61);
@@ -48,6 +40,7 @@ lv_obj_set_y( ui_BluetoothInfoLabel, -62 );
 lv_label_set_text(ui_BluetoothInfoLabel,"Click BT Button to Scan for Devices");
 
 ui_BluetoothDropdown = lv_dropdown_create(ui_BluetoothScreen);
+lv_dropdown_set_options( ui_BluetoothDropdown, "Scanning..." );
 lv_dropdown_set_text( ui_BluetoothDropdown, "Devices");
 lv_obj_set_width( ui_BluetoothDropdown, 150);
 lv_obj_set_height( ui_BluetoothDropdown, LV_SIZE_CONTENT);   /// 1
@@ -82,7 +75,6 @@ void ui_BluetoothScreen_screen_destroy(void)
 ui_BluetoothScreen= NULL;
 ui_Label4= NULL;
 ui_HomeButton1= NULL;
-ui_BluetoothButton= NULL;
 ui_BluetoothInfoLabel= NULL;
 ui_BluetoothDropdown= NULL;
 

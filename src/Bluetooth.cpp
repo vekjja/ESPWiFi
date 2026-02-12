@@ -29,13 +29,13 @@ static bool onSsidDiscovered(const char *ssid, esp_bd_addr_t address,
     bt_espwifi->bluetoothConnectTargetName.clear();
     return true;
   }
-  bool already = false;
+  bool alreadyInList = false;
   for (const auto &s : bt_espwifi->bluetoothScannedHosts)
     if (s == ssid) {
-      already = true;
+      alreadyInList = true;
       break;
     }
-  if (!already) {
+  if (!alreadyInList) {
     bt_espwifi->bluetoothScannedHosts.push_back(ssid);
   }
   if (bt_espwifi->onBluetoothDeviceDiscovered)
@@ -73,6 +73,13 @@ void ESPWiFi::toggleBluetooth() {
   }
 }
 
+void ESPWiFi::startBluetoothMp3Playback(const char *path) {
+  (void)path;
+  log(WARNING, "🛜🎵 MP3 playback not implemented");
+}
+
+void ESPWiFi::stopBluetoothMp3Playback() {}
+
 #endif
 #endif // ESPWiFi_BLUETOOTH_H
 
@@ -80,9 +87,9 @@ void ESPWiFi::toggleBluetooth() {
 // Stubs when CONFIG_BT_A2DP_ENABLE but not ESPWiFi_BT_ENABLED
 void ESPWiFi::startBluetooth() { log(WARNING, "🛜 Bluetooth Not Implemented"); }
 void ESPWiFi::stopBluetooth() { log(WARNING, "🛜 Bluetooth Not Implemented"); }
+void ESPWiFi::startBluetoothMp3Playback(const char *) {}
+void ESPWiFi::stopBluetoothMp3Playback() {}
 void ESPWiFi::toggleBluetooth() {
   log(WARNING, "🛜 Bluetooth Not Implemented");
 }
-void ESPWiFi::startBluetoothMp3Playback(const char *) {}
-void ESPWiFi::stopBluetoothMp3Playback() {}
 #endif

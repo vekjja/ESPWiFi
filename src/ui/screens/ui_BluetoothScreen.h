@@ -16,7 +16,6 @@ extern void ui_BluetoothScreen_screen_destroy(void);
 extern lv_obj_t *ui_BluetoothScreen;
 extern lv_obj_t *ui_Label4;
 extern lv_obj_t *ui_HomeButton1;
-extern lv_obj_t *ui_BluetoothButton;
 extern lv_obj_t *ui_BluetoothInfoLabel;
 extern lv_obj_t *ui_BluetoothDropdown;
 // CUSTOM VARIABLES

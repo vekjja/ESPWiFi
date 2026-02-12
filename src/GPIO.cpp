@@ -8,13 +8,13 @@
 
 namespace {
 
-static bool strEqAny(const std::string &s, const char *a, const char *b,
-                     const char *c = nullptr) {
-  if (s == a || s == b) {
-    return true;
-  }
-  return (c != nullptr) ? (s == c) : false;
-}
+// static bool strEqAny(const std::string &s, const char *a, const char *b,
+//                      const char *c = nullptr) {
+//   if (s == a || s == b) {
+//     return true;
+//   }
+//   return (c != nullptr) ? (s == c) : false;
+// }
 
 // Minimal PWM channel manager (avoid heap).
 static bool pwm_timer_configured = false;

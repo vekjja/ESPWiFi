@@ -4,13 +4,6 @@
 #include "esp_timer.h"
 #include <cstdint>
 
-// Helper function to replace Arduino's millis().
-// Keep the classic signature for existing code; esp_timer_get_time() is
-// monotonic.
-inline unsigned long millis() {
-  return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
-}
-
 // Low-overhead interval helper:
 // - No std::function (avoids heap + type erasure)
 // - Uses esp_timer_get_time() (microseconds) for long-uptime safety

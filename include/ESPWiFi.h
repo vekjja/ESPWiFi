@@ -405,6 +405,9 @@ public:
   void startBluetooth();
   void stopBluetooth();
   void toggleBluetooth();
+  /// Start playing an MP3 file from path (e.g. /sd/music/track.mp3).
+  void startBluetoothMp3Playback(const char *path);
+  void stopBluetoothMp3Playback();
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT
@@ -451,6 +454,10 @@ public:
   // Camera handler registration
   esp_err_t registerCameraHandlers();
   void unregisterCameraHandlers();
+
+  unsigned long millis() {
+    return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
+  }
 
 private:
   std::string _version = "v0.1.0";

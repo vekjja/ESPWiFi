@@ -34,7 +34,7 @@ static void onBluetoothButtonClicked(lv_event_t *e) {
   if (ud) {
     ESPWiFi *ew = static_cast<ESPWiFi *>(ud);
     ew->feedWatchDog();
-    updateBluetoothInfo(ew, "");
+    updateBluetoothInfo(ew, "Scanning...");
   }
 }
 
@@ -64,6 +64,8 @@ static void onPlayButtonClicked(lv_event_t *e) {
   ESPWiFi *ew = static_cast<ESPWiFi *>(lv_event_get_user_data(e));
   if (ew) {
     ew->log(INFO, "🛜🎵 Play button pressed");
+    static const char *kDefaultMp3Path = "/sd/music/we r.mp3";
+    ew->startBluetoothMp3Playback(kDefaultMp3Path);
   }
 }
 #endif

@@ -9,17 +9,17 @@ void ESPWiFi::start() {
   startLogging();
   readConfig();
   initTFT();
+#ifdef CONFIG_BT_A2DP_ENABLE
   startBluetooth();
+#endif
 }
 
 void ESPWiFi::runSystem() {
-  // Feed early so long-running work cannot starve the watchdog
-  flushDeferredLog();
   handleConfigUpdate();
   checkSDCard();
   streamCamera();
-  renderTFT();    // can run click handlers and LVGL draw (long)
-  feedWatchDog(); // Feed after render so next iteration is covered
+  renderTFT();     // can run click handlers and LVGL draw (long)
+  feedWatchDog();  // Feed after render so next iteration is covered
 }
 
-#endif // ESPWiFi_RUNTIME
+#endif  // ESPWiFi_RUNTIME

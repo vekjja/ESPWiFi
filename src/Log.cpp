@@ -1,13 +1,15 @@
 #ifndef ESPWiFi_LOG
 #define ESPWiFi_LOG
 
+#include <stdarg.h>
+#include <sys/time.h>
+
+#include <cstring>
+
 #include "ESPWiFi.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include <cstring>
-#include <stdarg.h>
-#include <sys/time.h>
 
 // ---- ESP-IDF log capture (optional)
 //
@@ -18,11 +20,11 @@
 // Important: Our normal ESPWiFi::logImpl() uses printf(), which would recurse
 // back into this hook. So the hook writes to the log FILE only via writeLog().
 static vprintf_like_t s_prevEspVprintf = nullptr;
-static ESPWiFi *s_espwifiForEspLogs = nullptr;
+static ESPWiFi* s_espwifiForEspLogs = nullptr;
 static bool s_espLogHookInstalled = false;
 static std::string s_lastIdfTag;
 
-static const char *skipAnsiAndWhitespace(const char *p) {
+static const char* skipAnsiAndWhitespace(const char* p) {
   if (p == nullptr) {
     return nullptr;
   }
@@ -51,10 +53,10 @@ struct ParsedIdfLine {
   bool isIdf = false;
   LogLevel level = INFO;
   std::string tag;
-  std::string body; // may be empty for tag-only lines like "I (123) wifi:"
+  std::string body;  // may be empty for tag-only lines like "I (123) wifi:"
 };
 
-static inline bool tagEquals(const char *tag, size_t tagLen, const char *lit) {
+static inline bool tagEquals(const char* tag, size_t tagLen, const char* lit) {
   const size_t litLen = std::strlen(lit);
   if (tagLen != litLen) {
     return false;
@@ -62,7 +64,7 @@ static inline bool tagEquals(const char *tag, size_t tagLen, const char *lit) {
   return std::memcmp(tag, lit, tagLen) == 0;
 }
 
-static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
+static const char* espwifiIconForIdfTagView(const char* tag, size_t tagLen) {
   if (tag == nullptr || tagLen == 0) {
     return "";
   }
@@ -111,11 +113,10 @@ static const char *espwifiIconForIdfTagView(const char *tag, size_t tagLen) {
   return "";
 }
 
-int ESPWiFi::idfLogVprintfHook(const char *format, va_list args) {
-
+int ESPWiFi::idfLogVprintfHook(const char* format, va_list args) {
   // Static member function for ESP-IDF's vprintf hook
   // Captures and processes ESP-IDF log messages
-  ESPWiFi *espwifi = s_espwifiForEspLogs;
+  ESPWiFi* espwifi = s_espwifiForEspLogs;
   if (espwifi == nullptr) {
     return 0;
   }
@@ -139,7 +140,7 @@ int ESPWiFi::idfLogVprintfHook(const char *format, va_list args) {
   return 0;
 }
 
-static void installEspIdfLogCapture(ESPWiFi *espwifi) {
+static void installEspIdfLogCapture(ESPWiFi* espwifi) {
   s_espwifiForEspLogs = espwifi;
   if (s_espLogHookInstalled) {
     return;
@@ -150,18 +151,18 @@ static void installEspIdfLogCapture(ESPWiFi *espwifi) {
 
 std::string ESPWiFi::logLevelToString(LogLevel level) {
   switch (level) {
-  case ACCESS:
-    return "[ACCESS]";
-  case DEBUG:
-    return "[DEBUG]";
-  case INFO:
-    return " [INFO]";
-  case WARNING:
-    return " [WARN] ⚠️";
-  case ERROR:
-    return "[ERROR] ❗️";
-  default:
-    return "[LOG]";
+    case ACCESS:
+      return "[ACCESS]";
+    case DEBUG:
+      return "[DEBUG]";
+    case INFO:
+      return " [INFO]";
+    case WARNING:
+      return " [WARN] ⚠️";
+    case ERROR:
+      return "[ERROR] ❗️";
+    default:
+      return "[LOG]";
   }
 }
 
@@ -209,13 +210,13 @@ void ESPWiFi::startLogging() {
   installEspIdfLogCapture(this);
 }
 
-bool ESPWiFi::getLogFilesystem(bool &useSD, bool &useLFS) {
+bool ESPWiFi::getLogFilesystem(bool& useSD, bool& useLFS) {
   // LittleFS
   bool preferSD = config["log"]["useSD"].as<bool>();
   useSD = preferSD && (sdCard != nullptr);
   // LFS is always available as a fallback (even if SD is preferred)
   useLFS = (lfs != nullptr);
-  return useSD || useLFS; // Returns true if a filesystem is available
+  return useSD || useLFS;  // Returns true if a filesystem is available
 }
 
 void ESPWiFi::writeLog(std::string message) {
@@ -238,7 +239,7 @@ void ESPWiFi::writeLog(std::string message) {
 
   if (useSD) {
     std::string full_path = sdMountPoint + logFilePath;
-    FILE *f = fopen(full_path.c_str(), "a");
+    FILE* f = fopen(full_path.c_str(), "a");
     if (f) {
       size_t len = message.length();
       size_t written = fwrite(message.c_str(), 1, len, f);
@@ -265,7 +266,7 @@ void ESPWiFi::writeLog(std::string message) {
   // If SD failed or wasn't preferred, try LFS
   if (!success && useLFS) {
     std::string full_path = lfsMountPoint + logFilePath;
-    FILE *f = fopen(full_path.c_str(), "a");
+    FILE* f = fopen(full_path.c_str(), "a");
     if (f) {
       size_t len = message.length();
       size_t written = fwrite(message.c_str(), 1, len, f);
@@ -284,7 +285,7 @@ void ESPWiFi::writeLog(std::string message) {
   }
 }
 
-void ESPWiFi::logImpl(LogLevel level, const std::string &message) {
+void ESPWiFi::logImpl(LogLevel level, const std::string& message) {
   if (!shouldLog(level)) {
     return;
   }
@@ -299,7 +300,7 @@ void ESPWiFi::logImpl(LogLevel level, const std::string &message) {
   writeLog(logLine);
 }
 
-void ESPWiFi::log(LogLevel level, const char *format, ...) {
+void ESPWiFi::log(LogLevel level, const char* format, ...) {
   va_list args;
   va_start(args, format);
 
@@ -311,7 +312,7 @@ void ESPWiFi::log(LogLevel level, const char *format, ...) {
   logImpl(level, std::string(buffer));
 }
 
-void ESPWiFi::log(LogLevel level, const char *format, const std::string &arg) {
+void ESPWiFi::log(LogLevel level, const char* format, const std::string& arg) {
   char buffer[1536];
   snprintf(buffer, sizeof(buffer), format, arg.c_str());
   logImpl(level, std::string(buffer));
@@ -397,7 +398,7 @@ bool ESPWiFi::shouldLog(LogLevel level) {
   // error: shows only error
 
   if (configuredLevel == "verbose") {
-    return true; // Show all levels
+    return true;  // Show all levels
   } else if (configuredLevel == "access") {
     return (level == ACCESS || level == DEBUG || level == INFO ||
             level == WARNING || level == ERROR);
@@ -516,8 +517,8 @@ void ESPWiFi::logConfigHandler() {
 
 // Helper function to format ESP-IDF log lines into ESPWiFi format
 // Returns empty string if the line should be skipped
-std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
-                                        LogLevel *outLevel) {
+std::string ESPWiFi::formatIDFtoESPWiFi(const std::string& line,
+                                        LogLevel* outLevel) {
   const size_t len = line.length();
   if (len == 0) {
     return "";
@@ -525,42 +526,42 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
 
   // Check if line is empty or only whitespace/newlines
   bool hasContent = false;
-  for (const char *c = line.c_str(); *c != '\0'; c++) {
+  for (const char* c = line.c_str(); *c != '\0'; c++) {
     if (*c != ' ' && *c != '\t' && *c != '\n' && *c != '\r') {
       hasContent = true;
       break;
     }
   }
   if (!hasContent) {
-    return ""; // Skip lines with only whitespace
+    return "";  // Skip lines with only whitespace
   }
 
   // Extract ESP-IDF tag for icon mapping:
   // Format: [E/W/I/D/V] ' ' '(' ... ')' ' ' <tag> ':' ...
-  const char *icon = "";
-  const char *prefix = skipAnsiAndWhitespace(line.c_str());
+  const char* icon = "";
+  const char* prefix = skipAnsiAndWhitespace(line.c_str());
 
   // Infer log level from the formatted line prefix
   LogLevel lvl = DEBUG;
   if (prefix != nullptr) {
     switch (*prefix) {
-    case 'E':
-      lvl = ERROR;
-      break;
-    case 'W':
-      lvl = WARNING;
-      break;
-    case 'I':
-      lvl = DEBUG;
-      break;
-    case 'D':
-      lvl = DEBUG;
-      break;
-    case 'V':
-      lvl = VERBOSE;
-      break;
-    default:
-      break;
+      case 'E':
+        lvl = ERROR;
+        break;
+      case 'W':
+        lvl = WARNING;
+        break;
+      case 'I':
+        lvl = DEBUG;
+        break;
+      case 'D':
+        lvl = DEBUG;
+        break;
+      case 'V':
+        lvl = VERBOSE;
+        break;
+      default:
+        break;
     }
   }
 
@@ -570,12 +571,12 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
   }
 
   // Extract icon from tag if present and find the actual message content
-  const char *messageStart = nullptr;
+  const char* messageStart = nullptr;
   if (prefix != nullptr) {
-    const char *closeParen = std::strstr(prefix, ") ");
+    const char* closeParen = std::strstr(prefix, ") ");
     if (closeParen != nullptr) {
-      const char *tagStart = closeParen + 2;
-      const char *colon = std::strchr(tagStart, ':');
+      const char* tagStart = closeParen + 2;
+      const char* colon = std::strchr(tagStart, ':');
       if (colon != nullptr && colon > tagStart) {
         icon = espwifiIconForIdfTagView(tagStart, (size_t)(colon - tagStart));
         // Message content starts after the colon and space
@@ -593,7 +594,7 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
   if (messageStart != nullptr) {
     // Check if there's any non-whitespace content
     bool hasContent = false;
-    for (const char *c = messageStart; *c != '\0' && *c != '\n' && *c != '\r';
+    for (const char* c = messageStart; *c != '\0' && *c != '\n' && *c != '\r';
          c++) {
       if (*c != ' ' && *c != '\t') {
         hasContent = true;
@@ -601,10 +602,10 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
       }
     }
     if (!hasContent) {
-      return ""; // Skip empty lines
+      return "";  // Skip empty lines
     }
   } else {
-    icon = "📶"; // Add wifi icon for untagged logs
+    icon = "📶";  // Add wifi icon for untagged logs
   }
 
   // Build the formatted log line
@@ -631,64 +632,4 @@ std::string ESPWiFi::formatIDFtoESPWiFi(const std::string &line,
   return out;
 }
 
-bool ESPWiFi::logIDF(std::string message) {
-  // Thread-safe: add the raw ESP-IDF log line to the deferred queue
-  // This is called from ESP-IDF system tasks with small stacks,
-  // so we keep this minimal and defer processing to the main thread.
-
-  if (deferredLogMutex != nullptr) {
-    // Use a very short timeout to avoid blocking system tasks
-    if (xSemaphoreTake(deferredLogMutex, pdMS_TO_TICKS(5)) != pdTRUE) {
-      return false; // Failed to acquire mutex, drop this log
-    }
-  }
-
-  // Add to deferred queue (using move semantics to avoid copy)
-  deferredLogMessages.push_back(std::move(message));
-
-  if (deferredLogMutex != nullptr) {
-    xSemaphoreGive(deferredLogMutex);
-  }
-
-  return true;
-}
-
-void ESPWiFi::flushDeferredLog() {
-  // Process all deferred ESP-IDF log messages in the main thread
-  // This avoids stack overflow issues in system tasks
-
-  if (deferredLogMessages.empty()) {
-    return;
-  }
-
-  // Grab a local copy of the messages to process
-  std::vector<std::string> messagesToProcess;
-  if (deferredLogMutex != nullptr) {
-    if (xSemaphoreTake(deferredLogMutex, pdMS_TO_TICKS(10)) != pdTRUE) {
-      return; // Can't acquire mutex, try again later
-    }
-  }
-
-  messagesToProcess.swap(deferredLogMessages);
-  deferredLogMessages.clear(); // Ensure the queue is empty
-
-  if (deferredLogMutex != nullptr) {
-    xSemaphoreGive(deferredLogMutex);
-  }
-
-  // Now process each message (outside the mutex lock)
-  for (const std::string &line : messagesToProcess) {
-    LogLevel lvl = INFO;
-    std::string formatted = formatIDFtoESPWiFi(line, &lvl);
-
-    // Skip if the line should be filtered out (empty return)
-    if (formatted.empty()) {
-      continue;
-    }
-
-    // Log the formatted line
-    log(lvl, formatted);
-  }
-}
-
-#endif // ESPWiFi_LOG
+#endif  // ESPWiFi_LOG

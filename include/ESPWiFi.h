@@ -5,6 +5,8 @@
 #include "sdkconfig.h"
 
 // Standard library
+#include <stdio.h>
+
 #include <array>
 #include <cctype>
 #include <cstdarg>
@@ -13,7 +15,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
-#include <stdio.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,7 +26,7 @@
 
 // ESP-IDF (esp_a2dp_api.h only exists when CONFIG_BT_A2DP_ENABLE is set in
 // sdkconfig)
-#if defined(ESPWiFi_BT_ENABLED) && defined(CONFIG_BT_A2DP_ENABLE)
+#if defined(CONFIG_BT_A2DP_ENABLE)
 #include "BluetoothA2DPSource.h"
 #include "esp_a2dp_api.h"
 #endif
@@ -45,6 +46,10 @@
 #include <esp_camera.h>
 #endif
 
+#include <ArduinoJson.h>
+#include <IntervalTimer.h>
+#include <WebSocket.h>
+
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -59,10 +64,6 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-#include <ArduinoJson.h>
-#include <IntervalTimer.h>
-#include <WebSocket.h>
-
 // Forward declarations for BLE types (to avoid pulling in NimBLE headers)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 struct ble_gap_event;
@@ -72,9 +73,9 @@ struct ble_gatt_access_ctxt;
 enum LogLevel { VERBOSE, ACCESS, DEBUG, INFO, WARNING, ERROR };
 
 class ESPWiFi {
-public:
-  using RouteHandler = esp_err_t (*)(ESPWiFi *espwifi, httpd_req_t *req,
-                                     const std::string &clientInfo);
+ public:
+  using RouteHandler = esp_err_t (*)(ESPWiFi* espwifi, httpd_req_t* req,
+                                     const std::string& clientInfo);
 
   // ---- Basic helpers/state
   std::string version() { return _version; }
@@ -99,9 +100,9 @@ public:
 
   // ---- Chunked file helper (used by control socket commands like get_logs)
   // Populates a response JSON with a chunk/tail of a file.
-  void fillChunkedDataResponse(JsonDocument &resp, const std::string &fullPath,
-                               const std::string &virtualPath,
-                               const std::string &source, int64_t offset,
+  void fillChunkedDataResponse(JsonDocument& resp, const std::string& fullPath,
+                               const std::string& virtualPath,
+                               const std::string& source, int64_t offset,
                                int tailBytes, int maxBytes);
 
   // ---- Filesystem
@@ -117,8 +118,8 @@ public:
   bool sdNotSupported = false;
   esp_err_t sdInitLastErr = ESP_OK;
   bool sdInitAttempted = false;
-  void *sdCard = nullptr;
-  void *lfs = nullptr;
+  void* sdCard = nullptr;
+  void* lfs = nullptr;
   std::string lfsMountPoint = "/lfs";
   std::string sdMountPoint = "/sd";
   bool sdSpiBusOwned = false;
@@ -135,73 +136,69 @@ public:
   void playBootAnimation();
   /** Play MJPEG from file (path relative to SD or full path). Returns true if
    * >= 1 frame played. */
-  bool playMJPG(const std::string &filepath);
+  bool playMJPG(const std::string& filepath);
   /** Set from your app (e.g. in main). Called by the library after ui_init()
    * so you can register LVGL event handlers. Pass your ESPWiFi* as user_data.
    */
-  std::function<void(ESPWiFi *)> registerUiEventHandlers;
+  std::function<void(ESPWiFi*)> registerUiEventHandlers;
 #if ESPWiFi_HAS_TFT
   // Public accessors for TFT internals (useful for other modules).
   // These are intentionally untyped (void*) to avoid pulling esp_lcd headers
   // into the public header.
   bool isTftInitialized() const { return tftInitialized; }
-  void *tftPanelHandle() const { return tftPanel_; } // esp_lcd_panel_handle_t
-  void *tftPanelIoHandle() const {
+  void* tftPanelHandle() const { return tftPanel_; }  // esp_lcd_panel_handle_t
+  void* tftPanelIoHandle() const {
     return tftPanelIo_;
-  } // esp_lcd_panel_io_handle_t
-  void *tftSpiBusHandle() const {
+  }  // esp_lcd_panel_io_handle_t
+  void* tftSpiBusHandle() const {
     return tftSpiBus_;
-  } // esp_lcd_spi_bus_handle_t
+  }  // esp_lcd_spi_bus_handle_t
 #endif
 #if ESPWiFi_HAS_TFT
   bool tftInitialized = false;
-  IntervalTimer tftRefresh = IntervalTimer(250); // UI refresh cadence
-  void *tftSpiBus_ = nullptr;                    // esp_lcd_spi_bus_handle_t
-  void *tftPanelIo_ = nullptr;                   // esp_lcd_panel_io_handle_t
-  void *tftPanel_ = nullptr;                     // esp_lcd_panel_handle_t
-  void *tftTouch_ = nullptr;                     // esp_lcd_touch_handle_t
+  IntervalTimer tftRefresh = IntervalTimer(250);  // UI refresh cadence
+  void* tftSpiBus_ = nullptr;                     // esp_lcd_spi_bus_handle_t
+  void* tftPanelIo_ = nullptr;                    // esp_lcd_panel_io_handle_t
+  void* tftPanel_ = nullptr;                      // esp_lcd_panel_handle_t
+  void* tftTouch_ = nullptr;                      // esp_lcd_touch_handle_t
   bool tftBacklightOn_ = true;
   int64_t tftLastTouchMs_ = 0;
 #endif
 
-  bool deleteDirectoryRecursive(const std::string &dirPath);
-  void handleFileUpload(void *req, const std::string &filename, size_t index,
-                        uint8_t *data, size_t len, bool final);
+  bool deleteDirectoryRecursive(const std::string& dirPath);
+  void handleFileUpload(void* req, const std::string& filename, size_t index,
+                        uint8_t* data, size_t len, bool final);
 
   // Filesystem helpers
   void printFilesystemInfo();
-  std::string sanitizeFilename(const std::string &filename);
-  void logFilesystemInfo(const std::string &fsName, size_t totalBytes,
+  std::string sanitizeFilename(const std::string& filename);
+  void logFilesystemInfo(const std::string& fsName, size_t totalBytes,
                          size_t usedBytes);
-  void getStorageInfo(const std::string &fsParam, size_t &totalBytes,
-                      size_t &usedBytes, size_t &freeBytes);
-  bool writeFile(const std::string &filePath, const uint8_t *data, size_t len);
-  char *readFile(const std::string &filePath, size_t *outSize = nullptr);
-  bool isProtectedFile(const std::string &fsParam, const std::string &filePath);
+  void getStorageInfo(const std::string& fsParam, size_t& totalBytes,
+                      size_t& usedBytes, size_t& freeBytes);
+  bool writeFile(const std::string& filePath, const uint8_t* data, size_t len);
+  char* readFile(const std::string& filePath, size_t* outSize = nullptr);
+  bool isProtectedFile(const std::string& fsParam, const std::string& filePath);
 
   // Streaming file I/O operations (for large file uploads)
-  FILE *openFileForWrite(const std::string &fullPath);
-  bool writeFileChunk(FILE *f, const void *data, size_t len);
-  bool closeFileStream(FILE *f, const std::string &fullPath);
+  FILE* openFileForWrite(const std::string& fullPath);
+  bool writeFileChunk(FILE* f, const void* data, size_t len);
+  bool closeFileStream(FILE* f, const std::string& fullPath);
 
   // Small helpers used by filesystem HTTP routes (implemented in Utils.cpp)
-  bool fileExists(const std::string &fullPath);
-  bool dirExists(const std::string &fullPath);
-  bool mkDir(const std::string &fullPath);
+  bool fileExists(const std::string& fullPath);
+  bool dirExists(const std::string& fullPath);
+  bool mkDir(const std::string& fullPath);
   /** If path is not already under sdMountPoint, prepends it (for SD card
    * paths). */
-  std::string resolvePathOnSD(const std::string &path);
-  std::string getQueryParam(httpd_req_t *req, const char *key);
-  std::string urlDecode(const std::string &encoded);
+  std::string resolvePathOnSD(const std::string& path);
+  std::string getQueryParam(httpd_req_t* req, const char* key);
+  std::string urlDecode(const std::string& encoded);
 
   // ---- Logging
-  // Defer log writes to avoid blocking request handling
-  std::vector<std::string> deferredLogMessages;
-  bool logIDF(std::string message);
-  void flushDeferredLog();
-  std::string formatIDFtoESPWiFi(const std::string &line,
-                                 LogLevel *outLevel = nullptr);
-  static int idfLogVprintfHook(const char *format, va_list args);
+  std::string formatIDFtoESPWiFi(const std::string& line,
+                                 LogLevel* outLevel = nullptr);
+  static int idfLogVprintfHook(const char* format, va_list args);
 
   void cleanLogFile();
   int maxLogFileSize = 0;
@@ -209,7 +206,7 @@ public:
   std::string logFilePath = "/espwifi.log";
   // Helper to determine which filesystem to use for logging
   // Sets useSD and useLFS variables, returns true if a filesystem is available
-  bool getLogFilesystem(bool &useSD, bool &useLFS);
+  bool getLogFilesystem(bool& useSD, bool& useLFS);
   void startLogging();
   std::string timestamp();
   void logConfigHandler();
@@ -218,12 +215,13 @@ public:
   std::string logLevelToString(LogLevel level);
 
   // Core logging implementation - formats and writes the log message
-  void logImpl(LogLevel level, const std::string &message);
+  void logImpl(LogLevel level, const std::string& message);
 
-  void log(LogLevel level, const char *format, ...);
+  void log(LogLevel level, const char* format, ...);
+  void log(LogLevel level, const char* format, const std::string& arg);
   void log(LogLevel level, std::string message) { logImpl(level, message); }
-  void log(LogLevel level, const char *format, const std::string &arg);
-  template <typename T> void log(T value) {
+  template <typename T>
+  void log(T value) {
     log(INFO, "%s", std::to_string(value).c_str());
   }
 
@@ -235,7 +233,7 @@ public:
   std::string prettyConfig();
   JsonDocument defaultConfig();
   void maskSensitiveFields(JsonVariant variant);
-  JsonDocument mergeJson(const JsonDocument &base, const JsonDocument &updates);
+  JsonDocument mergeJson(const JsonDocument& base, const JsonDocument& updates);
   // Queue a config update to be applied on the main loop (watchdog-safe).
   // The update is deep-merged into the current config and persisted.
   bool queueConfigUpdate(JsonVariantConst updates);
@@ -275,50 +273,50 @@ public:
   // ---- HTTPS/TLS credential management
   // TLS materials are kept in-memory for the lifetime of the HTTPS server,
   // because esp_https_server expects the cert/key buffers to remain valid.
-  bool setTlsServerCredentials(const char *certPem, size_t certPemLen,
-                               const char *keyPem, size_t keyPemLen);
+  bool setTlsServerCredentials(const char* certPem, size_t certPemLen,
+                               const char* keyPem, size_t keyPemLen);
   void clearTlsServerCredentials();
 
   // Route registration helpers
-  esp_err_t registerRoute(const char *uri, httpd_method_t method,
+  esp_err_t registerRoute(const char* uri, httpd_method_t method,
                           RouteHandler handler);
 
   // CORS + auth verification
-  void addCORS(httpd_req_t *req);
-  void handleCorsPreflight(httpd_req_t *req);
-  esp_err_t verifyRequest(httpd_req_t *req,
-                          std::string *outClientInfo = nullptr);
-  bool authorized(httpd_req_t *req);
-  bool isExcludedPath(const char *uri);
+  void addCORS(httpd_req_t* req);
+  void handleCorsPreflight(httpd_req_t* req);
+  esp_err_t verifyRequest(httpd_req_t* req,
+                          std::string* outClientInfo = nullptr);
+  bool authorized(httpd_req_t* req);
+  bool isExcludedPath(const char* uri);
   bool authEnabled();
   std::string generateToken();
 
   // Response helpers
-  const char *getMethodString(int method);
-  std::string getClientInfo(httpd_req_t *req);
-  esp_err_t sendJsonResponse(httpd_req_t *req, int statusCode,
-                             const std::string &jsonBody,
-                             const std::string *clientInfo = nullptr);
-  esp_err_t sendFileResponse(httpd_req_t *req, const std::string &filePath,
-                             const std::string *clientInfo = nullptr);
-  void logAccess(int statusCode, const std::string &clientInfo,
+  const char* getMethodString(int method);
+  std::string getClientInfo(httpd_req_t* req);
+  esp_err_t sendJsonResponse(httpd_req_t* req, int statusCode,
+                             const std::string& jsonBody,
+                             const std::string* clientInfo = nullptr);
+  esp_err_t sendFileResponse(httpd_req_t* req, const std::string& filePath,
+                             const std::string* clientInfo = nullptr);
+  void logAccess(int statusCode, const std::string& clientInfo,
                  size_t bytesSent = 0);
-  JsonDocument readRequestBody(httpd_req_t *req);
+  JsonDocument readRequestBody(httpd_req_t* req);
 
   // GPIO helper methods (used by both HTTP and WebSocket)
-  bool setGPIO(int pin, bool state, std::string &errorMsg);
-  bool getGPIO(int pin, int &state, std::string &errorMsg);
-  bool setPWM(int pin, int duty, int freq, std::string &errorMsg);
+  bool setGPIO(int pin, bool state, std::string& errorMsg);
+  bool getGPIO(int pin, int& state, std::string& errorMsg);
+  bool setPWM(int pin, int duty, int freq, std::string& errorMsg);
 
   // File browser helper methods (used by both HTTP and WebSocket)
-  bool listFiles(const std::string &fs, const std::string &path,
-                 JsonDocument &outDoc, std::string &errorMsg);
-  bool makeDirectory(const std::string &fs, const std::string &path,
-                     const std::string &name, std::string &errorMsg);
-  bool renameFile(const std::string &fs, const std::string &oldPath,
-                  const std::string &newName, std::string &errorMsg);
-  bool deleteFile(const std::string &fs, const std::string &path,
-                  std::string &errorMsg);
+  bool listFiles(const std::string& fs, const std::string& path,
+                 JsonDocument& outDoc, std::string& errorMsg);
+  bool makeDirectory(const std::string& fs, const std::string& path,
+                     const std::string& name, std::string& errorMsg);
+  bool renameFile(const std::string& fs, const std::string& oldPath,
+                  const std::string& newName, std::string& errorMsg);
+  bool deleteFile(const std::string& fs, const std::string& path,
+                  std::string& errorMsg);
 
   // ---- Control WebSocket (LAN)
   void startControlWebSocket();
@@ -336,10 +334,10 @@ public:
   std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);
   std::string bytesToHumanReadable(size_t bytes);
-  std::string getFileExtension(const std::string &filename);
+  std::string getFileExtension(const std::string& filename);
   bool matchPattern(std::string_view uri, std::string_view pattern);
   void deepMerge(JsonVariant dst, JsonVariantConst src, int depth = 0);
-  void runAtInterval(unsigned int interval, unsigned long &lastIntervalRun,
+  void runAtInterval(unsigned int interval, unsigned long& lastIntervalRun,
                      std::function<void()> functionToRun);
 
   // ---- I2C
@@ -349,11 +347,11 @@ public:
   // ---- OTA
   void startOTA();
   bool isOTAEnabled();
-  void handleOTAStart(void *req);
-  void handleOTAUpdate(void *req, const std::string &filename, size_t index,
-                       uint8_t *data, size_t len, bool final);
-  void handleOTAFileUpload(void *req, const std::string &filename, size_t index,
-                           uint8_t *data, size_t len, bool final);
+  void handleOTAStart(void* req);
+  void handleOTAUpdate(void* req, const std::string& filename, size_t index,
+                       uint8_t* data, size_t len, bool final);
+  void handleOTAFileUpload(void* req, const std::string& filename, size_t index,
+                           uint8_t* data, size_t len, bool final);
   void resetOTAState();
 
   // OTA state (initialized defensively; OTA is currently stubbed)
@@ -368,11 +366,11 @@ public:
   void bleConfigHandler();
 #ifdef CONFIG_BT_NIMBLE_ENABLED
   using BleAccessCallback = int (*)(uint16_t conn_handle, uint16_t attr_handle,
-                                    struct ble_gatt_access_ctxt *ctxt,
-                                    void *arg);
+                                    struct ble_gatt_access_ctxt* ctxt,
+                                    void* arg);
 
   // Route-style BLE characteristic handler.
-  void *ble = nullptr;
+  void* ble = nullptr;
   void deinitBLE();
   uint8_t getBLEStatus();
   std::string getBLEAddress();
@@ -384,7 +382,7 @@ public:
   bool unregisterBleService16(uint16_t svcUuid16);
   bool addBleCharacteristic16(uint16_t svcUuid16, uint16_t chrUuid16,
                               uint16_t flags, BleAccessCallback accessCb,
-                              void *arg = nullptr, uint8_t minKeySize = 0);
+                              void* arg = nullptr, uint8_t minKeySize = 0);
 
   void clearBleServices();
   bool applyBleServiceRegistry(bool restartNow = true);
@@ -392,13 +390,13 @@ public:
 
   // ---- Bluetooth Audio
 #ifdef CONFIG_BT_A2DP_ENABLE
-  std::function<bool(const char *name, esp_bd_addr_t address, int rssi)>
+  std::function<bool(const char* name, esp_bd_addr_t address, int rssi)>
       onBluetoothDeviceDiscovered;
   std::function<void(esp_a2d_connection_state_t state)>
       onBluetoothConnectionStateChanged;
   std::vector<std::string> bluetoothScannedHosts = {};
-  void startBluetoothMp3Playback(const char *path);
-  BluetoothA2DPSource *a2dp_source = nullptr;
+  void startBluetoothMp3Playback(const char* path);
+  BluetoothA2DPSource* a2dp_source = nullptr;
   std::string bluetoothConnectTargetName;
   void stopBluetoothMp3Playback();
   void toggleBluetooth();
@@ -417,7 +415,7 @@ public:
   // ---- Camera
   void streamCamera();
 #if ESPWiFi_HAS_CAMERA
-  sensor_t *camera = nullptr;
+  sensor_t* camera = nullptr;
   void printCameraSettings();
 
   // Media camera streaming subscribers (clients that requested camera_start)
@@ -427,8 +425,8 @@ public:
 
   void setMediaCameraStreamSubscribed(int clientFd, bool enable);
   void clearMediaCameraStreamSubscribed(int clientFd);
-#endif // ESPWiFi_HAS_CAMERA
-#endif // CONFIG_HTTPD_WS_SUPPORT
+#endif  // ESPWiFi_HAS_CAMERA
+#endif  // CONFIG_HTTPD_WS_SUPPORT
 
   // Camera API (always declared; stubs compile when camera is disabled)
   bool initCamera();
@@ -436,16 +434,16 @@ public:
   void clearCameraBuffer();
   void updateCameraSettings();
   void cameraConfigHandler();
-  esp_err_t sendCameraSnapshot(httpd_req_t *req, const std::string &clientInfo);
-  bool takeSnapshot(bool save, std::string &url, std::string &errorMsg);
+  esp_err_t sendCameraSnapshot(httpd_req_t* req, const std::string& clientInfo);
+  bool takeSnapshot(bool save, std::string& url, std::string& errorMsg);
 
   // Camera event handlers (instance methods)
-  void cameraInitHandler(bool success, void *obj);
-  void cameraSettingsUpdateHandler(void *obj);
+  void cameraInitHandler(bool success, void* obj);
+  void cameraSettingsUpdateHandler(void* obj);
   void cameraFrameCaptureHandler(uint32_t frameNumber, size_t frameSize,
-                                 void *obj);
-  void cameraErrorHandler(esp_err_t errorCode, const char *errorContext,
-                          void *obj);
+                                 void* obj);
+  void cameraErrorHandler(esp_err_t errorCode, const char* errorContext,
+                          void* obj);
 
   // Camera handler registration
   esp_err_t registerCameraHandlers();
@@ -455,7 +453,7 @@ public:
     return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
   }
 
-private:
+ private:
   std::string _version = "v0.1.0";
 
   // ---- HTTPS/TLS server state
@@ -470,33 +468,33 @@ private:
 
   // ---- Route trampoline/state
   struct RouteCtx {
-    ESPWiFi *self = nullptr;
+    ESPWiFi* self = nullptr;
     RouteHandler handler = nullptr;
   };
-  std::vector<RouteCtx *> _routeContexts;
-  static esp_err_t routeTrampoline(httpd_req_t *req);
+  std::vector<RouteCtx*> _routeContexts;
+  static esp_err_t routeTrampoline(httpd_req_t* req);
 
   // ---- WiFi event handling
   SemaphoreHandle_t wifi_connect_semaphore = nullptr;
   bool wifi_connection_success = false;
-  bool wifiAutoReconnect = true; // auto-reconnect on STA disconnect
+  bool wifiAutoReconnect = true;  // auto-reconnect on STA disconnect
   esp_event_handler_instance_t wifi_event_instance = nullptr;
   esp_event_handler_instance_t ip_event_instance = nullptr;
 
   // ---- Deferred config operations (avoid heavy work in HTTP handlers)
   bool configNeedsSave = false;
-  JsonDocument configUpdate; // Temporary storage for config updates
-                             // from HTTP handler
+  JsonDocument configUpdate;  // Temporary storage for config updates
+                              // from HTTP handler
   bool wifiRestartRequested_ = false;
 
   // ---- CORS cache (minimize per-request work/allocations)
   void corsConfigHandler();
   bool cors_cache_enabled = true;
   bool cors_cache_has_origins = false;
-  bool cors_cache_allow_any_origin = true; // true when origins contains "*", or
-                                           // when cors isn't configured
-  std::string cors_cache_allow_methods;    // e.g. "GET, POST, PUT, OPTIONS"
-  std::string cors_cache_allow_headers;    // e.g. "Content-Type, Authorization"
+  bool cors_cache_allow_any_origin = true;  // true when origins contains "*",
+                                            // or when cors isn't configured
+  std::string cors_cache_allow_methods;     // e.g. "GET, POST, PUT, OPTIONS"
+  std::string cors_cache_allow_headers;  // e.g. "Content-Type, Authorization"
 
   // ---- Log file synchronization (best-effort; avoid blocking httpd)
   SemaphoreHandle_t logFileMutex = nullptr;
@@ -506,47 +504,47 @@ private:
   esp_err_t registerWiFiHandlers();
   void unregisterWiFiHandlers();
   void wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
-                        void *event_data);
+                        void* event_data);
   void ipEventHandler(esp_event_base_t event_base, int32_t event_id,
-                      void *event_data);
+                      void* event_data);
 
-  static void wifiEventHandlerStatic(void *arg, esp_event_base_t event_base,
-                                     int32_t event_id, void *event_data);
-  static void ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
-                                   int32_t event_id, void *event_data);
+  static void wifiEventHandlerStatic(void* arg, esp_event_base_t event_base,
+                                     int32_t event_id, void* event_data);
+  static void ipEventHandlerStatic(void* arg, esp_event_base_t event_base,
+                                   int32_t event_id, void* event_data);
 
   // BLE event handlers (instance methods)
 #ifdef CONFIG_BT_NIMBLE_ENABLED
-  void bleConnectionHandler(int status, uint16_t conn_handle, void *obj);
-  void bleDisconnectionHandler(int reason, void *obj);
-  void bleAdvertisingCompleteHandler(void *obj);
-  void bleSubscribeHandler(uint16_t conn_handle, void *obj);
-  void bleMtuUpdateHandler(uint16_t conn_handle, uint16_t mtu, void *obj);
-  void bleHostSyncHandler(void *obj);
-  void bleHostResetHandler(int reason, void *obj);
-  void bleHostTaskStartedHandler(void *obj);
+  void bleConnectionHandler(int status, uint16_t conn_handle, void* obj);
+  void bleDisconnectionHandler(int reason, void* obj);
+  void bleAdvertisingCompleteHandler(void* obj);
+  void bleSubscribeHandler(uint16_t conn_handle, void* obj);
+  void bleMtuUpdateHandler(uint16_t conn_handle, uint16_t mtu, void* obj);
+  void bleHostSyncHandler(void* obj);
+  void bleHostResetHandler(int reason, void* obj);
+  void bleHostTaskStartedHandler(void* obj);
 
   // BLE static callbacks for NimBLE stack
-  static int bleGapEventCallbackStatic(struct ble_gap_event *event, void *arg);
-  static void bleHostSyncCallbackStatic(void *arg);
-  static void bleHostResetCallbackStatic(int reason, void *arg);
-  static void bleHostTaskStatic(void *arg);
+  static int bleGapEventCallbackStatic(struct ble_gap_event* event, void* arg);
+  static void bleHostSyncCallbackStatic(void* arg);
+  static void bleHostResetCallbackStatic(int reason, void* arg);
+  static void bleHostTaskStatic(void* arg);
 #endif
 
   // Camera event handlers (static wrappers for callbacks)
-  static void cameraInitHandlerStatic(bool success, void *obj);
-  static void cameraSettingsUpdateHandlerStatic(void *obj);
+  static void cameraInitHandlerStatic(bool success, void* obj);
+  static void cameraSettingsUpdateHandlerStatic(void* obj);
   static void cameraFrameCaptureHandlerStatic(uint32_t frameNumber,
-                                              size_t frameSize, void *obj);
+                                              size_t frameSize, void* obj);
   static void cameraErrorHandlerStatic(esp_err_t errorCode,
-                                       const char *errorContext, void *obj);
+                                       const char* errorContext, void* obj);
 };
 
 // String helper
-inline void toLowerCase(std::string &s) {
-  for (char &c : s) {
+inline void toLowerCase(std::string& s) {
+  for (char& c : s) {
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   }
 }
 
-#endif // ESPWiFi_H
+#endif  // ESPWiFi_H

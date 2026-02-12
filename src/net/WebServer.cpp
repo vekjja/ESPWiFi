@@ -1,4 +1,11 @@
 // WebServer.cpp - ESP-IDF HTTP Server Implementation
+#include <ArduinoJson.h>
+#include <errno.h>
+#include <sys/stat.h>
+
+#include <cstring>
+#include <string>
+
 #include "ESPWiFi.h"
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
@@ -9,16 +16,11 @@
 #include "esp_wifi.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
-#include <ArduinoJson.h>
-#include <cstring>
-#include <errno.h>
-#include <string>
-#include <sys/stat.h>
 
 // ESP-IDF includes the full request URI (including "?query") in req->uri.
 // Route matching must ignore the query string, otherwise "/api/foo" will not
 // match "/api/foo?x=1" and requests can fall through to the catch-all handler.
-static bool uri_match_no_query(const char *uri, const char *uri_template,
+static bool uri_match_no_query(const char* uri, const char* uri_template,
                                size_t tpl_len) {
   if (uri == nullptr || uri_template == nullptr) {
     return false;
@@ -35,16 +37,16 @@ static bool uri_match_no_query(const char *uri, const char *uri_template,
   return httpd_uri_match_wildcard(pathOnly, uri_template, tpl_len);
 }
 
-static esp_err_t noopRouteHandler(ESPWiFi *espwifi, httpd_req_t *req,
-                                  const std::string &clientInfo) {
+static esp_err_t noopRouteHandler(ESPWiFi* espwifi, httpd_req_t* req,
+                                  const std::string& clientInfo) {
   (void)espwifi;
   (void)req;
   (void)clientInfo;
   return ESP_OK;
 }
 
-bool ESPWiFi::setTlsServerCredentials(const char *certPem, size_t certPemLen,
-                                      const char *keyPem, size_t keyPemLen) {
+bool ESPWiFi::setTlsServerCredentials(const char* certPem, size_t certPemLen,
+                                      const char* keyPem, size_t keyPemLen) {
   if (certPem == nullptr || keyPem == nullptr || certPemLen == 0 ||
       keyPemLen == 0) {
     clearTlsServerCredentials();
@@ -69,7 +71,7 @@ void ESPWiFi::clearTlsServerCredentials() {
   tlsServerKeyPem_.clear();
 }
 
-static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
+static bool loadTlsCredentialsFromLfs(ESPWiFi* self) {
   if (self == nullptr) {
     return false;
   }
@@ -90,7 +92,7 @@ static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
   }
 
   size_t certLen = 0;
-  char *cert = self->readFile(certRel, &certLen);
+  char* cert = self->readFile(certRel, &certLen);
   if (cert == nullptr || certLen == 0) {
     if (cert) {
       free(cert);
@@ -99,7 +101,7 @@ static bool loadTlsCredentialsFromLfs(ESPWiFi *self) {
   }
 
   size_t keyLen = 0;
-  char *key = self->readFile(keyRel, &keyLen);
+  char* key = self->readFile(keyRel, &keyLen);
   if (key == nullptr || keyLen == 0) {
     free(cert);
     if (key) {
@@ -127,7 +129,7 @@ void ESPWiFi::startWebServer() {
   httpd_config.max_uri_handlers = 32;
   httpd_config.lru_purge_enable = true;
   httpd_config.uri_match_fn =
-      &uri_match_no_query; // wildcard matching (path-only)
+      &uri_match_no_query;  // wildcard matching (path-only)
   // HTTP server runs in its own task; stack is a common "heap killer" if set
   // too big. 4096 is default in IDF; bump only if you see stack overflows
   // during handlers.
@@ -145,9 +147,9 @@ void ESPWiFi::startWebServer() {
     ssl_conf.httpd.server_port = 443;
 
     // IMPORTANT: these buffers must remain valid for server lifetime.
-    ssl_conf.servercert = (const unsigned char *)tlsServerCertPem_.c_str();
+    ssl_conf.servercert = (const unsigned char*)tlsServerCertPem_.c_str();
     ssl_conf.servercert_len = tlsServerCertPem_.size() + 1;
-    ssl_conf.prvtkey_pem = (const unsigned char *)tlsServerKeyPem_.c_str();
+    ssl_conf.prvtkey_pem = (const unsigned char*)tlsServerKeyPem_.c_str();
     ssl_conf.prvtkey_len = tlsServerKeyPem_.size() + 1;
 
     ret = httpd_ssl_start(&webServer, &ssl_conf);
@@ -181,8 +183,8 @@ void ESPWiFi::startWebServer() {
 
   // Restart endpoint
   (void)registerRoute("/api/restart", HTTP_POST,
-                      [](ESPWiFi *espwifi, httpd_req_t *req,
-                         const std::string &clientInfo) -> esp_err_t {
+                      [](ESPWiFi* espwifi, httpd_req_t* req,
+                         const std::string& clientInfo) -> esp_err_t {
                         (void)espwifi->sendJsonResponse(
                             req, 200, "{\"status\":\"restarting\"}",
                             &clientInfo);
@@ -193,7 +195,7 @@ void ESPWiFi::startWebServer() {
 
   webServerStarted = true;
   log(INFO, "🗄️ %s Web Server started", tlsServerEnabled_ ? "HTTPS" : "HTTP");
-  const char *scheme = tlsServerEnabled_ ? "https" : "http";
+  const char* scheme = tlsServerEnabled_ ? "https" : "http";
   log(INFO, "🗄️\t%s://%s:%d", scheme, getHostname().c_str(), webServerPort_);
   log(INFO, "🗄️\t%s://%s:%d", scheme, ipAddress().c_str(), webServerPort_);
   if (config["wifi"]["mdns"].as<bool>()) {
@@ -216,8 +218,8 @@ void ESPWiFi::stopWebServer() {
   log(INFO, "🗄️ Web Server stopped");
 }
 
-esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
-  RouteCtx *ctx = (RouteCtx *)req->user_ctx;
+esp_err_t ESPWiFi::routeTrampoline(httpd_req_t* req) {
+  RouteCtx* ctx = (RouteCtx*)req->user_ctx;
   if (ctx == nullptr || ctx->self == nullptr || ctx->handler == nullptr) {
     httpd_resp_send_500(req);
     return ESP_OK;
@@ -225,13 +227,13 @@ esp_err_t ESPWiFi::routeTrampoline(httpd_req_t *req) {
 
   std::string clientInfo;
   if (ctx->self->verifyRequest(req, &clientInfo) != ESP_OK) {
-    return ESP_OK; // preflight or error already handled
+    return ESP_OK;  // preflight or error already handled
   }
 
   return ctx->handler(ctx->self, req, clientInfo);
 }
 
-esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
+esp_err_t ESPWiFi::registerRoute(const char* uri, httpd_method_t method,
                                  RouteHandler handler) {
   if (!webServer) {
     log(ERROR, "Cannot register route %s: web server not initialized",
@@ -243,7 +245,7 @@ esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
   }
 
   // Allocate a tiny per-route context. This runs at init time; keep it simple.
-  RouteCtx *ctx = new (std::nothrow) RouteCtx();
+  RouteCtx* ctx = new (std::nothrow) RouteCtx();
   if (ctx == nullptr) {
     log(ERROR, "Cannot register route %s: out of memory", uri);
     return ESP_ERR_NO_MEM;
@@ -275,32 +277,32 @@ esp_err_t ESPWiFi::registerRoute(const char *uri, httpd_method_t method,
 }
 
 // Helper to get HTTP method as string for logging
-const char *ESPWiFi::getMethodString(int method) {
+const char* ESPWiFi::getMethodString(int method) {
   switch (static_cast<httpd_method_t>(method)) {
-  case HTTP_GET:
-    return "GET";
-  case HTTP_POST:
-    return "POST";
-  case HTTP_PUT:
-    return "PUT";
-  case HTTP_DELETE:
-    return "DELETE";
-  case HTTP_PATCH:
-    return "PATCH";
-  case HTTP_HEAD:
-    return "HEAD";
-  case HTTP_OPTIONS:
-    return "OPTIONS";
-  default:
-    return "UNKNOWN";
+    case HTTP_GET:
+      return "GET";
+    case HTTP_POST:
+      return "POST";
+    case HTTP_PUT:
+      return "PUT";
+    case HTTP_DELETE:
+      return "DELETE";
+    case HTTP_PATCH:
+      return "PATCH";
+    case HTTP_HEAD:
+      return "HEAD";
+    case HTTP_OPTIONS:
+      return "OPTIONS";
+    default:
+      return "UNKNOWN";
   }
 }
 
-std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
+std::string ESPWiFi::getClientInfo(httpd_req_t* req) {
   // Get request information for logging
-  const char *method = getMethodString(req->method);
-  const char *uri = req->uri;
-  const char *userAgent = "-";
+  const char* method = getMethodString(req->method);
+  const char* uri = req->uri;
+  const char* userAgent = "-";
 
   // Best-effort client IP extraction (capture early; socket may later die)
   char remote_ip[64];
@@ -311,15 +313,15 @@ std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
   if (sockfd >= 0) {
     struct sockaddr_storage addr;
     socklen_t addr_len = sizeof(addr);
-    if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_len) == 0) {
+    if (getpeername(sockfd, (struct sockaddr*)&addr, &addr_len) == 0) {
       if (addr.ss_family == AF_INET) {
-        struct sockaddr_in *a = (struct sockaddr_in *)&addr;
+        struct sockaddr_in* a = (struct sockaddr_in*)&addr;
         (void)inet_ntop(AF_INET, &a->sin_addr, remote_ip, sizeof(remote_ip));
       } else if (addr.ss_family == AF_INET6) {
-        struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)&addr;
+        struct sockaddr_in6* a6 = (struct sockaddr_in6*)&addr;
         // If this is an IPv4 client represented as an IPv4-mapped IPv6 address
         // (::ffff:a.b.c.d), log it as plain IPv4 for readability.
-        const uint8_t *b = (const uint8_t *)&a6->sin6_addr;
+        const uint8_t* b = (const uint8_t*)&a6->sin6_addr;
         const bool isV4Mapped =
             (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[3] == 0 && b[4] == 0 &&
              b[5] == 0 && b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 0 &&
@@ -354,21 +356,20 @@ std::string ESPWiFi::getClientInfo(httpd_req_t *req) {
   return std::string(clientInfoBuf);
 }
 
-void ESPWiFi::logAccess(int statusCode, const std::string &clientInfo,
+void ESPWiFi::logAccess(int statusCode, const std::string& clientInfo,
                         size_t bytesSent) {
-
   std::string status = getStatusFromCode(statusCode);
   log(ACCESS, "%s - %s - %zu", status.c_str(), clientInfo.c_str(), bytesSent);
 }
 
-esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
-                                    const std::string &jsonBody,
-                                    const std::string *clientInfo) {
+esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t* req, int statusCode,
+                                    const std::string& jsonBody,
+                                    const std::string* clientInfo) {
   httpd_resp_set_type(req, "application/json");
 
   // Reuse captured clientInfo when available; otherwise capture now.
   std::string clientInfoLocal;
-  const std::string &clientInfoRef =
+  const std::string& clientInfoRef =
       (clientInfo != nullptr) ? *clientInfo
                               : (clientInfoLocal = getClientInfo(req));
 
@@ -385,7 +386,7 @@ esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
     ret = httpd_resp_send(req, jsonBody.c_str(), HTTPD_RESP_USE_STRLEN);
     sent = (ret == ESP_OK) ? jsonBody.size() : 0;
   } else {
-    const char *data = jsonBody.data();
+    const char* data = jsonBody.data();
     size_t remaining = jsonBody.size();
     while (remaining > 0) {
       size_t toSend = remaining > CHUNK_SIZE ? CHUNK_SIZE : remaining;
@@ -409,13 +410,12 @@ esp_err_t ESPWiFi::sendJsonResponse(httpd_req_t *req, int statusCode,
   return ret;
 }
 
-esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
-                                    const std::string &filePath,
-                                    const std::string *clientInfo) {
-
+esp_err_t ESPWiFi::sendFileResponse(httpd_req_t* req,
+                                    const std::string& filePath,
+                                    const std::string* clientInfo) {
   // Reuse captured clientInfo when available; otherwise capture now.
   std::string clientInfoLocal;
-  const std::string &clientInfoRef =
+  const std::string& clientInfoRef =
       (clientInfo != nullptr) ? *clientInfo
                               : (clientInfoLocal = getClientInfo(req));
 
@@ -427,10 +427,10 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   bool fsAvailable = false;
   if (filePath.rfind("/sd/", 0) == 0 || filePath == "/sd") {
     fsAvailable = (sdCard != nullptr);
-    fullPath = filePath; // already includes mountpoint
+    fullPath = filePath;  // already includes mountpoint
   } else if (filePath.rfind("/lfs/", 0) == 0 || filePath == "/lfs") {
     fsAvailable = (lfs != nullptr);
-    fullPath = filePath; // already includes mountpoint
+    fullPath = filePath;  // already includes mountpoint
   } else {
     fsAvailable = (lfs != nullptr);
     fullPath = lfsMountPoint + filePath;
@@ -439,7 +439,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   if (!fsAvailable) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "text/plain");
-    const char *body = "Filesystem not available";
+    const char* body = "Filesystem not available";
     esp_err_t ret = httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
     if (ret == ESP_OK) {
       logAccess(503, clientInfoRef, strlen(body));
@@ -465,7 +465,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
   }
 
   // Open file
-  FILE *file = fopen(fullPath.c_str(), "rb");
+  FILE* file = fopen(fullPath.c_str(), "rb");
   if (!file) {
     // Check if this is an SD card error
     if (fsAvailable && filePath.rfind("/sd/", 0) == 0) {
@@ -541,8 +541,8 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
                                     sizeof(rangeHeader)) == ESP_OK) {
       // Parse "bytes=start-end" or "bytes=start-"
       if (strncmp(rangeHeader, "bytes=", 6) == 0) {
-        char *rangeStr = rangeHeader + 6;
-        char *dashPos = strchr(rangeStr, '-');
+        char* rangeStr = rangeHeader + 6;
+        char* dashPos = strchr(rangeStr, '-');
         if (dashPos) {
           *dashPos = '\0';
           rangeStart = atol(rangeStr);
@@ -609,7 +609,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Use 32KB chunks for faster streaming (MP3 players need quick initial
     // buffer)
     constexpr size_t CHUNK_SIZE = 32768;
-    char *buffer = (char *)malloc(CHUNK_SIZE);
+    char* buffer = (char*)malloc(CHUNK_SIZE);
     if (!buffer) {
       fclose(file);
       log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
@@ -671,7 +671,7 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t *req,
     // Allocate from heap (not stack) to ensure it's in regular RAM, not
     // PSRAM
     constexpr size_t CHUNK_SIZE = 2048;
-    char *buffer = (char *)malloc(CHUNK_SIZE);
+    char* buffer = (char*)malloc(CHUNK_SIZE);
     if (!buffer) {
       fclose(file);
       log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);

@@ -43,6 +43,13 @@ static bool onSsidDiscovered(const char *ssid, esp_bd_addr_t address,
   return false;
 }
 
+static void onConnectionStateChanged(esp_a2d_connection_state_t state,
+                                     void *obj) {
+  (void)obj;
+  if (bt_espwifi->onBluetoothConnectionStateChanged)
+    bt_espwifi->onBluetoothConnectionStateChanged(state);
+}
+
 void ESPWiFi::startBluetooth() {
   if (a2dp_source != nullptr) {
     log(INFO, "🛜 Bluetooth already started");
@@ -51,6 +58,7 @@ void ESPWiFi::startBluetooth() {
   bt_espwifi = this;
   s_a2dp_source.set_data_callback(silentDataCb);
   s_a2dp_source.set_ssid_callback(onSsidDiscovered);
+  s_a2dp_source.set_on_connection_state_changed(onConnectionStateChanged);
   s_a2dp_source.start(getHostname().c_str());
   a2dp_source = &s_a2dp_source;
   log(INFO, "🛜 Bluetooth Started");

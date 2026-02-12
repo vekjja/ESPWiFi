@@ -391,23 +391,19 @@ public:
 #endif
 
   // ---- Bluetooth Audio
-  void bluetoothConfigHandler();
 #ifdef CONFIG_BT_A2DP_ENABLE
-  std::vector<std::string> bluetoothScannedHosts = {};
-  BluetoothA2DPSource *a2dp_source = nullptr;
-  /// When set, the ssid_callback returns true for this device so the library
-  /// cancels discovery and connects. Cleared when the callback matches.
-  std::string bluetoothConnectTargetName;
-  /// Optional: set to a lambda (name, address, rssi) -> true to connect to this
-  /// device, false to keep scanning.
   std::function<bool(const char *name, esp_bd_addr_t address, int rssi)>
       onBluetoothDeviceDiscovered;
+  std::function<void(esp_a2d_connection_state_t state)>
+      onBluetoothConnectionStateChanged;
+  std::vector<std::string> bluetoothScannedHosts = {};
+  void startBluetoothMp3Playback(const char *path);
+  BluetoothA2DPSource *a2dp_source = nullptr;
+  std::string bluetoothConnectTargetName;
+  void stopBluetoothMp3Playback();
+  void toggleBluetooth();
   void startBluetooth();
   void stopBluetooth();
-  void toggleBluetooth();
-  /// Start playing an MP3 file from path (e.g. /sd/music/track.mp3).
-  void startBluetoothMp3Playback(const char *path);
-  void stopBluetoothMp3Playback();
 #endif
 
 #ifdef CONFIG_HTTPD_WS_SUPPORT

@@ -273,8 +273,6 @@ void ESPWiFi::handleConfigUpdate() {
     powerConfigHandler();
     corsConfigHandler();
     logConfigHandler();
-    // bleConfigHandler();
-    // bluetoothConfigHandler();
     wifiConfigHandler();
   }
 

@@ -173,7 +173,6 @@ void ESPWiFi::applyWiFiPowerSettings() {
  * Configuration Tracking:
  * ----------------------
  * The function uses static variables to track the previous configuration
- * state, similar to bluetoothConfigHandler() and logConfigHandler(). This
  * allows it to detect when settings have actually changed and avoid
  * unnecessary WiFi API calls.
  *

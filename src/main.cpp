@@ -20,7 +20,8 @@ static void uiUpdateBluetoothInfo(std::string info) {
   }
 }
 
-void uiUpdateBluetoothDropdown(const std::vector<std::string>& devices) {
+void uiUpdateBluetoothDropdown(const std::vector<std::string>& devices,
+                               std::string selectedDevice = "") {
   if (ui_BluetoothDropdown) {
     lv_dropdown_clear_options(ui_BluetoothDropdown);
     for (size_t i = 0; i < espwifi.bluetoothScannedHosts.size(); i++) {
@@ -71,31 +72,30 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
     espwifi.startBluetoothWavPlayback("/sd/music/test.wav");
   }
 }
-
-static void onBluetoothConnectionStateChanged(
-    esp_a2d_connection_state_t state) {
-  switch (state) {
-    case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
-      uiUpdateBluetoothInfo("Disconnected");
-      break;
-    case ESP_A2D_CONNECTION_STATE_CONNECTING:
-      uiUpdateBluetoothInfo("Connecting...");
-      break;
-    case ESP_A2D_CONNECTION_STATE_CONNECTED:
-      uiUpdateBluetoothInfo("Connected\n" + espwifi.bluetoothConnectTargetName);
-      break;
-    case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
-      uiUpdateBluetoothInfo("Disconnecting...");
-      break;
-    default:
-      break;
-  }
-};
 #endif
 
 extern "C" void app_main(void) {
 #if ESPWiFi_HAS_TFT
-  espwifi.onBluetoothConnectionStateChanged = onBluetoothConnectionStateChanged;
+  espwifi.onBluetoothConnectionStateChanged =
+      [](esp_a2d_connection_state_t state) {
+        switch (state) {
+          case ESP_A2D_CONNECTION_STATE_DISCONNECTED:
+            uiUpdateBluetoothInfo("Disconnected");
+            break;
+          case ESP_A2D_CONNECTION_STATE_CONNECTING:
+            uiUpdateBluetoothInfo("Connecting...");
+            break;
+          case ESP_A2D_CONNECTION_STATE_CONNECTED:
+            uiUpdateBluetoothInfo("Connected\n" +
+                                  espwifi.bluetoothConnectTargetName);
+            break;
+          case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
+            uiUpdateBluetoothInfo("Disconnecting...");
+            break;
+          default:
+            break;
+        }
+      };
   espwifi.registerUiEventHandlers = [](ESPWiFi* esp) {
     if (ui_BluetoothDropdown) {
       lv_obj_add_event_cb(ui_BluetoothDropdown, uiDropdownHandler,

@@ -388,10 +388,13 @@ class ESPWiFi {
 
   // ---- Bluetooth Audio
 #ifdef CONFIG_BT_A2DP_ENABLE
+  std::function<void(esp_a2d_audio_state_t state)> onBluetoothAudioStateChanged;
   std::function<bool(const char* name, esp_bd_addr_t address, int rssi)>
       onBluetoothDeviceDiscovered;
   std::function<void(esp_a2d_connection_state_t state)>
       onBluetoothConnectionStateChanged;
+  std::function<void(esp_bt_gap_discovery_state_t state)>
+      onBluetoothDiscoveryStateChanged;
   std::vector<std::string> bluetoothScannedHosts = {};
   void startBluetoothMp3Playback(const char* path);
   void startBluetoothWavPlayback(const char* path);

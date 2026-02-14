@@ -52,6 +52,21 @@ static void onConnectionStateChanged(esp_a2d_connection_state_t state,
     bt_espwifi->onBluetoothConnectionStateChanged(state);
 }
 
+static void onAudioStateChanged(esp_a2d_audio_state_t state, void* obj) {
+  (void)obj;
+  if (bt_espwifi) {
+    bt_espwifi->log(INFO, "🛜 Bluetooth audio state changed: %d", state);
+    if (bt_espwifi->onBluetoothAudioStateChanged) {
+      bt_espwifi->onBluetoothAudioStateChanged(state);
+    }
+  }
+}
+
+static void onDiscoveryModeChanged(esp_bt_gap_discovery_state_t state) {
+  if (bt_espwifi && bt_espwifi->onBluetoothDiscoveryStateChanged)
+    bt_espwifi->onBluetoothDiscoveryStateChanged(state);
+}
+
 void ESPWiFi::startBluetooth() {
   if (a2dp_source != nullptr) {
     log(INFO, "🛜 Bluetooth already started");
@@ -60,6 +75,8 @@ void ESPWiFi::startBluetooth() {
   bt_espwifi = this;
   s_a2dp_source.set_data_callback(silentDataCb);
   s_a2dp_source.set_ssid_callback(onSsidDiscovered);
+  s_a2dp_source.set_on_audio_state_changed(onAudioStateChanged);
+  s_a2dp_source.set_discovery_mode_callback(onDiscoveryModeChanged);
   s_a2dp_source.set_on_connection_state_changed(onConnectionStateChanged);
   s_a2dp_source.start(getHostname().c_str());
   a2dp_source = &s_a2dp_source;

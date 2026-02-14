@@ -58,8 +58,8 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
     return;
   }
   espwifi.log(INFO, "🛜🎵 Play button pressed");
-  static const char* kDefaultMp3Path = "/sd/music/we r.mp3";
-  espwifi.startBluetoothMp3Playback(kDefaultMp3Path);
+  static const char* kDefaultWavPath = "/sd/music/test.wav";
+  espwifi.startBluetoothWavPlayback(kDefaultWavPath);
 }
 #endif
 

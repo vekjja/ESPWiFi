@@ -20,10 +20,7 @@ void uiUpdateTitle(std::string title) {
 
 static void uiUpdateInfo(std::string info) {
   if (ui_InfoLabel) {
-    lv_label_set_text(
-        ui_InfoLabel,
-        info.empty() ? "Ensure the Remote Device is in Pairing Mode and Nearby"
-                     : info.c_str());
+    lv_label_set_text(ui_InfoLabel, info.c_str());
   }
 }
 
@@ -82,7 +79,7 @@ extern "C" void app_main(void) {
   };
 #endif
   espwifi.start();
-  uiUpdateInfo("");
   uiUpdateTitle("Kever\n");
+  uiUpdateInfo("Ensure the Remote Device is in Pairing Mode and Nearby");
   espwifi.runSystem();
 }

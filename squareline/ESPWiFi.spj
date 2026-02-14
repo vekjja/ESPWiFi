@@ -43,7 +43,7 @@
                 "strtype": "OBJECT/Position",
                 "intarray": [
                   0,
-                  -123
+                  -117
                 ],
                 "InheritedType": 7
               },
@@ -180,181 +180,12 @@
             "saved_objtypeKey": "LABEL"
           },
           {
-            "guid": "GUID23201447-226509S841538",
-            "properties": [
-              {
-                "nid": 10,
-                "strtype": "OBJECT/Name",
-                "strval": "PlayButton",
-                "InheritedType": 10
-              },
-              {
-                "nid": 20,
-                "strtype": "OBJECT/Layout",
-                "InheritedType": 1
-              },
-              {
-                "Flow": 0,
-                "Wrap": false,
-                "Reversed": false,
-                "MainAlignment": 0,
-                "CrossAlignment": 0,
-                "TrackAlignment": 0,
-                "LayoutType": 0,
-                "nid": 30,
-                "strtype": "OBJECT/Layout_type",
-                "strval": "No_layout",
-                "InheritedType": 13
-              },
-              {
-                "nid": 40,
-                "strtype": "OBJECT/Transform",
-                "InheritedType": 1
-              },
-              {
-                "nid": 50,
-                "flags": 17,
-                "strtype": "OBJECT/Position",
-                "intarray": [
-                  0,
-                  33
-                ],
-                "InheritedType": 7
-              },
-              {
-                "nid": 60,
-                "flags": 17,
-                "strtype": "OBJECT/Size",
-                "intarray": [
-                  48,
-                  48
-                ],
-                "InheritedType": 7
-              },
-              {
-                "nid": 70,
-                "strtype": "OBJECT/Align",
-                "strval": "CENTER",
-                "InheritedType": 3
-              },
-              {
-                "nid": 75,
-                "strtype": "OBJECT/Extend_click_area",
-                "InheritedType": 6
-              },
-              {
-                "nid": 90,
-                "flags": 1048576,
-                "strtype": "OBJECT/Flags",
-                "InheritedType": 1
-              },
-              {
-                "nid": 100,
-                "strtype": "IMGBUTTON/Hidden",
-                "strval": "False",
-                "InheritedType": 2
-              },
-              {
-                "nid": 225,
-                "flags": 1048576,
-                "strtype": "OBJECT/Scrolling",
-                "InheritedType": 1
-              },
-              {
-                "nid": 300,
-                "strtype": "OBJECT/Scrollbar_mode",
-                "strval": "AUTO",
-                "InheritedType": 3
-              },
-              {
-                "nid": 310,
-                "strtype": "OBJECT/Scroll_direction",
-                "strval": "ALL",
-                "InheritedType": 3
-              },
-              {
-                "nid": 314,
-                "strtype": "OBJECT/Scroll_snap_x",
-                "strval": "NONE",
-                "InheritedType": 3
-              },
-              {
-                "nid": 315,
-                "strtype": "OBJECT/Scroll_snap_y",
-                "strval": "NONE",
-                "InheritedType": 3
-              },
-              {
-                "nid": 320,
-                "flags": 1048576,
-                "strtype": "OBJECT/States",
-                "InheritedType": 1
-              },
-              {
-                "nid": 1010,
-                "strtype": "IMGBUTTON/Images",
-                "InheritedType": 1
-              },
-              {
-                "nid": 1020,
-                "strtype": "IMGBUTTON/Button_state",
-                "strval": "RELEASED",
-                "InheritedType": 3
-              },
-              {
-                "nid": 1030,
-                "strtype": "IMGBUTTON/Image_released",
-                "strval": "assets/play.png",
-                "InheritedType": 5
-              },
-              {
-                "nid": 1040,
-                "strtype": "IMGBUTTON/Image_pressed",
-                "strval": "",
-                "InheritedType": 5
-              },
-              {
-                "nid": 1050,
-                "strtype": "IMGBUTTON/Image_disabled",
-                "strval": "",
-                "InheritedType": 5
-              },
-              {
-                "nid": 1060,
-                "strtype": "IMGBUTTON/Image_checked_released",
-                "strval": "assets/pause.png",
-                "InheritedType": 5
-              },
-              {
-                "nid": 1070,
-                "strtype": "IMGBUTTON/Image_checked_pressed",
-                "strval": "",
-                "InheritedType": 5
-              },
-              {
-                "nid": 1080,
-                "strtype": "IMGBUTTON/Image_checked_disabled",
-                "strval": "",
-                "InheritedType": 5
-              },
-              {
-                "part": "lv.PART.MAIN",
-                "childs": [],
-                "nid": 1090,
-                "strtype": "IMGBUTTON/Style_main",
-                "strval": "lv.PART.MAIN, Rectangle, Image, Text, Transform",
-                "InheritedType": 11
-              }
-            ],
-            "saved_objtypeKey": "IMGBUTTON"
-          },
-          {
             "guid": "GUID60669217-149669S23610544",
             "properties": [
               {
                 "nid": 10,
                 "strtype": "OBJECT/Name",
-                "strval": "BluetoothInfoLabel",
+                "strval": "InfoLabel",
                 "InheritedType": 10
               },
               {
@@ -386,7 +217,7 @@
                 "strtype": "OBJECT/Position",
                 "intarray": [
                   0,
-                  -45
+                  -31
                 ],
                 "InheritedType": 7
               },
@@ -523,12 +354,12 @@
             "saved_objtypeKey": "LABEL"
           },
           {
-            "guid": "GUID95079193-541596S28176544",
+            "guid": "GUID23201447-226509S841538",
             "properties": [
               {
                 "nid": 10,
                 "strtype": "OBJECT/Name",
-                "strval": "BluetoothDropdown",
+                "strval": "PlayButton",
                 "InheritedType": 10
               },
               {
@@ -560,17 +391,17 @@
                 "strtype": "OBJECT/Position",
                 "intarray": [
                   0,
-                  125
+                  45
                 ],
                 "InheritedType": 7
               },
               {
                 "nid": 60,
-                "flags": 49,
+                "flags": 17,
                 "strtype": "OBJECT/Size",
                 "intarray": [
-                  150,
-                  1
+                  48,
+                  48
                 ],
                 "InheritedType": 7
               },
@@ -593,7 +424,7 @@
               },
               {
                 "nid": 100,
-                "strtype": "DROPDOWN/Hidden",
+                "strtype": "IMGBUTTON/Hidden",
                 "strval": "False",
                 "InheritedType": 2
               },
@@ -602,12 +433,6 @@
                 "flags": 1048576,
                 "strtype": "OBJECT/Scrolling",
                 "InheritedType": 1
-              },
-              {
-                "nid": 260,
-                "strtype": "OBJECT/Scroll_on_focus",
-                "strval": "True",
-                "InheritedType": 2
               },
               {
                 "nid": 300,
@@ -641,208 +466,61 @@
               },
               {
                 "nid": 1010,
-                "strtype": "DROPDOWN/Dropdown",
+                "strtype": "IMGBUTTON/Images",
                 "InheritedType": 1
               },
               {
                 "nid": 1020,
-                "strtype": "DROPDOWN/Options",
-                "strval": "Scanning...",
-                "InheritedType": 10
-              },
-              {
-                "nid": 1030,
-                "strtype": "DROPDOWN/List_align",
-                "strval": "BOTTOM",
+                "strtype": "IMGBUTTON/Button_state",
+                "strval": "RELEASED",
                 "InheritedType": 3
               },
               {
+                "nid": 1030,
+                "strtype": "IMGBUTTON/Image_released",
+                "strval": "assets/play.png",
+                "InheritedType": 5
+              },
+              {
                 "nid": 1040,
-                "strtype": "DROPDOWN/Show_selected",
-                "strval": "True",
-                "InheritedType": 2
+                "strtype": "IMGBUTTON/Image_pressed",
+                "strval": "",
+                "InheritedType": 5
               },
               {
                 "nid": 1050,
-                "strtype": "DROPDOWN/Base_text",
-                "strval": "Devices",
-                "InheritedType": 10
+                "strtype": "IMGBUTTON/Image_disabled",
+                "strval": "",
+                "InheritedType": 5
+              },
+              {
+                "nid": 1060,
+                "strtype": "IMGBUTTON/Image_checked_released",
+                "strval": "assets/pause.png",
+                "InheritedType": 5
+              },
+              {
+                "nid": 1070,
+                "strtype": "IMGBUTTON/Image_checked_pressed",
+                "strval": "",
+                "InheritedType": 5
+              },
+              {
+                "nid": 1080,
+                "strtype": "IMGBUTTON/Image_checked_disabled",
+                "strval": "",
+                "InheritedType": 5
               },
               {
                 "part": "lv.PART.MAIN",
-                "childs": [
-                  {
-                    "nid": 10000,
-                    "strtype": "_style/StyleState",
-                    "strval": "DEFAULT",
-                    "childs": [
-                      {
-                        "nid": 10410,
-                        "flags": 4096,
-                        "strtype": "_style/Text_Color",
-                        "strval": "Text",
-                        "integer": 1000828,
-                        "intarray": [
-                          255,
-                          255,
-                          255,
-                          255
-                        ],
-                        "InheritedType": 7
-                      },
-                      {
-                        "nid": 10520,
-                        "flags": 4096,
-                        "strtype": "_style/Bg_Color",
-                        "strval": "Secondary",
-                        "integer": 1000912,
-                        "intarray": [
-                          51,
-                          51,
-                          51,
-                          255
-                        ],
-                        "InheritedType": 7
-                      },
-                      {
-                        "nid": 10710,
-                        "flags": 4096,
-                        "strtype": "_style/Border_Color",
-                        "strval": "Background",
-                        "integer": 1000412,
-                        "intarray": [
-                          0,
-                          0,
-                          0,
-                          255
-                        ],
-                        "InheritedType": 7
-                      }
-                    ],
-                    "InheritedType": 1
-                  }
-                ],
-                "nid": 1060,
-                "strtype": "DROPDOWN/Style_main",
-                "strval": "lv.PART.MAIN, Text, Rectangle, Pad, Transform",
-                "InheritedType": 11
-              },
-              {
-                "part": "lv.PART.INDICATOR",
-                "childs": [],
-                "nid": 1070,
-                "strtype": "DROPDOWN/Style_indicator",
-                "strval": "lv.PART.INDICATOR, Text",
-                "InheritedType": 11
-              },
-              {
-                "part": " lv.PART.MAIN",
-                "childs": [
-                  {
-                    "nid": 10000,
-                    "strtype": "_style/StyleState",
-                    "strval": "DEFAULT",
-                    "childs": [
-                      {
-                        "nid": 10520,
-                        "flags": 4096,
-                        "strtype": "_style/Bg_Color",
-                        "strval": "Secondary",
-                        "integer": 1000912,
-                        "intarray": [
-                          51,
-                          51,
-                          51,
-                          255
-                        ],
-                        "InheritedType": 7
-                      },
-                      {
-                        "nid": 10710,
-                        "flags": 4096,
-                        "strtype": "_style/Border_Color",
-                        "strval": "Background",
-                        "integer": 1000412,
-                        "intarray": [
-                          0,
-                          0,
-                          0,
-                          255
-                        ],
-                        "InheritedType": 7
-                      }
-                    ],
-                    "InheritedType": 1
-                  }
-                ],
-                "nid": 1080,
-                "strtype": "DROPDOWN/Style_list_main",
-                "strval": "{\"python\":\"{0}.get_list()\",\"c\":\"lv_dropdown_get_list({0})\"} lv.PART.MAIN, Text, Rectangle, Pad",
-                "InheritedType": 11
-              },
-              {
-                "part": " lv.PART.SCROLLBAR",
                 "childs": [],
                 "nid": 1090,
-                "strtype": "DROPDOWN/Style_list_scrollbar",
-                "strval": "{\"python\":\"{0}.get_list()\",\"c\":\"lv_dropdown_get_list({0})\"} lv.PART.SCROLLBAR, Rectangle, Pad",
-                "InheritedType": 11
-              },
-              {
-                "part": " lv.PART.SELECTED",
-                "childs": [
-                  {
-                    "nid": 10000,
-                    "strtype": "_style/StyleState",
-                    "strval": "DEFAULT",
-                    "childs": [
-                      {
-                        "nid": 10520,
-                        "flags": 4096,
-                        "strtype": "_style/Bg_Color",
-                        "strval": "Primary",
-                        "integer": 1000413,
-                        "intarray": [
-                          0,
-                          212,
-                          174,
-                          255
-                        ],
-                        "InheritedType": 7
-                      }
-                    ],
-                    "InheritedType": 1
-                  },
-                  {
-                    "nid": 20000,
-                    "strtype": "_style/StyleState",
-                    "strval": "CHECKED",
-                    "childs": [
-                      {
-                        "nid": 20520,
-                        "flags": 4096,
-                        "strtype": "_style/Bg_Color",
-                        "strval": "Primary",
-                        "integer": 1000413,
-                        "intarray": [
-                          0,
-                          212,
-                          174,
-                          255
-                        ],
-                        "InheritedType": 7
-                      }
-                    ],
-                    "InheritedType": 1
-                  }
-                ],
-                "nid": 1100,
-                "strtype": "DROPDOWN/Style_list_selected",
-                "strval": "{\"python\":\"{0}.get_list()\",\"c\":\"lv_dropdown_get_list({0})\"} lv.PART.SELECTED, Text, Rectangle",
+                "strtype": "IMGBUTTON/Style_main",
+                "strval": "lv.PART.MAIN, Rectangle, Image, Text, Transform",
                 "InheritedType": 11
               }
             ],
-            "saved_objtypeKey": "DROPDOWN"
+            "saved_objtypeKey": "IMGBUTTON"
           }
         ],
         "isPage": true,
@@ -1026,7 +704,7 @@
     "custom_variable_prefix": "uic",
     "separate_screen_save": false,
     "hierarchy_state_save": false,
-    "backup_cnt": 140,
+    "backup_cnt": 145,
     "autosave_cnt": 0,
     "group_color_cnt": 0,
     "imagebytearrayprefix": "",

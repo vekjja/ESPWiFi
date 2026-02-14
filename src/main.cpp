@@ -69,7 +69,8 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
   } else {
     playing = true;
     lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
-    espwifi.startBluetoothWavPlayback("/sd/music/test.wav");
+    espwifi.startBluetoothWavPlayback(
+        "/sd/music/queen-we_are_the_champions.wav");
   }
 }
 #endif

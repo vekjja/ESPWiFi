@@ -5,15 +5,8 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_BluetoothSettingsButton = NULL;lv_obj_t *ui_PlayButton = NULL;
+lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Label1 = NULL;lv_obj_t *ui_PlayButton = NULL;lv_obj_t *ui_BluetoothDropdown = NULL;lv_obj_t *ui_BluetoothInfoLabel = NULL;
 // event funtions
-void ui_event_BluetoothSettingsButton( lv_event_t * e) {
-    lv_event_code_t event_code = lv_event_get_code(e);
-
-if ( event_code == LV_EVENT_CLICKED) {
-      _ui_screen_change( &ui_BluetoothScreen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, &ui_BluetoothScreen_screen_init);
-}
-}
 
 // build funtions
 
@@ -35,21 +28,46 @@ ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT
 ui_object_set_themeable_style_property(ui_Label1, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Primary);
 lv_obj_set_style_text_font(ui_Label1, &lv_font_montserrat_36, LV_PART_MAIN| LV_STATE_DEFAULT);
 
-ui_BluetoothSettingsButton = lv_imagebutton_create(ui_MainScreen);
-lv_imagebutton_set_src(ui_BluetoothSettingsButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_bluetooth_1_png, NULL);
-lv_obj_set_width( ui_BluetoothSettingsButton, 48);
-lv_obj_set_height( ui_BluetoothSettingsButton, 48);
-lv_obj_set_x( ui_BluetoothSettingsButton, 81 );
-lv_obj_set_y( ui_BluetoothSettingsButton, 120 );
-lv_obj_set_align( ui_BluetoothSettingsButton, LV_ALIGN_CENTER );
-
 ui_PlayButton = lv_imagebutton_create(ui_MainScreen);
 lv_imagebutton_set_src(ui_PlayButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_play_png, NULL);
 lv_obj_set_width( ui_PlayButton, 48);
 lv_obj_set_height( ui_PlayButton, 48);
+lv_obj_set_x( ui_PlayButton, 0 );
+lv_obj_set_y( ui_PlayButton, 45 );
 lv_obj_set_align( ui_PlayButton, LV_ALIGN_CENTER );
 
-lv_obj_add_event_cb(ui_BluetoothSettingsButton, ui_event_BluetoothSettingsButton, LV_EVENT_ALL, NULL);
+ui_BluetoothDropdown = lv_dropdown_create(ui_MainScreen);
+lv_dropdown_set_options( ui_BluetoothDropdown, "Scanning..." );
+lv_dropdown_set_text( ui_BluetoothDropdown, "Devices");
+lv_obj_set_width( ui_BluetoothDropdown, 150);
+lv_obj_set_height( ui_BluetoothDropdown, LV_SIZE_CONTENT);   /// 1
+lv_obj_set_x( ui_BluetoothDropdown, -21 );
+lv_obj_set_y( ui_BluetoothDropdown, 125 );
+lv_obj_set_align( ui_BluetoothDropdown, LV_ALIGN_CENTER );
+lv_obj_add_flag( ui_BluetoothDropdown, LV_OBJ_FLAG_SCROLL_ON_FOCUS );   /// Flags
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Text);
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Text);
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Secondary);
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Secondary);
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BORDER_COLOR, _ui_theme_color_Background);
+ui_object_set_themeable_style_property(ui_BluetoothDropdown, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BORDER_OPA, _ui_theme_alpha_Background);
+
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Secondary);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Secondary);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BORDER_COLOR, _ui_theme_color_Background);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BORDER_OPA, _ui_theme_alpha_Background);
+
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_SELECTED| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Primary);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_SELECTED| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Primary);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_SELECTED| LV_STATE_CHECKED, LV_STYLE_BG_COLOR, _ui_theme_color_Primary);
+ui_object_set_themeable_style_property(lv_dropdown_get_list(ui_BluetoothDropdown),  LV_PART_SELECTED| LV_STATE_CHECKED, LV_STYLE_BG_OPA, _ui_theme_alpha_Primary);
+
+ui_BluetoothInfoLabel = ui_InfoLabel_create(ui_MainScreen);
+lv_obj_set_width( ui_BluetoothInfoLabel, 198);
+lv_obj_set_height( ui_BluetoothInfoLabel, 61);
+lv_obj_set_x( ui_BluetoothInfoLabel, 3 );
+lv_obj_set_y( ui_BluetoothInfoLabel, -53 );
+lv_label_set_text(ui_BluetoothInfoLabel,"Ensure Your Device is in Pairing Mode");
 
 }
 
@@ -60,7 +78,8 @@ void ui_MainScreen_screen_destroy(void)
 // NULL screen variables
 ui_MainScreen= NULL;
 ui_Label1= NULL;
-ui_BluetoothSettingsButton= NULL;
 ui_PlayButton= NULL;
+ui_BluetoothDropdown= NULL;
+ui_BluetoothInfoLabel= NULL;
 
 }

@@ -15,9 +15,9 @@ extern void ui_MainScreen_screen_init(void);
 extern void ui_MainScreen_screen_destroy(void);
 extern lv_obj_t *ui_MainScreen;
 extern lv_obj_t *ui_Label1;
-extern void ui_event_BluetoothSettingsButton( lv_event_t * e);
-extern lv_obj_t *ui_BluetoothSettingsButton;
 extern lv_obj_t *ui_PlayButton;
+extern lv_obj_t *ui_BluetoothDropdown;
+extern lv_obj_t *ui_BluetoothInfoLabel;
 // CUSTOM VARIABLES
 
 #ifdef __cplusplus

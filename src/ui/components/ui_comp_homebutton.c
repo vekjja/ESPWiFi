@@ -20,7 +20,6 @@ lv_obj_t *ui_HomeButton_create(lv_obj_t *comp_parent) {
 
 lv_obj_t *cui_HomeButton;
 cui_HomeButton = lv_imagebutton_create(comp_parent);
-lv_imagebutton_set_src(cui_HomeButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_home_png, NULL);
 lv_obj_set_width( cui_HomeButton, 48);
 lv_obj_set_height( cui_HomeButton, 48);
 lv_obj_set_x( cui_HomeButton, -81 );

@@ -2,14 +2,11 @@ SET(SOURCES components/ui_comp_homebutton.c
     components/ui_comp_infolabel.c
     components/ui_comp.c
     screens/ui_MainScreen.c
-    screens/ui_BluetoothScreen.c
     ui_theme_manager.c
     ui_themes.c
     ui.c
     components/ui_comp_hook.c
     ui_helpers.c
-    images/ui_img_bluetooth_1_png.c
-    images/ui_img_play_png.c
-    images/ui_img_home_png.c)
+    images/ui_img_play_png.c)
 
 add_library(ui ${SOURCES})

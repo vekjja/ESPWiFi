@@ -21,7 +21,6 @@ extern "C" {
 
 ///////////////////// SCREENS ////////////////////
 #include "screens/ui_MainScreen.h"
-#include "screens/ui_BluetoothScreen.h"
 
 ///////////////////// VARIABLES ////////////////////
 
@@ -29,9 +28,7 @@ extern "C" {
 extern lv_obj_t *ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE( ui_img_bluetooth_1_png);   // assets/bluetooth_1.png
 LV_IMG_DECLARE( ui_img_play_png);   // assets/play.png
-LV_IMG_DECLARE( ui_img_home_png);   // assets/home.png
 
 // UI INIT
 void ui_init(void);

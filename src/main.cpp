@@ -46,11 +46,10 @@ static void uiDropdownHandler(lv_event_t* evt) {
   uint32_t selection = lv_dropdown_get_selected(ui_BluetoothDropdown);
   // LVGL returns (uint32_t)-1 (0xFFFFFFFF) when no option is selected
   if (selection != (uint32_t)-1) {
-    espwifi.log(INFO, "📱 Bluetooth dropdown Selected: %lu device %s",
-                (unsigned long)selection,
-                espwifi.bluetoothScannedHosts[selection].c_str());
-    espwifi.bluetoothConnectTargetName =
-        espwifi.bluetoothScannedHosts[selection].c_str();
+    std::string selectedDevice = espwifi.bluetoothScannedHosts[selection];
+    espwifi.config["bluetooth"]["lastKnownDevice"] = selectedDevice;
+    espwifi.bluetoothConnectTargetName = selectedDevice;
+    espwifi.requestConfigSave();
   }
 }
 
@@ -69,8 +68,7 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
   } else {
     playing = true;
     lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
-    espwifi.startBluetoothWavPlayback(
-        "/sd/music/queen-we_are_the_champions.wav");
+    espwifi.startBluetoothWavPlayback("/sd/music/friends.wav");
   }
 }
 #endif
@@ -112,5 +110,7 @@ extern "C" void app_main(void) {
   espwifi.start();
   uiUpdateBluetoothInfo("");
   uiUpdateBluetoothDropdown(espwifi.bluetoothScannedHosts);
+  espwifi.bluetoothConnectTargetName =
+      espwifi.config["bluetooth"]["lastKnownDevice"] | "";
   espwifi.runSystem();
 }

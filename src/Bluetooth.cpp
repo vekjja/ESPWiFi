@@ -55,7 +55,6 @@ static void onConnectionStateChanged(esp_a2d_connection_state_t state,
 static void onAudioStateChanged(esp_a2d_audio_state_t state, void* obj) {
   (void)obj;
   if (bt_espwifi) {
-    bt_espwifi->log(INFO, "🛜 Bluetooth audio state changed: %d", state);
     if (bt_espwifi->onBluetoothAudioStateChanged) {
       bt_espwifi->onBluetoothAudioStateChanged(state);
     }

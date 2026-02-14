@@ -86,8 +86,7 @@ extern "C" void app_main(void) {
             uiUpdateBluetoothInfo("Connecting...");
             break;
           case ESP_A2D_CONNECTION_STATE_CONNECTED:
-            uiUpdateBluetoothInfo("Connected\n" +
-                                  espwifi.bluetoothConnectTargetName);
+            uiUpdateBluetoothInfo("Connected");
             break;
           case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
             uiUpdateBluetoothInfo("Disconnecting...");

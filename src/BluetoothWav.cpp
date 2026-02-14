@@ -72,8 +72,8 @@ static void wavDecoderTaskFunc(void* param) {
   if (!f) {
     self->log(ERROR, "🛜🎵 Failed to open WAV file: %s", path.c_str());
     self->btAudioPlaying = false;
-    self->btAudioTask = nullptr;
-    vTaskDelete(nullptr);
+    xTaskNotifyGive(self->btAudioTask);
+    vTaskSuspend(nullptr);
     return;
   }
 
@@ -87,8 +87,8 @@ static void wavDecoderTaskFunc(void* param) {
     self->log(ERROR, "🛜🎵 Failed to allocate WAV decoder");
     fclose(f);
     self->btAudioPlaying = false;
-    self->btAudioTask = nullptr;
-    vTaskDelete(nullptr);
+    xTaskNotifyGive(self->btAudioTask);
+    vTaskSuspend(nullptr);
     return;
   }
   decoder->setOutput(pcmOut);
@@ -109,20 +109,20 @@ static void wavDecoderTaskFunc(void* param) {
   delete decoder;
   fclose(f);
 
-  // Drain ring buffer before restoring silence callback.
+  // Drain ring buffer before signalling completion.
   int drainMs = 0;
   while (wavBuf.available() > 0 && drainMs < 2000) {
     vTaskDelay(pdMS_TO_TICKS(20));
     drainMs += 20;
   }
 
-  s_a2dp_source.set_data_callback(silentDataCb);
-  wavBuf.reset();
-
   self->log(INFO, "🛜🎵 WAV playback finished");
   self->btAudioPlaying = false;
-  self->btAudioTask = nullptr;
-  vTaskDelete(nullptr);
+
+  // Signal the stop function that we're done, then suspend.
+  // The stop function will delete this task handle safely.
+  xTaskNotifyGive(self->btAudioTask);
+  vTaskSuspend(nullptr);
 }
 
 void ESPWiFi::startBluetoothWavPlayback(const char* path) {
@@ -164,13 +164,16 @@ void ESPWiFi::startBluetoothWavPlayback(const char* path) {
 }
 
 void ESPWiFi::stopBluetoothWavPlayback() {
-  if (!btAudioPlaying) return;
+  if (!btAudioPlaying && btAudioTask == nullptr) return;
   btAudioPlaying = false;
-  int waitMs = 0;
-  while (btAudioTask != nullptr && waitMs < 3000) {
-    vTaskDelay(pdMS_TO_TICKS(50));
-    waitMs += 50;
+
+  // Wait for the task to signal it has finished (up to 3 s).
+  if (btAudioTask != nullptr) {
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3000));
+    vTaskDelete(btAudioTask);
+    btAudioTask = nullptr;
   }
+
   if (a2dp_source != nullptr) {
     s_a2dp_source.set_data_callback(silentDataCb);
   }

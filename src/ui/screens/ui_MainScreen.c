@@ -34,7 +34,7 @@ lv_imagebutton_set_src(ui_PlayButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NUL
 lv_obj_set_width( ui_PlayButton, 48);
 lv_obj_set_height( ui_PlayButton, 48);
 lv_obj_set_x( ui_PlayButton, 0 );
-lv_obj_set_y( ui_PlayButton, 58 );
+lv_obj_set_y( ui_PlayButton, 33 );
 lv_obj_set_align( ui_PlayButton, LV_ALIGN_CENTER );
 
 ui_BluetoothInfoLabel = lv_label_create(ui_MainScreen);

@@ -13,8 +13,6 @@ extern "C" {
     #include "lvgl.h"
 
 #include "ui_helpers.h"
-#include "components/ui_comp.h"
-#include "components/ui_comp_hook.h"
 #include "ui_events.h"
 #include "ui_theme_manager.h"
 #include "ui_themes.h"
@@ -29,6 +27,7 @@ extern lv_obj_t *ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
 LV_IMG_DECLARE( ui_img_play_png);   // assets/play.png
+LV_IMG_DECLARE( ui_img_pause_png);   // assets/pause.png
 
 // UI INIT
 void ui_init(void);

@@ -15,11 +15,14 @@ void ESPWiFi::start() {
 }
 
 void ESPWiFi::runSystem() {
-  handleConfigUpdate();
-  checkSDCard();
-  streamCamera();
-  renderTFT();     // can run click handlers and LVGL draw (long)
-  feedWatchDog();  // Feed after render so next iteration is covered
+  for (;;) {
+    feedWatchDog();
+    handleConfigUpdate();
+    checkSDCard();
+    streamCamera();
+    renderTFT();     // can run click handlers and LVGL draw (long)
+    feedWatchDog();  // Feed after render so next iteration is covered
+  }
 }
 
 #endif  // ESPWiFi_RUNTIME

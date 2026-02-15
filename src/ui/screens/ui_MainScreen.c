@@ -21,7 +21,7 @@ ui_Title = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_Title, lv_pct(99));
 lv_obj_set_height( ui_Title, lv_pct(33));
 lv_obj_set_x( ui_Title, 0 );
-lv_obj_set_y( ui_Title, -92 );
+lv_obj_set_y( ui_Title, -82 );
 lv_obj_set_align( ui_Title, LV_ALIGN_CENTER );
 lv_label_set_text(ui_Title,"Tital");
 lv_obj_remove_flag( ui_Title, LV_OBJ_FLAG_SCROLL_MOMENTUM );    /// Flags
@@ -33,8 +33,8 @@ lv_obj_set_style_text_font(ui_Title, &lv_font_montserrat_36, LV_PART_MAIN| LV_ST
 ui_InfoLabel = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_InfoLabel, lv_pct(90));
 lv_obj_set_height( ui_InfoLabel, lv_pct(28));
-lv_obj_set_x( ui_InfoLabel, 0 );
-lv_obj_set_y( ui_InfoLabel, 93 );
+lv_obj_set_x( ui_InfoLabel, 3 );
+lv_obj_set_y( ui_InfoLabel, 95 );
 lv_obj_set_align( ui_InfoLabel, LV_ALIGN_CENTER );
 lv_label_set_text(ui_InfoLabel,"Ensure the Remote Device is in Pairing Mode and Nearby");
 ui_object_set_themeable_style_property(ui_InfoLabel, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Text);

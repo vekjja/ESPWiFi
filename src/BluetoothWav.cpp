@@ -189,8 +189,8 @@ static void wavDecoderTaskFunc(void* param) {
   if (!f) {
     self->log(ERROR, "🛜🎵 Failed to open WAV file: %s", path.c_str());
     self->btAudioPlaying = false;
-    xTaskNotifyGive(self->btAudioTask);
-    vTaskSuspend(nullptr);
+    self->btAudioTask = nullptr;
+    vTaskDelete(nullptr);
     return;
   }
 
@@ -212,8 +212,8 @@ static void wavDecoderTaskFunc(void* param) {
     self->log(ERROR, "🛜🎵 Failed to allocate WAV decoder");
     fclose(f);
     self->btAudioPlaying = false;
-    xTaskNotifyGive(self->btAudioTask);
-    vTaskSuspend(nullptr);
+    self->btAudioTask = nullptr;
+    vTaskDelete(nullptr);
     return;
   }
 
@@ -280,7 +280,10 @@ static void wavDecoderTaskFunc(void* param) {
       continue;
     }
     size_t n = fread(readBuf, 1, 512, f);
-    if (n == 0) break;
+    if (n == 0) {
+      self->btAudioPlaying = false;
+      break;
+    }
     decoder->write(readBuf, n);
     vTaskDelay(pdMS_TO_TICKS(1));
   }
@@ -295,27 +298,26 @@ static void wavDecoderTaskFunc(void* param) {
   if (resampler) delete resampler;
   fclose(f);
 
-  // Drain ring buffer before signalling completion.
-  int drainMs = 0;
-  while (wavBuf.available() > 0 && drainMs < 2000) {
-    vTaskDelay(pdMS_TO_TICKS(20));
-    drainMs += 20;
-  }
-
   self->log(INFO, "🛜🎵 WAV playback finished");
   self->btAudioPlaying = false;
   self->btAudioPaused = false;
   wavPaused = false;
+  if (self->a2dp_source != nullptr) {
+    s_a2dp_source.set_data_callback(silentDataCb);
+  }
 
-  // Signal the stop function that we're done, then suspend.
-  xTaskNotifyGive(self->btAudioTask);
-  vTaskSuspend(nullptr);
+  self->btAudioTask = nullptr;
+  vTaskDelete(nullptr);
 }
 
 void ESPWiFi::startBluetoothWavPlayback(const char* path) {
   if (a2dp_source == nullptr) {
     log(WARNING, "🛜🎵 Cannot play WAV: Bluetooth not started");
     return;
+  }
+  if (btAudioTask != nullptr) {
+    log(INFO, "🛜🎵 Cleaning previous WAV task before restart");
+    stopBluetoothWavPlayback();
   }
   if (btAudioPlaying) {
     log(INFO, "🛜🎵 Stopping current playback before starting new file");
@@ -382,11 +384,10 @@ void ESPWiFi::stopBluetoothWavPlayback() {
   btAudioPaused = false;
   wavPaused = false;
 
-  // Wait for the task to signal it has finished (up to 3 s).
-  if (btAudioTask != nullptr) {
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3000));
-    vTaskDelete(btAudioTask);
-    btAudioTask = nullptr;
+  TaskHandle_t task = btAudioTask;
+  btAudioTask = nullptr;
+  if (task != nullptr) {
+    vTaskDelete(task);
   }
 
   if (a2dp_source != nullptr) {

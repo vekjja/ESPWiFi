@@ -38,14 +38,13 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
     return;
   }
 
+  espwifi.toggleBluetoothWavPause();
   if (espwifi.btAudioPaused) {
-    espwifi.resumeBluetoothWavPlayback();
-    lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
-    uiUpdateInfo("Chance Of Rain");
-  } else {
-    espwifi.pauseBluetoothWavPlayback();
     lv_obj_clear_state(ui_PlayButton, LV_STATE_CHECKED);
     uiUpdateInfo("Paused");
+  } else {
+    lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
+    uiUpdateInfo("Chance Of Rain");
   }
 }
 #endif
@@ -84,7 +83,7 @@ extern "C" void app_main(void) {
   };
 #endif
   espwifi.start();
-  uiUpdateTitle("Albert Behar\n");
+  uiUpdateTitle("Albert\nBehar");
   lv_obj_add_flag(ui_PlayButton, LV_OBJ_FLAG_HIDDEN);
   uiUpdateInfo("Ensure the Remote Audio Device is in Pairing Mode and Nearby");
   espwifi.runSystem();

@@ -20,8 +20,8 @@
         "strval": "Primary",
         "intarray": [
           0,
-          212,
-          174,
+          5,
+          255,
           255
         ],
         "InheritedType": 0
@@ -88,8 +88,8 @@
           "strval": "Primary",
           "intarray": [
             0,
-            212,
-            174,
+            5,
+            255,
             255
           ],
           "InheritedType": 0

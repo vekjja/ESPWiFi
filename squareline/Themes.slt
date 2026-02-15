@@ -19,9 +19,9 @@
         "strtype": "THEME_COLOR",
         "strval": "Primary",
         "intarray": [
-          243,
-          18,
-          124,
+          0,
+          212,
+          174,
           255
         ],
         "InheritedType": 0
@@ -87,9 +87,9 @@
           "strtype": "THEME_COLOR",
           "strval": "Primary",
           "intarray": [
-            243,
-            18,
-            124,
+            0,
+            212,
+            174,
             255
           ],
           "InheritedType": 0
@@ -136,5 +136,5 @@
       ]
     }
   ],
-  "selected_theme": "ESPWiFi"
+  "selected_theme": "Default"
 }

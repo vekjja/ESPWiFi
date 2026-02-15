@@ -398,6 +398,9 @@ class ESPWiFi {
   std::vector<std::string> bluetoothScannedHosts = {};
   void startBluetoothMp3Playback(const char* path);
   void startBluetoothWavPlayback(const char* path);
+  void pauseBluetoothWavPlayback();
+  void resumeBluetoothWavPlayback();
+  void toggleBluetoothWavPause();
   BluetoothA2DPSource* a2dp_source = nullptr;
   std::string bluetoothConnectTargetName;
   void stopBluetoothMp3Playback();
@@ -408,6 +411,7 @@ class ESPWiFi {
 
   // ---- A2DP audio playback state
   volatile bool btAudioPlaying = false;
+  volatile bool btAudioPaused = false;
   TaskHandle_t btAudioTask = nullptr;
   std::string btAudioFilePath;
 #endif

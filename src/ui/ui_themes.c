@@ -8,7 +8,7 @@
 const ui_theme_variable_t _ui_theme_color_Background[2] = {0x000000, 0x000000};
 const ui_theme_variable_t _ui_theme_alpha_Background[2] = {255, 255};
 
-const ui_theme_variable_t _ui_theme_color_Primary[2] = {0xF3127C, 0xF3127C};
+const ui_theme_variable_t _ui_theme_color_Primary[2] = {0x00D4AE, 0x00D4AE};
 const ui_theme_variable_t _ui_theme_alpha_Primary[2] = {255, 255};
 
 const ui_theme_variable_t _ui_theme_color_Error[2] = {0xE20044, 0xE20044};
@@ -19,7 +19,7 @@ const ui_theme_variable_t _ui_theme_alpha_Text[2] = {255, 255};
 
 const ui_theme_variable_t _ui_theme_color_Secondary[2] = {0x333333, 0x333333};
 const ui_theme_variable_t _ui_theme_alpha_Secondary[2] = {255, 255};
-uint8_t ui_theme_idx = UI_THEME_ESPWIFI;
+uint8_t ui_theme_idx = UI_THEME_DEFAULT;
 
 void ui_theme_set(uint8_t theme_idx)
 {

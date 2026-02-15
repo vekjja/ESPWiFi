@@ -24,6 +24,7 @@ static constexpr size_t kWavBufSize = 16384;
 static BufferRTOS<uint8_t> wavBuf(kWavBufSize, 1, 0 /*writeWait*/,
                                   0 /*readWait*/);
 static constexpr int kA2dpTargetSampleRate = 44100;
+static volatile bool wavPaused = false;
 
 static uint16_t readLe16(const uint8_t* ptr) {
   return (uint16_t)ptr[0] | ((uint16_t)ptr[1] << 8);
@@ -93,6 +94,10 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
 // A2DP data callback for WAV playback.
 static int32_t wavDataCb(uint8_t* data, int32_t len) {
   if (len <= 0) return 0;
+  if (wavPaused) {
+    memset(data, 0, (size_t)len);
+    return len;
+  }
   int got = wavBuf.readArray(data, (int)len);
   if (got < len) memset(data + got, 0, (size_t)(len - got));
   return len;
@@ -270,6 +275,10 @@ static void wavDecoderTaskFunc(void* param) {
   }
 
   while (self->btAudioPlaying && readBuf) {
+    if (self->btAudioPaused) {
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
     size_t n = fread(readBuf, 1, 512, f);
     if (n == 0) break;
     decoder->write(readBuf, n);
@@ -295,6 +304,8 @@ static void wavDecoderTaskFunc(void* param) {
 
   self->log(INFO, "🛜🎵 WAV playback finished");
   self->btAudioPlaying = false;
+  self->btAudioPaused = false;
+  wavPaused = false;
 
   // Signal the stop function that we're done, then suspend.
   xTaskNotifyGive(self->btAudioTask);
@@ -328,6 +339,8 @@ void ESPWiFi::startBluetoothWavPlayback(const char* path) {
   fclose(probe);
 
   btAudioPlaying = true;
+  btAudioPaused = false;
+  wavPaused = false;
   wavBuf.reset();
 
   BaseType_t ok = xTaskCreatePinnedToCore(wavDecoderTaskFunc, "wavdec", 12288,
@@ -339,9 +352,35 @@ void ESPWiFi::startBluetoothWavPlayback(const char* path) {
   }
 }
 
+void ESPWiFi::pauseBluetoothWavPlayback() {
+  if (!btAudioPlaying || btAudioPaused) return;
+  btAudioPaused = true;
+  wavPaused = true;
+  wavBuf.reset();
+  log(INFO, "🛜🎵 WAV playback paused");
+}
+
+void ESPWiFi::resumeBluetoothWavPlayback() {
+  if (!btAudioPlaying || !btAudioPaused) return;
+  btAudioPaused = false;
+  wavPaused = false;
+  log(INFO, "🛜🎵 WAV playback resumed");
+}
+
+void ESPWiFi::toggleBluetoothWavPause() {
+  if (!btAudioPlaying) return;
+  if (btAudioPaused) {
+    resumeBluetoothWavPlayback();
+  } else {
+    pauseBluetoothWavPlayback();
+  }
+}
+
 void ESPWiFi::stopBluetoothWavPlayback() {
   if (!btAudioPlaying && btAudioTask == nullptr) return;
   btAudioPlaying = false;
+  btAudioPaused = false;
+  wavPaused = false;
 
   // Wait for the task to signal it has finished (up to 3 s).
   if (btAudioTask != nullptr) {

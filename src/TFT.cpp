@@ -4,6 +4,12 @@
 
 #if ESPWiFi_HAS_TFT
 
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
 #include "Touch.h"
 #include "driver/gpio.h"
 #include "driver/spi_common.h"
@@ -20,25 +26,19 @@
 #include "lvgl.h"
 #include "src/draw/sw/lv_draw_sw_utils.h"
 #include "ui/ui.h"
-#include <cerrno>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <vector>
 
-static const char *TAG = "TFT";
+static const char* TAG = "TFT";
 
 namespace {
 constexpr int kW = 240;
 constexpr int kH = 320;
 
 // LVGL flush callback (signature must match lv_display_flush_cb_t: uint8_t*)
-static void lvglFlushCb(lv_display_t *disp, const lv_area_t *area,
-                        uint8_t *px_map) {
+static void lvglFlushCb(lv_display_t* disp, const lv_area_t* area,
+                        uint8_t* px_map) {
   esp_lcd_panel_handle_t panel =
       (esp_lcd_panel_handle_t)lv_display_get_user_data(disp);
-  if (!panel)
-    return;
+  if (!panel) return;
 
   const int x1 = area->x1, y1 = area->y1;
   const int x2 = area->x2 + 1, y2 = area->y2 + 1;
@@ -53,12 +53,13 @@ static uint32_t lastTickMs = 0;
 
 #if (TOUCH_CS_GPIO_NUM >= 0)
 // Wrapper with LVGL callback signature so lv_indev_set_read_cb accepts it
-static void touchIndevReadCbWrapper(lv_indev_t *indev, lv_indev_data_t *data) {
+static void touchIndevReadCbWrapper(lv_indev_t* indev, lv_indev_data_t* data) {
   touchIndevReadCb(indev, data);
-  vTaskDelay(pdMS_TO_TICKS(1)); // yield after touch read so watchdog can be fed
+  vTaskDelay(
+      pdMS_TO_TICKS(1));  // yield after touch read so watchdog can be fed
 }
 #endif
-} // namespace
+}  // namespace
 
 void ESPWiFi::initTFT() {
   if (tftInitialized) {
@@ -77,12 +78,12 @@ void ESPWiFi::initTFT() {
 
   // Configure backlight GPIO first (but keep it OFF initially)
   if (TFT_BL_GPIO_NUM >= 0) {
-    gpio_reset_pin((gpio_num_t)TFT_BL_GPIO_NUM); // Reset pin state first
+    gpio_reset_pin((gpio_num_t)TFT_BL_GPIO_NUM);  // Reset pin state first
     gpio_config_t io_conf = {};
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (1ULL << TFT_BL_GPIO_NUM);
     gpio_config(&io_conf);
-    gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 0); // OFF initially
+    gpio_set_level((gpio_num_t)TFT_BL_GPIO_NUM, 0);  // OFF initially
     ESP_LOGI(TAG, "Backlight GPIO configured (OFF)");
   }
 
@@ -96,7 +97,7 @@ void ESPWiFi::initTFT() {
     spi_bus_config_t buscfg = {};
     buscfg.sclk_io_num = TFT_SPI_SCK_GPIO_NUM;
     buscfg.mosi_io_num = TFT_SPI_MOSI_GPIO_NUM;
-    buscfg.miso_io_num = -1; // DO NOT USE GPIO 12 - causes SD/Touch conflicts
+    buscfg.miso_io_num = -1;  // DO NOT USE GPIO 12 - causes SD/Touch conflicts
     buscfg.quadwp_io_num = -1;
     buscfg.quadhd_io_num = -1;
     buscfg.max_transfer_sz = kW * 40 * 2;
@@ -117,7 +118,7 @@ void ESPWiFi::initTFT() {
   io_config.cs_gpio_num = TFT_CS_GPIO_NUM;
   io_config.dc_gpio_num = TFT_DC_GPIO_NUM;
   io_config.spi_mode = 0;
-  io_config.pclk_hz = 40 * 1000 * 1000; // 40MHz (official CYD example)
+  io_config.pclk_hz = 40 * 1000 * 1000;  // 40MHz (official CYD example)
   io_config.trans_queue_depth = 10;
   io_config.lcd_cmd_bits = 8;
   io_config.lcd_param_bits = 8;
@@ -145,7 +146,7 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_init(panel_handle);
 
   // Set proper orientation for portrait mode (240 wide x 320 tall)
-  esp_lcd_panel_swap_xy(panel_handle, true); // Swap XY for portrait
+  esp_lcd_panel_swap_xy(panel_handle, true);  // Swap XY for portrait
 
   // Mirror to flip the display for portrait mode
   esp_lcd_panel_mirror(panel_handle, true, true);
@@ -154,9 +155,9 @@ void ESPWiFi::initTFT() {
   esp_lcd_panel_set_gap(panel_handle, 0, 0);
   esp_lcd_panel_disp_on_off(panel_handle, true);
 
-  tftSpiBus_ = (void *)TFT_SPI_HOST;
-  tftPanelIo_ = (void *)io_handle;
-  tftPanel_ = (void *)panel_handle;
+  tftSpiBus_ = (void*)TFT_SPI_HOST;
+  tftPanelIo_ = (void*)io_handle;
+  tftPanel_ = (void*)panel_handle;
   tftInitialized = true;
 
   ESP_LOGI(TAG, "Panel initialized");
@@ -164,7 +165,7 @@ void ESPWiFi::initTFT() {
 #if (TOUCH_CS_GPIO_NUM >= 0)
   touchBegin();
   if (touchIsActive()) {
-    tftTouch_ = (void *)1;
+    tftTouch_ = (void*)1;
     ESP_LOGI(TAG, "Touch (XPT2046 bitbang) initialized");
   }
 #endif
@@ -173,20 +174,20 @@ void ESPWiFi::initTFT() {
   lv_init();
 
   // Create display
-  lv_display_t *disp = lv_display_create(kW, kH);
+  lv_display_t* disp = lv_display_create(kW, kH);
   lv_display_set_flush_cb(disp, lvglFlushCb);
   lv_display_set_user_data(disp, panel_handle);
   lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
 
   // Allocate draw buffers (1/10 screen size each)
   const size_t buf_size = kW * kH / 10;
-  void *buf1 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
-  void *buf2 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
+  void* buf1 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
+  void* buf2 = heap_caps_malloc(buf_size * sizeof(uint16_t), MALLOC_CAP_DMA);
   lv_display_set_buffers(disp, buf1, buf2, buf_size * sizeof(uint16_t),
                          LV_DISPLAY_RENDER_MODE_PARTIAL);
 
   if (tftTouch_) {
-    lv_indev_t *indev = lv_indev_create();
+    lv_indev_t* indev = lv_indev_create();
     lv_indev_set_display(indev, disp);
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, touchIndevReadCbWrapper);
@@ -212,21 +213,19 @@ void ESPWiFi::initTFT() {
   // load SquareLine UI (File → Export → Export UI Files to src/ui/)
   ui_init();
 
-  if (registerUiEventHandlers)
-    registerUiEventHandlers(this);
+  if (registerUiEventHandlers) registerUiEventHandlers(this);
 }
 
-bool ESPWiFi::playMJPG(const std::string &) {
+bool ESPWiFi::playMJPG(const std::string&) {
   // TODO: implement MJPEG playback on LVGL display
   return false;
 }
 
 void ESPWiFi::playBootAnimation() {
-  const char *path = nullptr;
-  if (config["tft"]["bootVideo"].is<const char *>())
-    path = config["tft"]["bootVideo"].as<const char *>();
-  if (!path || path[0] == '\0')
-    return;
+  const char* path = nullptr;
+  if (config["tft"]["bootVideo"].is<const char*>())
+    path = config["tft"]["bootVideo"].as<const char*>();
+  if (!path || path[0] == '\0') return;
 
   ESP_LOGI(TAG, "Boot video: %s", path);
   if (!playMJPG(path)) {
@@ -255,13 +254,13 @@ void ESPWiFi::renderTFT() {
   }
 
   feedWatchDog();
-  lv_timer_handler(); // runs touch + click callbacks + draw
-  feedWatchDog();     // yield after so IDLE can run and watchdog is fed
+  lv_timer_handler();  // runs touch + click callbacks + draw
+  feedWatchDog();      // yield after so IDLE can run and watchdog is fed
 }
 
-#else // ESPWiFi_HAS_TFT
+#else  // ESPWiFi_HAS_TFT
 void ESPWiFi::initTFT() {}
 void ESPWiFi::renderTFT() {}
 void ESPWiFi::playBootAnimation() {}
-bool ESPWiFi::playMJPG(const std::string &) { return false; }
+bool ESPWiFi::playMJPG(const std::string&) { return false; }
 #endif

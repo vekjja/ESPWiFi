@@ -28,21 +28,24 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
   if (lv_event_get_code(evt) != LV_EVENT_CLICKED) {
     return;
   }
-  static bool playing = false;
   espwifi.log(INFO, "🛜🎵 Play button pressed");
 
-  if (playing) {
-    playing = false;
-    lv_obj_clear_state(ui_PlayButton, LV_STATE_CHECKED);
-    espwifi.stopBluetoothWavPlayback();
-    uiUpdateInfo("");
-    return;
-  } else {
-    playing = true;
+  if (!espwifi.btAudioPlaying) {
     uiUpdateInfo("Chance Of Rain");
     lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
     espwifi.startBluetoothWavPlayback(
         "/sd/music/chance-of-rain-albert-behar.wav");
+    return;
+  }
+
+  if (espwifi.btAudioPaused) {
+    espwifi.resumeBluetoothWavPlayback();
+    lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
+    uiUpdateInfo("Chance Of Rain");
+  } else {
+    espwifi.pauseBluetoothWavPlayback();
+    lv_obj_clear_state(ui_PlayButton, LV_STATE_CHECKED);
+    uiUpdateInfo("Paused");
   }
 }
 #endif
@@ -83,6 +86,6 @@ extern "C" void app_main(void) {
   espwifi.start();
   uiUpdateTitle("Albert Behar\n");
   lv_obj_add_flag(ui_PlayButton, LV_OBJ_FLAG_HIDDEN);
-  uiUpdateInfo("Ensure the Remote Device is in Pairing Mode and Nearby");
+  uiUpdateInfo("Ensure the Remote Audio Device is in Pairing Mode and Nearby");
   espwifi.runSystem();
 }

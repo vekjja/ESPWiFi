@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Title = NULL;lv_obj_t *ui_InfoLabel = NULL;lv_obj_t *ui_PlayButton = NULL;
+lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Image2 = NULL;lv_obj_t *ui_Title = NULL;lv_obj_t *ui_InfoLabel = NULL;lv_obj_t *ui_PlayButton = NULL;
 // event funtions
 
 // build funtions
@@ -17,27 +17,39 @@ lv_obj_remove_flag( ui_MainScreen, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 ui_object_set_themeable_style_property(ui_MainScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
 ui_object_set_themeable_style_property(ui_MainScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
 
+ui_Image2 = lv_image_create(ui_MainScreen);
+lv_image_set_src(ui_Image2, &ui_img_jazz_png);
+lv_obj_set_width( ui_Image2, lv_pct(100));
+lv_obj_set_height( ui_Image2, lv_pct(100));
+lv_obj_set_x( ui_Image2, 0 );
+lv_obj_set_y( ui_Image2, 62 );
+lv_obj_set_align( ui_Image2, LV_ALIGN_CENTER );
+lv_obj_add_flag( ui_Image2, LV_OBJ_FLAG_CLICKABLE );   /// Flags
+lv_obj_remove_flag( ui_Image2, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
+
 ui_Title = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_Title, LV_SIZE_CONTENT);  /// 1
 lv_obj_set_height( ui_Title, LV_SIZE_CONTENT);   /// 1
 lv_obj_set_x( ui_Title, 0 );
-lv_obj_set_y( ui_Title, -117 );
+lv_obj_set_y( ui_Title, -125 );
 lv_obj_set_align( ui_Title, LV_ALIGN_CENTER );
-lv_label_set_text(ui_Title,"ESPWiFi");
+lv_label_set_text(ui_Title,"Albert Behar");
 ui_object_set_themeable_style_property(ui_Title, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Primary);
 ui_object_set_themeable_style_property(ui_Title, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Primary);
 lv_obj_set_style_text_font(ui_Title, &lv_font_montserrat_36, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_InfoLabel = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_InfoLabel, lv_pct(90));
-lv_obj_set_height( ui_InfoLabel, lv_pct(30));
+lv_obj_set_height( ui_InfoLabel, lv_pct(12));
 lv_obj_set_x( ui_InfoLabel, 0 );
-lv_obj_set_y( ui_InfoLabel, -31 );
+lv_obj_set_y( ui_InfoLabel, 114 );
 lv_obj_set_align( ui_InfoLabel, LV_ALIGN_CENTER );
 lv_label_set_text(ui_InfoLabel,"Ensure the Remote Device is in Pairing Mode and Nearby");
 ui_object_set_themeable_style_property(ui_InfoLabel, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_COLOR, _ui_theme_color_Text);
 ui_object_set_themeable_style_property(ui_InfoLabel, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_TEXT_OPA, _ui_theme_alpha_Text);
 lv_obj_set_style_text_align(ui_InfoLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN| LV_STATE_DEFAULT);
+lv_obj_set_style_bg_color(ui_InfoLabel, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_opa(ui_InfoLabel, 200, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 ui_PlayButton = lv_imagebutton_create(ui_MainScreen);
 lv_imagebutton_set_src(ui_PlayButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_play_png, NULL);
@@ -45,8 +57,10 @@ lv_imagebutton_set_src(ui_PlayButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NUL
 lv_obj_set_width( ui_PlayButton, 48);
 lv_obj_set_height( ui_PlayButton, 48);
 lv_obj_set_x( ui_PlayButton, 0 );
-lv_obj_set_y( ui_PlayButton, 45 );
+lv_obj_set_y( ui_PlayButton, 22 );
 lv_obj_set_align( ui_PlayButton, LV_ALIGN_CENTER );
+lv_obj_set_style_bg_color(ui_PlayButton, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT );
+lv_obj_set_style_bg_opa(ui_PlayButton, 99, LV_PART_MAIN| LV_STATE_DEFAULT);
 
 }
 
@@ -56,6 +70,7 @@ void ui_MainScreen_screen_destroy(void)
 
 // NULL screen variables
 ui_MainScreen= NULL;
+ui_Image2= NULL;
 ui_Title= NULL;
 ui_InfoLabel= NULL;
 ui_PlayButton= NULL;

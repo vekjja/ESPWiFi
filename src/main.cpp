@@ -39,9 +39,10 @@ static void uiPlayButtonClicked(lv_event_t* evt) {
     return;
   } else {
     playing = true;
-    uiUpdateInfo("Friends");
+    uiUpdateInfo("Chance Of Rain");
     lv_obj_add_state(ui_PlayButton, LV_STATE_CHECKED);
-    espwifi.startBluetoothWavPlayback("/sd/music/friends.wav");
+    espwifi.startBluetoothWavPlayback(
+        "/sd/music/chance-of-rain-albert-behar.wav");
   }
 }
 #endif
@@ -62,6 +63,7 @@ extern "C" void app_main(void) {
             uiUpdateInfo("Connecting...");
             break;
           case ESP_A2D_CONNECTION_STATE_CONNECTED:
+            lv_obj_remove_flag(ui_PlayButton, LV_OBJ_FLAG_HIDDEN);
             uiUpdateInfo("Connected");
             break;
           case ESP_A2D_CONNECTION_STATE_DISCONNECTING:
@@ -79,7 +81,8 @@ extern "C" void app_main(void) {
   };
 #endif
   espwifi.start();
-  uiUpdateTitle("Kever\n");
+  uiUpdateTitle("Albert Behar\n");
+  lv_obj_add_flag(ui_PlayButton, LV_OBJ_FLAG_HIDDEN);
   uiUpdateInfo("Ensure the Remote Device is in Pairing Mode and Nearby");
   espwifi.runSystem();
 }

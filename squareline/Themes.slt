@@ -19,9 +19,9 @@
         "strtype": "THEME_COLOR",
         "strval": "Primary",
         "intarray": [
-          0,
-          212,
-          174,
+          243,
+          18,
+          124,
           255
         ],
         "InheritedType": 0
@@ -87,9 +87,9 @@
           "strtype": "THEME_COLOR",
           "strval": "Primary",
           "intarray": [
-            0,
-            212,
-            174,
+            243,
+            18,
+            124,
             255
           ],
           "InheritedType": 0

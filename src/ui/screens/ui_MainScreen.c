@@ -5,7 +5,7 @@
 
 #include "../ui.h"
 
-lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Title = NULL;lv_obj_t *ui_InfoLabel = NULL;lv_obj_t *ui_PlayButton = NULL;
+lv_obj_t *ui_MainScreen = NULL;lv_obj_t *ui_Image1 = NULL;lv_obj_t *ui_Title = NULL;lv_obj_t *ui_InfoLabel = NULL;lv_obj_t *ui_PlayButton = NULL;
 // event funtions
 
 // build funtions
@@ -16,6 +16,16 @@ ui_MainScreen = lv_obj_create(NULL);
 lv_obj_remove_flag( ui_MainScreen, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 ui_object_set_themeable_style_property(ui_MainScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_COLOR, _ui_theme_color_Background);
 ui_object_set_themeable_style_property(ui_MainScreen, LV_PART_MAIN| LV_STATE_DEFAULT, LV_STYLE_BG_OPA, _ui_theme_alpha_Background);
+
+ui_Image1 = lv_image_create(ui_MainScreen);
+lv_image_set_src(ui_Image1, &ui_img_lgtm_png);
+lv_obj_set_width( ui_Image1, LV_SIZE_CONTENT);  /// 1
+lv_obj_set_height( ui_Image1, LV_SIZE_CONTENT);   /// 1
+lv_obj_set_x( ui_Image1, -1 );
+lv_obj_set_y( ui_Image1, 76 );
+lv_obj_set_align( ui_Image1, LV_ALIGN_CENTER );
+lv_obj_add_flag( ui_Image1, LV_OBJ_FLAG_CLICKABLE );   /// Flags
+lv_obj_remove_flag( ui_Image1, LV_OBJ_FLAG_SCROLLABLE );    /// Flags
 
 ui_Title = lv_label_create(ui_MainScreen);
 lv_obj_set_width( ui_Title, lv_pct(99));
@@ -58,6 +68,7 @@ void ui_MainScreen_screen_destroy(void)
 
 // NULL screen variables
 ui_MainScreen= NULL;
+ui_Image1= NULL;
 ui_Title= NULL;
 ui_InfoLabel= NULL;
 ui_PlayButton= NULL;

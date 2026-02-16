@@ -124,7 +124,7 @@
               {
                 "nid": 1020,
                 "strtype": "IMAGE/Asset",
-                "strval": "assets/lgtm.png",
+                "strval": "assets/jazz.png",
                 "InheritedType": 5
               },
               {
@@ -887,7 +887,7 @@
     "custom_variable_prefix": "uic",
     "separate_screen_save": false,
     "hierarchy_state_save": false,
-    "backup_cnt": 178,
+    "backup_cnt": 182,
     "autosave_cnt": 0,
     "group_color_cnt": 0,
     "imagebytearrayprefix": "",

@@ -50,14 +50,20 @@ This creates `secureboot/keys/` (if needed) and writes:
 
 | File | Role |
 |------|------|
-| `keys/rsa2048_signing_key.pem` | RSA signing key (typical ESP32-classic workflows; `espsecure` may label the PEM as RSA 3072 depending on tool defaults—align `sdkconfig` with the key you actually use) |
-| `keys/ecdsa256_signing_key.pem` | ECDSA NIST P-256 private key (ESP32-C3-style secure boot v2) |
+| `keys/rsa2048_signing_key.pem` | RSA private key for ESP32-classic secure boot v2. **esptool 5.x** defaults to **RSA-3072** for `--version 2`; the script filename is historical—use `--scheme rsa3072` and a matching `sdkconfig` path if you want names and bits aligned. |
+| `keys/ecdsa256_signing_key.pem` | ECDSA NIST P-256 private key (ESP32-C3 and similar, secure boot v2) |
 
 Equivalent manual commands (same as the script):
 
 ```bash
 espsecure generate-signing-key --version 2 keys/rsa2048_signing_key.pem
 espsecure generate-signing-key --version 2 --scheme ecdsa256 keys/ecdsa256_signing_key.pem
+```
+
+To generate RSA explicitly as 3072-bit (matches typical defaults):
+
+```bash
+espsecure generate-signing-key --version 2 --scheme rsa3072 keys/rsa3072_signing_key.pem
 ```
 
 Point ESP-IDF / `sdkconfig` at the PEM you intend to use for that build target.

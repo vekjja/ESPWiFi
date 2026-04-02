@@ -7,6 +7,7 @@
 #include <string>
 
 #include "ESPWiFi.h"
+#include "esp_idf_version.h"
 #include "esp_chip_info.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
@@ -124,7 +125,9 @@ void ESPWiFi::startWebServer() {
 
   // Configure base HTTPD server options (shared by HTTP and HTTPS)
   httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 4, 0)
   httpd_config.max_uri_len = 512;
+#endif
   httpd_config.max_open_sockets = 7;
   httpd_config.max_uri_handlers = 32;
   httpd_config.lru_purge_enable = true;

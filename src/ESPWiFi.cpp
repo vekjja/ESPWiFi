@@ -8,7 +8,9 @@ void ESPWiFi::start() {
   initFilesystem();
   startLogging();
   readConfig();
+#if ESPWiFi_HAS_TFT
   initTFT();
+#endif
 #ifdef CONFIG_BT_A2DP_ENABLE
   startBluetooth();
 #endif
@@ -20,8 +22,8 @@ void ESPWiFi::runSystem() {
     handleConfigUpdate();
     checkSDCard();
     // streamCamera();
-    renderTFT();     // can run click handlers and LVGL draw (long)
-    feedWatchDog();  // Feed after render so next iteration is covered
+    renderTFT();     // Run click handlers and LVGL draw
+    feedWatchDog();  // Feed after render to keep watchdog happy
   }
 }
 

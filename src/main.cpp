@@ -83,8 +83,11 @@ extern "C" void app_main(void) {
   };
 #endif
   espwifi.start();
+  espwifi.toggleWiFi();
+#if ESPWiFi_HAS_TFT
   uiUpdateTitle("Albert\nBehar");
   lv_obj_add_flag(ui_PlayButton, LV_OBJ_FLAG_HIDDEN);
   uiUpdateInfo("Ensure the Remote Audio Device is in Pairing Mode and Nearby");
+#endif
   espwifi.runSystem();
 }

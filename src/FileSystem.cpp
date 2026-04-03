@@ -24,6 +24,105 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
+
+namespace {
+
+std::string normalizeVirtualPath(std::string p) {
+  if (p.empty()) {
+    return "/";
+  }
+  if (p.front() != '/') {
+    p.insert(p.begin(), '/');
+  }
+  while (p.size() > 1 && p.back() == '/') {
+    p.pop_back();
+  }
+  return p;
+}
+
+std::string virtualDirname(const std::string &p) {
+  std::string n = normalizeVirtualPath(p);
+  if (n == "/") {
+    return "/";
+  }
+  size_t pos = n.rfind('/');
+  if (pos == std::string::npos) {
+    return "/";
+  }
+  if (pos == 0) {
+    return "/";
+  }
+  return n.substr(0, pos);
+}
+
+std::string joinVirtual(const std::string &dir, const std::string &name) {
+  std::string d = normalizeVirtualPath(dir);
+  if (d == "/") {
+    return std::string("/") + name;
+  }
+  return d + "/" + name;
+}
+
+bool resolveVirtualToAbs(ESPWiFi *self, const std::string &fs,
+                         const std::string &virtPath, std::string &outAbs,
+                         std::string &errorMsg) {
+  std::string v = normalizeVirtualPath(virtPath);
+  if (fs == "lfs") {
+    if (self->lfs == nullptr) {
+      errorMsg = "lfs_not_mounted";
+      return false;
+    }
+    outAbs = self->lfsMountPoint + (v == "/" ? "" : v);
+    return true;
+  }
+  if (fs == "sd") {
+    if (self->sdCard == nullptr) {
+      errorMsg = "sd_not_mounted";
+      return false;
+    }
+    outAbs = self->sdMountPoint + (v == "/" ? "" : v);
+    return true;
+  }
+  errorMsg = "unknown_fs";
+  return false;
+}
+
+bool removePathRecursive(const std::string &absPath, ESPWiFi *self) {
+  struct stat st {};
+  if (stat(absPath.c_str(), &st) != 0) {
+    return false;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    return ::remove(absPath.c_str()) == 0;
+  }
+  DIR *dir = opendir(absPath.c_str());
+  if (!dir) {
+    return false;
+  }
+  std::string prefix = absPath;
+  if (prefix.back() != '/') {
+    prefix += '/';
+  }
+  struct dirent *entry = nullptr;
+  int n = 0;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    if (!removePathRecursive(prefix + entry->d_name, self)) {
+      closedir(dir);
+      return false;
+    }
+    if (++n % 12 == 0) {
+      self->feedWatchDog(1);
+    }
+  }
+  closedir(dir);
+  return ::rmdir(absPath.c_str()) == 0;
+}
+
+}  // namespace
 
 void ESPWiFi::initLittleFS() {
   if (lfs != nullptr) {
@@ -773,6 +872,140 @@ bool ESPWiFi::closeFileStream(FILE *f, const std::string &fullPath) {
     return false;
   }
 
+  return true;
+}
+
+bool ESPWiFi::listFiles(const std::string &fs, const std::string &path,
+                        JsonDocument &outDoc, std::string &errorMsg) {
+  std::string absDir;
+  if (!resolveVirtualToAbs(this, fs, path, absDir, errorMsg)) {
+    return false;
+  }
+
+  struct stat st {};
+  if (stat(absDir.c_str(), &st) != 0) {
+    errorMsg = "path_not_found";
+    return false;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    errorMsg = "not_a_directory";
+    return false;
+  }
+
+  outDoc.clear();
+  JsonArray arr = outDoc["files"].to<JsonArray>();
+  DIR *dir = opendir(absDir.c_str());
+  if (!dir) {
+    errorMsg = "opendir_failed";
+    return false;
+  }
+
+  const std::string baseVirt = normalizeVirtualPath(path);
+  struct dirent *entry = nullptr;
+  int n = 0;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+    const std::string name = entry->d_name;
+    const std::string fullVirt = joinVirtual(baseVirt, name);
+    std::string fullAbs = absDir;
+    if (fullAbs.back() != '/') {
+      fullAbs += '/';
+    }
+    fullAbs += name;
+
+    struct stat est {};
+    if (stat(fullAbs.c_str(), &est) != 0) {
+      continue;
+    }
+
+    JsonObject o = arr.add<JsonObject>();
+    o["name"] = name;
+    o["path"] = fullVirt;
+    o["isDirectory"] = S_ISDIR(est.st_mode);
+    o["size"] = S_ISDIR(est.st_mode) ? 0ULL : (uint64_t)est.st_size;
+
+    if (++n % 16 == 0) {
+      feedWatchDog(1);
+    }
+  }
+  closedir(dir);
+  return true;
+}
+
+bool ESPWiFi::makeDirectory(const std::string &fs, const std::string &path,
+                            const std::string &name, std::string &errorMsg) {
+  if (name.empty() || name.find('/') != std::string::npos) {
+    errorMsg = "invalid_name";
+    return false;
+  }
+  const std::string newV = joinVirtual(path, name);
+  if (isProtectedFile(fs, newV)) {
+    errorMsg = "protected";
+    return false;
+  }
+  std::string abs;
+  if (!resolveVirtualToAbs(this, fs, newV, abs, errorMsg)) {
+    return false;
+  }
+  if (::mkdir(abs.c_str(), 0755) == 0) {
+    return true;
+  }
+  if (errno == EEXIST) {
+    errorMsg = "exists";
+  } else {
+    errorMsg = "mkdir_failed";
+  }
+  return false;
+}
+
+bool ESPWiFi::renameFile(const std::string &fs, const std::string &oldPath,
+                         const std::string &newName, std::string &errorMsg) {
+  if (newName.empty() || newName.find('/') != std::string::npos) {
+    errorMsg = "invalid_name";
+    return false;
+  }
+  const std::string oldV = normalizeVirtualPath(oldPath);
+  if (isProtectedFile(fs, oldV)) {
+    errorMsg = "protected";
+    return false;
+  }
+  const std::string newV = joinVirtual(virtualDirname(oldV), newName);
+  if (isProtectedFile(fs, newV)) {
+    errorMsg = "protected";
+    return false;
+  }
+  std::string oldAbs;
+  std::string newAbs;
+  if (!resolveVirtualToAbs(this, fs, oldV, oldAbs, errorMsg)) {
+    return false;
+  }
+  if (!resolveVirtualToAbs(this, fs, newV, newAbs, errorMsg)) {
+    return false;
+  }
+  if (::rename(oldAbs.c_str(), newAbs.c_str()) != 0) {
+    errorMsg = "rename_failed";
+    return false;
+  }
+  return true;
+}
+
+bool ESPWiFi::deleteFile(const std::string &fs, const std::string &path,
+                         std::string &errorMsg) {
+  const std::string v = normalizeVirtualPath(path);
+  if (isProtectedFile(fs, v)) {
+    errorMsg = "protected";
+    return false;
+  }
+  std::string abs;
+  if (!resolveVirtualToAbs(this, fs, v, abs, errorMsg)) {
+    return false;
+  }
+  if (!removePathRecursive(abs, this)) {
+    errorMsg = "delete_failed";
+    return false;
+  }
   return true;
 }
 

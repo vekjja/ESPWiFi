@@ -1,5 +1,10 @@
-#include "ESPWiFi.h"
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
+#include "ESPWiFi.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -10,12 +15,6 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
-#include <cassert>
-#include <cmath>
-#include <cstdlib>
-#include <cstring>
-#include <string>
 
 // Shared event loop / WiFi driver state (single definition)
 static bool event_loop_initialized = false;
@@ -38,7 +37,7 @@ void ESPWiFi::toggleWiFi() {
     feedWatchDog();
     initNVS();
     feedWatchDog();
-    startWiFi(); // can block during connect
+    startWiFi();  // can block during connect
     feedWatchDog(50);
     startMDNS();
     startWebServer();
@@ -96,8 +95,8 @@ void ESPWiFi::wifiConfigHandler() {
 
     // Perform the restart immediately
     log(INFO, "📶 WiFi config changed; restarting WiFi");
-    stopWiFi();                     // Properly stop before restart
-    vTaskDelay(pdMS_TO_TICKS(200)); // Let everything settle
+    stopWiFi();                      // Properly stop before restart
+    vTaskDelay(pdMS_TO_TICKS(200));  // Let everything settle
     startWiFi();
   }
 }
@@ -115,7 +114,7 @@ void ESPWiFi::initNVS() {
 
 void ESPWiFi::stopWiFi() {
   if (!wifi_initialized) {
-    return; // Nothing to stop
+    return;  // Nothing to stop
   }
 
   log(DEBUG, "📶 Stopping WiFi...");
@@ -125,7 +124,7 @@ void ESPWiFi::stopWiFi() {
   if (ret != ESP_OK) {
     log(WARNING, "📶 WiFi stop failed: %s", esp_err_to_name(ret));
   }
-  vTaskDelay(pdMS_TO_TICKS(100)); // Let it fully stop
+  vTaskDelay(pdMS_TO_TICKS(100));  // Let it fully stop
 
   // Deinitialize WiFi
   ret = esp_wifi_deinit();
@@ -166,7 +165,6 @@ void ESPWiFi::startWiFi() {
 }
 
 void ESPWiFi::startClient() {
-
   std::string ssid = config["wifi"]["client"]["ssid"].as<std::string>();
   std::string password = config["wifi"]["client"]["password"].as<std::string>();
 
@@ -235,13 +233,13 @@ void ESPWiFi::startClient() {
 
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
-  vTaskDelay(pdMS_TO_TICKS(100)); // Let driver settle
+  vTaskDelay(pdMS_TO_TICKS(100));  // Let driver settle
 
   // Apply power management settings after WiFi start
   // Note: esp_wifi_set_max_tx_power() requires WiFi to be started
   applyWiFiPowerSettings();
 
-  ESP_ERROR_CHECK(esp_wifi_disconnect()); // Clear any stale connection state
+  ESP_ERROR_CHECK(esp_wifi_disconnect());  // Clear any stale connection state
   vTaskDelay(pdMS_TO_TICKS(50));
   ESP_ERROR_CHECK(esp_wifi_connect());
 
@@ -268,9 +266,9 @@ void ESPWiFi::startClient() {
 
   if (!connected) {
     log(ERROR, "📶 Failed to connect to WiFi, falling back to AP");
-    setWiFiAutoReconnect(false); // Disable reconnect when switching to AP
+    setWiFiAutoReconnect(false);  // Disable reconnect when switching to AP
     config["wifi"]["mode"] = "accessPoint";
-    startAP(); // This will start BLE if enabled in config
+    startAP();  // This will start BLE if enabled in config
     return;
   }
 
@@ -317,9 +315,9 @@ int ESPWiFi::selectBestChannel() {
   constexpr int kMinChannel = 1;
   constexpr int kMaxChannel = 11;
   constexpr int kMaxOverlapDistance =
-      4; // beyond this, assume negligible overlap
+      4;  // beyond this, assume negligible overlap
 
-  float score[14] = {0.0f}; // index by channel number; [0] unused
+  float score[14] = {0.0f};  // index by channel number; [0] unused
 
   wifi_scan_config_t scan_config = {};
   scan_config.ssid = nullptr;
@@ -357,19 +355,15 @@ int ESPWiFi::selectBestChannel() {
         // Map RSSI dBm to a bounded weight. Typical RSSI range is ~[-90, -30].
         // -90 dBm -> ~1, -80 -> 2, -70 -> 4, ... -40 -> 32, -30 -> 64
         float w = powf(2.0f, (static_cast<float>(rssi) + 90.0f) / 10.0f);
-        if (w < 0.25f)
-          w = 0.25f;
-        if (w > 64.0f)
-          w = 64.0f;
+        if (w < 0.25f) w = 0.25f;
+        if (w > 64.0f) w = 64.0f;
         return w;
       };
 
       auto overlapWeight = [](int distance) -> float {
         // distance 0 => 1.0, 1 => 0.5, 2 => 0.25, ...
-        if (distance < 0)
-          distance = -distance;
-        if (distance > kMaxOverlapDistance)
-          return 0.0f;
+        if (distance < 0) distance = -distance;
+        if (distance > kMaxOverlapDistance) return 0.0f;
         return 1.0f / static_cast<float>(1 << distance);
       };
 
@@ -382,8 +376,7 @@ int ESPWiFi::selectBestChannel() {
         float apWeight = rssiToWeight(ap_records[i].rssi);
         for (int ch = kMinChannel; ch <= kMaxChannel; ch++) {
           int d = ch - apChannel;
-          if (d < 0)
-            d = -d;
+          if (d < 0) d = -d;
           float ow = overlapWeight(d);
           if (ow > 0.0f) {
             score[ch] += apWeight * ow;
@@ -400,12 +393,9 @@ int ESPWiFi::selectBestChannel() {
 
   auto preferredOrder = [](int ch) -> int {
     // Lower is better among preferred channels
-    if (ch == 1)
-      return 0;
-    if (ch == 6)
-      return 1;
-    if (ch == 11)
-      return 2;
+    if (ch == 1) return 0;
+    if (ch == 6) return 1;
+    if (ch == 11) return 2;
     return 999;
   };
 
@@ -418,8 +408,7 @@ int ESPWiFi::selectBestChannel() {
     }
 
     float diff = score[ch] - score[bestChannel];
-    if (diff < 0.0f)
-      diff = -diff;
+    if (diff < 0.0f) diff = -diff;
     if (diff <= kTieEpsilon) {
       // Tie-break: prefer 1/6/11; then stable ordering.
       bool chPref = isPreferred(ch);
@@ -452,7 +441,7 @@ void ESPWiFi::startAP() {
   log(INFO, "📶\tSSID: %s", genHostname().c_str());
   log(INFO, "📶\tPassword: %s", password.c_str());
 
-  setWiFiAutoReconnect(false); // No STA auto-reconnect in AP mode
+  setWiFiAutoReconnect(false);  // No STA auto-reconnect in AP mode
   initNVS();
 
   if (!event_loop_initialized) {
@@ -484,12 +473,10 @@ void ESPWiFi::startAP() {
   }
 
   int bestChannel =
-      selectBestChannel(); // Falls back to channel 1 if scan fails
+      selectBestChannel();  // Falls back to channel 1 if scan fails
   // Defensive clamp (selectBestChannel() already constrains to 1-11)
-  if (bestChannel < 1)
-    bestChannel = 1;
-  if (bestChannel > 11)
-    bestChannel = 11;
+  if (bestChannel < 1) bestChannel = 1;
+  if (bestChannel > 11) bestChannel = 11;
   log(INFO, "📶\tChannel: %d", bestChannel);
 
   esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
@@ -541,7 +528,8 @@ void ESPWiFi::startAP() {
 
 #ifdef LED_BUILTIN
   gpio_set_direction((gpio_num_t)LED_BUILTIN, GPIO_MODE_OUTPUT);
-  gpio_set_level((gpio_num_t)LED_BUILTIN, 0); // Turn on LED to indicate AP mode
+  gpio_set_level((gpio_num_t)LED_BUILTIN,
+                 0);  // Turn on LED to indicate AP mode
 #endif
 }
 

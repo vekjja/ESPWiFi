@@ -21,7 +21,7 @@ void ESPWiFi::runSystem() {
     feedWatchDog();
     handleConfigUpdate();
     checkSDCard();
-    // streamCamera();
+    streamCamera();
     renderTFT();     // Run click handlers and LVGL draw
     feedWatchDog();  // Feed after render to keep watchdog happy
   }

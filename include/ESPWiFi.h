@@ -218,9 +218,11 @@ class ESPWiFi {
   void log(LogLevel level, const char* format, ...);
   void log(LogLevel level, const char* format, const std::string& arg);
   void log(LogLevel level, std::string message) { logImpl(level, message); }
+  void log(const char* value) { logImpl(INFO, std::string(value)); }
+  void log(const std::string& value) { logImpl(INFO, value); }
   template <typename T>
   void log(T value) {
-    log(INFO, "%s", std::to_string(value).c_str());
+    logImpl(INFO, std::to_string(value));
   }
 
   // ---- Config
@@ -464,6 +466,10 @@ class ESPWiFi {
   unsigned long millis() {
     return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
   }
+
+  // LED
+  void startLEDMatrix();
+  void testMatrix();
 
  private:
   std::string _version = "v0.1.0";

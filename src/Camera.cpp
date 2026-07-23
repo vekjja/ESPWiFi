@@ -18,7 +18,7 @@
  * @note Camera functionality is built when a camera model is selected
  *       (via ESPWiFi_CAMERA_MODEL_*; see `include/CameraPins.h`).
  * @note Requires ESPWiFi_CAMERA_MODEL_* to be defined (e.g.,
- *       ESPWiFi_CAMERA_MODEL_XIAO_ESP32S3)
+ *       ESPWiFi_CAMERA_MODEL_SEEED_XIAO_ESP32S3)
  * @note WebSocket streaming requires CONFIG_HTTPD_WS_SUPPORT
  */
 
@@ -49,9 +49,9 @@
 // Camera Runtime State
 // ============================================================================
 
-static uint32_t s_lastInitAttemptMs = 0;      ///< Last init attempt timestamp
-static uint32_t s_initBackoffMs = 0;          ///< Current backoff delay
-static uint8_t s_consecutiveInitFailures = 0; ///< Failed init attempts
+static uint32_t s_lastInitAttemptMs = 0;       ///< Last init attempt timestamp
+static uint32_t s_initBackoffMs = 0;           ///< Current backoff delay
+static uint8_t s_consecutiveInitFailures = 0;  ///< Failed init attempts
 
 // ============================================================================
 // Camera Initialization and Lifecycle
@@ -82,7 +82,7 @@ bool ESPWiFi::initCamera() {
   // Exponential backoff after failures to allow PSRAM/hardware to recover
   const uint32_t nowMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
   if (s_initBackoffMs > 0 && (nowMs - s_lastInitAttemptMs) < s_initBackoffMs) {
-    return false; // Still in backoff period
+    return false;  // Still in backoff period
   }
 
   // Re-entrancy guard: prevent concurrent init attempts
@@ -107,7 +107,7 @@ bool ESPWiFi::initCamera() {
         totalPSRAM);
 
     // Each SVGA frame buffer is ~96KB, we need at least 2 buffers
-    const size_t minRequiredPSRAM = 200 * 1024; // 200KB safety margin
+    const size_t minRequiredPSRAM = 200 * 1024;  // 200KB safety margin
     if (freePSRAM < minRequiredPSRAM) {
       log(WARNING,
           "📷 Insufficient PSRAM for camera (%u bytes free; need %u). Falling "
@@ -121,7 +121,7 @@ bool ESPWiFi::initCamera() {
   sensor_t *s = esp_camera_sensor_get();
   if (s != nullptr) {
     log(WARNING, "📷 Camera sensor already exists in driver");
-    camera = s; // Cache the sensor pointer
+    camera = s;  // Cache the sensor pointer
     initInProgress = false;
     s_consecutiveInitFailures = 0;
     s_initBackoffMs = 0;
@@ -162,7 +162,7 @@ bool ESPWiFi::initCamera() {
 
   // Determine orientation preference (landscape vs portrait)
   const char *orientationStr =
-      config["camera"]["orientation"] | "landscape"; // Default to landscape
+      config["camera"]["orientation"] | "landscape";  // Default to landscape
   bool isPortrait = (strcmp(orientationStr, "portrait") == 0);
 
   // Extract quality from configuration (lower = better quality, 0-63 range)
@@ -181,34 +181,33 @@ bool ESPWiFi::initCamera() {
   if (usingPSRAM) {
     // LAN streaming with SVGA resolution (or VGA for portrait)
     if (isPortrait) {
-      cam.frame_size = FRAMESIZE_VGA; // 640x480 for portrait
+      cam.frame_size = FRAMESIZE_VGA;  // 640x480 for portrait
       log(INFO, "📷 frame_size=VGA (portrait), quality=%d, buffers=1", quality);
     } else {
-      cam.frame_size = FRAMESIZE_SVGA; // 800x600 for landscape
+      cam.frame_size = FRAMESIZE_SVGA;  // 800x600 for landscape
       log(INFO, "📷 frame_size=SVGA (landscape), quality=%d, buffers=1",
           quality);
     }
     cam.jpeg_quality = quality;
-    cam.fb_count = 1; // Single buffer (prevents FB-OVF)
+    cam.fb_count = 1;  // Single buffer (prevents FB-OVF)
     cam.fb_location = CAMERA_FB_IN_PSRAM;
     cam.grab_mode =
-        CAMERA_GRAB_LATEST; // Always get latest frame, drop old ones
+        CAMERA_GRAB_LATEST;  // Always get latest frame, drop old ones
   } else {
     // Without PSRAM, use smaller frames and single buffer
     if (isPortrait) {
-      cam.frame_size = FRAMESIZE_QVGA; // 320x240 for portrait
-      log(INFO,
-          "📷 No PSRAM: frame_size=QVGA (portrait), quality=%d, buffers=1",
+      cam.frame_size = FRAMESIZE_QVGA;  // 320x240 for portrait
+      log(INFO, "📷 No PSRAM: frame_size=QVGA (portrait), quality=%d, buffers=1",
           quality);
     } else {
-      cam.frame_size = FRAMESIZE_QVGA; // 320x240 for landscape
+      cam.frame_size = FRAMESIZE_QVGA;  // 320x240 for landscape
       log(INFO,
           "📷 No PSRAM: frame_size=QVGA (landscape), quality=%d, buffers=1",
           quality);
     }
     cam.jpeg_quality = quality;
-    cam.fb_count = 1;                    // Single buffer
-    cam.fb_location = CAMERA_FB_IN_DRAM; // Internal RAM only
+    cam.fb_count = 1;                     // Single buffer
+    cam.fb_location = CAMERA_FB_IN_DRAM;  // Internal RAM only
     cam.grab_mode = CAMERA_GRAB_LATEST;
   }
 
@@ -496,7 +495,7 @@ void ESPWiFi::updateCameraSettings() {
   int saturation = getInt("saturation", 1, -2, 2);
   int sharpness = getInt("sharpness", 0, -2, 2);
   int denoise = getInt("denoise", 0, 0, 8);
-  int quality = getInt("quality", 12, 0, 63); // Lower = better quality
+  int quality = getInt("quality", 12, 0, 63);  // Lower = better quality
   int ae_level = getInt("exposure_level", 1, -2, 2);
   int aec_value = getInt("exposure_value", 400, 0, 1200);
   int agc_gain = getInt("agc_gain", 2, 0, 30);
@@ -510,12 +509,9 @@ void ESPWiFi::updateCameraSettings() {
   camera->set_brightness(camera, brightness);
   camera->set_contrast(camera, contrast);
   camera->set_saturation(camera, saturation);
-  if (camera->set_sharpness)
-    camera->set_sharpness(camera, sharpness);
-  if (camera->set_denoise)
-    camera->set_denoise(camera, denoise);
-  if (camera->set_quality)
-    camera->set_quality(camera, quality);
+  if (camera->set_sharpness) camera->set_sharpness(camera, sharpness);
+  if (camera->set_denoise) camera->set_denoise(camera, denoise);
+  if (camera->set_quality) camera->set_quality(camera, quality);
   camera->set_ae_level(camera, ae_level);
   camera->set_aec_value(camera, aec_value > 0 ? aec_value : 1);
   camera->set_agc_gain(camera, agc_gain);
@@ -539,20 +535,20 @@ void ESPWiFi::updateCameraSettings() {
     //   camera->set_vflip(camera, 1);
     // camera->set_hmirror(camera, 1);
     break;
-  // case 180:
-  //   camera->set_vflip(camera, 1);
-  //   camera->set_hmirror(camera, 1);
-  //   break;
-  // case 270:
-  //   camera->set_vflip(camera, 1);
-  //   camera->set_hmirror(camera, 0);
-  //   break;
-  default:
-    log(WARNING, "📷 No Hardware Rotation Applied: %d, using 0°", rotation);
-    // camera->set_vflip(camera, 0);
-    camera->set_vflip(camera, 1);
-    camera->set_hmirror(camera, 0);
-    break;
+    // case 180:
+    //   camera->set_vflip(camera, 1);
+    //   camera->set_hmirror(camera, 1);
+    //   break;
+    // case 270:
+    //   camera->set_vflip(camera, 1);
+    //   camera->set_hmirror(camera, 0);
+    //   break;
+    default:
+      log(WARNING, "📷 No Hardware Rotation Applied: %d, using 0°", rotation);
+      // camera->set_vflip(camera, 0);
+      camera->set_vflip(camera, 1);
+      camera->set_hmirror(camera, 0);
+      break;
   }
 
   log(INFO, "📷 Camera settings applied");
@@ -584,12 +580,13 @@ void ESPWiFi::setMediaCameraStreamSubscribed(int clientFd, bool enable) {
   // Add if not present
   for (size_t i = 0; i < (size_t)mediaCameraStreamSubCount_; i++) {
     if (mediaCameraStreamSubFds_[i] == clientFd) {
-      return; // Already subscribed
+      return;  // Already subscribed
     }
   }
 
   if ((size_t)mediaCameraStreamSubCount_ >= kMaxMediaCameraStreamSubscribers) {
-    log(WARNING, "🎞️ Media camera subscriber limit reached; ignoring fd=%d",
+    log(WARNING,
+        "🎞️ Media camera subscriber limit reached; ignoring fd=%d",
         clientFd);
     return;
   }
@@ -613,7 +610,7 @@ void ESPWiFi::clearMediaCameraStreamSubscribed(int clientFd) {
   }
 
   if (!found) {
-    return; // Already cleaned up
+    return;  // Already cleaned up
   }
 
   setMediaCameraStreamSubscribed(clientFd, false);
@@ -699,8 +696,8 @@ bool ESPWiFi::takeSnapshot(bool save, std::string &url, std::string &errorMsg) {
         }
       } else {
         errorMsg = "Failed to create file";
-        log(ERROR, "📸 Failed to create snapshot file: %s (errno=%d)", filename,
-            errno);
+        log(ERROR, "📸 Failed to create snapshot file: %s (errno=%d)",
+            filename, errno);
       }
     } else {
       errorMsg = "SD card not available";
@@ -805,15 +802,16 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
               log(INFO, "📸 Snapshot saved to SD: %s (%zu bytes)", filename,
                   fb->len);
             } else {
-              log(ERROR, "📸 Failed to Write Snapshot: %zu/%zu bytes", written,
-                  fb->len);
+              log(ERROR, "📸 Failed to Write Snapshot: %zu/%zu bytes",
+                  written, fb->len);
             }
           } else {
             log(ERROR, "📸 Failed to Open File for Snapshot: %s (errno=%d)",
                 filename, errno);
           }
         } else {
-          log(WARNING, "📸 Snapshot save requested but SD card not available");
+          log(WARNING,
+              "📸 Snapshot save requested but SD card not available");
         }
       }
     }
@@ -866,7 +864,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ret;
 }
 
-#else // No camera model selected
+#else  // No camera model selected
 
 // Provide stub implementations when camera is disabled
 bool ESPWiFi::initCamera() { return false; }
@@ -880,7 +878,7 @@ esp_err_t ESPWiFi::sendCameraSnapshot(httpd_req_t *req,
   return ESP_ERR_NOT_SUPPORTED;
 }
 
-#endif // ESPWiFi_HAS_CAMERA
+#endif  // ESPWiFi_HAS_CAMERA
 
 /**
  * @brief Configuration change handler for camera subsystem

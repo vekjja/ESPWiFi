@@ -9,7 +9,7 @@ ESPWiFi espwifi;
 extern "C" void app_main(void) {
   espwifi.audioPttPin = 27;
   espwifi.start();
-  // espwifi.toggleWiFi();
+  espwifi.toggleWiFi();
 
   for (;;) {
     espwifi.feedWatchDog();

@@ -18,6 +18,12 @@ fi
 
 SDKCONFIG_ENV="$SDKCONFIG_DIR/$target_env.sdkconfig"
 
+# CYD env uses the shared classic-ESP32 board config file
+if [ ! -f "$SDKCONFIG_ENV" ] && [ "$target_env" = "cyd" ] && [ -f "$SDKCONFIG_DIR/esp32.sdkconfig" ]; then
+  SDKCONFIG_ENV="$SDKCONFIG_DIR/esp32.sdkconfig"
+  echo "📦 Using CYD board config: $SDKCONFIG_ENV"
+fi
+
 # Check if environment-specific config exists
 if [ ! -f "$SDKCONFIG_ENV" ]; then
   echo "❌ Error: SDK config not found for environment '$target_env'"
@@ -32,6 +38,8 @@ find "$PROJECT_DIR" -maxdepth 1 -name '*sdkconfig*' -type f -print -delete
 
 # generate sdkconfig for target environment
 cp "$SDKCONFIG_DEFAULTS" "$PROJECT_SDKCONFIG"
+# Ensure board-specific overrides start on a new line even if defaults lacks trailing newline
+printf '\n' >> "$PROJECT_SDKCONFIG"
 cat "$SDKCONFIG_ENV" >> "$PROJECT_SDKCONFIG"
 
 echo

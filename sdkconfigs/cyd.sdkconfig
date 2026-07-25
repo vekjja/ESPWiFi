@@ -1,5 +1,5 @@
 # ========================================================================================
-# ⚠️ ESP32 (Classic) Board-Specific Configuration
+# CYD (ESP32-2432S028R) - Classic BT A2DP, TFT, SD card
 # Dual-core Xtensa, Classic Bluetooth (A2DP audio), no PSRAM
 
 SDCARD_MODEL_ESP32_2432S028R

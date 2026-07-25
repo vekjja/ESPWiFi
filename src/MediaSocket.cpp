@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -300,9 +301,17 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       want = 64 * 1024;
     }
 
-    static uint8_t s_chunkBuf[64 * 1024];
-    size_t n = fread(s_chunkBuf, 1, (size_t)want, st->f);
+    uint8_t *chunkBuf = (uint8_t *)malloc((size_t)want);
+    if (!chunkBuf) {
+      resp["ok"] = false;
+      resp["error"] = "out_of_memory";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    size_t n = fread(chunkBuf, 1, (size_t)want, st->f);
     if (n == 0) {
+      free(chunkBuf);
       const bool eof = feof(st->f) != 0;
       espwifi->log(INFO, "🎵 music_eof (fd=%d, offset=%u, chunks=%u, file=%s)",
                    clientFd, (unsigned)st->offset, (unsigned)st->chunksSent,
@@ -328,7 +337,8 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     resp["eof"] = false;
     resp["offset"] = st->offset;
     sendMediaAck(ws, clientFd, resp);
-    (void)ws->sendBinary(clientFd, s_chunkBuf, n);
+    (void)ws->sendBinary(clientFd, chunkBuf, n);
+    free(chunkBuf);
     return;
   }
 

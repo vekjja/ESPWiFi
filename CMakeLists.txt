@@ -20,11 +20,21 @@ foreach(_flags_var IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
 endforeach()
 
 # ESP-IDF auto-discovers and builds all components under the default `components/` dir.
-# Classic Bluetooth A2DP + arduino-audio-tools are ESP32-only; exclude them on non-ESP32 targets.
+# Classic Bluetooth A2DP + arduino-audio-tools are ESP32-only; exclude when disabled or
+# on non-ESP32 targets. BT enablement comes from sdkconfig.defaults (see sdkconfigs/*.sdkconfig).
 if(NOT DEFINED IDF_TARGET AND DEFINED ENV{IDF_TARGET})
     set(IDF_TARGET "$ENV{IDF_TARGET}")
 endif()
-if(DEFINED IDF_TARGET AND NOT IDF_TARGET STREQUAL "esp32")
+
+set(ESPWiFi_BT_A2DP OFF)
+if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig.defaults")
+    file(READ "${CMAKE_SOURCE_DIR}/sdkconfig.defaults" _espwifi_sdkconfig_defaults)
+    if(_espwifi_sdkconfig_defaults MATCHES "CONFIG_BT_A2DP_ENABLE=y")
+        set(ESPWiFi_BT_A2DP ON)
+    endif()
+endif()
+
+if(NOT DEFINED IDF_TARGET OR NOT IDF_TARGET STREQUAL "esp32" OR NOT ESPWiFi_BT_A2DP)
     list(APPEND EXCLUDE_COMPONENTS ESP32-A2DP arduino-audio-tools)
 endif()
 

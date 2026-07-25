@@ -310,17 +310,26 @@ static void audioPlaybackTask(void* param) {
     self->audioPlaying = false;
   }
 
-  if (pttPin != -1) {
+  if (self->audioPlaying && pttPin != -1) {
     self->setGPIO(pttPin, 1);
+    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
+  }
+
+  while (self->audioPlaying && readBuf &&
+         decoder->audioInfoEx().sample_rate == 0) {
+    size_t n = fread(readBuf, 1, 512, f);
+    if (n == 0) {
+      self->audioPlaying = false;
+      break;
+    }
+    decoder->write(readBuf, n);
+    vTaskDelay(1);
   }
 
   while (self->audioPlaying && readBuf) {
     size_t n = fread(readBuf, 1, 512, f);
     if (n == 0) {
       self->audioPlaying = false;
-      if (pttPin != -1) {
-        self->setGPIO(pttPin, 0);
-      }
       break;
     }
     decoder->write(readBuf, n);
@@ -329,6 +338,10 @@ static void audioPlaybackTask(void* param) {
 
   if (resampler) {
     resampler->flush();
+  }
+
+  if (pttPin != -1) {
+    self->setGPIO(pttPin, 0);
   }
 
   if (readBuf) free(readBuf);

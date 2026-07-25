@@ -59,6 +59,10 @@ idf_component_register(
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
+if(ESPWiFi_DAC_ENABLED)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ESPWiFi_DAC_ENABLED)
+endif()
+
 if(ESPWiFi_DAC_ENABLED OR (CONFIG_IDF_TARGET_ESP32 AND CONFIG_BT_A2DP_ENABLE))
     target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-maybe-uninitialized)
 endif()

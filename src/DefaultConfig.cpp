@@ -46,6 +46,16 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["log"]["file"] = "/espwifi.log";
   doc["log"]["maskedKeys"].add("password");
   doc["log"]["maskedKeys"].add("token");
+  doc["log"]["maskedKeys"].add("apiKey");
+
+  // OpenAI
+  doc["openai"]["apiKey"] = "";
+  doc["openai"]["model"] = "gpt-4o-mini";
+  doc["openai"]["baseUrl"] = "https://api.openai.com";
+  doc["openai"]["systemMessage"] =
+      "This is the ESPWiFi assistant. You are running on an ESP32 based "
+      "device. Running the ESPWiFi firmware. You are the assistant for the "
+      "ESPWiFi device.";
 
   // Auth
   // - enabled: controls whether authentication is enabled
@@ -125,4 +135,4 @@ JsonDocument ESPWiFi::defaultConfig() {
   return doc;
 }
 
-#endif // ESPWiFi_DEFAULT_CONFIG
+#endif  // ESPWiFi_DEFAULT_CONFIG

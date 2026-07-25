@@ -7,7 +7,7 @@
 # Dashboard
 data/
 node_modules/
-# dashboard/public/config.json
+dashboard/public/config.json
 
 # Secure Boot
 *.key

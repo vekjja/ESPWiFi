@@ -334,6 +334,10 @@ class ESPWiFi {
   void powerConfigHandler();
   void applyWiFiPowerSettings();
   JsonDocument getWiFiPowerInfo();
+
+  // ---- OpenAI
+  std::string oai_completion(const std::string& prompt);
+
   // ---- Utils
   std::string getStatusFromCode(int statusCode);
   std::string getContentType(std::string filename);

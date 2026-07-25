@@ -4,7 +4,7 @@
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
 # Base requirements for all builds
-set(COMPONENT_REQUIRES esp_http_server esp_https_server esp_netif esp_event nvs_flash app_update esp_littlefs mdns esp_psram)
+set(COMPONENT_REQUIRES esp_http_server esp_https_server esp_http_client esp_netif esp_event nvs_flash app_update esp_littlefs mdns esp_psram)
 
 if(NOT DEFINED ESPWiFi_DAC_ENABLED)
     set(ESPWiFi_DAC_ENABLED OFF)

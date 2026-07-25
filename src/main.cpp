@@ -11,6 +11,10 @@ extern "C" void app_main(void) {
   espwifi.start();
   espwifi.toggleWiFi();
 
+  espwifi.feedWatchDog(1000);
+  std::string response = espwifi.oai_completion("What is your call sign?");
+  espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
+
   for (;;) {
     espwifi.feedWatchDog();
     espwifi.handleConfigUpdate();

@@ -480,8 +480,14 @@ class ESPWiFi {
   static constexpr int ESPWiFi_DAC_PIN_1 = 25;
   static constexpr int ESPWiFi_DAC_PIN_2 = 26;
 
+  using AudioStreamProvider =
+      std::function<bool(std::function<bool(const uint8_t*, size_t)>)>;
+
   void playAudio(const std::string& path, float volume,
                  int outputPin = ESPWiFi_DAC_PIN_1);
+  void playStreamingWav(float volume, int outputPin,
+                        AudioStreamProvider provider);
+  void oai_TTS(const std::string& text, int outputPin, float volume = 1.0f);
   void stopAudioPlayback();
 
   volatile bool audioPlaying = false;

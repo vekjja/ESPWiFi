@@ -56,6 +56,8 @@ JsonDocument ESPWiFi::defaultConfig() {
       "This is the ESPWiFi assistant. You are running on an ESP32 based "
       "device. Running the ESPWiFi firmware. You are the assistant for the "
       "ESPWiFi device.";
+  doc["openai"]["ttsModel"] = "tts-1";
+  doc["openai"]["ttsVoice"] = "alloy";
 
   // Auth
   // - enabled: controls whether authentication is enabled

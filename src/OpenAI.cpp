@@ -2,84 +2,80 @@
 
 #include <ArduinoJson.h>
 
-#include "esp_crt_bundle.h"
-#include "esp_http_client.h"
+#include "ESPWiFi.h"
+#include "HTTP.h"
 
 namespace {
 
 constexpr const char* kChatCompletionsPath = "/v1/chat/completions";
+constexpr const char* kSpeechPath = "/v1/audio/speech";
 
-struct HttpResponse {
-  esp_err_t err = ESP_OK;
-  int status = 0;
-  size_t maxBytes = 0;
-  std::string body;
-};
-
-esp_err_t httpEventHandler(esp_http_client_event_t* evt) {
-  if (evt->event_id != HTTP_EVENT_ON_DATA || evt->data_len <= 0 ||
-      evt->user_data == nullptr) {
-    return ESP_OK;
-  }
-
-  auto* response = static_cast<HttpResponse*>(evt->user_data);
-  if (response->body.size() + static_cast<size_t>(evt->data_len) >
-      response->maxBytes) {
-    return ESP_FAIL;
-  }
-
-  response->body.append(static_cast<const char*>(evt->data),
-                        static_cast<size_t>(evt->data_len));
-  return ESP_OK;
+Http::Request openAiRequest(const OpenAI::Config& config,
+                            const std::string& url,
+                            const std::string& requestBody, uint32_t timeoutMs,
+                            size_t maxResponseBytes) {
+  Http::Request request;
+  request.url = url;
+  request.body = requestBody;
+  request.contentType = "application/json";
+  request.timeoutMs = timeoutMs;
+  request.maxResponseBytes = maxResponseBytes;
+  request.headers.push_back(
+      {"Authorization", std::string("Bearer ") + config.apiKey});
+  return request;
 }
 
-HttpResponse httpPostJson(const std::string& url, const std::string& apiKey,
-                          const std::string& requestBody, uint32_t timeoutMs,
-                          size_t maxResponseBytes) {
-  HttpResponse response;
-  response.maxBytes = maxResponseBytes;
-  response.body.reserve(1024);
+OpenAI::Config openAiConfigFromEspWiFi(const JsonDocument& config,
+                                       uint32_t timeoutMs) {
+  OpenAI::Config cfg;
+  cfg.timeoutMs = timeoutMs;
 
-  esp_http_client_config_t httpConfig = {};
-  httpConfig.url = url.c_str();
-  httpConfig.method = HTTP_METHOD_POST;
-  httpConfig.timeout_ms = timeoutMs;
-  httpConfig.crt_bundle_attach = esp_crt_bundle_attach;
-  httpConfig.event_handler = httpEventHandler;
-  httpConfig.user_data = &response;
-
-  esp_http_client_handle_t client = esp_http_client_init(&httpConfig);
-  if (client == nullptr) {
-    response.err = ESP_FAIL;
-    response.status = 0;
-    return response;
+  const char* apiKey = config["openai"]["apiKey"].as<const char*>();
+  if (apiKey != nullptr) {
+    cfg.apiKey = apiKey;
   }
 
-  std::string authHeader = std::string("Bearer ") + apiKey;
-  esp_http_client_set_header(client, "Authorization", authHeader.c_str());
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_post_field(client, requestBody.c_str(), requestBody.size());
+  const char* model = config["openai"]["model"].as<const char*>();
+  if (model != nullptr && model[0] != '\0') {
+    cfg.model = model;
+  }
 
-  response.err = esp_http_client_perform(client);
-  response.status = esp_http_client_get_status_code(client);
-  esp_http_client_cleanup(client);
-  return response;
+  const char* baseUrl = config["openai"]["baseUrl"].as<const char*>();
+  if (baseUrl != nullptr && baseUrl[0] != '\0') {
+    cfg.baseUrl = baseUrl;
+  }
+
+  const char* systemMessage =
+      config["openai"]["systemMessage"].as<const char*>();
+  if (systemMessage != nullptr) {
+    cfg.systemMessage = systemMessage;
+  }
+
+  const char* ttsModel = config["openai"]["ttsModel"].as<const char*>();
+  if (ttsModel != nullptr && ttsModel[0] != '\0') {
+    cfg.ttsModel = ttsModel;
+  }
+
+  const char* ttsVoice = config["openai"]["ttsVoice"].as<const char*>();
+  if (ttsVoice != nullptr && ttsVoice[0] != '\0') {
+    cfg.ttsVoice = ttsVoice;
+  }
+
+  if (!config["openai"]["ttsTimeoutMs"].isNull()) {
+    cfg.ttsTimeoutMs = config["openai"]["ttsTimeoutMs"].as<uint32_t>();
+  }
+
+  return cfg;
 }
 
-std::string joinUrl(const std::string& baseUrl, const char* path) {
-  if (baseUrl.empty()) {
-    return path;
+void logOpenAiError(ESPWiFi* espwifi, const char* action,
+                    const OpenAIResult& result) {
+  if (result.httpStatus > 0) {
+    espwifi->log(ERROR, "OpenAI %s: HTTP %d: %s", action, result.httpStatus,
+                 result.error.c_str());
+  } else {
+    espwifi->log(ERROR, "OpenAI %s: %s", action, result.error.c_str());
   }
-
-  if (baseUrl.back() == '/') {
-    return baseUrl + (path[0] == '/' ? path + 1 : path);
-  }
-
-  if (path[0] == '/') {
-    return baseUrl + path;
-  }
-
-  return baseUrl + "/" + path;
 }
 
 }  // namespace
@@ -110,6 +106,25 @@ OpenAIResult OpenAI::chatCompletion(
   return postJson(kChatCompletionsPath, buildChatRequestBody(messages));
 }
 
+OpenAIResult OpenAI::streamTextToSpeech(
+    const std::string& text,
+    const std::function<bool(const uint8_t* data, size_t len)>& onData) const {
+  if (!isConfigured()) {
+    return OpenAIResult{false, "", "apiKey not configured", 0};
+  }
+
+  if (text.empty()) {
+    return OpenAIResult{false, "", "text must not be empty", 0};
+  }
+
+  if (!onData) {
+    return OpenAIResult{false, "", "onData callback required", 0};
+  }
+
+  return postStream(kSpeechPath, buildTtsRequestBody(text), config_.ttsTimeoutMs,
+                    onData);
+}
+
 std::string OpenAI::buildChatRequestBody(
     const std::vector<OpenAIChatMessage>& messages) const {
   JsonDocument reqDoc;
@@ -127,12 +142,24 @@ std::string OpenAI::buildChatRequestBody(
   return reqBody;
 }
 
+std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
+  JsonDocument reqDoc;
+  reqDoc["model"] = config_.ttsModel;
+  reqDoc["input"] = text;
+  reqDoc["voice"] = config_.ttsVoice;
+  reqDoc["response_format"] = "wav";
+
+  std::string reqBody;
+  serializeJson(reqDoc, reqBody);
+  return reqBody;
+}
+
 OpenAIResult OpenAI::postJson(const std::string& path,
                               const std::string& requestBody) const {
-  const std::string url = joinUrl(config_.baseUrl, path.c_str());
-  HttpResponse response =
-      httpPostJson(url, config_.apiKey, requestBody, config_.timeoutMs,
-                   config_.maxResponseBytes);
+  const std::string url = Http::joinUrl(config_.baseUrl, path.c_str());
+  Http::Response response =
+      Http::makeRequest(openAiRequest(config_, url, requestBody, config_.timeoutMs,
+                                config_.maxResponseBytes));
 
   if (response.err != ESP_OK) {
     return OpenAIResult{false, "", esp_err_to_name(response.err),
@@ -147,6 +174,36 @@ OpenAIResult OpenAI::postJson(const std::string& path,
   }
 
   return parseChatCompletionResponse(response.body, response.status);
+}
+
+OpenAIResult OpenAI::postStream(
+    const std::string& path, const std::string& requestBody, uint32_t timeoutMs,
+    const std::function<bool(const uint8_t*, size_t)>& onData) const {
+  const std::string url = Http::joinUrl(config_.baseUrl, path.c_str());
+
+  Http::StreamRequest request;
+  request.url = url;
+  request.body = requestBody;
+  request.contentType = "application/json";
+  request.timeoutMs = timeoutMs;
+  request.headers.push_back(
+      {"Authorization", std::string("Bearer ") + config_.apiKey});
+  request.onData = onData;
+
+  Http::Response response = Http::makeStreamingRequest(request);
+
+  if (response.err != ESP_OK) {
+    return OpenAIResult{false, "", esp_err_to_name(response.err),
+                        response.status};
+  }
+
+  if (response.status != 200) {
+    std::string error = response.body.empty() ? "HTTP request failed"
+                                              : response.body;
+    return OpenAIResult{false, "", std::move(error), response.status};
+  }
+
+  return OpenAIResult{true, "", "", response.status};
 }
 
 OpenAIResult OpenAI::parseChatCompletionResponse(
@@ -165,3 +222,44 @@ OpenAIResult OpenAI::parseChatCompletionResponse(
 
   return OpenAIResult{true, content, "", httpStatus};
 }
+
+std::string ESPWiFi::oai_completion(const std::string& prompt) {
+  if (!isWiFiConnected()) {
+    log(ERROR, "OpenAI: WiFi not connected");
+    return "";
+  }
+
+  OpenAI client(openAiConfigFromEspWiFi(config, connectTimeout));
+  OpenAIResult result = client.chatCompletion(prompt);
+  if (!result.ok) {
+    logOpenAiError(this, "completion", result);
+    return "";
+  }
+
+  return result.content;
+}
+
+#ifdef ESPWiFi_DAC_ENABLED
+void ESPWiFi::oai_TTS(const std::string& text, int outputPin, float volume) {
+  if (!isWiFiConnected()) {
+    log(ERROR, "OpenAI: WiFi not connected");
+    return;
+  }
+
+  OpenAI::Config cfg = openAiConfigFromEspWiFi(config, connectTimeout);
+  if (cfg.apiKey.empty()) {
+    log(ERROR, "OpenAI: apiKey not configured");
+    return;
+  }
+
+  playStreamingWav(volume, outputPin, [cfg, text, this](auto writeChunk) {
+    OpenAI client(cfg);
+    OpenAIResult result = client.streamTextToSpeech(text, writeChunk);
+    if (!result.ok) {
+      logOpenAiError(this, "TTS", result);
+      return false;
+    }
+    return true;
+  });
+}
+#endif

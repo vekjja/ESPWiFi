@@ -302,9 +302,9 @@ class ESPWiFi {
   JsonDocument readRequestBody(httpd_req_t* req);
 
   // GPIO helper methods (used by both HTTP and WebSocket)
-  bool setGPIO(int pin, bool state, std::string& errorMsg);
-  bool getGPIO(int pin, int& state, std::string& errorMsg);
-  bool setPWM(int pin, int duty, int freq, std::string& errorMsg);
+  bool setGPIO(int pin, bool state, std::string* errorMsg = nullptr);
+  bool getGPIO(int pin, int& state, std::string* errorMsg = nullptr);
+  bool setPWM(int pin, int duty, int freq, std::string* errorMsg = nullptr);
 
   // File browser helper methods (used by both HTTP and WebSocket)
   bool listFiles(const std::string& fs, const std::string& path,
@@ -464,6 +464,20 @@ class ESPWiFi {
   unsigned long millis() {
     return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL);
   }
+
+  // ---- Built-in DAC audio playback (classic ESP32 only)
+#ifdef ESPWiFi_DAC_ENABLED
+  static constexpr int ESPWiFi_DAC_PIN_1 = 25;
+  static constexpr int ESPWiFi_DAC_PIN_2 = 26;
+
+  void playAudio(const std::string& path, float volume, int outputPin);
+  void stopAudioPlayback();
+
+  volatile bool audioPlaying = false;
+  TaskHandle_t audioTask = nullptr;
+  std::string audioFilePath;
+  int audioOutputPin = -1;
+#endif
 
  private:
   std::string _version = "v0.1.0";

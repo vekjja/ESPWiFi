@@ -47,7 +47,6 @@ void ESPWiFi::toggleWiFi() {
     srvRoot();
     srvWildcard();
   }
-  saveConfig();
 }
 
 void ESPWiFi::wifiConfigHandler() {

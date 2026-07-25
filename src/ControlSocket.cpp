@@ -111,7 +111,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         const int state = req["state"] | 0;
         std::string errorMsg;
 
-        if (espwifi->setGPIO(pin, state != 0, errorMsg)) {
+        if (espwifi->setGPIO(pin, state != 0, &errorMsg)) {
           resp["pin"] = pin;
           resp["state"] = state ? 1 : 0;
         } else {
@@ -129,7 +129,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         int state = 0;
         std::string errorMsg;
 
-        if (espwifi->getGPIO(pin, state, errorMsg)) {
+        if (espwifi->getGPIO(pin, state, &errorMsg)) {
           resp["pin"] = pin;
           resp["state"] = state;
         } else {
@@ -148,7 +148,7 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         const int freq = req["freq"] | 5000;
         std::string errorMsg;
 
-        if (espwifi->setPWM(pin, duty, freq, errorMsg)) {
+        if (espwifi->setPWM(pin, duty, freq, &errorMsg)) {
           resp["pin"] = pin;
           resp["duty"] = duty;
           resp["freq"] = freq;

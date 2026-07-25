@@ -63,10 +63,12 @@ static void pwm_free_channel_for_pin(int pin, ledc_mode_t speed_mode) {
 } // namespace
 
 // GPIO helper method - set digital pin
-bool ESPWiFi::setGPIO(int pin, bool state, std::string &errorMsg) {
+bool ESPWiFi::setGPIO(int pin, bool state, std::string *errorMsg) {
   // Validate pin
   if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
-    errorMsg = "Invalid pin number";
+    if (errorMsg) {
+      *errorMsg = "Invalid pin number";
+    }
     return false;
   }
 
@@ -83,7 +85,9 @@ bool ESPWiFi::setGPIO(int pin, bool state, std::string &errorMsg) {
 
   esp_err_t err = gpio_config(&io_conf);
   if (err != ESP_OK) {
-    errorMsg = "GPIO config failed";
+    if (errorMsg) {
+      *errorMsg = "GPIO config failed";
+    }
     log(ERROR, "GPIO config failed for pin %d: %s", pin, esp_err_to_name(err));
     return false;
   }
@@ -91,7 +95,9 @@ bool ESPWiFi::setGPIO(int pin, bool state, std::string &errorMsg) {
   // Set level
   err = gpio_set_level((gpio_num_t)pin, state ? 1 : 0);
   if (err != ESP_OK) {
-    errorMsg = "GPIO write failed";
+    if (errorMsg) {
+      *errorMsg = "GPIO write failed";
+    }
     log(ERROR, "GPIO write failed for pin %d: %s", pin, esp_err_to_name(err));
     return false;
   }
@@ -101,9 +107,11 @@ bool ESPWiFi::setGPIO(int pin, bool state, std::string &errorMsg) {
 }
 
 // GPIO helper method - get digital pin state
-bool ESPWiFi::getGPIO(int pin, int &state, std::string &errorMsg) {
+bool ESPWiFi::getGPIO(int pin, int &state, std::string *errorMsg) {
   if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
-    errorMsg = "Invalid pin number";
+    if (errorMsg) {
+      *errorMsg = "Invalid pin number";
+    }
     return false;
   }
 
@@ -113,10 +121,12 @@ bool ESPWiFi::getGPIO(int pin, int &state, std::string &errorMsg) {
 }
 
 // GPIO helper method - set PWM
-bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
+bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string *errorMsg) {
   // Validate pin and duty
   if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
-    errorMsg = "Invalid pin number";
+    if (errorMsg) {
+      *errorMsg = "Invalid pin number";
+    }
     return false;
   }
 
@@ -136,7 +146,9 @@ bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
 
   esp_err_t err = gpio_config(&io_conf);
   if (err != ESP_OK) {
-    errorMsg = "GPIO config failed";
+    if (errorMsg) {
+      *errorMsg = "GPIO config failed";
+    }
     return false;
   }
 
@@ -151,7 +163,9 @@ bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
 
     err = ledc_timer_config(&timer_conf);
     if (err != ESP_OK) {
-      errorMsg = "PWM timer config failed";
+      if (errorMsg) {
+        *errorMsg = "PWM timer config failed";
+      }
       log(ERROR, "LEDC timer config failed: %s", esp_err_to_name(err));
       return false;
     }
@@ -161,7 +175,9 @@ bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
   // Find or allocate channel
   ledc_channel_t chan = pwm_find_or_alloc_channel_for_pin(pin);
   if (chan == LEDC_CHANNEL_MAX) {
-    errorMsg = "No PWM channels available";
+    if (errorMsg) {
+      *errorMsg = "No PWM channels available";
+    }
     return false;
   }
 
@@ -177,7 +193,9 @@ bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
 
   err = ledc_channel_config(&ch_conf);
   if (err != ESP_OK) {
-    errorMsg = "PWM channel config failed";
+    if (errorMsg) {
+      *errorMsg = "PWM channel config failed";
+    }
     log(ERROR, "LEDC channel config failed (pin %d): %s", pin,
         esp_err_to_name(err));
     pwm_free_channel_for_pin(pin, LEDC_LOW_SPEED_MODE);
@@ -190,7 +208,9 @@ bool ESPWiFi::setPWM(int pin, int duty, int freq, std::string &errorMsg) {
     err = ledc_update_duty(LEDC_LOW_SPEED_MODE, chan);
   }
   if (err != ESP_OK) {
-    errorMsg = "PWM duty update failed";
+    if (errorMsg) {
+      *errorMsg = "PWM duty update failed";
+    }
     log(ERROR, "LEDC duty update failed (pin %d): %s", pin,
         esp_err_to_name(err));
     return false;

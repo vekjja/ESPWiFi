@@ -8,6 +8,19 @@ ESPWiFi espwifi;
 
 extern "C" void app_main(void) {
   espwifi.start();
-  espwifi.toggleWiFi();
-  espwifi.runSystem();
+  // espwifi.toggleWiFi();
+  // espwifi.runSystem();
+  std::string errorMsg;
+  for (;;) {
+    espwifi.feedWatchDog();
+    espwifi.handleConfigUpdate();
+    espwifi.playAudio("/wsce496.wav", 1.0f, ESPWiFi::ESPWiFi_DAC_PIN_1);
+    espwifi.setGPIO(27, 1);
+    while (espwifi.audioPlaying) {
+      espwifi.feedWatchDog();
+    }
+    espwifi.setGPIO(27, 0);
+    espwifi.log(INFO, "Done playing audio");
+    espwifi.feedWatchDog(6000);
+  }
 }

@@ -36,6 +36,7 @@ struct StreamRequest {
   std::string body;
   const char* contentType = nullptr;
   uint32_t timeoutMs = 15000;
+  size_t readChunkSize = 4096;
   std::vector<std::pair<std::string, std::string>> headers;
   StreamDataCallback onData;
 };

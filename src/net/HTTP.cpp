@@ -6,8 +6,6 @@
 namespace Http {
 namespace {
 
-constexpr size_t kStreamReadSize = 512;
-
 struct ResponseContext {
   size_t maxBytes = 0;
   std::string* body = nullptr;
@@ -105,10 +103,14 @@ Response makeStreamingRequest(const StreamRequest& request) {
     return response;
   }
 
+  const size_t readChunkSize =
+      request.readChunkSize > 0 ? request.readChunkSize : 4096;
+
   esp_http_client_config_t httpConfig = {};
   httpConfig.url = request.url.c_str();
   httpConfig.method = request.method;
   httpConfig.timeout_ms = request.timeoutMs;
+  httpConfig.buffer_size = static_cast<int>(readChunkSize);
   httpConfig.crt_bundle_attach = esp_crt_bundle_attach;
 
   esp_http_client_handle_t client = esp_http_client_init(&httpConfig);
@@ -151,23 +153,24 @@ Response makeStreamingRequest(const StreamRequest& request) {
 
   response.status = esp_http_client_get_status_code(client);
   if (response.status != 200) {
-    char errorBuf[kStreamReadSize];
+    std::vector<char> errorBuf(readChunkSize);
     while (true) {
       const int readLen =
-          esp_http_client_read(client, errorBuf, sizeof(errorBuf));
+          esp_http_client_read(client, errorBuf.data(), errorBuf.size());
       if (readLen <= 0) {
         break;
       }
-      response.body.append(errorBuf, static_cast<size_t>(readLen));
+      response.body.append(errorBuf.data(), static_cast<size_t>(readLen));
     }
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return response;
   }
 
-  char readBuf[kStreamReadSize];
+  std::vector<char> readBuf(readChunkSize);
   while (true) {
-    const int readLen = esp_http_client_read(client, readBuf, sizeof(readBuf));
+    const int readLen =
+        esp_http_client_read(client, readBuf.data(), readBuf.size());
     if (readLen < 0) {
       response.err = ESP_FAIL;
       break;
@@ -176,7 +179,7 @@ Response makeStreamingRequest(const StreamRequest& request) {
       break;
     }
 
-    if (!request.onData(reinterpret_cast<const uint8_t*>(readBuf),
+    if (!request.onData(reinterpret_cast<const uint8_t*>(readBuf.data()),
                         static_cast<size_t>(readLen))) {
       response.err = ESP_FAIL;
       break;

@@ -9,6 +9,7 @@
 #include "AudioTools/CoreAudio/ResampleStream.h"
 #include "ESPWiFi.h"
 #include "driver/dac_continuous.h"
+#include "freertos/stream_buffer.h"
 
 using namespace audio_tools;
 
@@ -203,6 +204,87 @@ struct StreamingAudioContext {
   ESPWiFi::AudioStreamProvider provider;
 };
 
+struct StreamingDownloadState {
+  ESPWiFi* self = nullptr;
+  ESPWiFi::AudioStreamProvider provider;
+  StreamBufferHandle_t buffer = nullptr;
+  volatile bool* downloadDone = nullptr;
+  volatile bool ok = false;
+};
+
+static void streamingDownloadTask(void* param) {
+  auto* state = static_cast<StreamingDownloadState*>(param);
+
+  state->ok = state->provider([&](const uint8_t* data, size_t len) {
+    if (!state->self->audioPlaying || data == nullptr || len == 0) {
+      return false;
+    }
+
+    size_t offset = 0;
+    while (offset < len) {
+      if (!state->self->audioPlaying) {
+        return false;
+      }
+
+      const size_t sent = xStreamBufferSend(
+          state->buffer, data + offset, len - offset, pdMS_TO_TICKS(500));
+      if (sent == 0) {
+        continue;
+      }
+      offset += sent;
+    }
+
+    state->self->feedWatchDog();
+    return true;
+  });
+
+  if (state->downloadDone != nullptr) {
+    *state->downloadDone = true;
+  }
+
+  vTaskDelete(nullptr);
+}
+
+static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder,
+                                 int pttPin, StreamBufferHandle_t buffer,
+                                 volatile bool* downloadDone) {
+  uint8_t* readBuf = static_cast<uint8_t*>(malloc(1024));
+  if (!readBuf) {
+    self->log(ERROR, "🔊 Failed to allocate read buffer");
+    return false;
+  }
+
+  bool pttKeyed = false;
+
+  while (self->audioPlaying) {
+    const size_t n =
+        xStreamBufferReceive(buffer, readBuf, 1024, pdMS_TO_TICKS(20));
+    if (n == 0) {
+      if (downloadDone != nullptr && *downloadDone &&
+          xStreamBufferBytesAvailable(buffer) == 0) {
+        break;
+      }
+      continue;
+    }
+
+    decoder.write(readBuf, n);
+
+    if (!pttKeyed && pttPin != -1 &&
+        decoder.audioInfoEx().sample_rate != 0) {
+      self->setGPIO(pttPin, 1);
+      self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
+      pttKeyed = true;
+    }
+  }
+
+  if (pttPin != -1) {
+    self->setGPIO(pttPin, 0);
+  }
+
+  free(readBuf);
+  return true;
+}
+
 static void releaseDac(AnalogAudioStream& dac) {
   dac.end();
   vTaskDelay(pdMS_TO_TICKS(50));
@@ -260,12 +342,42 @@ static void streamingAudioPlaybackTask(void* param) {
   ESPWiFi* self = ctx.self;
   const int pttPin = ctx.pttPin;
 
+  constexpr size_t kStreamBufferSize = 24 * 1024;
+  StreamBufferHandle_t streamBuffer =
+      xStreamBufferCreate(kStreamBufferSize, 1);
+  if (streamBuffer == nullptr) {
+    self->log(ERROR, "🔊 Failed to allocate stream buffer");
+    self->audioPlaying = false;
+    self->audioTask = nullptr;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  volatile bool downloadDone = false;
+  StreamingDownloadState downloadState;
+  downloadState.self = self;
+  downloadState.provider = std::move(ctx.provider);
+  downloadState.buffer = streamBuffer;
+  downloadState.downloadDone = &downloadDone;
+
+  if (xTaskCreatePinnedToCore(streamingDownloadTask, "tts-download", 12288,
+                              &downloadState, 4, nullptr,
+                              0) != pdPASS) {
+    self->log(ERROR, "🔊 Failed to create TTS download task");
+    vStreamBufferDelete(streamBuffer);
+    self->audioPlaying = false;
+    self->audioTask = nullptr;
+    vTaskDelete(nullptr);
+    return;
+  }
+
   // OpenAI TTS WAV responses are 24 kHz mono PCM16.
   AnalogAudioStream dac;
   auto dacCfg = dac.defaultConfig(TX_MODE);
   if (!configureDacOutput(dacCfg, ctx.outputPin)) {
     self->log(ERROR, "🔊 Invalid DAC output pin: %d", ctx.outputPin);
     self->audioPlaying = false;
+    vStreamBufferDelete(streamBuffer);
     self->audioTask = nullptr;
     vTaskDelete(nullptr);
     return;
@@ -276,6 +388,7 @@ static void streamingAudioPlaybackTask(void* param) {
   if (!dac.begin(dacCfg)) {
     self->log(ERROR, "🔊 Failed to start DAC on GPIO %d", ctx.outputPin);
     self->audioPlaying = false;
+    vStreamBufferDelete(streamBuffer);
     self->audioTask = nullptr;
     vTaskDelete(nullptr);
     return;
@@ -290,6 +403,7 @@ static void streamingAudioPlaybackTask(void* param) {
     self->log(ERROR, "🔊 Failed to allocate WAV decoder");
     releaseDac(dac);
     self->audioPlaying = false;
+    vStreamBufferDelete(streamBuffer);
     self->audioTask = nullptr;
     vTaskDelete(nullptr);
     return;
@@ -301,35 +415,15 @@ static void streamingAudioPlaybackTask(void* param) {
   self->log(INFO, "🔊 Streaming WAV playback started (GPIO %d, volume %.2f)",
             ctx.outputPin, ctx.volume);
 
-  bool pttKeyed = false;
-
-  const bool streamOk = ctx.provider([&](const uint8_t* data, size_t len) {
-    if (!self->audioPlaying || data == nullptr || len == 0) {
-      return false;
-    }
-
-    decoder->write(data, len);
-
-    if (!pttKeyed && pttPin != -1 &&
-        decoder->audioInfoEx().sample_rate != 0) {
-      self->setGPIO(pttPin, 1);
-      self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
-      pttKeyed = true;
-    }
-
-    self->feedWatchDog();
-    return true;
-  });
-
-  if (pttPin != -1) {
-    self->setGPIO(pttPin, 0);
-  }
+  const bool playbackOk =
+      pumpWavDecoderStream(self, *decoder, pttPin, streamBuffer, &downloadDone);
 
   decoder->end();
   delete decoder;
   releaseDac(dac);
+  vStreamBufferDelete(streamBuffer);
 
-  if (!streamOk) {
+  if (!downloadState.ok || !playbackOk) {
     self->log(ERROR, "🔊 Streaming WAV playback failed");
   } else {
     self->log(INFO, "🔊 Streaming WAV playback finished");

@@ -16,16 +16,11 @@ extern "C" void app_main(void) {
     espwifi.feedWatchDog();
     espwifi.handleConfigUpdate();
 
-    std::string response =
-        espwifi.oai_completion("What is your NATO alphabet call sign?");
+    std::string response = espwifi.oai_completion(
+        "provide a random Ham Radio Prep question and answer.");
 
     espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
-    espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 0.9f);
-    while (espwifi.audioPlaying) {
-      espwifi.feedWatchDog();
-    }
-
-    espwifi.playAudio("/wsce496.wav", 0.9f, ESPWiFi::ESPWiFi_DAC_PIN_1);
+    espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 1.0f);
     while (espwifi.audioPlaying) {
       espwifi.feedWatchDog();
     }

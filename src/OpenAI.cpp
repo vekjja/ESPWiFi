@@ -186,6 +186,7 @@ OpenAIResult OpenAI::postStream(
   request.body = requestBody;
   request.contentType = "application/json";
   request.timeoutMs = timeoutMs;
+  request.readChunkSize = 4096;
   request.headers.push_back(
       {"Authorization", std::string("Bearer ") + config_.apiKey});
   request.onData = onData;

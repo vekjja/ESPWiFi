@@ -191,6 +191,7 @@ struct AudioPlaybackContext {
   std::string path;
   float volume = 1.0f;
   int outputPin = -1;
+  int pttPin = -1;
 };
 
 static void audioPlaybackTask(void* param) {
@@ -201,6 +202,7 @@ static void audioPlaybackTask(void* param) {
   const std::string& path = ctx.path;
   const float volume = ctx.volume;
   const int outputPin = ctx.outputPin;
+  const int pttPin = ctx.pttPin;
 
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
@@ -308,14 +310,21 @@ static void audioPlaybackTask(void* param) {
     self->audioPlaying = false;
   }
 
+  if (pttPin != -1) {
+    self->setGPIO(pttPin, 1);
+  }
+
   while (self->audioPlaying && readBuf) {
     size_t n = fread(readBuf, 1, 512, f);
     if (n == 0) {
       self->audioPlaying = false;
+      if (pttPin != -1) {
+        self->setGPIO(pttPin, 0);
+      }
       break;
     }
     decoder->write(readBuf, n);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(1);
   }
 
   if (resampler) {
@@ -367,8 +376,8 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin) {
   audioOutputPin = outputPin;
   audioPlaying = true;
 
-  auto* ctx =
-      new AudioPlaybackContext{this, audioFilePath, volume, outputPin};
+  auto* ctx = new AudioPlaybackContext{this, audioFilePath, volume, outputPin,
+                                       audioPttPin};
   BaseType_t ok = xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288,
                                           ctx, 5, &audioTask, 1);
   if (ok != pdPASS) {

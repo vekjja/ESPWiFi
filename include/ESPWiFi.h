@@ -79,7 +79,13 @@ class ESPWiFi {
 
   // ---- Basic helpers/state
   std::string version() { return _version; }
-  void feedWatchDog(int ms = 10) { vTaskDelay(pdMS_TO_TICKS(ms)); }
+  void feedWatchDog(int ms = 10) {
+    TickType_t ticks = pdMS_TO_TICKS(ms);
+    if (ticks < 1) {
+      ticks = 1;
+    }
+    vTaskDelay(ticks);
+  }
 
   int connectTimeout = 15000;
   JsonDocument config = defaultConfig();
@@ -470,13 +476,15 @@ class ESPWiFi {
   static constexpr int ESPWiFi_DAC_PIN_1 = 25;
   static constexpr int ESPWiFi_DAC_PIN_2 = 26;
 
-  void playAudio(const std::string& path, float volume, int outputPin);
+  void playAudio(const std::string& path, float volume,
+                 int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
 
   volatile bool audioPlaying = false;
   TaskHandle_t audioTask = nullptr;
   std::string audioFilePath;
   int audioOutputPin = -1;
+  int audioPttPin = -1;
 #endif
 
  private:

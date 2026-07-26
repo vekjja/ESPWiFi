@@ -5,11 +5,11 @@
         "mode": "client",
         "mdns": true,
         "accessPoint": {
-            "password": "espW!!F!!"
+            "password": "espWiFi#"
         },
         "client": {
-            "ssid": "YOUR_WIFI_SSID",
-            "password": "YOUR_WIFI_PASSWORD"
+            "ssid": "exampleSSID",
+            "password": "examplePassword123"
         },
         "power": {
             "txPower": 19.5,
@@ -20,7 +20,7 @@
         "enabled": true
     },
     "log": {
-        "file": "/espwifi.log",
+        "file": "NONE",
         "level": "debug",
         "enabled": true,
         "useSD": true,
@@ -28,6 +28,20 @@
             "password",
             "token"
         ]
+    },
+    "openai": {
+        "apiKey": "sk-proj-EXAMPLE-KEY",
+        "model": "gpt-4o-mini",
+        "baseUrl": "https://api.openai.com",
+        "systemMessage": "You are a HAM Radio Operator. You are operating a radio station and you are the assistant for the radio station. Your call sign is WSCE496. Follow standard HAM radio protocol with all responses.",
+        "ttsModel": "tts-1",
+        "ttsVoice": "alloy",
+        "ttsTimeoutMs": 60000,
+        "maxResponseBytes": 16384,
+        "maxTokens": 95,
+        "maxTtsChars": 280,
+        "ttsSpeed": 1.0,
+        "maxTtsBytes": 727040
     },
     "auth": {
         "enabled": false,

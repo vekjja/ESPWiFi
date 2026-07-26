@@ -311,8 +311,10 @@ class ESPWiFi {
   JsonDocument readRequestBody(httpd_req_t* req);
 
   // GPIO helper methods (used by both HTTP and WebSocket)
-  bool setGPIO(int pin, bool state, std::string* errorMsg = nullptr);
-  bool getGPIO(int pin, int& state, std::string* errorMsg = nullptr);
+  bool setGPIO(int pin, const std::string& state,
+               std::string* errorMsg = nullptr);
+  int readDigital(int pin, std::string* errorMsg = nullptr);
+  float readAnalog(int pin, std::string* errorMsg = nullptr);
   bool setPWM(int pin, int duty, int freq, std::string* errorMsg = nullptr);
 
   // File browser helper methods (used by both HTTP and WebSocket)
@@ -491,7 +493,8 @@ class ESPWiFi {
                  bool deleteAfterPlay = false);
   void playStreamingWav(float volume, int outputPin,
                         AudioStreamProvider provider);
-  void oai_TTS(const std::string& text, int outputPin, float volume = 1.0f);
+  void oai_TTS(const std::string& text, float volume = 1.0f,
+               int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
 
   volatile bool audioPlaying = false;

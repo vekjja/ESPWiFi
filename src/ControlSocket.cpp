@@ -102,18 +102,21 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         }
       }
     } else if (strcmp(cmd, "set_gpio") == 0) {
-      // Set GPIO pin: {cmd: "set_gpio", pin: 2, state: 1}
+      // Set GPIO pin: {cmd: "set_gpio", pin: 2, state: "high"}
       if (!req["pin"].is<int>()) {
         resp["ok"] = false;
         resp["error"] = "missing_pin";
+      } else if (!req["state"].is<const char *>()) {
+        resp["ok"] = false;
+        resp["error"] = "missing_state";
       } else {
         const int pin = req["pin"];
-        const int state = req["state"] | 0;
+        const std::string state = req["state"].as<const char *>();
         std::string errorMsg;
 
-        if (espwifi->setGPIO(pin, state != 0, &errorMsg)) {
+        if (espwifi->setGPIO(pin, state, &errorMsg)) {
           resp["pin"] = pin;
-          resp["state"] = state ? 1 : 0;
+          resp["state"] = state;
         } else {
           resp["ok"] = false;
           resp["error"] = errorMsg;
@@ -126,15 +129,15 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         resp["error"] = "missing_pin";
       } else {
         const int pin = req["pin"];
-        int state = 0;
         std::string errorMsg;
+        const int state = espwifi->readDigital(pin, &errorMsg);
 
-        if (espwifi->getGPIO(pin, state, &errorMsg)) {
-          resp["pin"] = pin;
-          resp["state"] = state;
-        } else {
+        if (state < 0) {
           resp["ok"] = false;
           resp["error"] = errorMsg;
+        } else {
+          resp["pin"] = pin;
+          resp["state"] = state;
         }
       }
     } else if (strcmp(cmd, "set_pwm") == 0) {

@@ -82,11 +82,10 @@ export default function PinModule({
         };
       } else {
         // Digital mode
-        const state = newState.state === "high" ? 1 : 0;
         wsCommand = {
           cmd: "set_gpio",
           pin: parseInt(currentPinNum, 10),
-          state: state,
+          state: newState.state === "high" ? "high" : "low",
         };
       }
 

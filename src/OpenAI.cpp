@@ -412,7 +412,7 @@ std::string ESPWiFi::oai_completion(const std::string& prompt) {
 }
 
 #ifdef ESPWiFi_DAC_ENABLED
-void ESPWiFi::oai_TTS(const std::string& text, int outputPin, float volume) {
+void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
   if (!isWiFiConnected()) {
     log(ERROR, "🤖 OpenAI: WiFi not connected");
     return;

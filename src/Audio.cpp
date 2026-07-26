@@ -299,7 +299,7 @@ static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
   }
 
   if (self->audioPlaying && pttPin != -1) {
-    self->setGPIO(pttPin, 1);
+    self->setGPIO(pttPin, "high");
     vTaskDelay(pdMS_TO_TICKS(50));
     self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
   }
@@ -319,7 +319,7 @@ static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
   }
 
   if (pttPin != -1) {
-    self->setGPIO(pttPin, 0);
+    self->setGPIO(pttPin, "low");
   }
 
   free(readBuf);
@@ -341,7 +341,7 @@ static bool pumpWavDecoder(
   }
 
   if (self->audioPlaying && pttPin != -1) {
-    self->setGPIO(pttPin, 1);
+    self->setGPIO(pttPin, "high");
     self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
   }
 
@@ -369,7 +369,7 @@ static bool pumpWavDecoder(
   }
 
   if (pttPin != -1) {
-    self->setGPIO(pttPin, 0);
+    self->setGPIO(pttPin, "low");
   }
 
   free(readBuf);
@@ -719,7 +719,7 @@ void ESPWiFi::stopAudioPlayback() {
   }
 
   if (audioPttPin != -1) {
-    setGPIO(audioPttPin, 0);
+    setGPIO(audioPttPin, "low");
   }
 
   log(INFO, "🔊 DAC playback stopped");

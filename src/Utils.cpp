@@ -1,8 +1,9 @@
 // Utils.cpp
-#include "ESPWiFi.h"
-#include "driver/uart.h"
 #include <cctype>
 #include <cstring>
+
+#include "ESPWiFi.h"
+#include "driver/uart.h"
 
 namespace {
 inline int hexNibble(char c) {
@@ -43,7 +44,7 @@ std::string urlDecode(const char *in) {
   }
   return out;
 }
-} // namespace
+}  // namespace
 
 // -----------------------------------------------------------------------------
 // JSON helpers (used by Config + other services)
@@ -179,57 +180,36 @@ std::string ESPWiFi::getContentType(std::string filename) {
   toLowerCase(ext);
 
   // Text types: include charset so browsers render correctly.
-  if (ext == "html" || ext == "htm")
-    return "text/html; charset=utf-8";
-  if (ext == "css")
-    return "text/css; charset=utf-8";
+  if (ext == "html" || ext == "htm") return "text/html; charset=utf-8";
+  if (ext == "css") return "text/css; charset=utf-8";
   if (ext == "js" || ext == "mjs")
     return "application/javascript; charset=utf-8";
-  if (ext == "json")
-    return "application/json; charset=utf-8";
-  if (ext == "txt" || ext == "log")
-    return "text/plain; charset=utf-8";
-  if (ext == "svg")
-    return "image/svg+xml";
+  if (ext == "json") return "application/json; charset=utf-8";
+  if (ext == "txt" || ext == "log") return "text/plain; charset=utf-8";
+  if (ext == "svg") return "image/svg+xml";
 
   // Binary types
-  if (ext == "png")
-    return "image/png";
-  if (ext == "jpg" || ext == "jpeg" || ext == "jpe")
-    return "image/jpeg";
-  if (ext == "gif")
-    return "image/gif";
-  if (ext == "ico")
-    return "image/x-icon";
-  if (ext == "wasm")
-    return "application/wasm";
-  if (ext == "mp3")
-    return "audio/mpeg";
-  if (ext == "wav")
-    return "audio/wav";
-  if (ext == "ogg")
-    return "audio/ogg";
-  if (ext == "oga")
-    return "audio/ogg";
-  if (ext == "opus")
-    return "audio/opus";
-  if (ext == "mp4")
-    return "video/mp4";
-  if (ext == "webm")
-    return "video/webm";
-  if (ext == "ogg")
-    return "video/ogg";
-  if (ext == "ogv")
-    return "video/ogg";
-  if (ext == "mov")
-    return "video/quicktime";
+  if (ext == "png") return "image/png";
+  if (ext == "jpg" || ext == "jpeg" || ext == "jpe") return "image/jpeg";
+  if (ext == "gif") return "image/gif";
+  if (ext == "ico") return "image/x-icon";
+  if (ext == "wasm") return "application/wasm";
+  if (ext == "mp3") return "audio/mpeg";
+  if (ext == "wav") return "audio/wav";
+  if (ext == "ogg") return "audio/ogg";
+  if (ext == "oga") return "audio/ogg";
+  if (ext == "opus") return "audio/opus";
+  if (ext == "mp4") return "video/mp4";
+  if (ext == "webm") return "video/webm";
+  if (ext == "ogg") return "video/ogg";
+  if (ext == "ogv") return "video/ogg";
+  if (ext == "mov") return "video/quicktime";
   return "application/octet-stream";
 }
 
 std::string ESPWiFi::getStatusFromCode(int statusCode) {
   const char *status_text = "IDK This Status Code";
-  if (statusCode == 200)
-    status_text = "OK";
+  if (statusCode == 200) status_text = "OK";
   if (statusCode == 201)
     status_text = "Created";
   else if (statusCode == 204)
@@ -328,12 +308,24 @@ bool ESPWiFi::matchPattern(std::string_view uri, std::string_view pattern) {
   return true;
 }
 
+void ESPWiFi::runAtInterval(unsigned int interval,
+                            unsigned long &lastIntervalRun,
+                            std::function<void()> functionToRun) {
+  const unsigned long now = millis();
+  if (lastIntervalRun == 0 || (now - lastIntervalRun) >= interval) {
+    lastIntervalRun = now;
+    if (functionToRun) {
+      functionToRun();
+    }
+  }
+}
+
 JsonDocument ESPWiFi::readRequestBody(httpd_req_t *req) {
   JsonDocument doc;
 
   // Get content length
   size_t content_len = req->content_len;
-  if (content_len == 0 || content_len > 10240) { // Limit to 10KB
+  if (content_len == 0 || content_len > 10240) {  // Limit to 10KB
     // Return empty document if no content or too large
     return doc;
   }

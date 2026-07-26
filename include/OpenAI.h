@@ -30,29 +30,30 @@ class OpenAI {
     uint32_t timeoutMs = 0;
     uint32_t ttsTimeoutMs = 0;
     float ttsSpeed = 0.0f;
-    // Set at runtime from LittleFS free space (99% of free bytes).
     size_t ttsByteBudget = 0;
+  };
+
+  struct Budget {
+    size_t bytes = 0;
+    size_t chars = 0;
+    int tokens = 0;
   };
 
   explicit OpenAI(Config config);
 
   bool isConfigured() const;
-  const Config& config() const { return config_; }
+  Budget budget() const;
 
   OpenAIResult chatCompletion(const std::string& prompt) const;
-  OpenAIResult chatCompletion(
-      const std::vector<OpenAIChatMessage>& messages) const;
   OpenAIResult streamTextToSpeech(
       const std::string& text,
       const std::function<bool(const uint8_t* data, size_t len)>& onData) const;
 
-  std::string prepareTtsText(const std::string& text) const;
-  size_t effectiveMaxTtsChars() const;
-  int effectiveMaxCompletionTokens() const;
-
  private:
   Config config_;
 
+  OpenAIResult chatCompletion(
+      const std::vector<OpenAIChatMessage>& messages) const;
   std::string buildChatRequestBody(
       const std::vector<OpenAIChatMessage>& messages) const;
   std::string buildTtsRequestBody(const std::string& text) const;
@@ -64,6 +65,8 @@ class OpenAI {
                               onData) const;
   OpenAIResult parseChatCompletionResponse(const std::string& responseBody,
                                            int httpStatus) const;
+  size_t maxTtsChars() const;
+  int maxCompletionTokens() const;
 };
 
 #endif  // OPENAI_H

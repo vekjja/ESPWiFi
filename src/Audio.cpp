@@ -498,6 +498,7 @@ static void audioPlaybackTask(void* param) {
   const int pttPin = ctx.pttPin;
   const bool deleteAfterPlay = ctx.deleteAfterPlay;
 
+  self->log(INFO, "🔊 Playing WAV file: %s", path.c_str());
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
     self->log(ERROR, "🔊 Failed to open audio file: %s", path.c_str());

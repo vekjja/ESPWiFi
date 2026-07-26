@@ -28,6 +28,7 @@ __pycache__/
 
 # ESP-IDF
 /sdkconfig.*
+compile_commands.json
 managed_components/
 
 # Squareline Studio

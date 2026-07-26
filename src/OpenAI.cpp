@@ -16,6 +16,8 @@ constexpr const char* kSpeechPath = "/v1/audio/speech";
 constexpr size_t kMinTtsBudgetBytes = 8192;
 constexpr size_t kMaxLfsUsagePercent = 99;
 
+// ---- Config / budget --------------------------------------------------------
+
 Http::Request openAiRequest(const OpenAI::Config& config,
                             const std::string& url,
                             const std::string& requestBody, uint32_t timeoutMs,
@@ -141,25 +143,19 @@ std::string truncateForTts(const std::string& text, size_t maxChars) {
   return text.substr(0, cut);
 }
 
-bool isValidWavFile(const char* path) {
-  FILE* f = fopen(path, "rb");
-  if (f == nullptr) {
-    return false;
-  }
-
-  uint8_t riff[12];
-  const bool ok = fread(riff, 1, sizeof(riff), f) == sizeof(riff) &&
-                  memcmp(riff, "RIFF", 4) == 0 &&
-                  memcmp(riff + 8, "WAVE", 4) == 0;
-  fclose(f);
-  return ok;
-}
-
 size_t maxResponseBytesForChars(size_t charLimit) {
   constexpr size_t kMinResponseBytes = 4096;
   const size_t estimated = charLimit * 4;
   return estimated > kMinResponseBytes ? estimated : kMinResponseBytes;
 }
+
+// ---- Runtime ----------------------------------------------------------------
+
+struct OpenAiRuntime {
+  OpenAI client{OpenAI::Config{}};
+  size_t freeBytes = 0;
+  OpenAI::Budget budget{};
+};
 
 void logOpenAiError(ESPWiFi* espwifi, const char* action,
                     const OpenAIResult& result) {
@@ -171,11 +167,11 @@ void logOpenAiError(ESPWiFi* espwifi, const char* action,
   }
 }
 
-struct OpenAiRuntime {
-  OpenAI client{OpenAI::Config{}};
-  size_t freeBytes = 0;
-  OpenAI::Budget budget{};
-};
+OpenAIResult httpFailureResult(const Http::Response& response) {
+  std::string error =
+      response.body.empty() ? "HTTP request failed" : response.body;
+  return OpenAIResult{false, "", std::move(error), response.status};
+}
 
 bool prepareOpenAiRuntime(ESPWiFi* espwifi, OpenAiRuntime& rt,
                           bool requireApiKey, bool injectVoiceBudget) {
@@ -200,13 +196,101 @@ bool prepareOpenAiRuntime(ESPWiFi* espwifi, OpenAiRuntime& rt,
   }
 
   if (injectVoiceBudget) {
-    appendVoiceBudgetHint(cfg, maxTtsCharsForBudget(cfg.ttsByteBudget, cfg.ttsSpeed));
+    appendVoiceBudgetHint(cfg,
+                          maxTtsCharsForBudget(cfg.ttsByteBudget, cfg.ttsSpeed));
   }
 
   rt.client = OpenAI(std::move(cfg));
   rt.budget = rt.client.budget();
   return true;
 }
+
+bool ensureWiFiForOpenAi(ESPWiFi* espwifi) {
+  if (espwifi->isWiFiConnected()) {
+    return true;
+  }
+  espwifi->log(ERROR, "OpenAI: WiFi not connected");
+  return false;
+}
+
+#ifdef ESPWiFi_DAC_ENABLED
+bool prepareTtsSession(ESPWiFi* espwifi, OpenAiRuntime& rt,
+                       const std::string& text, const char* label) {
+  if (!ensureWiFiForOpenAi(espwifi)) {
+    return false;
+  }
+  if (!prepareOpenAiRuntime(espwifi, rt, true, false)) {
+    return false;
+  }
+  if (text.empty()) {
+    espwifi->log(ERROR, "🤖 OpenAI %s: text is empty", label);
+    return false;
+  }
+
+  espwifi->log(INFO, "🤖 OpenAI %s: byteBudget=%u lfsFree=%u (~%u chars)", label,
+              static_cast<unsigned>(rt.budget.bytes),
+              static_cast<unsigned>(rt.freeBytes),
+              static_cast<unsigned>(rt.budget.chars));
+  return true;
+}
+
+bool isValidWavFile(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (f == nullptr) {
+    return false;
+  }
+
+  uint8_t riff[12];
+  const bool ok = fread(riff, 1, sizeof(riff), f) == sizeof(riff) &&
+                  memcmp(riff, "RIFF", 4) == 0 &&
+                  memcmp(riff + 8, "WAVE", 4) == 0;
+  fclose(f);
+  return ok;
+}
+
+struct TtsDownloadResult {
+  OpenAIResult apiResult{};
+  size_t totalBytes = 0;
+  bool capped = false;
+  bool writeFailed = false;
+};
+
+TtsDownloadResult streamTtsToCallback(
+    OpenAI& client, const std::string& text, size_t byteLimit,
+    const std::function<bool(const uint8_t* data, size_t len)>& writeFn) {
+  TtsDownloadResult result;
+  result.apiResult = client.streamTextToSpeech(text, [&](const uint8_t* data,
+                                                         size_t len) {
+    if (data == nullptr || len == 0) {
+      return true;
+    }
+
+    if (result.totalBytes >= byteLimit) {
+      result.capped = true;
+      return false;
+    }
+
+    size_t toWrite = len;
+    if (result.totalBytes + len > byteLimit) {
+      toWrite = byteLimit - result.totalBytes;
+      result.capped = true;
+    }
+
+    if (!writeFn(data, toWrite)) {
+      result.writeFailed = true;
+      return false;
+    }
+
+    result.totalBytes += toWrite;
+    if (result.capped) {
+      return false;
+    }
+    return true;
+  });
+
+  return result;
+}
+#endif
 
 }  // namespace
 
@@ -320,9 +404,7 @@ OpenAIResult OpenAI::postJson(const std::string& path,
   }
 
   if (response.status != 200) {
-    std::string error =
-        response.body.empty() ? "HTTP request failed" : response.body;
-    return OpenAIResult{false, "", std::move(error), response.status};
+    return httpFailureResult(response);
   }
 
   return parseChatCompletionResponse(response.body, response.status);
@@ -351,9 +433,7 @@ OpenAIResult OpenAI::postStream(
   }
 
   if (response.status != 200) {
-    std::string error =
-        response.body.empty() ? "HTTP request failed" : response.body;
-    return OpenAIResult{false, "", std::move(error), response.status};
+    return httpFailureResult(response);
   }
 
   return OpenAIResult{true, "", "", response.status};
@@ -377,8 +457,7 @@ OpenAIResult OpenAI::parseChatCompletionResponse(
 }
 
 std::string ESPWiFi::oai_completion(const std::string& prompt) {
-  if (!isWiFiConnected()) {
-    log(ERROR, "OpenAI: WiFi not connected");
+  if (!ensureWiFiForOpenAi(this)) {
     return "";
   }
 
@@ -413,30 +492,13 @@ std::string ESPWiFi::oai_completion(const std::string& prompt) {
 
 #ifdef ESPWiFi_DAC_ENABLED
 void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
-  if (!isWiFiConnected()) {
-    log(ERROR, "🤖 OpenAI: WiFi not connected");
-    return;
-  }
-
   OpenAiRuntime rt;
-  if (!prepareOpenAiRuntime(this, rt, true, false)) {
+  if (!prepareTtsSession(this, rt, text, "TTS")) {
     return;
   }
-
-  if (text.empty()) {
-    log(ERROR, "🤖 OpenAI TTS: text is empty");
-    return;
-  }
-
-  log(INFO, "🤖 OpenAI TTS: byteBudget=%u lfsFree=%u (~%u chars)",
-      static_cast<unsigned>(rt.budget.bytes),
-      static_cast<unsigned>(rt.freeBytes),
-      static_cast<unsigned>(rt.budget.chars));
 
   const std::string tempPath = lfsMountPoint + "/tts.wav";
   (void)remove(tempPath.c_str());
-
-  const size_t writeLimit = rt.budget.bytes;
 
   FILE* out = fopen(tempPath.c_str(), "wb");
   if (out == nullptr) {
@@ -444,71 +506,52 @@ void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
     return;
   }
 
-  size_t totalBytes = 0;
-  bool downloadCapped = false;
-  bool writeFailed = false;
-  OpenAIResult result =
-      rt.client.streamTextToSpeech(text, [&](const uint8_t* data, size_t len) {
-        if (data == nullptr || len == 0) {
-          return true;
-        }
-
-        if (totalBytes >= writeLimit) {
-          downloadCapped = true;
-          return false;
-        }
-
-        size_t toWrite = len;
-        if (totalBytes + len > writeLimit) {
-          toWrite = writeLimit - totalBytes;
-          downloadCapped = true;
-        }
-
-        const size_t written = fwrite(data, 1, toWrite, out);
-        totalBytes += written;
-        if (written != toWrite) {
-          log(ERROR, "🤖 OpenAI TTS: write failed at %u bytes",
-              static_cast<unsigned>(totalBytes));
-          writeFailed = true;
-          return false;
-        }
-
-        if (downloadCapped) {
-          log(WARNING, "🤖 OpenAI TTS: capped download at %u bytes",
-              static_cast<unsigned>(totalBytes));
-          return false;
-        }
-        return true;
+  const size_t writeLimit = rt.budget.bytes;
+  TtsDownloadResult download = streamTtsToCallback(
+      rt.client, text, writeLimit, [&](const uint8_t* data, size_t len) {
+        return fwrite(data, 1, len, out) == len;
       });
   fclose(out);
 
   auto cleanup = [&]() { (void)remove(tempPath.c_str()); };
 
-  if (writeFailed || totalBytes == 0) {
-    if (!writeFailed) {
-      logOpenAiError(this, "TTS", result);
-    }
+  if (download.writeFailed) {
+    log(ERROR, "🤖 OpenAI TTS: write failed at %u bytes",
+        static_cast<unsigned>(download.totalBytes));
     cleanup();
     return;
   }
 
-  if (!result.ok && !downloadCapped) {
-    logOpenAiError(this, "TTS", result);
+  if (download.totalBytes == 0) {
+    logOpenAiError(this, "TTS", download.apiResult);
     cleanup();
     return;
   }
 
-  if (totalBytes > writeLimit || !isValidWavFile(tempPath.c_str())) {
+  if (!download.apiResult.ok && !download.capped) {
+    logOpenAiError(this, "TTS", download.apiResult);
+    cleanup();
+    return;
+  }
+
+  if (download.capped) {
+    log(WARNING, "🤖 OpenAI TTS: capped download at %u bytes",
+        static_cast<unsigned>(download.totalBytes));
+  }
+
+  if (download.totalBytes > writeLimit || !isValidWavFile(tempPath.c_str())) {
     log(ERROR, "🤖 OpenAI TTS: invalid WAV (%u bytes, limit %u)",
-        static_cast<unsigned>(totalBytes), static_cast<unsigned>(writeLimit));
+        static_cast<unsigned>(download.totalBytes),
+        static_cast<unsigned>(writeLimit));
     cleanup();
     return;
   }
 
   log(INFO, "🤖 OpenAI TTS: saved %u bytes to %s (%u%% of byteBudget %u)",
-      static_cast<unsigned>(totalBytes), tempPath.c_str(),
-      static_cast<unsigned>(writeLimit > 0 ? totalBytes * 100 / writeLimit
-                                           : 0),
+      static_cast<unsigned>(download.totalBytes), tempPath.c_str(),
+      static_cast<unsigned>(writeLimit > 0
+                                 ? download.totalBytes * 100 / writeLimit
+                                 : 0),
       static_cast<unsigned>(writeLimit));
 
   playAudio("/tts.wav", volume, outputPin, true);
@@ -516,25 +559,10 @@ void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
 
 void ESPWiFi::oai_StreamTTS(const std::string& text, float volume,
                             int outputPin) {
-  if (!isWiFiConnected()) {
-    log(ERROR, "🤖 OpenAI: WiFi not connected");
-    return;
-  }
-
   OpenAiRuntime rt;
-  if (!prepareOpenAiRuntime(this, rt, true, false)) {
+  if (!prepareTtsSession(this, rt, text, "Stream TTS")) {
     return;
   }
-
-  if (text.empty()) {
-    log(ERROR, "🤖 OpenAI Stream TTS: text is empty");
-    return;
-  }
-
-  log(INFO, "🤖 OpenAI Stream TTS: byteBudget=%u lfsFree=%u (~%u chars)",
-      static_cast<unsigned>(rt.budget.bytes),
-      static_cast<unsigned>(rt.freeBytes),
-      static_cast<unsigned>(rt.budget.chars));
 
   OpenAI client = std::move(rt.client);
 

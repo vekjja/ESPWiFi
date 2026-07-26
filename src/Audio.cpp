@@ -228,8 +228,8 @@ static void streamingDownloadTask(void* param) {
         return false;
       }
 
-      const size_t sent = xStreamBufferSend(
-          state->buffer, data + offset, len - offset, pdMS_TO_TICKS(500));
+      const size_t sent = xStreamBufferSend(state->buffer, data + offset,
+                                            len - offset, pdMS_TO_TICKS(500));
       if (sent == 0) {
         continue;
       }
@@ -264,16 +264,15 @@ static bool waitForStreamPrebuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
 
 static StreamBufferHandle_t createStreamBuffer(size_t preferredBytes) {
   constexpr size_t kFallbackBytes = 64 * 1024;
-  StreamBufferHandle_t buffer =
-      xStreamBufferCreate(preferredBytes, 1);
+  StreamBufferHandle_t buffer = xStreamBufferCreate(preferredBytes, 1);
   if (buffer == nullptr && preferredBytes > kFallbackBytes) {
     buffer = xStreamBufferCreate(kFallbackBytes, 1);
   }
   return buffer;
 }
 
-static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder,
-                                 int pttPin, StreamBufferHandle_t buffer,
+static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
+                                 StreamBufferHandle_t buffer,
                                  volatile bool* downloadDone) {
   uint8_t* readBuf = static_cast<uint8_t*>(malloc(1024));
   if (!readBuf) {
@@ -406,8 +405,7 @@ static void streamingAudioPlaybackTask(void* param) {
   downloadState.downloadDone = &downloadDone;
 
   if (xTaskCreatePinnedToCore(streamingDownloadTask, "tts-download", 12288,
-                              &downloadState, 6, nullptr,
-                              0) != pdPASS) {
+                              &downloadState, 6, nullptr, 0) != pdPASS) {
     self->log(ERROR, "🔊 Failed to create TTS download task");
     vStreamBufferDelete(streamBuffer);
     self->audioPlaying = false;
@@ -426,7 +424,7 @@ static void streamingAudioPlaybackTask(void* param) {
     return;
   }
 
-  // OpenAI TTS WAV responses are 24 kHz mono PCM16.
+  // 🤖 OpenAI TTS WAV responses are 24 kHz mono PCM16.
   AnalogAudioStream dac;
   auto dacCfg = dac.defaultConfig(TX_MODE);
   if (!configureDacOutput(dacCfg, ctx.outputPin)) {
@@ -658,8 +656,8 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
   audioOutputPin = outputPin;
   audioPlaying = true;
 
-  auto* ctx = new AudioPlaybackContext{this,   audioFilePath, volume,
-                                       outputPin, audioPttPin, deleteAfterPlay};
+  auto* ctx = new AudioPlaybackContext{
+      this, audioFilePath, volume, outputPin, audioPttPin, deleteAfterPlay};
   BaseType_t ok = xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288,
                                           ctx, 5, &audioTask, 1);
   if (ok != pdPASS) {

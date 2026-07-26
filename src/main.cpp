@@ -20,7 +20,7 @@ extern "C" void app_main(void) {
         espwifi.oai_completion("Simple and polite Ham Radio Greeting");
 
     espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
-    espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 1.0f);
+    espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 0.9f);
     while (espwifi.audioPlaying) {
       espwifi.feedWatchDog();
     }

@@ -513,4 +513,40 @@ void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
 
   playAudio("/tts.wav", volume, outputPin, true);
 }
+
+void ESPWiFi::oai_StreamTTS(const std::string& text, float volume,
+                            int outputPin) {
+  if (!isWiFiConnected()) {
+    log(ERROR, "🤖 OpenAI: WiFi not connected");
+    return;
+  }
+
+  OpenAiRuntime rt;
+  if (!prepareOpenAiRuntime(this, rt, true, false)) {
+    return;
+  }
+
+  if (text.empty()) {
+    log(ERROR, "🤖 OpenAI Stream TTS: text is empty");
+    return;
+  }
+
+  log(INFO, "🤖 OpenAI Stream TTS: byteBudget=%u lfsFree=%u (~%u chars)",
+      static_cast<unsigned>(rt.budget.bytes),
+      static_cast<unsigned>(rt.freeBytes),
+      static_cast<unsigned>(rt.budget.chars));
+
+  OpenAI client = std::move(rt.client);
+
+  playStreamingWav(
+      volume, outputPin,
+      [this, client = std::move(client), text](
+          std::function<bool(const uint8_t*, size_t)> writeFn) mutable {
+        OpenAIResult result = client.streamTextToSpeech(text, writeFn);
+        if (!result.ok) {
+          logOpenAiError(this, "Stream TTS", result);
+        }
+        return result.ok;
+      });
+}
 #endif

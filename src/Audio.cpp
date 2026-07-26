@@ -7,14 +7,24 @@
 
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/CoreAudio/AudioAnalog/AnalogAudioStream.h"
+#include "AudioTools/CoreAudio/AudioFilter/Filter.h"
 #include "AudioTools/CoreAudio/ResampleStream.h"
 #include "ESPWiFi.h"
 #include "driver/dac_continuous.h"
+#include "esp_heap_caps.h"
 #include "freertos/stream_buffer.h"
 
 using namespace audio_tools;
 
 namespace {
+
+// Voice-band shaping for DAC -> radio mic input (OpenAI TTS is 24 kHz mono).
+static constexpr float kRadioMicHpfHz = 300.0f;
+static constexpr float kRadioMicLpfHz = 3000.0f;
+
+// Streaming TTS: HTTP download task -> stream buffer -> WAV decoder -> DAC.
+static constexpr size_t kStreamPrebufferBytes = 16 * 1024;
+static constexpr size_t kStreamReadChunkBytes = 2048;
 
 static uint16_t readLe16(const uint8_t* ptr) {
   return (uint16_t)ptr[0] | ((uint16_t)ptr[1] << 8);
@@ -81,8 +91,15 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
   return gotFmt;
 }
 
-class VolumePrint : public Print {
+// Band-limited output for DAC -> radio mic input.
+class RadioMicPrint : public Print {
  public:
+  void begin(int sampleRate) {
+    sample_rate_ = sampleRate > 0 ? sampleRate : 24000;
+    hpf_.begin(kRadioMicHpfHz, static_cast<float>(sample_rate_));
+    lpf_.begin(kRadioMicLpfHz, static_cast<float>(sample_rate_));
+  }
+
   void setVolume(float volume) { volume_ = volume; }
   void setOutput(Print& out) { p_out = &out; }
 
@@ -98,19 +115,27 @@ class VolumePrint : public Print {
     for (size_t i = 0; i + 1 < len; i += 2) {
       int16_t sample =
           (int16_t)((uint16_t)data[i] | ((uint16_t)data[i + 1] << 8));
-      int32_t scaled = (int32_t)(sample * volume_);
+
+      float filtered = static_cast<float>(sample) / 32768.0f;
+      filtered = hpf_.process(filtered);
+      filtered = lpf_.process(filtered);
+
+      int32_t scaled =
+          static_cast<int32_t>(filtered * volume_ * 32767.0f);
       if (scaled > 32767) scaled = 32767;
       if (scaled < -32768) scaled = -32768;
-      out_buf[out_samples++] = (int16_t)scaled;
+      out_buf[out_samples++] = static_cast<int16_t>(scaled);
 
       if (out_samples == kChunkSamples) {
-        p_out->write((const uint8_t*)out_buf, out_samples * sizeof(int16_t));
+        p_out->write(reinterpret_cast<const uint8_t*>(out_buf),
+                     out_samples * sizeof(int16_t));
         out_samples = 0;
       }
     }
 
     if (out_samples > 0) {
-      p_out->write((const uint8_t*)out_buf, out_samples * sizeof(int16_t));
+      p_out->write(reinterpret_cast<const uint8_t*>(out_buf),
+                   out_samples * sizeof(int16_t));
     }
     return len;
   }
@@ -118,6 +143,9 @@ class VolumePrint : public Print {
  protected:
   Print* p_out = nullptr;
   float volume_ = 1.0f;
+  int sample_rate_ = 24000;
+  HighPassFilter<float> hpf_;
+  LowPassFilter<float> lpf_;
 };
 
 class StereoToMonoPrint : public Print {
@@ -228,9 +256,13 @@ static void streamingDownloadTask(void* param) {
         return false;
       }
 
-      const size_t sent = xStreamBufferSend(state->buffer, data + offset,
-                                            len - offset, pdMS_TO_TICKS(500));
+      const size_t sent = xStreamBufferSend(
+          state->buffer, data + offset, len - offset, pdMS_TO_TICKS(1000));
       if (sent == 0) {
+        if (!state->self->audioPlaying) {
+          return false;
+        }
+        state->self->feedWatchDog();
         continue;
       }
       offset += sent;
@@ -262,27 +294,44 @@ static bool waitForStreamPrebuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
   return false;
 }
 
-static StreamBufferHandle_t createStreamBuffer(size_t preferredBytes) {
-  constexpr size_t kFallbackBytes = 64 * 1024;
-  StreamBufferHandle_t buffer = xStreamBufferCreate(preferredBytes, 1);
-  if (buffer == nullptr && preferredBytes > kFallbackBytes) {
-    buffer = xStreamBufferCreate(kFallbackBytes, 1);
+static StreamBufferHandle_t createStreamBuffer(size_t* outCapacityBytes) {
+  static constexpr size_t kTrySizes[] = {256 * 1024, 128 * 1024, 64 * 1024,
+                                         32 * 1024};
+
+  for (size_t size : kTrySizes) {
+    StreamBufferHandle_t buffer = xStreamBufferCreate(size, 1);
+    if (buffer != nullptr) {
+      if (outCapacityBytes != nullptr) {
+        *outCapacityBytes = size;
+      }
+      return buffer;
+    }
   }
-  return buffer;
+
+  if (outCapacityBytes != nullptr) {
+    *outCapacityBytes = 0;
+  }
+  return nullptr;
 }
 
 static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
                                  StreamBufferHandle_t buffer,
                                  volatile bool* downloadDone) {
-  uint8_t* readBuf = static_cast<uint8_t*>(malloc(1024));
+  uint8_t* readBuf = static_cast<uint8_t*>(malloc(kStreamReadChunkBytes));
   if (!readBuf) {
     self->log(ERROR, "🔊 Failed to allocate read buffer");
     return false;
   }
 
   auto receiveChunk = [&]() -> size_t {
-    return xStreamBufferReceive(buffer, readBuf, 1024, pdMS_TO_TICKS(100));
+    return xStreamBufferReceive(buffer, readBuf, kStreamReadChunkBytes,
+                                pdMS_TO_TICKS(100));
   };
+
+  if (self->audioPlaying && pttPin != -1) {
+    self->setGPIO(pttPin, "high");
+    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
+  }
 
   while (self->audioPlaying && decoder.audioInfoEx().sample_rate == 0) {
     const size_t n = receiveChunk();
@@ -292,16 +341,10 @@ static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
         free(readBuf);
         return false;
       }
-      vTaskDelay(1);
+      vTaskDelay(pdMS_TO_TICKS(1));
       continue;
     }
     decoder.write(readBuf, n);
-  }
-
-  if (self->audioPlaying && pttPin != -1) {
-    self->setGPIO(pttPin, "high");
-    vTaskDelay(pdMS_TO_TICKS(50));
-    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
   }
 
   while (self->audioPlaying) {
@@ -311,11 +354,10 @@ static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
           xStreamBufferBytesAvailable(buffer) == 0) {
         break;
       }
-      vTaskDelay(1);
+      vTaskDelay(pdMS_TO_TICKS(1));
       continue;
     }
     decoder.write(readBuf, n);
-    vTaskDelay(1);
   }
 
   if (pttPin != -1) {
@@ -383,19 +425,31 @@ static void streamingAudioPlaybackTask(void* param) {
   ESPWiFi* self = ctx.self;
   const int pttPin = ctx.pttPin;
 
-  constexpr size_t kStreamPrebufferBytes = 16 * 1024;
-  StreamBufferHandle_t streamBuffer = createStreamBuffer(128 * 1024);
+  size_t streamBufferBytes = 0;
+  StreamBufferHandle_t streamBuffer = createStreamBuffer(&streamBufferBytes);
   if (streamBuffer == nullptr) {
-    self->log(ERROR, "🔊 Failed to allocate stream buffer");
+    self->log(ERROR,
+              "🔊 Failed to allocate stream buffer (free=%u, largest=%u)",
+              static_cast<unsigned>(esp_get_free_heap_size()),
+              static_cast<unsigned>(
+                  heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
     self->audioPlaying = false;
     self->audioTask = nullptr;
     vTaskDelete(nullptr);
     return;
   }
 
-  self->log(INFO, "🔊 Stream buffer: %u bytes free capacity",
-            static_cast<unsigned>(xStreamBufferSpacesAvailable(streamBuffer) +
-                                  xStreamBufferBytesAvailable(streamBuffer)));
+  size_t prebufferBytes = kStreamPrebufferBytes;
+  if (prebufferBytes > streamBufferBytes / 4) {
+    prebufferBytes = streamBufferBytes / 4;
+  }
+  if (prebufferBytes < 4096) {
+    prebufferBytes = 4096;
+  }
+
+  self->log(INFO, "🔊 Stream buffer: %u bytes (prebuffer %u)",
+            static_cast<unsigned>(streamBufferBytes),
+            static_cast<unsigned>(prebufferBytes));
 
   volatile bool downloadDone = false;
   StreamingDownloadState downloadState;
@@ -415,7 +469,7 @@ static void streamingAudioPlaybackTask(void* param) {
   }
 
   if (!waitForStreamPrebuffer(self, streamBuffer, &downloadDone,
-                              kStreamPrebufferBytes)) {
+                              prebufferBytes)) {
     self->log(ERROR, "🔊 Streaming prebuffer failed");
     self->audioPlaying = false;
     vStreamBufferDelete(streamBuffer);
@@ -447,9 +501,10 @@ static void streamingAudioPlaybackTask(void* param) {
     return;
   }
 
-  VolumePrint volumeOut;
-  volumeOut.setVolume(ctx.volume);
-  volumeOut.setOutput(dac);
+  RadioMicPrint radioOut;
+  radioOut.begin(dacCfg.sample_rate);
+  radioOut.setVolume(ctx.volume);
+  radioOut.setOutput(dac);
 
   WAVDecoder* decoder = new WAVDecoder();
   if (!decoder) {
@@ -462,7 +517,7 @@ static void streamingAudioPlaybackTask(void* param) {
     return;
   }
 
-  decoder->setOutput(volumeOut);
+  decoder->setOutput(radioOut);
   decoder->begin();
 
   self->log(INFO, "🔊 Streaming WAV playback started (GPIO %d, volume %.2f)",
@@ -540,9 +595,10 @@ static void audioPlaybackTask(void* param) {
     return;
   }
 
-  VolumePrint volumeOut;
-  volumeOut.setVolume(volume);
-  volumeOut.setOutput(dac);
+  RadioMicPrint radioOut;
+  radioOut.begin(dacCfg.sample_rate);
+  radioOut.setVolume(volume);
+  radioOut.setOutput(dac);
 
   WAVDecoder* decoder = new WAVDecoder();
   if (!decoder) {
@@ -556,10 +612,10 @@ static void audioPlaybackTask(void* param) {
   }
 
   StereoToMonoPrint stereoDownmix;
-  Print* pipelineOut = &volumeOut;
+  Print* pipelineOut = &radioOut;
 
   if (hasWavInfo && wavInfo.channels > 1) {
-    stereoDownmix.setOutput(volumeOut);
+    stereoDownmix.setOutput(radioOut);
     pipelineOut = &stereoDownmix;
     self->log(INFO, "🔊 Downmixing stereo WAV to mono for DAC GPIO %d",
               outputPin);

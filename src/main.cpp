@@ -23,13 +23,18 @@ extern "C" void app_main(void) {
     if (rxLevel < 1.0f && receivedRX) {
       receivedRX = false;
       espwifi.log(INFO, "📢 Responding to RX");
+
       std::string response = espwifi.oai_completion(
           "Simple and polite Ham Radio Greeting, with a HAM Radio prep fact");
 
       espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
-      espwifi.oai_TTS(response, 0.9f);
-      while (espwifi.audioPlaying) {
-        espwifi.feedWatchDog();
+      if (response.empty()) {
+        espwifi.log(ERROR, "🤖 OpenAI: skipping TTS (empty response)");
+      } else {
+        espwifi.oai_StreamTTS(response, 1.0f);
+        while (espwifi.audioPlaying) {
+          espwifi.feedWatchDog();
+        }
       }
     }
     espwifi.feedWatchDog();

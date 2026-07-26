@@ -9,7 +9,7 @@
     "cleanSDKConfig": "../sdkconfigs/sdkconfig.sh",
     "build": "GENERATE_SOURCEMAP=false BUILD_PATH='../data' react-scripts build && rm ../data/static/js/*.LICENSE.txt",
     "menuconfig": "cd .. && pio run -t menuconfig",
-    "monitor": "pio device monitor --filter esp32_exception_decoder",
+    "monitor": "cd .. && pio device monitor --filter esp32_exception_decoder",
     "upload": "cd .. && pio run -t upload && pio device monitor --filter esp32_exception_decoder",
     "uploadfs": "cd .. && pio run --target uploadfs",
     "uploadfs:monitor": "cd .. && pio run --target uploadfs && pio device monitor --filter esp32_exception_decoder",

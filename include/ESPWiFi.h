@@ -495,6 +495,8 @@ class ESPWiFi {
                         AudioStreamProvider provider);
   void oai_TTS(const std::string& text, float volume = 1.0f,
                int outputPin = ESPWiFi_DAC_PIN_1);
+  void oai_StreamTTS(const std::string& text, float volume = 1.0f,
+                     int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
 
   volatile bool audioPlaying = false;

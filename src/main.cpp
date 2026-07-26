@@ -24,6 +24,7 @@ extern "C" void app_main(void) {
     if (rxLevel < 1.0f && receivedRX) {
       receivedRX = false;
       espwifi.log(INFO, "📢 Responding to RX");
+      espwifi.playAudio("chime.wav", 1.0f);
 
       std::string response = espwifi.oai_completion(
           "Simple and polite Ham Radio Greeting, with a HAM Radio prep fact");

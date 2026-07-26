@@ -42,8 +42,7 @@ static uint16_t readLe16(const uint8_t* ptr) {
 }
 
 static uint32_t readLe32(const uint8_t* ptr) {
-  return static_cast<uint32_t>(ptr[0]) |
-         (static_cast<uint32_t>(ptr[1]) << 8) |
+  return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8) |
          (static_cast<uint32_t>(ptr[2]) << 16) |
          (static_cast<uint32_t>(ptr[3]) << 24);
 }
@@ -82,14 +81,16 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
       info.bits_per_sample = static_cast<int>(readLe16(fmt + 14));
       info.is_valid = true;
 
-      const long remaining = static_cast<long>(chunkSize) - static_cast<long>(sizeof(fmt));
+      const long remaining =
+          static_cast<long>(chunkSize) - static_cast<long>(sizeof(fmt));
       if (remaining > 0 && fseek(f, remaining, SEEK_CUR) != 0) return false;
       gotFmt = true;
     } else {
       if (isData && gotFmt) {
         return fseek(f, 0, SEEK_SET) == 0;
       }
-      if (chunkSize > 0 && fseek(f, static_cast<long>(chunkSize), SEEK_CUR) != 0) {
+      if (chunkSize > 0 &&
+          fseek(f, static_cast<long>(chunkSize), SEEK_CUR) != 0) {
         return false;
       }
     }
@@ -125,9 +126,9 @@ class RadioMicPrint : public Print {
     size_t out_samples = 0;
 
     for (size_t i = 0; i + 1 < len; i += 2) {
-      const int16_t sample = static_cast<int16_t>(
-          static_cast<uint16_t>(data[i]) |
-          (static_cast<uint16_t>(data[i + 1]) << 8));
+      const int16_t sample =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i]) |
+                               (static_cast<uint16_t>(data[i + 1]) << 8));
 
       float filtered = static_cast<float>(sample) / 32768.0f;
       filtered = hpf_.process(filtered);
@@ -174,16 +175,14 @@ class StereoToMonoPrint : public Print {
     size_t out_pos = 0;
 
     for (size_t i = 0; i + 3 < len; i += 4) {
-      const int16_t left = static_cast<int16_t>(
-          static_cast<uint16_t>(data[i]) |
-          (static_cast<uint16_t>(data[i + 1]) << 8));
-      const int16_t right = static_cast<int16_t>(
-          static_cast<uint16_t>(data[i + 2]) |
-          (static_cast<uint16_t>(data[i + 3]) << 8));
-      const int16_t mono =
-          static_cast<int16_t>((static_cast<int32_t>(left) +
-                                static_cast<int32_t>(right)) /
-                               2);
+      const int16_t left =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i]) |
+                               (static_cast<uint16_t>(data[i + 1]) << 8));
+      const int16_t right =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i + 2]) |
+                               (static_cast<uint16_t>(data[i + 3]) << 8));
+      const int16_t mono = static_cast<int16_t>(
+          (static_cast<int32_t>(left) + static_cast<int32_t>(right)) / 2);
 
       if (out_pos + 2 > kOutChunkSize) {
         p_out->write(out_buf, out_pos);
@@ -205,7 +204,8 @@ class StereoToMonoPrint : public Print {
 
 // ---- DAC / playback helpers -------------------------------------------------
 
-static std::string resolveAudioFilePath(ESPWiFi* self, const std::string& path) {
+static std::string resolveAudioFilePath(ESPWiFi* self,
+                                        const std::string& path) {
   if (path.empty()) {
     return path;
   }
@@ -216,7 +216,8 @@ static std::string resolveAudioFilePath(ESPWiFi* self, const std::string& path) 
   if (path[0] == '/') {
     return self->lfsMountPoint + path;
   }
-  return self->resolvePathOnSD(path);
+  // Bare filenames live on LittleFS (data/); use /sd/... for SD card paths.
+  return self->lfsMountPoint + "/" + path;
 }
 
 static float clampVolume(float volume) {
@@ -397,7 +398,7 @@ static ResampleStream* maybeCreateResampler(ESPWiFi* self, Print& sink,
 // ---- Streaming buffer -------------------------------------------------------
 
 static bool writeToStreamBuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
-                              const uint8_t* data, size_t len) {
+                                const uint8_t* data, size_t len) {
   size_t offset = 0;
   while (offset < len) {
     if (!self->audioPlaying) {
@@ -573,8 +574,7 @@ static void streamingAudioPlaybackTask(void* param) {
   size_t streamBufferBytes = 0;
   StreamBufferHandle_t streamBuffer = createStreamBuffer(&streamBufferBytes);
   if (streamBuffer == nullptr) {
-    self->log(ERROR,
-              "🔊 Failed to allocate stream buffer (free=%u, largest=%u)",
+    self->log(ERROR, "🔊 Failed to allocate stream buffer (free=%u, largest=%u)",
               static_cast<unsigned>(esp_get_free_heap_size()),
               static_cast<unsigned>(
                   heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
@@ -588,8 +588,8 @@ static void streamingAudioPlaybackTask(void* param) {
             static_cast<unsigned>(prebufferBytes));
 
   volatile bool downloadDone = false;
-  StreamingDownloadState downloadState{
-      self, std::move(ctx.provider), streamBuffer, &downloadDone, false};
+  StreamingDownloadState downloadState{self, std::move(ctx.provider),
+                                       streamBuffer, &downloadDone, false};
 
   if (xTaskCreatePinnedToCore(streamingDownloadTask, "tts-download", 12288,
                               &downloadState, 6, nullptr, 0) != pdPASS) {
@@ -631,9 +631,8 @@ static void streamingAudioPlaybackTask(void* param) {
     return true;
   };
 
-  const bool playbackOk =
-      pumpWavDecoder(self, *playback.decoder, pttPin, nullptr, reader,
-                     kStreamReadChunkBytes);
+  const bool playbackOk = pumpWavDecoder(
+      self, *playback.decoder, pttPin, nullptr, reader, kStreamReadChunkBytes);
 
   playback.end();
   vStreamBufferDelete(streamBuffer);
@@ -763,8 +762,8 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
   audioOutputPin = outputPin;
   audioPlaying = true;
 
-  auto* ctx = new AudioPlaybackContext{this,     audioFilePath, volume,
-                                       outputPin, audioPttPin,   deleteAfterPlay};
+  auto* ctx = new AudioPlaybackContext{
+      this, audioFilePath, volume, outputPin, audioPttPin, deleteAfterPlay};
   if (xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288, ctx, 5,
                               &audioTask, 1) != pdPASS) {
     log(ERROR, "🔊 Failed to create DAC playback task");

@@ -22,22 +22,20 @@ class OpenAI {
  public:
   struct Config {
     std::string apiKey;
-    std::string model = "gpt-4o-mini";
-    std::string baseUrl = "https://api.openai.com";
+    std::string model;
+    std::string baseUrl;
     std::string systemMessage;
-    std::string ttsModel = "tts-1";
-    std::string ttsVoice = "alloy";
-    uint32_t timeoutMs = 15000;
-    uint32_t ttsTimeoutMs = 60000;
-    size_t maxResponseBytes = 16384;
-    // Chat: limits how long the model reply can be (smaller reply -> smaller TTS).
-    int maxTokens = 120;
-    // TTS: truncate spoken text (OpenAI max 4096 chars; shorter -> smaller WAV).
-    size_t maxTtsChars = 265;
-    // TTS: 0.25-4.0; values >1 shorten playback duration.
-    float ttsSpeed = 1.0f;
-    // Abort TTS download if WAV exceeds this many bytes (fits LittleFS budget).
-    size_t maxTtsBytes = 983040;
+    std::string ttsModel;
+    std::string ttsVoice;
+    uint32_t timeoutMs = 0;
+    uint32_t ttsTimeoutMs = 0;
+    size_t maxResponseBytes = 0;
+    int maxTokens = 0;
+    size_t maxTtsChars = 0;
+    float ttsSpeed = 0.0f;
+    size_t maxTtsBytes = 0;
+    // Set at runtime: min(maxTtsBytes, 99% of LittleFS free).
+    size_t ttsByteBudget = 0;
   };
 
   explicit OpenAI(Config config);
@@ -54,6 +52,7 @@ class OpenAI {
 
   std::string prepareTtsText(const std::string& text) const;
   size_t effectiveMaxTtsChars() const;
+  int effectiveMaxCompletionTokens() const;
 
  private:
   Config config_;

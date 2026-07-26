@@ -16,8 +16,7 @@ extern "C" void app_main(void) {
     espwifi.feedWatchDog();
     espwifi.handleConfigUpdate();
 
-    std::string response = espwifi.oai_completion(
-        "provide a random Ham Radio Prep question and answer.");
+    std::string response = espwifi.oai_completion("Simple Polite Radio Hello");
 
     espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
     espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 1.0f);

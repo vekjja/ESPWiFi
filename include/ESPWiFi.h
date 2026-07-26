@@ -208,6 +208,9 @@ class ESPWiFi {
   int maxLogFileSize = 0;
   bool loggingStarted = false;
   std::string logFilePath = "/espwifi.log";
+  bool isLogFileDisabled() const;
+  std::string getLogReadPath() const;
+  void applyLogFilePathFromConfig();
   // Helper to determine which filesystem to use for logging
   // Sets useSD and useLFS variables, returns true if a filesystem is available
   bool getLogFilesystem(bool& useSD, bool& useLFS);
@@ -484,7 +487,8 @@ class ESPWiFi {
       std::function<bool(std::function<bool(const uint8_t*, size_t)>)>;
 
   void playAudio(const std::string& path, float volume,
-                 int outputPin = ESPWiFi_DAC_PIN_1);
+                 int outputPin = ESPWiFi_DAC_PIN_1,
+                 bool deleteAfterPlay = false);
   void playStreamingWav(float volume, int outputPin,
                         AudioStreamProvider provider);
   void oai_TTS(const std::string& text, int outputPin, float volume = 1.0f);

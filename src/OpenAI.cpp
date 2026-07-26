@@ -2,6 +2,10 @@
 
 #include <ArduinoJson.h>
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 #include "ESPWiFi.h"
 #include "HTTP.h"
 
@@ -65,7 +69,68 @@ OpenAI::Config openAiConfigFromEspWiFi(const JsonDocument& config,
     cfg.ttsTimeoutMs = config["openai"]["ttsTimeoutMs"].as<uint32_t>();
   }
 
+  if (!config["openai"]["maxTokens"].isNull()) {
+    cfg.maxTokens = config["openai"]["maxTokens"].as<int>();
+  }
+
+  if (!config["openai"]["maxTtsChars"].isNull()) {
+    cfg.maxTtsChars = config["openai"]["maxTtsChars"].as<size_t>();
+  }
+
+  if (!config["openai"]["ttsSpeed"].isNull()) {
+    cfg.ttsSpeed = config["openai"]["ttsSpeed"].as<float>();
+  }
+
+  if (!config["openai"]["maxTtsBytes"].isNull()) {
+    cfg.maxTtsBytes = config["openai"]["maxTtsBytes"].as<size_t>();
+  }
+
+  constexpr size_t kLittlefsPartitionBytes = 0x1E0000;  // 1,966,080 — espwifi_esp32u.csv
+  constexpr size_t kLittlefsStaticBytes = 921600;       // ~920 KB dashboard (data/ upload listing)
+  constexpr size_t kLittlefsHeadroomBytes = 49152;      // FS metadata + write margin
+  constexpr size_t kMaxTtsBytesCap =
+      kLittlefsPartitionBytes - kLittlefsStaticBytes - kLittlefsHeadroomBytes;
+  if (cfg.maxTtsBytes == 0 || cfg.maxTtsBytes > kMaxTtsBytesCap) {
+    cfg.maxTtsBytes = kMaxTtsBytesCap;
+  }
+
   return cfg;
+}
+
+std::string truncateForTts(const std::string& text, size_t maxChars) {
+  if (maxChars == 0 || text.size() <= maxChars) {
+    return text;
+  }
+
+  size_t cut = maxChars;
+  const size_t lastSpace = text.rfind(' ', maxChars);
+  if (lastSpace > maxChars / 2) {
+    cut = lastSpace;
+  }
+  return text.substr(0, cut);
+}
+
+bool isValidWavFile(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (f == nullptr) {
+    return false;
+  }
+
+  uint8_t riff[12];
+  const bool ok =
+      fread(riff, 1, sizeof(riff), f) == sizeof(riff) &&
+      memcmp(riff, "RIFF", 4) == 0 && memcmp(riff + 8, "WAVE", 4) == 0;
+  fclose(f);
+  return ok;
+}
+
+size_t ttsDownloadLimit(size_t maxTtsBytes, size_t freeBytes) {
+  constexpr size_t kFsReserve = 4096;
+  size_t limit = maxTtsBytes;
+  if (freeBytes > kFsReserve) {
+    limit = std::min(limit, freeBytes - kFsReserve);
+  }
+  return limit;
 }
 
 void logOpenAiError(ESPWiFi* espwifi, const char* action,
@@ -121,8 +186,8 @@ OpenAIResult OpenAI::streamTextToSpeech(
     return OpenAIResult{false, "", "onData callback required", 0};
   }
 
-  return postStream(kSpeechPath, buildTtsRequestBody(text), config_.ttsTimeoutMs,
-                    onData);
+  return postStream(kSpeechPath, buildTtsRequestBody(text),
+                    config_.ttsTimeoutMs, onData);
 }
 
 std::string OpenAI::buildChatRequestBody(
@@ -137,17 +202,57 @@ std::string OpenAI::buildChatRequestBody(
     msg["content"] = message.content;
   }
 
+  if (config_.maxTokens > 0) {
+    reqDoc["max_tokens"] = config_.maxTokens;
+  }
+
   std::string reqBody;
   serializeJson(reqDoc, reqBody);
   return reqBody;
 }
 
+std::string OpenAI::prepareTtsText(const std::string& text) const {
+  return truncateForTts(text, effectiveMaxTtsChars());
+}
+
+size_t OpenAI::effectiveMaxTtsChars() const {
+  // 24 kHz mono PCM16 WAV is ~48 KB/s; speech is ~13 chars/s -> ~3700
+  // bytes/char.
+  constexpr size_t kWavOverheadBytes = 128;
+  constexpr size_t kBytesPerCharEstimate = 3700;
+
+  size_t charLimit = config_.maxTtsChars;
+  if (config_.maxTtsBytes > kWavOverheadBytes) {
+    float speed = config_.ttsSpeed;
+    if (speed < 0.25f) {
+      speed = 0.25f;
+    }
+    const size_t pcmBudget = config_.maxTtsBytes - kWavOverheadBytes;
+    const size_t fromBytes =
+        static_cast<size_t>(pcmBudget * speed / kBytesPerCharEstimate);
+    if (charLimit == 0 || fromBytes < charLimit) {
+      charLimit = fromBytes;
+    }
+  }
+
+  return charLimit > 0 ? charLimit : 1;
+}
+
 std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
+  const std::string input = prepareTtsText(text);
+
   JsonDocument reqDoc;
   reqDoc["model"] = config_.ttsModel;
-  reqDoc["input"] = text;
+  reqDoc["input"] = input;
   reqDoc["voice"] = config_.ttsVoice;
   reqDoc["response_format"] = "wav";
+
+  float speed = config_.ttsSpeed;
+  if (speed < 0.25f) speed = 0.25f;
+  if (speed > 4.0f) speed = 4.0f;
+  if (speed != 1.0f) {
+    reqDoc["speed"] = speed;
+  }
 
   std::string reqBody;
   serializeJson(reqDoc, reqBody);
@@ -157,9 +262,8 @@ std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
 OpenAIResult OpenAI::postJson(const std::string& path,
                               const std::string& requestBody) const {
   const std::string url = Http::joinUrl(config_.baseUrl, path.c_str());
-  Http::Response response =
-      Http::makeRequest(openAiRequest(config_, url, requestBody, config_.timeoutMs,
-                                config_.maxResponseBytes));
+  Http::Response response = Http::makeRequest(openAiRequest(
+      config_, url, requestBody, config_.timeoutMs, config_.maxResponseBytes));
 
   if (response.err != ESP_OK) {
     return OpenAIResult{false, "", esp_err_to_name(response.err),
@@ -167,9 +271,8 @@ OpenAIResult OpenAI::postJson(const std::string& path,
   }
 
   if (response.status != 200) {
-    std::string error = response.body.empty()
-                            ? "HTTP request failed"
-                            : response.body;
+    std::string error =
+        response.body.empty() ? "HTTP request failed" : response.body;
     return OpenAIResult{false, "", std::move(error), response.status};
   }
 
@@ -199,8 +302,8 @@ OpenAIResult OpenAI::postStream(
   }
 
   if (response.status != 200) {
-    std::string error = response.body.empty() ? "HTTP request failed"
-                                              : response.body;
+    std::string error =
+        response.body.empty() ? "HTTP request failed" : response.body;
     return OpenAIResult{false, "", std::move(error), response.status};
   }
 
@@ -253,14 +356,115 @@ void ESPWiFi::oai_TTS(const std::string& text, int outputPin, float volume) {
     return;
   }
 
-  playStreamingWav(volume, outputPin, [cfg, text, this](auto writeChunk) {
-    OpenAI client(cfg);
-    OpenAIResult result = client.streamTextToSpeech(text, writeChunk);
-    if (!result.ok) {
+  OpenAI client(cfg);
+  const size_t charLimit = client.effectiveMaxTtsChars();
+  const std::string ttsText = client.prepareTtsText(text);
+  if (ttsText.empty()) {
+    log(ERROR, "OpenAI TTS: text is empty");
+    return;
+  }
+
+  if (ttsText.size() != text.size()) {
+    log(INFO, "OpenAI TTS: truncated to %u chars (limit %u for maxTtsBytes %u)",
+        static_cast<unsigned>(ttsText.size()), static_cast<unsigned>(charLimit),
+        static_cast<unsigned>(cfg.maxTtsBytes));
+  }
+
+  const std::string tempPath = lfsMountPoint + "/tts.wav";
+  (void)remove(tempPath.c_str());
+
+  size_t totalPartitionBytes = 0;
+  size_t usedBytes = 0;
+  size_t freeBytes = 0;
+  getStorageInfo("lfs", totalPartitionBytes, usedBytes, freeBytes);
+
+  const size_t downloadLimit = ttsDownloadLimit(cfg.maxTtsBytes, freeBytes);
+  log(INFO, "OpenAI TTS: maxTtsBytes=%u downloadLimit=%u littlefsFree=%u",
+      static_cast<unsigned>(cfg.maxTtsBytes),
+      static_cast<unsigned>(downloadLimit), static_cast<unsigned>(freeBytes));
+
+  constexpr size_t kMinDownloadBytes = 8192;
+  if (freeBytes == 0 || downloadLimit < kMinDownloadBytes) {
+    log(ERROR,
+        "OpenAI TTS: LittleFS tight (%u bytes free, downloadLimit %u). Delete "
+        "/lfs/tts.wav or unused files.",
+        static_cast<unsigned>(freeBytes),
+        static_cast<unsigned>(downloadLimit));
+    return;
+  }
+
+  FILE* out = fopen(tempPath.c_str(), "wb");
+  if (out == nullptr) {
+    log(ERROR, "OpenAI TTS: failed to open %s", tempPath.c_str());
+    return;
+  }
+
+  size_t totalBytes = 0;
+  bool downloadCapped = false;
+  bool writeFailed = false;
+  OpenAIResult result =
+      client.streamTextToSpeech(ttsText, [&](const uint8_t* data, size_t len) {
+        if (data == nullptr || len == 0) {
+          return true;
+        }
+
+        if (totalBytes >= downloadLimit) {
+          downloadCapped = true;
+          return false;
+        }
+
+        size_t toWrite = len;
+        if (totalBytes + len > downloadLimit) {
+          toWrite = downloadLimit - totalBytes;
+          downloadCapped = true;
+        }
+
+        const size_t written = fwrite(data, 1, toWrite, out);
+        totalBytes += written;
+        if (written != toWrite) {
+          log(ERROR, "OpenAI TTS: write failed at %u bytes (%u bytes free)",
+              static_cast<unsigned>(totalBytes),
+              static_cast<unsigned>(freeBytes));
+          writeFailed = true;
+          return false;
+        }
+
+        if (downloadCapped) {
+          log(WARNING, "OpenAI TTS: capped download at %u bytes",
+              static_cast<unsigned>(totalBytes));
+          return false;
+        }
+        return true;
+      });
+  fclose(out);
+
+  auto cleanup = [&]() { (void)remove(tempPath.c_str()); };
+
+  if (writeFailed || totalBytes == 0) {
+    if (!writeFailed) {
       logOpenAiError(this, "TTS", result);
-      return false;
     }
-    return true;
-  });
+    cleanup();
+    return;
+  }
+
+  if (!result.ok && !downloadCapped) {
+    logOpenAiError(this, "TTS", result);
+    cleanup();
+    return;
+  }
+
+  if (totalBytes > downloadLimit || !isValidWavFile(tempPath.c_str())) {
+    log(ERROR, "OpenAI TTS: invalid WAV after download (%u bytes, limit %u)",
+        static_cast<unsigned>(totalBytes),
+        static_cast<unsigned>(downloadLimit));
+    cleanup();
+    return;
+  }
+
+  log(INFO, "OpenAI TTS: saved %u bytes to %s",
+      static_cast<unsigned>(totalBytes), tempPath.c_str());
+
+  playAudio("/tts.wav", volume, outputPin, true);
 }
 #endif

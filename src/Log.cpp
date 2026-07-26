@@ -11,6 +11,64 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+static bool isLogFileDisabledPath(const std::string& path) {
+  std::string lower = path;
+  toLowerCase(lower);
+  return lower == "none";
+}
+
+static std::string resolveLogFilePath(const std::string& cfgValue,
+                                      const std::string& fallback) {
+  if (!cfgValue.empty()) {
+    if (isLogFileDisabledPath(cfgValue)) {
+      return "NONE";
+    }
+    std::string filePath = cfgValue;
+    if (filePath.front() != '/') {
+      filePath.insert(filePath.begin(), '/');
+    }
+    return filePath;
+  }
+
+  if (!fallback.empty() && isLogFileDisabledPath(fallback)) {
+    return "NONE";
+  }
+
+  std::string filePath = fallback.empty() ? "/espwifi.log" : fallback;
+  if (filePath.front() != '/') {
+    filePath.insert(filePath.begin(), '/');
+  }
+  return filePath;
+}
+
+bool ESPWiFi::isLogFileDisabled() const {
+  return isLogFileDisabledPath(logFilePath);
+}
+
+std::string ESPWiFi::getLogReadPath() const {
+  if (isLogFileDisabled()) {
+    return "/espwifi.log";
+  }
+  return logFilePath;
+}
+
+void ESPWiFi::applyLogFilePathFromConfig() {
+  std::string cfgFile;
+  if (!config["log"]["file"].isNull()) {
+    cfgFile = config["log"]["file"].as<std::string>();
+  } else if (!config["log"]["filePath"].isNull()) {
+    cfgFile = config["log"]["filePath"].as<std::string>();
+  }
+
+  if (logFileMutex != nullptr) {
+    (void)xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(5));
+  }
+  logFilePath = resolveLogFilePath(cfgFile, logFilePath);
+  if (logFileMutex != nullptr) {
+    xSemaphoreGive(logFileMutex);
+  }
+}
+
 // ---- ESP-IDF log capture (optional)
 //
 // ESP-IDF logging (ESP_LOGx) ultimately prints via a vprintf-like function
@@ -180,24 +238,15 @@ void ESPWiFi::startLogging() {
     deferredLogMutex = xSemaphoreCreateMutex();
   }
 
-  std::string cfgLogFile = config["log"]["file"].as<std::string>();
-  std::string filePath = logFilePath;
+  std::string cfgLogFile = config["log"]["file"].isNull()
+                               ? ""
+                               : config["log"]["file"].as<std::string>();
+  this->logFilePath = resolveLogFilePath(cfgLogFile, logFilePath);
 
-  // Pick file path (config overrides default param).
-  if (!cfgLogFile.empty()) {
-    filePath = cfgLogFile;
+  if (!isLogFileDisabled()) {
+    cleanLogFile();
+    writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
   }
-  if (filePath.empty()) {
-    filePath = "/espwifi.log";
-  }
-  if (filePath.front() != '/') {
-    filePath.insert(filePath.begin(), '/');
-  }
-  this->logFilePath = filePath;
-
-  cleanLogFile();
-
-  writeLog("\n========= 🌈 ESPWiFi " + version() + " =========\n\n");
 
   // ESP32 IDF Automatically enables serial output at 115200 baud
   log(INFO, "📺 Serial Output Enabled");
@@ -220,6 +269,10 @@ bool ESPWiFi::getLogFilesystem(bool& useSD, bool& useLFS) {
 }
 
 void ESPWiFi::writeLog(std::string message) {
+  if (isLogFileDisabled()) {
+    return;
+  }
+
   bool useSD, useLFS;
   if (!getLogFilesystem(useSD, useLFS)) {
     return;
@@ -320,6 +373,10 @@ void ESPWiFi::log(LogLevel level, const char* format, const std::string& arg) {
 
 // Function to check filesystem space and delete log if needed
 void ESPWiFi::cleanLogFile() {
+  if (isLogFileDisabled()) {
+    return;
+  }
+
   bool useSD, useLFS;
   if (!getLogFilesystem(useSD, useLFS) || maxLogFileSize < 0) {
     return;
@@ -463,20 +520,13 @@ void ESPWiFi::logConfigHandler() {
                                 ? true
                                 : config["log"]["useSD"].as<bool>();
 
-  std::string currentFile;
+  std::string cfgFile;
   if (!config["log"]["file"].isNull()) {
-    currentFile = config["log"]["file"].as<std::string>();
+    cfgFile = config["log"]["file"].as<std::string>();
   } else if (!config["log"]["filePath"].isNull()) {
-    currentFile = config["log"]["filePath"].as<std::string>();
-  } else {
-    currentFile = "/espwifi.log";
+    cfgFile = config["log"]["filePath"].as<std::string>();
   }
-  if (currentFile.empty()) {
-    currentFile = "/espwifi.log";
-  }
-  if (currentFile.front() != '/') {
-    currentFile.insert(currentFile.begin(), '/');
-  }
+  const std::string currentFile = resolveLogFilePath(cfgFile, lastFile);
 
   // Check for changes and apply them
   bool needLogEnabledMsg = (currentEnabled != lastEnabled);

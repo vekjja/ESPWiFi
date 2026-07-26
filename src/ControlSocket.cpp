@@ -68,15 +68,12 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
           req["maxBytes"].isNull() ? (8 * 1024) : req["maxBytes"].as<int>();
 
       bool useSD = false, useLFS = false;
-      if (!espwifi->getLogFilesystem(useSD, useLFS)) {
-        resp["ok"] = false;
-        resp["error"] = "fs_unavailable";
-      } else {
+      if (espwifi->getLogFilesystem(useSD, useLFS)) {
         const std::string &base =
             useSD ? espwifi->sdMountPoint : espwifi->lfsMountPoint;
         const std::string source = useSD ? "sd" : "lfs";
-        const std::string virtualPath = espwifi->logFilePath;
-        const std::string fullPath = base + espwifi->logFilePath;
+        const std::string virtualPath = espwifi->getLogReadPath();
+        const std::string fullPath = base + virtualPath;
         espwifi->fillChunkedDataResponse(resp, fullPath, virtualPath, source,
                                          offset, tailBytes, maxBytes);
 
@@ -87,6 +84,9 @@ static void ctrlOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
           resp["logs"] = resp["data"];
           resp.remove("data");
         }
+      } else {
+        resp["ok"] = false;
+        resp["error"] = "fs_unavailable";
       }
     } else if (strcmp(cmd, "set_config") == 0) {
       // Merge and apply config updates on the main loop.

@@ -56,6 +56,8 @@ void ESPWiFi::readConfig() {
     log(ERROR, "⚙️ Could not access filesystem: Using default config");
   }
 
+  applyLogFilePathFromConfig();
+
   corsConfigHandler();
 
   // Ensure auth token exists (generate if missing after config load)

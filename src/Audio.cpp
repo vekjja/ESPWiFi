@@ -1,6 +1,7 @@
 #ifdef ESPWiFi_DAC_ENABLED
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 
@@ -194,6 +195,7 @@ struct AudioPlaybackContext {
   float volume = 1.0f;
   int outputPin = -1;
   int pttPin = -1;
+  bool deleteAfterPlay = false;
 };
 
 struct StreamingAudioContext {
@@ -245,6 +247,31 @@ static void streamingDownloadTask(void* param) {
   vTaskDelete(nullptr);
 }
 
+static bool waitForStreamPrebuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
+                                   volatile bool* downloadDone,
+                                   size_t minBytes) {
+  while (self->audioPlaying) {
+    if (xStreamBufferBytesAvailable(buffer) >= minBytes) {
+      return true;
+    }
+    if (downloadDone != nullptr && *downloadDone) {
+      return xStreamBufferBytesAvailable(buffer) > 0;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  return false;
+}
+
+static StreamBufferHandle_t createStreamBuffer(size_t preferredBytes) {
+  constexpr size_t kFallbackBytes = 64 * 1024;
+  StreamBufferHandle_t buffer =
+      xStreamBufferCreate(preferredBytes, 1);
+  if (buffer == nullptr && preferredBytes > kFallbackBytes) {
+    buffer = xStreamBufferCreate(kFallbackBytes, 1);
+  }
+  return buffer;
+}
+
 static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder,
                                  int pttPin, StreamBufferHandle_t buffer,
                                  volatile bool* downloadDone) {
@@ -254,27 +281,42 @@ static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder,
     return false;
   }
 
-  bool pttKeyed = false;
+  auto receiveChunk = [&]() -> size_t {
+    return xStreamBufferReceive(buffer, readBuf, 1024, pdMS_TO_TICKS(100));
+  };
+
+  while (self->audioPlaying && decoder.audioInfoEx().sample_rate == 0) {
+    const size_t n = receiveChunk();
+    if (n == 0) {
+      if (downloadDone != nullptr && *downloadDone &&
+          xStreamBufferBytesAvailable(buffer) == 0) {
+        free(readBuf);
+        return false;
+      }
+      vTaskDelay(1);
+      continue;
+    }
+    decoder.write(readBuf, n);
+  }
+
+  if (self->audioPlaying && pttPin != -1) {
+    self->setGPIO(pttPin, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
+  }
 
   while (self->audioPlaying) {
-    const size_t n =
-        xStreamBufferReceive(buffer, readBuf, 1024, pdMS_TO_TICKS(20));
+    const size_t n = receiveChunk();
     if (n == 0) {
       if (downloadDone != nullptr && *downloadDone &&
           xStreamBufferBytesAvailable(buffer) == 0) {
         break;
       }
+      vTaskDelay(1);
       continue;
     }
-
     decoder.write(readBuf, n);
-
-    if (!pttKeyed && pttPin != -1 &&
-        decoder.audioInfoEx().sample_rate != 0) {
-      self->setGPIO(pttPin, 1);
-      self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
-      pttKeyed = true;
-    }
+    vTaskDelay(1);
   }
 
   if (pttPin != -1) {
@@ -342,9 +384,8 @@ static void streamingAudioPlaybackTask(void* param) {
   ESPWiFi* self = ctx.self;
   const int pttPin = ctx.pttPin;
 
-  constexpr size_t kStreamBufferSize = 24 * 1024;
-  StreamBufferHandle_t streamBuffer =
-      xStreamBufferCreate(kStreamBufferSize, 1);
+  constexpr size_t kStreamPrebufferBytes = 16 * 1024;
+  StreamBufferHandle_t streamBuffer = createStreamBuffer(128 * 1024);
   if (streamBuffer == nullptr) {
     self->log(ERROR, "🔊 Failed to allocate stream buffer");
     self->audioPlaying = false;
@@ -352,6 +393,10 @@ static void streamingAudioPlaybackTask(void* param) {
     vTaskDelete(nullptr);
     return;
   }
+
+  self->log(INFO, "🔊 Stream buffer: %u bytes free capacity",
+            static_cast<unsigned>(xStreamBufferSpacesAvailable(streamBuffer) +
+                                  xStreamBufferBytesAvailable(streamBuffer)));
 
   volatile bool downloadDone = false;
   StreamingDownloadState downloadState;
@@ -361,11 +406,21 @@ static void streamingAudioPlaybackTask(void* param) {
   downloadState.downloadDone = &downloadDone;
 
   if (xTaskCreatePinnedToCore(streamingDownloadTask, "tts-download", 12288,
-                              &downloadState, 4, nullptr,
+                              &downloadState, 6, nullptr,
                               0) != pdPASS) {
     self->log(ERROR, "🔊 Failed to create TTS download task");
     vStreamBufferDelete(streamBuffer);
     self->audioPlaying = false;
+    self->audioTask = nullptr;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  if (!waitForStreamPrebuffer(self, streamBuffer, &downloadDone,
+                              kStreamPrebufferBytes)) {
+    self->log(ERROR, "🔊 Streaming prebuffer failed");
+    self->audioPlaying = false;
+    vStreamBufferDelete(streamBuffer);
     self->audioTask = nullptr;
     vTaskDelete(nullptr);
     return;
@@ -443,6 +498,7 @@ static void audioPlaybackTask(void* param) {
   const float volume = ctx.volume;
   const int outputPin = ctx.outputPin;
   const int pttPin = ctx.pttPin;
+  const bool deleteAfterPlay = ctx.deleteAfterPlay;
 
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) {
@@ -555,6 +611,14 @@ static void audioPlaybackTask(void* param) {
   releaseDac(dac);
   fclose(f);
 
+  if (deleteAfterPlay) {
+    if (remove(path.c_str()) == 0) {
+      self->log(INFO, "🔊 Deleted audio file: %s", path.c_str());
+    } else {
+      self->log(WARNING, "🔊 Failed to delete audio file: %s", path.c_str());
+    }
+  }
+
   self->log(INFO, "🔊 DAC playback finished");
   self->audioPlaying = false;
   self->audioTask = nullptr;
@@ -563,7 +627,8 @@ static void audioPlaybackTask(void* param) {
 
 }  // namespace
 
-void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin) {
+void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
+                        bool deleteAfterPlay) {
   if (outputPin != ESPWiFi_DAC_PIN_1 && outputPin != ESPWiFi_DAC_PIN_2) {
     log(WARNING, "🔊 Invalid DAC pin %d (use GPIO %d or %d)", outputPin,
         ESPWiFi_DAC_PIN_1, ESPWiFi_DAC_PIN_2);
@@ -593,8 +658,8 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin) {
   audioOutputPin = outputPin;
   audioPlaying = true;
 
-  auto* ctx = new AudioPlaybackContext{this, audioFilePath, volume, outputPin,
-                                       audioPttPin};
+  auto* ctx = new AudioPlaybackContext{this,   audioFilePath, volume,
+                                       outputPin, audioPttPin, deleteAfterPlay};
   BaseType_t ok = xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288,
                                           ctx, 5, &audioTask, 1);
   if (ok != pdPASS) {

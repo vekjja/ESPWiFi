@@ -209,7 +209,11 @@ export default function LogsSettingsModal({
       // config.log.filePath; default is "/espwifi.log".
       let logFilePath =
         config?.log?.file || config?.log?.filePath || "/espwifi.log";
-      if (typeof logFilePath !== "string" || logFilePath.trim() === "") {
+      if (
+        typeof logFilePath !== "string" ||
+        logFilePath.trim() === "" ||
+        logFilePath.trim().toUpperCase() === "NONE"
+      ) {
         logFilePath = "/espwifi.log";
       }
       if (!logFilePath.startsWith("/")) {

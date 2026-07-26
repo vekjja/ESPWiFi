@@ -66,22 +66,13 @@ OpenAI::Config openAiConfigFromEspWiFi(const JsonDocument& config,
   }
 
   cfg.ttsTimeoutMs = config["openai"]["ttsTimeoutMs"].as<uint32_t>();
-  cfg.maxResponseBytes = config["openai"]["maxResponseBytes"].as<size_t>();
-  cfg.maxTokens = config["openai"]["maxTokens"].as<int>();
-  cfg.maxTtsChars = config["openai"]["maxTtsChars"].as<size_t>();
-  cfg.ttsSpeed = config["openai"]["ttsSpeed"].as<float>();
-  cfg.maxTtsBytes = config["openai"]["maxTtsBytes"].as<size_t>();
+  if (cfg.ttsTimeoutMs == 0) {
+    cfg.ttsTimeoutMs = 60000;
+  }
 
-  constexpr size_t kLittlefsPartitionBytes =
-      0x1E0000;  // 1,966,080 — espwifi_esp32u.csv
-  constexpr size_t kLittlefsStaticBytes =
-      921600;  // ~920 KB dashboard (data/ upload listing)
-  constexpr size_t kMaxLfsUsagePercent = 99;
-  constexpr size_t kMaxTtsBytesCap =
-      (kLittlefsPartitionBytes - kLittlefsStaticBytes) * kMaxLfsUsagePercent /
-      100;
-  if (cfg.maxTtsBytes == 0 || cfg.maxTtsBytes > kMaxTtsBytesCap) {
-    cfg.maxTtsBytes = kMaxTtsBytesCap;
+  cfg.ttsSpeed = config["openai"]["ttsSpeed"].as<float>();
+  if (cfg.ttsSpeed <= 0.0f) {
+    cfg.ttsSpeed = 1.0f;
   }
 
   return cfg;
@@ -114,10 +105,19 @@ bool isValidWavFile(const char* path) {
   return ok;
 }
 
-size_t ttsDownloadLimit(size_t maxTtsBytes, size_t freeBytes) {
+size_t ttsByteBudgetFromLfs(size_t freeBytes) {
   constexpr size_t kMaxLfsUsagePercent = 99;
-  size_t lfsMax = freeBytes * kMaxLfsUsagePercent / 100;
-  return std::min(maxTtsBytes, lfsMax);
+  return freeBytes * kMaxLfsUsagePercent / 100;
+}
+
+void applyLfsTtsBudget(OpenAI::Config& cfg, size_t freeBytes) {
+  cfg.ttsByteBudget = ttsByteBudgetFromLfs(freeBytes);
+}
+
+size_t maxResponseBytesForChars(size_t charLimit) {
+  constexpr size_t kMinResponseBytes = 4096;
+  const size_t estimated = charLimit * 4;
+  return estimated > kMinResponseBytes ? estimated : kMinResponseBytes;
 }
 
 void logOpenAiError(ESPWiFi* espwifi, const char* action,
@@ -189,10 +189,8 @@ std::string OpenAI::buildChatRequestBody(
     msg["content"] = message.content;
   }
 
-  if (config_.maxTokens > 0) {
-    const int tokenLimit = effectiveMaxCompletionTokens();
-    reqDoc["max_tokens"] = tokenLimit;
-  }
+  const int tokenLimit = effectiveMaxCompletionTokens();
+  reqDoc["max_tokens"] = tokenLimit;
 
   std::string reqBody;
   serializeJson(reqDoc, reqBody);
@@ -208,36 +206,25 @@ size_t OpenAI::effectiveMaxTtsChars() const {
   constexpr size_t kWavOverheadBytes = 128;
   constexpr size_t kBytesPerCharEstimate = 2700;
 
-  const size_t byteBudget =
-      config_.ttsByteBudget > 0 ? config_.ttsByteBudget : config_.maxTtsBytes;
-
-  size_t charLimit = config_.maxTtsChars;
-  if (byteBudget > kWavOverheadBytes) {
-    float speed = config_.ttsSpeed;
-    if (speed < 0.25f) {
-      speed = 0.25f;
-    }
-    const size_t pcmBudget = byteBudget - kWavOverheadBytes;
-    const size_t fromBytes =
-        static_cast<size_t>(pcmBudget * speed / kBytesPerCharEstimate);
-    if (charLimit == 0 || fromBytes < charLimit) {
-      charLimit = fromBytes;
-    }
+  if (config_.ttsByteBudget <= kWavOverheadBytes) {
+    return 1;
   }
 
+  float speed = config_.ttsSpeed;
+  if (speed < 0.25f) {
+    speed = 0.25f;
+  }
+
+  const size_t pcmBudget = config_.ttsByteBudget - kWavOverheadBytes;
+  const size_t charLimit =
+      static_cast<size_t>(pcmBudget * speed / kBytesPerCharEstimate);
   return charLimit > 0 ? charLimit : 1;
 }
 
 int OpenAI::effectiveMaxCompletionTokens() const {
   const size_t chars = effectiveMaxTtsChars();
   const int fromChars = static_cast<int>(chars / 3);
-  if (fromChars < 1) {
-    return 1;
-  }
-  if (config_.maxTokens <= 0) {
-    return fromChars;
-  }
-  return std::min(config_.maxTokens, fromChars);
+  return fromChars > 0 ? fromChars : 1;
 }
 
 std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
@@ -264,8 +251,10 @@ std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
 OpenAIResult OpenAI::postJson(const std::string& path,
                               const std::string& requestBody) const {
   const std::string url = Http::joinUrl(config_.baseUrl, path.c_str());
+  const size_t maxResponseBytes =
+      maxResponseBytesForChars(effectiveMaxTtsChars());
   Http::Response response = Http::makeRequest(openAiRequest(
-      config_, url, requestBody, config_.timeoutMs, config_.maxResponseBytes));
+      config_, url, requestBody, config_.timeoutMs, maxResponseBytes));
 
   if (response.err != ESP_OK) {
     return OpenAIResult{false, "", esp_err_to_name(response.err),
@@ -341,13 +330,22 @@ std::string ESPWiFi::oai_completion(const std::string& prompt) {
   size_t usedBytes = 0;
   size_t freeBytes = 0;
   getStorageInfo("lfs", totalPartitionBytes, usedBytes, freeBytes);
-  cfg.ttsByteBudget = ttsDownloadLimit(cfg.maxTtsBytes, freeBytes);
+  applyLfsTtsBudget(cfg, freeBytes);
+
+  constexpr size_t kMinDownloadBytes = 8192;
+  if (freeBytes == 0 || cfg.ttsByteBudget < kMinDownloadBytes) {
+    log(ERROR,
+        "🤖 OpenAI completion: LittleFS tight (%u bytes free, byteBudget %u)",
+        static_cast<unsigned>(freeBytes),
+        static_cast<unsigned>(cfg.ttsByteBudget));
+    return "";
+  }
 
   OpenAI client(cfg);
   const int tokenLimit = client.effectiveMaxCompletionTokens();
   log(INFO,
-      "🤖 OpenAI completion: maxTokens=%d (byteBudget=%u, lfsFree=%u, ~%u "
-      "chars)",
+      "🤖 OpenAI completion: auto maxTokens=%d byteBudget=%u lfsFree=%u "
+      "(~%u chars)",
       tokenLimit, static_cast<unsigned>(cfg.ttsByteBudget),
       static_cast<unsigned>(freeBytes),
       static_cast<unsigned>(client.effectiveMaxTtsChars()));
@@ -385,7 +383,7 @@ void ESPWiFi::oai_TTS(const std::string& text, int outputPin, float volume) {
   size_t usedBytes = 0;
   size_t freeBytes = 0;
   getStorageInfo("lfs", totalPartitionBytes, usedBytes, freeBytes);
-  cfg.ttsByteBudget = ttsDownloadLimit(cfg.maxTtsBytes, freeBytes);
+  applyLfsTtsBudget(cfg, freeBytes);
 
   OpenAI client(cfg);
   const size_t charLimit = client.effectiveMaxTtsChars();

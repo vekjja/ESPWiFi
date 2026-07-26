@@ -29,12 +29,8 @@ class OpenAI {
     std::string ttsVoice;
     uint32_t timeoutMs = 0;
     uint32_t ttsTimeoutMs = 0;
-    size_t maxResponseBytes = 0;
-    int maxTokens = 0;
-    size_t maxTtsChars = 0;
     float ttsSpeed = 0.0f;
-    size_t maxTtsBytes = 0;
-    // Set at runtime: min(maxTtsBytes, 99% of LittleFS free).
+    // Set at runtime from LittleFS free space (99% of free bytes).
     size_t ttsByteBudget = 0;
   };
 

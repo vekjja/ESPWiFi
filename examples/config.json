@@ -37,11 +37,7 @@
         "ttsModel": "tts-1",
         "ttsVoice": "alloy",
         "ttsTimeoutMs": 60000,
-        "maxResponseBytes": 16384,
-        "maxTokens": 95,
-        "maxTtsChars": 280,
-        "ttsSpeed": 1.0,
-        "maxTtsBytes": 727040
+        "ttsSpeed": 1.0
     },
     "auth": {
         "enabled": false,

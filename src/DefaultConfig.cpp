@@ -55,15 +55,10 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["openai"]["ttsModel"] = "tts-1";
   doc["openai"]["ttsVoice"] = "alloy";
   doc["openai"]["ttsTimeoutMs"] = 60000;
-  doc["openai"]["maxResponseBytes"] = 16384;
-  doc["openai"]["maxTokens"] = 95;
-  doc["openai"]["maxTtsChars"] = 280;
   doc["openai"]["ttsSpeed"] = 1.0;
-  doc["openai"]["maxTtsBytes"] = 727040;
   doc["openai"]["systemMessage"] =
       "This is the ESPWiFi assistant. You are running on an ESP32 based "
-      "device. Running the ESPWiFi firmware. You are the assistant for the "
-      "ESPWiFi device.";
+      "device. Running the ESPWiFi firmware.";
 
   // Auth
   // - enabled: controls whether authentication is enabled

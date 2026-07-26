@@ -25,6 +25,6 @@ extern "C" void app_main(void) {
       espwifi.feedWatchDog();
     }
 
-    espwifi.feedWatchDog(9000);
+    espwifi.feedWatchDog(30000);
   }
 }

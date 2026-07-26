@@ -52,12 +52,12 @@ JsonDocument ESPWiFi::defaultConfig() {
   doc["openai"]["apiKey"] = "";
   doc["openai"]["model"] = "gpt-4o-mini";
   doc["openai"]["baseUrl"] = "https://api.openai.com";
+  doc["openai"]["ttsModel"] = "tts-1";
+  doc["openai"]["ttsVoice"] = "alloy";
   doc["openai"]["systemMessage"] =
       "This is the ESPWiFi assistant. You are running on an ESP32 based "
       "device. Running the ESPWiFi firmware. You are the assistant for the "
       "ESPWiFi device.";
-  doc["openai"]["ttsModel"] = "tts-1";
-  doc["openai"]["ttsVoice"] = "alloy";
 
   // Auth
   // - enabled: controls whether authentication is enabled

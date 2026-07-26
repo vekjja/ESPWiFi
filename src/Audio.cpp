@@ -30,8 +30,10 @@ static constexpr size_t kStreamReadChunkBytes = 2048;
 static constexpr size_t kStreamPrebufferBytes = 16 * 1024;
 static constexpr size_t kMinPrebufferBytes = 4096;
 
-static constexpr size_t kStreamBufferTrySizes[] = {256 * 1024, 128 * 1024,
-                                                   64 * 1024, 32 * 1024};
+static constexpr size_t kStreamBufferPreferredBytes = 48 * 1024;
+static constexpr size_t kStreamBufferMinBytes = 16 * 1024;
+static constexpr size_t kStreamBufferMaxBytes = 64 * 1024;
+static constexpr size_t kStreamSessionReserveBytes = 80 * 1024;
 
 // ---- WAV helpers ------------------------------------------------------------
 
@@ -418,20 +420,76 @@ static bool writeToStreamBuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
   return true;
 }
 
+static size_t targetStreamBufferBytes() {
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  const size_t free = esp_get_free_heap_size();
+
+  if (free <= kStreamSessionReserveBytes || largest < kStreamBufferMinBytes) {
+    return 0;
+  }
+
+  size_t budget = largest;
+  const size_t fromFree = free - kStreamSessionReserveBytes;
+  if (fromFree < budget) {
+    budget = fromFree;
+  }
+
+  if (budget < kStreamBufferMinBytes) {
+    return 0;
+  }
+
+  size_t size = kStreamBufferPreferredBytes;
+  if (size > budget) {
+    size = budget;
+  }
+  if (size > kStreamBufferMaxBytes) {
+    size = kStreamBufferMaxBytes;
+  }
+
+  size = (size / 4096) * 4096;
+  if (size < kStreamBufferMinBytes) {
+    size = kStreamBufferMinBytes;
+  }
+  return size;
+}
+
 static StreamBufferHandle_t createStreamBuffer(size_t* outCapacityBytes) {
-  for (size_t size : kStreamBufferTrySizes) {
+  static constexpr size_t kFallbackSizes[] = {48 * 1024, 32 * 1024, 24 * 1024,
+                                              16 * 1024};
+
+  const size_t target = targetStreamBufferBytes();
+  if (outCapacityBytes != nullptr) {
+    *outCapacityBytes = 0;
+  }
+
+  auto trySize = [&](size_t size) -> StreamBufferHandle_t {
+    if (size < kStreamBufferMinBytes) {
+      return nullptr;
+    }
     StreamBufferHandle_t buffer = xStreamBufferCreate(size, 1);
+    if (buffer != nullptr && outCapacityBytes != nullptr) {
+      *outCapacityBytes = size;
+    }
+    return buffer;
+  };
+
+  if (target != 0) {
+    StreamBufferHandle_t buffer = trySize(target);
     if (buffer != nullptr) {
-      if (outCapacityBytes != nullptr) {
-        *outCapacityBytes = size;
-      }
       return buffer;
     }
   }
 
-  if (outCapacityBytes != nullptr) {
-    *outCapacityBytes = 0;
+  for (size_t size : kFallbackSizes) {
+    if (target != 0 && size >= target) {
+      continue;
+    }
+    StreamBufferHandle_t buffer = trySize(size);
+    if (buffer != nullptr) {
+      return buffer;
+    }
   }
+
   return nullptr;
 }
 

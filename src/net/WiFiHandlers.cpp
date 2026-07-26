@@ -77,67 +77,65 @@ void ESPWiFi::ipEventHandlerStatic(void *arg, esp_event_base_t event_base,
 // Core WiFi event handler (member function)
 void ESPWiFi::wifiEventHandler(esp_event_base_t event_base, int32_t event_id,
                                void *event_data) {
-  if (event_base != WIFI_EVENT)
-    return;
+  if (event_base != WIFI_EVENT) return;
 
   switch (event_id) {
-  case WIFI_EVENT_STA_START:
-    // Station started; we usually call esp_wifi_connect() explicitly in
-    // startClient()
-    log(INFO, "📶 WiFi Started");
-    break;
+    case WIFI_EVENT_STA_START:
+      // Station started; we usually call esp_wifi_connect() explicitly in
+      // startClient()
+      log(INFO, "📶 WiFi Started");
+      break;
 
-  case WIFI_EVENT_STA_DISCONNECTED: {
-    wifi_event_sta_disconnected_t *disc =
-        static_cast<wifi_event_sta_disconnected_t *>(event_data);
+    case WIFI_EVENT_STA_DISCONNECTED: {
+      wifi_event_sta_disconnected_t *disc =
+          static_cast<wifi_event_sta_disconnected_t *>(event_data);
 
-    wifi_connection_success = false;
-    log(WARNING, "📶 WiFi Disconnected: %d", disc->reason);
+      wifi_connection_success = false;
+      log(WARNING, "📶 WiFi Disconnected: %d", disc->reason);
 
-    // Wake up any waiters
-    if (wifi_connect_semaphore) {
-      xSemaphoreGive(wifi_connect_semaphore);
-    }
-
-    // Auto-reconnect logic
-    if (wifiAutoReconnect) {
-      log(INFO, "🔄 📶 WiFi Auto Reconnect");
-      esp_err_t err = esp_wifi_connect();
-      if (err != ESP_OK) {
-        log(ERROR, "esp_wifi_connect auto-reconnect failed: %s",
-            esp_err_to_name(err));
+      // Wake up any waiters
+      if (wifi_connect_semaphore) {
+        xSemaphoreGive(wifi_connect_semaphore);
       }
-    }
-    break;
-  }
 
-  default:
-    // Other WiFi events are ignored for now
-    break;
+      // Auto-reconnect logic
+      if (wifiAutoReconnect) {
+        log(INFO, "📶 🔄 WiFi Auto Reconnect");
+        esp_err_t err = esp_wifi_connect();
+        if (err != ESP_OK) {
+          log(ERROR, "esp_wifi_connect auto-reconnect failed: %s",
+              esp_err_to_name(err));
+        }
+      }
+      break;
+    }
+
+    default:
+      // Other WiFi events are ignored for now
+      break;
   }
 }
 
 // IP event handler (member function)
 void ESPWiFi::ipEventHandler(esp_event_base_t event_base, int32_t event_id,
                              void *event_data) {
-  if (event_base != IP_EVENT)
-    return;
+  if (event_base != IP_EVENT) return;
 
   switch (event_id) {
-  case IP_EVENT_STA_GOT_IP: {
-    wifi_connection_success = true;
-    log(INFO, "📶 WiFi Connected: %s 🔗", ipAddress().c_str());
+    case IP_EVENT_STA_GOT_IP: {
+      wifi_connection_success = true;
+      log(INFO, "📶 WiFi Connected: %s 🔗", ipAddress().c_str());
 
-    // Notify waiters
-    if (wifi_connect_semaphore) {
-      xSemaphoreGive(wifi_connect_semaphore);
+      // Notify waiters
+      if (wifi_connect_semaphore) {
+        xSemaphoreGive(wifi_connect_semaphore);
+      }
+      break;
     }
-    break;
-  }
 
-  default:
-    break;
+    default:
+      break;
   }
 }
 
-#endif // ESPWiFi_WIFI_HANDLERS
+#endif  // ESPWiFi_WIFI_HANDLERS

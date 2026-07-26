@@ -341,7 +341,9 @@ class ESPWiFi {
   JsonDocument getWiFiPowerInfo();
 
   // ---- OpenAI
-  std::string oai_completion(const std::string& prompt);
+  // byteLimit: "none" (default), "heap", or "lfs" — sizes completion for TTS
+  std::string oai_completion(const std::string& prompt,
+                             const std::string& byteLimit = "none");
 
   // ---- Utils
   std::string getStatusFromCode(int statusCode);
@@ -493,10 +495,10 @@ class ESPWiFi {
                  bool deleteAfterPlay = false);
   void playStreamingWav(float volume, int outputPin,
                         AudioStreamProvider provider);
-  void oai_TTS(const std::string& text, float volume = 1.0f,
-               int outputPin = ESPWiFi_DAC_PIN_1);
-  void oai_StreamTTS(const std::string& text, float volume = 1.0f,
-                     int outputPin = ESPWiFi_DAC_PIN_1);
+  void TTS(const std::string& text, float volume = 1.0f,
+           int outputPin = ESPWiFi_DAC_PIN_1);
+  void streamTTS(const std::string& text, float volume = 1.0f,
+                 int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
 
   volatile bool audioPlaying = false;

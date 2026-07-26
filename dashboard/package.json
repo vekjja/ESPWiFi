@@ -14,6 +14,7 @@
     "uploadfs": "cd .. && pio run --target uploadfs",
     "uploadfs:monitor": "cd .. && pio run --target uploadfs && pio device monitor --filter esp32_exception_decoder",
     "update": "npm run uploadfs && npm run upload",
+    "updatefs": "npm run uploadfs && && pio device monitor --filter esp32_exception_decoder",
     "deploy": "npm run clean && npm run build && npm run update",
     "secure:status": "cd .. && espefuse --port /dev/cu.usbmodem101 summary || echo 'Secure boot enabled (cannot read eFuse)'",
     "secure:gen-key": "cd .. && espsecure generate-signing-key --version 2 --scheme ecdsa256 secure_boot/ecdsa_signing_key.pem",

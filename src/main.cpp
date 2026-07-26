@@ -6,7 +6,8 @@ extern "C" void app_main(void) {
   espwifi.start();
   espwifi.toggleWiFi();
 
-  espwifi.audioPttPin = 27;
+  espwifi.audioPttPin = 12;
+  espwifi.setGPIO(espwifi.audioPttPin, "low");
   const int rxPin = 34;
   bool receivedRX = false;
 
@@ -31,10 +32,7 @@ extern "C" void app_main(void) {
       if (response.empty()) {
         espwifi.log(ERROR, "🤖 OpenAI: skipping TTS (empty response)");
       } else {
-        espwifi.oai_StreamTTS(response, 1.0f);
-        while (espwifi.audioPlaying) {
-          espwifi.feedWatchDog();
-        }
+        espwifi.streamTTS(response, 1.0f);
       }
     }
     espwifi.feedWatchDog();

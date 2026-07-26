@@ -8,6 +8,7 @@
 
 #include "ESPWiFi.h"
 #include "HTTP.h"
+#include "esp_heap_caps.h"
 
 namespace {
 
@@ -15,6 +16,31 @@ constexpr const char* kChatCompletionsPath = "/v1/chat/completions";
 constexpr const char* kSpeechPath = "/v1/audio/speech";
 constexpr size_t kMinTtsBudgetBytes = 8192;
 constexpr size_t kMaxLfsUsagePercent = 99;
+constexpr size_t kMaxHeapUsagePercent = 99;
+
+// Streaming heap: readiness gate + completion char budget (no byte cap while
+// streaming).
+constexpr size_t kStreamDownloadStackBytes = 12288;
+constexpr size_t kStreamPlaybackStackBytes = 16384;
+constexpr size_t kStreamReadChunkBytes = 2048;
+constexpr size_t kStreamHttpReserveBytes = 32 * 1024;
+constexpr size_t kStreamMiscReserveBytes = 16 * 1024;
+constexpr size_t kStreamBufferMinBytes = 16 * 1024;
+
+constexpr size_t kNonBufferStreamingReserve =
+    kStreamDownloadStackBytes + kStreamPlaybackStackBytes +
+    kStreamReadChunkBytes + kStreamHttpReserveBytes + kStreamMiscReserveBytes;
+
+constexpr size_t kTtsPcmBytesPerSecond = 48000;
+constexpr size_t kUnlimitedResponseBytes = 32 * 1024;
+
+enum class OaiByteLimit { None, Heap, Lfs };
+
+OaiByteLimit parseByteLimit(const std::string& limit) {
+  if (limit == "heap") return OaiByteLimit::Heap;
+  if (limit == "lfs") return OaiByteLimit::Lfs;
+  return OaiByteLimit::None;
+}
 
 // ---- Config / budget --------------------------------------------------------
 
@@ -104,9 +130,8 @@ void appendVoiceBudgetHint(OpenAI::Config& cfg, size_t charLimit) {
     cfg.systemMessage += ' ';
   }
   cfg.systemMessage +=
-      "Voice transmission limit: maximum " +
-      std::to_string(charLimit) + " characters (~" +
-      std::to_string(approxSeconds) +
+      "Voice transmission limit: maximum " + std::to_string(charLimit) +
+      " characters (~" + std::to_string(approxSeconds) +
       " seconds spoken). Write one complete transmission that fits this limit, "
       "uses complete sentences only, and ends with Over. Never exceed the "
       "character limit.";
@@ -153,9 +178,41 @@ size_t maxResponseBytesForChars(size_t charLimit) {
 
 struct OpenAiRuntime {
   OpenAI client{OpenAI::Config{}};
+  OaiByteLimit byteLimit = OaiByteLimit::None;
   size_t freeBytes = 0;
+  size_t largestBlock = 0;
   OpenAI::Budget budget{};
 };
+
+size_t pickStreamBufferTier(size_t largestBlock) {
+  if (largestBlock >= 48 * 1024) return 48 * 1024;
+  if (largestBlock >= 32 * 1024) return 32 * 1024;
+  if (largestBlock >= 24 * 1024) return 24 * 1024;
+  if (largestBlock >= kStreamBufferMinBytes) return kStreamBufferMinBytes;
+  return 0;
+}
+
+bool heapReadyForStreaming(size_t freeHeap, size_t largestBlock) {
+  const size_t bufferTier = pickStreamBufferTier(largestBlock);
+  if (bufferTier == 0) {
+    return false;
+  }
+
+  const size_t footprint = kNonBufferStreamingReserve + bufferTier;
+  return freeHeap > footprint + kMinTtsBudgetBytes;
+}
+
+size_t computeHeapTtsByteBudget(size_t freeHeap, size_t largestBlock) {
+  const size_t bufferTier = pickStreamBufferTier(largestBlock);
+  if (bufferTier == 0 || !heapReadyForStreaming(freeHeap, largestBlock)) {
+    return 0;
+  }
+
+  // Completion voice hint only — streamed WAV bytes are not held entirely in
+  // RAM.
+  size_t byteBudget = bufferTier * 3;
+  return byteBudget * kMaxHeapUsagePercent / 100;
+}
 
 void logOpenAiError(ESPWiFi* espwifi, const char* action,
                     const OpenAIResult& result) {
@@ -173,38 +230,6 @@ OpenAIResult httpFailureResult(const Http::Response& response) {
   return OpenAIResult{false, "", std::move(error), response.status};
 }
 
-bool prepareOpenAiRuntime(ESPWiFi* espwifi, OpenAiRuntime& rt,
-                          bool requireApiKey, bool injectVoiceBudget) {
-  OpenAI::Config cfg =
-      openAiConfigFromEspWiFi(espwifi->config, espwifi->connectTimeout);
-  if (requireApiKey && cfg.apiKey.empty()) {
-    espwifi->log(ERROR, "🤖 OpenAI: apiKey not configured");
-    return false;
-  }
-
-  size_t totalBytes = 0;
-  size_t usedBytes = 0;
-  espwifi->getStorageInfo("lfs", totalBytes, usedBytes, rt.freeBytes);
-  cfg.ttsByteBudget = rt.freeBytes * kMaxLfsUsagePercent / 100;
-
-  if (rt.freeBytes == 0 || cfg.ttsByteBudget < kMinTtsBudgetBytes) {
-    espwifi->log(ERROR,
-                 "🤖 OpenAI: LittleFS tight (%u bytes free, byteBudget %u)",
-                 static_cast<unsigned>(rt.freeBytes),
-                 static_cast<unsigned>(cfg.ttsByteBudget));
-    return false;
-  }
-
-  if (injectVoiceBudget) {
-    appendVoiceBudgetHint(cfg,
-                          maxTtsCharsForBudget(cfg.ttsByteBudget, cfg.ttsSpeed));
-  }
-
-  rt.client = OpenAI(std::move(cfg));
-  rt.budget = rt.client.budget();
-  return true;
-}
-
 bool ensureWiFiForOpenAi(ESPWiFi* espwifi) {
   if (espwifi->isWiFiConnected()) {
     return true;
@@ -213,27 +238,74 @@ bool ensureWiFiForOpenAi(ESPWiFi* espwifi) {
   return false;
 }
 
-#ifdef ESPWiFi_DAC_ENABLED
-bool prepareTtsSession(ESPWiFi* espwifi, OpenAiRuntime& rt,
-                       const std::string& text, const char* label) {
-  if (!ensureWiFiForOpenAi(espwifi)) {
-    return false;
-  }
-  if (!prepareOpenAiRuntime(espwifi, rt, true, false)) {
-    return false;
-  }
-  if (text.empty()) {
-    espwifi->log(ERROR, "🤖 OpenAI %s: text is empty", label);
+bool prepareOpenAiClient(ESPWiFi* espwifi, OpenAiRuntime& rt,
+                         bool requireApiKey, OaiByteLimit byteLimit) {
+  OpenAI::Config cfg =
+      openAiConfigFromEspWiFi(espwifi->config, espwifi->connectTimeout);
+  if (requireApiKey && cfg.apiKey.empty()) {
+    espwifi->log(ERROR, "🤖 OpenAI: apiKey not configured");
     return false;
   }
 
-  espwifi->log(INFO, "🤖 OpenAI %s: byteBudget=%u lfsFree=%u (~%u chars)", label,
-              static_cast<unsigned>(rt.budget.bytes),
-              static_cast<unsigned>(rt.freeBytes),
-              static_cast<unsigned>(rt.budget.chars));
+  rt.byteLimit = byteLimit;
+  cfg.ttsByteBudget = 0;
+
+  if (byteLimit == OaiByteLimit::Heap) {
+    rt.freeBytes = esp_get_free_heap_size();
+    rt.largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    cfg.ttsByteBudget = computeHeapTtsByteBudget(rt.freeBytes, rt.largestBlock);
+    if (cfg.ttsByteBudget < kMinTtsBudgetBytes) {
+      espwifi->log(
+          ERROR, "🤖 OpenAI: heap tight (free=%u largest=%u, byteBudget %u)",
+          static_cast<unsigned>(rt.freeBytes),
+          static_cast<unsigned>(rt.largestBlock),
+          static_cast<unsigned>(cfg.ttsByteBudget));
+      return false;
+    }
+  } else if (byteLimit == OaiByteLimit::Lfs) {
+    size_t totalBytes = 0;
+    size_t usedBytes = 0;
+    espwifi->getStorageInfo("lfs", totalBytes, usedBytes, rt.freeBytes);
+    rt.largestBlock = 0;
+    cfg.ttsByteBudget = rt.freeBytes * kMaxLfsUsagePercent / 100;
+
+    if (rt.freeBytes == 0 || cfg.ttsByteBudget < kMinTtsBudgetBytes) {
+      espwifi->log(ERROR,
+                   "🤖 OpenAI: LittleFS tight (%u bytes free, byteBudget %u)",
+                   static_cast<unsigned>(rt.freeBytes),
+                   static_cast<unsigned>(cfg.ttsByteBudget));
+      return false;
+    }
+  }
+
+  if (byteLimit != OaiByteLimit::None) {
+    appendVoiceBudgetHint(
+        cfg, maxTtsCharsForBudget(cfg.ttsByteBudget, cfg.ttsSpeed));
+  }
+
+  rt.client = OpenAI(std::move(cfg));
+  rt.budget = rt.client.budget();
   return true;
 }
 
+bool prepareTtsClient(ESPWiFi* espwifi, OpenAI& client) {
+  if (!ensureWiFiForOpenAi(espwifi)) {
+    return false;
+  }
+
+  OpenAI::Config cfg =
+      openAiConfigFromEspWiFi(espwifi->config, espwifi->connectTimeout);
+  if (cfg.apiKey.empty()) {
+    espwifi->log(ERROR, "🤖 OpenAI: apiKey not configured");
+    return false;
+  }
+
+  cfg.ttsByteBudget = 0;
+  client = OpenAI(std::move(cfg));
+  return true;
+}
+
+#ifdef ESPWiFi_DAC_ENABLED
 bool isValidWavFile(const char* path) {
   FILE* f = fopen(path, "rb");
   if (f == nullptr) {
@@ -259,34 +331,34 @@ TtsDownloadResult streamTtsToCallback(
     OpenAI& client, const std::string& text, size_t byteLimit,
     const std::function<bool(const uint8_t* data, size_t len)>& writeFn) {
   TtsDownloadResult result;
-  result.apiResult = client.streamTextToSpeech(text, [&](const uint8_t* data,
-                                                         size_t len) {
-    if (data == nullptr || len == 0) {
-      return true;
-    }
+  result.apiResult =
+      client.streamTextToSpeech(text, [&](const uint8_t* data, size_t len) {
+        if (data == nullptr || len == 0) {
+          return true;
+        }
 
-    if (result.totalBytes >= byteLimit) {
-      result.capped = true;
-      return false;
-    }
+        if (result.totalBytes >= byteLimit) {
+          result.capped = true;
+          return false;
+        }
 
-    size_t toWrite = len;
-    if (result.totalBytes + len > byteLimit) {
-      toWrite = byteLimit - result.totalBytes;
-      result.capped = true;
-    }
+        size_t toWrite = len;
+        if (result.totalBytes + len > byteLimit) {
+          toWrite = byteLimit - result.totalBytes;
+          result.capped = true;
+        }
 
-    if (!writeFn(data, toWrite)) {
-      result.writeFailed = true;
-      return false;
-    }
+        if (!writeFn(data, toWrite)) {
+          result.writeFailed = true;
+          return false;
+        }
 
-    result.totalBytes += toWrite;
-    if (result.capped) {
-      return false;
-    }
-    return true;
-  });
+        result.totalBytes += toWrite;
+        if (result.capped) {
+          return false;
+        }
+        return true;
+      });
 
   return result;
 }
@@ -300,6 +372,10 @@ bool OpenAI::isConfigured() const { return !config_.apiKey.empty(); }
 
 OpenAI::Budget OpenAI::budget() const {
   Budget b;
+  if (config_.ttsByteBudget == 0) {
+    return b;
+  }
+
   b.bytes = config_.ttsByteBudget;
   b.chars = maxTtsChars();
   b.tokens = maxCompletionTokens();
@@ -359,7 +435,9 @@ std::string OpenAI::buildChatRequestBody(
     msg["content"] = message.content;
   }
 
-  reqDoc["max_tokens"] = maxCompletionTokens();
+  if (config_.ttsByteBudget != 0) {
+    reqDoc["max_tokens"] = maxCompletionTokens();
+  }
 
   std::string reqBody;
   serializeJson(reqDoc, reqBody);
@@ -367,17 +445,24 @@ std::string OpenAI::buildChatRequestBody(
 }
 
 size_t OpenAI::maxTtsChars() const {
+  if (config_.ttsByteBudget == 0) {
+    return static_cast<size_t>(-1);
+  }
   return maxTtsCharsForBudget(config_.ttsByteBudget, config_.ttsSpeed);
 }
 
 int OpenAI::maxCompletionTokens() const {
+  if (config_.ttsByteBudget == 0) {
+    return 0;
+  }
   return maxCompletionTokensForChars(maxTtsChars());
 }
 
 std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
   JsonDocument reqDoc;
   reqDoc["model"] = config_.ttsModel;
-  reqDoc["input"] = truncateForTts(text, maxTtsChars());
+  reqDoc["input"] =
+      config_.ttsByteBudget == 0 ? text : truncateForTts(text, maxTtsChars());
   reqDoc["voice"] = config_.ttsVoice;
   reqDoc["response_format"] = "wav";
 
@@ -394,7 +479,9 @@ std::string OpenAI::buildTtsRequestBody(const std::string& text) const {
 OpenAIResult OpenAI::postJson(const std::string& path,
                               const std::string& requestBody) const {
   const std::string url = Http::joinUrl(config_.baseUrl, path.c_str());
-  const size_t maxResponseBytes = maxResponseBytesForChars(maxTtsChars());
+  const size_t maxResponseBytes = config_.ttsByteBudget == 0
+                                      ? kUnlimitedResponseBytes
+                                      : maxResponseBytesForChars(maxTtsChars());
   Http::Response response = Http::makeRequest(openAiRequest(
       config_, url, requestBody, config_.timeoutMs, maxResponseBytes));
 
@@ -456,22 +543,36 @@ OpenAIResult OpenAI::parseChatCompletionResponse(
   return OpenAIResult{true, content, "", httpStatus};
 }
 
-std::string ESPWiFi::oai_completion(const std::string& prompt) {
+std::string ESPWiFi::oai_completion(const std::string& prompt,
+                                    const std::string& byteLimit) {
   if (!ensureWiFiForOpenAi(this)) {
     return "";
   }
 
+  const OaiByteLimit mode = parseByteLimit(byteLimit);
   OpenAiRuntime rt;
-  if (!prepareOpenAiRuntime(this, rt, false, true)) {
+  if (!prepareOpenAiClient(this, rt, false, mode)) {
     return "";
   }
 
-  log(INFO,
-      "🤖 OpenAI completion: auto maxTokens=%d byteBudget=%u lfsFree=%u "
-      "(~%u chars)",
-      rt.budget.tokens, static_cast<unsigned>(rt.budget.bytes),
-      static_cast<unsigned>(rt.freeBytes),
-      static_cast<unsigned>(rt.budget.chars));
+  if (mode == OaiByteLimit::None) {
+    log(INFO, "🤖 OpenAI completion: byteLimit=none");
+  } else if (mode == OaiByteLimit::Heap) {
+    log(INFO,
+        "🤖 OpenAI completion: byteLimit=heap maxTokens=%d byteBudget=%u "
+        "heapFree=%u largest=%u (~%u chars)",
+        rt.budget.tokens, static_cast<unsigned>(rt.budget.bytes),
+        static_cast<unsigned>(rt.freeBytes),
+        static_cast<unsigned>(rt.largestBlock),
+        static_cast<unsigned>(rt.budget.chars));
+  } else {
+    log(INFO,
+        "🤖 OpenAI completion: byteLimit=lfs maxTokens=%d byteBudget=%u "
+        "lfsFree=%u (~%u chars)",
+        rt.budget.tokens, static_cast<unsigned>(rt.budget.bytes),
+        static_cast<unsigned>(rt.freeBytes),
+        static_cast<unsigned>(rt.budget.chars));
+  }
 
   OpenAIResult result = rt.client.chatCompletion(prompt);
   if (!result.ok) {
@@ -479,7 +580,7 @@ std::string ESPWiFi::oai_completion(const std::string& prompt) {
     return "";
   }
 
-  if (result.content.size() > rt.budget.chars) {
+  if (mode != OaiByteLimit::None && result.content.size() > rt.budget.chars) {
     log(WARNING,
         "🤖 OpenAI completion: over budget (%u > %u chars), trimming to fit",
         static_cast<unsigned>(result.content.size()),
@@ -491,11 +592,31 @@ std::string ESPWiFi::oai_completion(const std::string& prompt) {
 }
 
 #ifdef ESPWiFi_DAC_ENABLED
-void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
-  OpenAiRuntime rt;
-  if (!prepareTtsSession(this, rt, text, "TTS")) {
+void ESPWiFi::TTS(const std::string& text, float volume, int outputPin) {
+  if (text.empty()) {
+    log(ERROR, "🤖 OpenAI TTS: text is empty");
     return;
   }
+
+  OpenAI client(OpenAI::Config{});
+  if (!prepareTtsClient(this, client)) {
+    return;
+  }
+
+  size_t totalBytes = 0;
+  size_t usedBytes = 0;
+  size_t lfsFree = 0;
+  getStorageInfo("lfs", totalBytes, usedBytes, lfsFree);
+  const size_t writeLimit = lfsFree * kMaxLfsUsagePercent / 100;
+  if (writeLimit < kMinTtsBudgetBytes) {
+    log(ERROR, "🤖 OpenAI TTS: LittleFS tight (%u bytes free)",
+        static_cast<unsigned>(lfsFree));
+    return;
+  }
+
+  log(INFO, "🤖 OpenAI TTS: %u chars, lfsFree=%u (file cap %u bytes)",
+      static_cast<unsigned>(text.size()), static_cast<unsigned>(lfsFree),
+      static_cast<unsigned>(writeLimit));
 
   const std::string tempPath = lfsMountPoint + "/tts.wav";
   (void)remove(tempPath.c_str());
@@ -506,9 +627,10 @@ void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
     return;
   }
 
-  const size_t writeLimit = rt.budget.bytes;
+  log(INFO, "🤖 OpenAI TTS: downloading to %s", tempPath.c_str());
+
   TtsDownloadResult download = streamTtsToCallback(
-      rt.client, text, writeLimit, [&](const uint8_t* data, size_t len) {
+      client, text, writeLimit, [&](const uint8_t* data, size_t len) {
         return fwrite(data, 1, len, out) == len;
       });
   fclose(out);
@@ -549,32 +671,54 @@ void ESPWiFi::oai_TTS(const std::string& text, float volume, int outputPin) {
 
   log(INFO, "🤖 OpenAI TTS: saved %u bytes to %s (%u%% of byteBudget %u)",
       static_cast<unsigned>(download.totalBytes), tempPath.c_str(),
-      static_cast<unsigned>(writeLimit > 0
-                                 ? download.totalBytes * 100 / writeLimit
-                                 : 0),
+      static_cast<unsigned>(
+          writeLimit > 0 ? download.totalBytes * 100 / writeLimit : 0),
       static_cast<unsigned>(writeLimit));
 
   playAudio("/tts.wav", volume, outputPin, true);
+  while (this->audioPlaying) {
+    this->feedWatchDog();
+  }
 }
 
-void ESPWiFi::oai_StreamTTS(const std::string& text, float volume,
-                            int outputPin) {
-  OpenAiRuntime rt;
-  if (!prepareTtsSession(this, rt, text, "Stream TTS")) {
+void ESPWiFi::streamTTS(const std::string& text, float volume, int outputPin) {
+  if (text.empty()) {
+    log(ERROR, "🤖 OpenAI Stream TTS: text is empty");
     return;
   }
 
-  OpenAI client = std::move(rt.client);
+  const size_t freeHeap = esp_get_free_heap_size();
+  const size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  if (!heapReadyForStreaming(freeHeap, largestBlock)) {
+    log(ERROR,
+        "🤖 OpenAI Stream TTS: heap tight (free=%u largest=%u, need %u "
+        "buffer)",
+        static_cast<unsigned>(freeHeap), static_cast<unsigned>(largestBlock),
+        static_cast<unsigned>(kStreamBufferMinBytes));
+    return;
+  }
+
+  OpenAI client(OpenAI::Config{});
+  if (!prepareTtsClient(this, client)) {
+    return;
+  }
+
+  log(INFO, "🤖 OpenAI Stream TTS: %u chars, heapFree=%u largest=%u",
+      static_cast<unsigned>(text.size()), static_cast<unsigned>(freeHeap),
+      static_cast<unsigned>(largestBlock));
 
   playStreamingWav(
       volume, outputPin,
-      [this, client = std::move(client), text](
-          std::function<bool(const uint8_t*, size_t)> writeFn) mutable {
+      [this, client = std::move(client),
+       text](std::function<bool(const uint8_t*, size_t)> writeFn) mutable {
         OpenAIResult result = client.streamTextToSpeech(text, writeFn);
         if (!result.ok) {
           logOpenAiError(this, "Stream TTS", result);
         }
         return result.ok;
       });
+  while (this->audioPlaying) {
+    this->feedWatchDog();
+  }
 }
 #endif

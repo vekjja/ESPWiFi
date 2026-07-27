@@ -501,11 +501,25 @@ class ESPWiFi {
                  int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
 
+  void startRxRecording(int inputPin, const std::string& path,
+                        int sampleRate = 22050);
+  void stopRxRecording();
+  bool isRxRecording() const {
+    return rxRecording || rxRecordTask != nullptr;
+  }
+  bool hasRxRecording() const { return rxRecordingPcmBytes > 0; }
+  void clearRxRecording() { rxRecordingPcmBytes = 0; }
+
   volatile bool audioPlaying = false;
   TaskHandle_t audioTask = nullptr;
   std::string audioFilePath;
   int audioOutputPin = -1;
   int audioPttPin = -1;
+
+  volatile bool rxRecording = false;
+  TaskHandle_t rxRecordTask = nullptr;
+  std::string rxRecordingFile;
+  size_t rxRecordingPcmBytes = 0;
 #endif
 
  private:

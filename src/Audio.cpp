@@ -1,9 +1,12 @@
 #ifdef ESPWiFi_DAC_ENABLED
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <memory>
 
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/CoreAudio/AudioAnalog/AnalogAudioStream.h"
@@ -11,8 +14,11 @@
 #include "AudioTools/CoreAudio/ResampleStream.h"
 #include "ESPWiFi.h"
 #include "driver/dac_continuous.h"
+#include "esp_adc/adc_continuous.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_heap_caps.h"
 #include "freertos/stream_buffer.h"
+#include "freertos/task.h"
 
 using namespace audio_tools;
 
@@ -101,6 +107,51 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
   }
 
   return fseek(f, 0, SEEK_SET) == 0 && gotFmt;
+}
+
+static void writeLe16(FILE* f, uint16_t value) {
+  const uint8_t bytes[2] = {static_cast<uint8_t>(value & 0xff),
+                            static_cast<uint8_t>((value >> 8) & 0xff)};
+  fwrite(bytes, 1, sizeof(bytes), f);
+}
+
+static void writeLe32(FILE* f, uint32_t value) {
+  const uint8_t bytes[4] = {
+      static_cast<uint8_t>(value & 0xff),
+      static_cast<uint8_t>((value >> 8) & 0xff),
+      static_cast<uint8_t>((value >> 16) & 0xff),
+      static_cast<uint8_t>((value >> 24) & 0xff)};
+  fwrite(bytes, 1, sizeof(bytes), f);
+}
+
+static bool writePcmWavFile(FILE* file, const uint8_t* pcm, size_t pcmBytes,
+                            int sampleRate) {
+  if (file == nullptr || pcm == nullptr || pcmBytes == 0) {
+    return false;
+  }
+
+  const uint16_t channels = 1;
+  const uint16_t bitsPerSample = 16;
+  const uint32_t byteRate =
+      sampleRate * channels * bitsPerSample / 8;
+  const uint16_t blockAlign = channels * bitsPerSample / 8;
+  const uint32_t dataSize = static_cast<uint32_t>(pcmBytes);
+  const uint32_t riffSize = 36 + dataSize;
+
+  fwrite("RIFF", 1, 4, file);
+  writeLe32(file, riffSize);
+  fwrite("WAVE", 1, 4, file);
+  fwrite("fmt ", 1, 4, file);
+  writeLe32(file, 16);
+  writeLe16(file, 1);
+  writeLe16(file, channels);
+  writeLe32(file, static_cast<uint32_t>(sampleRate));
+  writeLe32(file, byteRate);
+  writeLe16(file, blockAlign);
+  writeLe16(file, bitsPerSample);
+  fwrite("data", 1, 4, file);
+  writeLe32(file, dataSize);
+  return fwrite(pcm, 1, pcmBytes, file) == pcmBytes;
 }
 
 // ---- PCM pipeline (volume + radio band-pass) --------------------------------
@@ -256,6 +307,304 @@ static void finishPlaybackTask(ESPWiFi* self) {
   self->audioPlaying = false;
   self->audioTask = nullptr;
   vTaskDelete(nullptr);
+}
+
+// ---- ADC input / RX recording ------------------------------------------------
+
+static constexpr int kRxRecordSampleRate = 22050;
+static constexpr size_t kRxRecordMaxPcmBytes = 256 * 1024;
+static constexpr size_t kRxRecordMinFreeBytes = 48 * 1024;
+static constexpr size_t kRxMinRecordedPcmBytes = 4096;
+static constexpr int kRxIdleRawCenter = 2048;
+static constexpr int kRxIdleRawDelta = 180;
+static constexpr int kRxCarrierReleaseMs = 400;
+static constexpr int kRxMinRecordMs = 300;
+
+static size_t rxCaptureBufferBytes() {
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  if (largest <= kRxRecordMinFreeBytes + kRxMinRecordedPcmBytes) {
+    return 0;
+  }
+
+  size_t budget = largest - kRxRecordMinFreeBytes;
+  if (budget > kRxRecordMaxPcmBytes) {
+    budget = kRxRecordMaxPcmBytes;
+  }
+  return budget;
+}
+
+class FilePrint : public Print {
+ public:
+  explicit FilePrint(FILE* file) : file_(file) {}
+
+  size_t write(uint8_t b) override {
+    return file_ != nullptr && fwrite(&b, 1, 1, file_) == 1 ? 1 : 0;
+  }
+
+  size_t write(const uint8_t* data, size_t len) override {
+    if (file_ == nullptr || data == nullptr || len == 0) {
+      return 0;
+    }
+    return fwrite(data, 1, len, file_);
+  }
+
+ private:
+  FILE* file_ = nullptr;
+};
+
+static bool gpioToAdc1Channel(int gpio, adc_channel_t* channel) {
+  if (channel == nullptr) {
+    return false;
+  }
+
+  adc_unit_t unit;
+  if (adc_oneshot_io_to_channel(gpio, &unit, channel) != ESP_OK ||
+      unit != ADC_UNIT_1) {
+    return false;
+  }
+  return true;
+}
+
+class RxAdcContinuous {
+ public:
+  bool start(int gpio, int sampleRate) {
+    stop();
+    if (!gpioToAdc1Channel(gpio, &channel_) || sampleRate < 20000) {
+      return false;
+    }
+    sample_rate_ = sampleRate;
+
+    adc_continuous_handle_cfg_t handle_cfg = {
+        .max_store_buf_size = 4096,
+        .conv_frame_size = 1024,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+        .flags = {.flush_pool = true},
+#endif
+    };
+
+    if (adc_continuous_new_handle(&handle_cfg, &handle_) != ESP_OK) {
+      return false;
+    }
+
+    adc_digi_pattern_config_t pattern = {
+        .atten = ADC_ATTEN_DB_12,
+        .channel = static_cast<uint8_t>(channel_),
+        .unit = ADC_UNIT_1,
+        .bit_width = ADC_BITWIDTH_12,
+    };
+
+    adc_continuous_config_t cfg = {
+        .pattern_num = 1,
+        .adc_pattern = &pattern,
+        .sample_freq_hz = static_cast<uint32_t>(sample_rate_),
+        .conv_mode = ADC_CONV_SINGLE_UNIT_1,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
+    };
+
+    if (adc_continuous_config(handle_, &cfg) != ESP_OK ||
+        adc_continuous_start(handle_) != ESP_OK) {
+      stop();
+      return false;
+    }
+
+    return true;
+  }
+
+  void stop() {
+    if (handle_ != nullptr) {
+      (void)adc_continuous_stop(handle_);
+      (void)adc_continuous_deinit(handle_);
+      handle_ = nullptr;
+    }
+  }
+
+  size_t readPcm(int16_t* out, size_t maxSamples, uint32_t timeoutMs,
+                 uint32_t* avgRawOut = nullptr) {
+    if (handle_ == nullptr || out == nullptr || maxSamples == 0) {
+      return 0;
+    }
+
+    adc_digi_output_data_t raw[256];
+    uint32_t bytes_read = 0;
+    const esp_err_t err = adc_continuous_read(
+        handle_, reinterpret_cast<uint8_t*>(raw), sizeof(raw), &bytes_read,
+        timeoutMs);
+    if (err != ESP_OK || bytes_read == 0) {
+      return 0;
+    }
+
+    const int sample_count =
+        static_cast<int>(bytes_read / sizeof(adc_digi_output_data_t));
+    size_t written = 0;
+    uint32_t raw_sum = 0;
+    for (int i = 0; i < sample_count && written < maxSamples; ++i) {
+      const uint16_t raw12 = raw[i].type1.data;
+      raw_sum += raw12;
+      out[written++] = static_cast<int16_t>(
+          (static_cast<int32_t>(raw12) - 2048) << 4);
+    }
+    if (avgRawOut != nullptr && sample_count > 0) {
+      *avgRawOut = raw_sum / static_cast<uint32_t>(sample_count);
+    }
+    return written * sizeof(int16_t);
+  }
+
+ private:
+  adc_continuous_handle_t handle_ = nullptr;
+  adc_channel_t channel_ = ADC_CHANNEL_6;
+  int sample_rate_ = kRxRecordSampleRate;
+};
+
+struct RxRecordContext {
+  ESPWiFi* self = nullptr;
+  int inputPin = -1;
+  std::string path;
+  int sampleRate = kRxRecordSampleRate;
+};
+
+static void finishRxRecordTask(ESPWiFi* self) {
+  self->rxRecording = false;
+  self->rxRecordTask = nullptr;
+  vTaskDelete(nullptr);
+}
+
+static void rxRecordingTask(void* param) {
+  auto ctx = std::unique_ptr<RxRecordContext>(
+      static_cast<RxRecordContext*>(param));
+  ESPWiFi* self = ctx->self;
+
+  const size_t captureBytes = rxCaptureBufferBytes();
+  if (captureBytes < kRxMinRecordedPcmBytes) {
+    self->log(ERROR, "📡 Not enough heap for RX capture (largest=%u)",
+              static_cast<unsigned>(
+                  heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  uint8_t* pcmBuffer = static_cast<uint8_t*>(malloc(captureBytes));
+  if (pcmBuffer == nullptr) {
+    self->log(ERROR, "📡 Failed to allocate RX capture buffer");
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  self->log(INFO, "📡 RX capture buffer: %u bytes (~%.1fs)",
+            static_cast<unsigned>(captureBytes),
+            static_cast<double>(captureBytes) /
+                (2.0 * ctx->sampleRate));
+  self->log(INFO, "📡 RX recording started: %s (%d Hz, GPIO %d)",
+            ctx->path.c_str(), ctx->sampleRate, ctx->inputPin);
+
+  RxAdcContinuous adc;
+  if (!adc.start(ctx->inputPin, ctx->sampleRate)) {
+    self->log(ERROR, "📡 Failed to start ADC input on GPIO %d", ctx->inputPin);
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  int16_t pcmBuf[256];
+  size_t pcmBytesWritten = 0;
+  int carrierLowMs = 0;
+  const unsigned long recordStartMs = self->millis();
+
+  while (self->rxRecording) {
+    self->feedWatchDog();
+
+    uint32_t avgRaw = 0;
+    const size_t n = adc.readPcm(pcmBuf, 256, 50, &avgRaw);
+    if (n > 0) {
+      if (pcmBytesWritten + n > captureBytes) {
+        break;
+      }
+
+      memcpy(pcmBuffer + pcmBytesWritten, pcmBuf, n);
+      pcmBytesWritten += n;
+
+      const int chunkMs =
+          static_cast<int>((n / 2) * 1000 / ctx->sampleRate);
+      if (self->millis() - recordStartMs >
+              static_cast<unsigned long>(kRxMinRecordMs) &&
+          std::abs(static_cast<int>(avgRaw) - kRxIdleRawCenter) <
+              kRxIdleRawDelta) {
+        carrierLowMs += chunkMs > 0 ? chunkMs : 1;
+        if (carrierLowMs >= kRxCarrierReleaseMs) {
+          break;
+        }
+      } else {
+        carrierLowMs = 0;
+      }
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  }
+
+  adc.stop();
+
+  const unsigned long captureMs = self->millis() - recordStartMs;
+  const size_t numSamples = pcmBytesWritten / 2;
+  int sampleRate = ctx->sampleRate;
+  if (captureMs >= static_cast<unsigned long>(kRxMinRecordMs) &&
+      numSamples > 0) {
+    const int measured =
+        static_cast<int>((numSamples * 1000ULL) / captureMs);
+    if (measured >= 8000 && measured <= 48000) {
+      sampleRate = measured;
+      self->log(INFO, "📡 RX measured sample rate: %d Hz (configured %d)",
+                sampleRate, ctx->sampleRate);
+    }
+  }
+
+  if (pcmBytesWritten < kRxMinRecordedPcmBytes) {
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    self->log(WARNING, "📡 RX recording discarded (only %u PCM bytes)",
+              static_cast<unsigned>(pcmBytesWritten));
+    finishRxRecordTask(self);
+    return;
+  }
+
+  FILE* file = fopen(ctx->path.c_str(), "wb");
+  if (file == nullptr) {
+    self->log(ERROR, "📡 Failed to open RX recording: %s", ctx->path.c_str());
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  if (!writePcmWavFile(file, pcmBuffer, pcmBytesWritten, sampleRate)) {
+    self->log(ERROR, "📡 Failed to write RX recording: %s", ctx->path.c_str());
+    fclose(file);
+    remove(ctx->path.c_str());
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  fflush(file);
+  const long fileSize = ftell(file);
+  fclose(file);
+  free(pcmBuffer);
+
+  if (fileSize <= 44) {
+    remove(ctx->path.c_str());
+    self->rxRecordingPcmBytes = 0;
+    self->log(ERROR, "📡 RX recording file write failed: %s", ctx->path.c_str());
+    finishRxRecordTask(self);
+    return;
+  }
+
+  self->rxRecordingPcmBytes = pcmBytesWritten;
+  self->log(INFO, "📡 RX recording saved: %s (%ld bytes, %u PCM bytes)",
+            ctx->path.c_str(), fileSize,
+            static_cast<unsigned>(pcmBytesWritten));
+  finishRxRecordTask(self);
 }
 
 static void setPtt(ESPWiFi* self, int pttPin, bool keyed) {
@@ -825,6 +1174,64 @@ void ESPWiFi::stopAudioPlayback() {
   }
 
   log(INFO, "🔊 DAC playback stopped");
+}
+
+void ESPWiFi::startRxRecording(int inputPin, const std::string& path,
+                               int sampleRate) {
+  if (inputPin < 0) {
+    log(WARNING, "📡 Invalid RX audio input pin");
+    return;
+  }
+
+  if (sampleRate <= 0) {
+    sampleRate = kRxRecordSampleRate;
+  }
+
+  if (rxRecordTask != nullptr) {
+    return;
+  }
+
+  if (audioPlaying) {
+    log(WARNING, "📡 Cannot record RX audio while DAC playback is active");
+    return;
+  }
+
+  rxRecordingFile = resolveAudioFilePath(this, path);
+  if (rxRecordingFile.empty()) {
+    log(WARNING, "📡 No RX recording path provided");
+    return;
+  }
+
+  rxRecordingPcmBytes = 0;
+  rxRecording = true;
+
+  auto* ctx = new RxRecordContext{this, inputPin, rxRecordingFile, sampleRate};
+  if (xTaskCreatePinnedToCore(rxRecordingTask, "rx-record", 16384, ctx, 5,
+                              &rxRecordTask, 1) != pdPASS) {
+    log(ERROR, "📡 Failed to create RX recording task");
+    delete ctx;
+    rxRecording = false;
+    rxRecordTask = nullptr;
+  }
+}
+
+void ESPWiFi::stopRxRecording() {
+  if (!rxRecording && rxRecordTask == nullptr) {
+    return;
+  }
+
+  rxRecording = false;
+
+  for (int i = 0; i < 200 && rxRecordTask != nullptr; ++i) {
+    feedWatchDog(10);
+  }
+
+  if (rxRecordTask != nullptr) {
+    vTaskDelete(rxRecordTask);
+    rxRecordTask = nullptr;
+  }
+
+  log(INFO, "📡 RX recording stopped");
 }
 
 #endif  // ESPWiFi_DAC_ENABLED

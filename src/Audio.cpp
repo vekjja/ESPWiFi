@@ -312,6 +312,9 @@ static void finishPlaybackTask(ESPWiFi* self) {
 // ---- ADC input / RX recording ------------------------------------------------
 
 static constexpr int kRxRecordSampleRate = 22050;
+// ESP32 adc_continuous typically delivers ~80% of sample_freq_hz; fixed WAV rate
+// avoids post-capture math and keeps playback pitch correct on classic ESP32.
+static constexpr int kRxWavSampleRate = 17746;
 static constexpr size_t kRxRecordMaxPcmBytes = 256 * 1024;
 static constexpr size_t kRxRecordMinFreeBytes = 48 * 1024;
 static constexpr size_t kRxMinRecordedPcmBytes = 4096;
@@ -545,20 +548,6 @@ static void rxRecordingTask(void* param) {
 
   adc.stop();
 
-  const unsigned long captureMs = self->millis() - recordStartMs;
-  const size_t numSamples = pcmBytesWritten / 2;
-  int sampleRate = ctx->sampleRate;
-  if (captureMs >= static_cast<unsigned long>(kRxMinRecordMs) &&
-      numSamples > 0) {
-    const int measured =
-        static_cast<int>((numSamples * 1000ULL) / captureMs);
-    if (measured >= 8000 && measured <= 48000) {
-      sampleRate = measured;
-      self->log(INFO, "📡 RX measured sample rate: %d Hz (configured %d)",
-                sampleRate, ctx->sampleRate);
-    }
-  }
-
   if (pcmBytesWritten < kRxMinRecordedPcmBytes) {
     free(pcmBuffer);
     self->rxRecordingPcmBytes = 0;
@@ -577,7 +566,7 @@ static void rxRecordingTask(void* param) {
     return;
   }
 
-  if (!writePcmWavFile(file, pcmBuffer, pcmBytesWritten, sampleRate)) {
+  if (!writePcmWavFile(file, pcmBuffer, pcmBytesWritten, kRxWavSampleRate)) {
     self->log(ERROR, "📡 Failed to write RX recording: %s", ctx->path.c_str());
     fclose(file);
     remove(ctx->path.c_str());

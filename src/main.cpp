@@ -15,7 +15,7 @@ extern "C" void app_main(void) {
   static constexpr float kRxIdleVolts = 1.65f;
   static constexpr float kRxActiveDelta = 0.18f;
   static constexpr float kRxIdleDelta = 0.08f;
-  static constexpr int kRxActiveHoldMs = 250;
+  static constexpr int kRxActiveHoldMs = 80;
   static constexpr int kRxIdleHoldMs = 400;
 
   bool rxSession = false;
@@ -80,6 +80,16 @@ extern "C" void app_main(void) {
         }
       } else {
         espwifi.log(WARNING, "📡 RX ended with no captured audio");
+      }
+
+      std::string response = espwifi.oai_completion(
+          "Share callsign and that your on a mobile rig and listening for "
+          "traffic. Make it short and concise. add a radio prep fact.");
+      espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
+      if (response.empty()) {
+        espwifi.log(ERROR, "🤖 OpenAI: skipping TTS (empty response)");
+      } else {
+        espwifi.streamTTS(response, 1.0f);
       }
 
       espwifi.clearRxRecording();

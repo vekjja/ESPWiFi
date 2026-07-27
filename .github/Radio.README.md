@@ -144,7 +144,7 @@ Output is written to [`.github/docs/radio/`](docs/radio/).
 |---------|--------------|-----|
 | Idle RX reads ~0.14 V or pegged at 3.3 V | Missing bias divider | Add 47k/47k divider to ~1.65 V |
 | Idle RX ~1.65 V but false triggers | Noise / EMI | Raise `kRxActiveDelta` or `kRxActiveHoldMs` in `main.cpp` |
-| Playback sounds high/low pitch | ADC rate ≠ configured rate | Check log for `RX measured sample rate`; firmware calibrates WAV header on save |
+| Playback sounds high/low pitch | WAV sample rate mismatch | `kRxWavSampleRate` in `Audio.cpp` (default 17746 Hz for classic ESP32 ADC) |
 | TX audio distorted | Level too high for mic input | Add/increase series resistor before cap |
 | No TX | PTT not shorting sleeve to GND | Verify transistor wiring and GPIO 12 |
 

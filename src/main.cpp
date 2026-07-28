@@ -72,15 +72,15 @@ extern "C" void app_main(void) {
         espwifi.feedWatchDog();
       }
 
-      if (espwifi.hasRxRecording()) {
-        espwifi.log(INFO, "📢 Responding to RX (captured %s)", kRxWav);
-        espwifi.playAudio(kRxWav, 1.0f);
-        while (espwifi.audioPlaying) {
-          espwifi.feedWatchDog();
-        }
-      } else {
-        espwifi.log(WARNING, "📡 RX ended with no captured audio");
-      }
+      // if (espwifi.hasRxRecording()) {
+      //   espwifi.log(INFO, "📢 Responding to RX (captured %s)", kRxWav);
+      //   espwifi.playAudio(kRxWav, 1.0f);
+      //   while (espwifi.audioPlaying) {
+      //     espwifi.feedWatchDog();
+      //   }
+      // } else {
+      //   espwifi.log(WARNING, "📡 RX ended with no captured audio");
+      // }
 
       std::string response = espwifi.oai_completion(
           "Share callsign and that your on a mobile rig and listening for "
@@ -90,6 +90,7 @@ extern "C" void app_main(void) {
         espwifi.log(ERROR, "🤖 OpenAI: skipping TTS (empty response)");
       } else {
         espwifi.streamTTS(response, 1.0f);
+        // espwifi.TTS(response, 1.0f);
       }
 
       espwifi.clearRxRecording();

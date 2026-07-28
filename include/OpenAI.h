@@ -47,7 +47,8 @@ class OpenAI {
   OpenAIResult chatCompletion(const std::string& prompt) const;
   OpenAIResult streamTextToSpeech(
       const std::string& text,
-      const std::function<bool(const uint8_t* data, size_t len)>& onData) const;
+      const std::function<bool(const uint8_t* data, size_t len)>& onData,
+      const char* responseFormat = "wav") const;
 
  private:
   Config config_;
@@ -56,7 +57,8 @@ class OpenAI {
       const std::vector<OpenAIChatMessage>& messages) const;
   std::string buildChatRequestBody(
       const std::vector<OpenAIChatMessage>& messages) const;
-  std::string buildTtsRequestBody(const std::string& text) const;
+  std::string buildTtsRequestBody(const std::string& text,
+                                  const char* responseFormat) const;
   OpenAIResult postJson(const std::string& path,
                         const std::string& requestBody) const;
   OpenAIResult postStream(const std::string& path,

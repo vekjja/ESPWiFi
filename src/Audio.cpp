@@ -13,6 +13,7 @@
 #include "AudioTools/CoreAudio/AudioFilter/Filter.h"
 #include "AudioTools/CoreAudio/ResampleStream.h"
 #include "ESPWiFi.h"
+#include "WavFile.h"
 #include "driver/dac_continuous.h"
 #include "esp_adc/adc_continuous.h"
 #include "esp_adc/adc_oneshot.h"
@@ -107,51 +108,6 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
   }
 
   return fseek(f, 0, SEEK_SET) == 0 && gotFmt;
-}
-
-static void writeLe16(FILE* f, uint16_t value) {
-  const uint8_t bytes[2] = {static_cast<uint8_t>(value & 0xff),
-                            static_cast<uint8_t>((value >> 8) & 0xff)};
-  fwrite(bytes, 1, sizeof(bytes), f);
-}
-
-static void writeLe32(FILE* f, uint32_t value) {
-  const uint8_t bytes[4] = {
-      static_cast<uint8_t>(value & 0xff),
-      static_cast<uint8_t>((value >> 8) & 0xff),
-      static_cast<uint8_t>((value >> 16) & 0xff),
-      static_cast<uint8_t>((value >> 24) & 0xff)};
-  fwrite(bytes, 1, sizeof(bytes), f);
-}
-
-static bool writePcmWavFile(FILE* file, const uint8_t* pcm, size_t pcmBytes,
-                            int sampleRate) {
-  if (file == nullptr || pcm == nullptr || pcmBytes == 0) {
-    return false;
-  }
-
-  const uint16_t channels = 1;
-  const uint16_t bitsPerSample = 16;
-  const uint32_t byteRate =
-      sampleRate * channels * bitsPerSample / 8;
-  const uint16_t blockAlign = channels * bitsPerSample / 8;
-  const uint32_t dataSize = static_cast<uint32_t>(pcmBytes);
-  const uint32_t riffSize = 36 + dataSize;
-
-  fwrite("RIFF", 1, 4, file);
-  writeLe32(file, riffSize);
-  fwrite("WAVE", 1, 4, file);
-  fwrite("fmt ", 1, 4, file);
-  writeLe32(file, 16);
-  writeLe16(file, 1);
-  writeLe16(file, channels);
-  writeLe32(file, static_cast<uint32_t>(sampleRate));
-  writeLe32(file, byteRate);
-  writeLe16(file, blockAlign);
-  writeLe16(file, bitsPerSample);
-  fwrite("data", 1, 4, file);
-  writeLe32(file, dataSize);
-  return fwrite(pcm, 1, pcmBytes, file) == pcmBytes;
 }
 
 // ---- PCM pipeline (volume + radio band-pass) --------------------------------
@@ -566,7 +522,7 @@ static void rxRecordingTask(void* param) {
     return;
   }
 
-  if (!writePcmWavFile(file, pcmBuffer, pcmBytesWritten, kRxWavSampleRate)) {
+  if (!wavWritePcm16Mono(file, pcmBuffer, pcmBytesWritten, kRxWavSampleRate)) {
     self->log(ERROR, "📡 Failed to write RX recording: %s", ctx->path.c_str());
     fclose(file);
     remove(ctx->path.c_str());

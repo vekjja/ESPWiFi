@@ -113,6 +113,42 @@ Firmware sets `audioPttPin = 12` and keys PTT automatically during DAC playback.
 
 ---
 
+## microSD card (optional) — SPI / VSPI
+
+The **esp32u** build uses `ESPWiFi_SDCARD_MODEL_ESP32U` (see `include/SDCardPins.h` and `platformio.ini`). Wire a **SPI microSD breakout** to the ESP32 **VSPI** pins so they do not overlap the radio signals above:
+
+| SD module | ESP32 pin | VSPI signal |
+|-----------|-----------|-------------|
+| **CS** | **GPIO 5** | VSPI CS0 |
+| **SCK** | **GPIO 18** | VSPI CLK |
+| **MOSI** (DI) | **GPIO 23** | VSPI MOSI |
+| **MISO** (DO) | **GPIO 19** | VSPI MISO |
+| **VCC** | **3.3 V** | — |
+| **GND** | **GND** | — |
+
+### Schematic
+
+```
+SD module          ESP32-U
+─────────          ───────
+  VCC  ──────────  3.3 V
+  GND  ──────────  GND  (common with radio ground)
+  CS   ──────────  GPIO 5
+  SCK  ──────────  GPIO 18
+  MOSI ──────────  GPIO 23
+  MISO ──────────  GPIO 19
+```
+
+### Notes
+
+- Use **3.3 V** on VCC when possible. Many breakouts accept 5 V via an onboard regulator, but ESP32 GPIO is **3.3 V only**.
+- Format the card **FAT32** (≤32 GB is simplest). Firmware mounts it at **`/sd`**; internal flash LittleFS stays on `/`.
+- **CD** (card detect), if present on the module, can be left unconnected.
+- Do **not** use GPIO **6–11** (internal flash) or the radio pins **12**, **25**, or **34** for SPI.
+- Keep jumper wires short; SPI is sensitive to long runs.
+
+---
+
 ## Parts list
 
 | Qty | Part | Purpose |
@@ -122,6 +158,7 @@ Firmware sets `audioPttPin = 12` and keys PTT automatically during DAC playback.
 | 1 | 1 kΩ resistor | PTT base resistor |
 | 1 | 2N2222 or 2N7000 | PTT switch |
 | 1 | 2.2k–4.7k resistor (optional) | TX level trim |
+| 1 | SPI microSD breakout (optional) | WAV/log storage on `/sd` |
 
 ---
 
@@ -147,6 +184,8 @@ Output is written to [`.github/docs/radio/`](docs/radio/).
 | Playback sounds high/low pitch | WAV sample rate mismatch | `kRxWavSampleRate` in `Audio.cpp` (default 17746 Hz for classic ESP32 ADC) |
 | TX audio distorted | Level too high for mic input | Add/increase series resistor before cap |
 | No TX | PTT not shorting sleeve to GND | Verify transistor wiring and GPIO 12 |
+| SD not detected / invalid pin config | Wrong build env or wiring | Flash `esp32u` with `ESPWiFi_SDCARD_MODEL_ESP32U`; check VSPI pins 5/18/19/23 |
+| SD mount fails | Card format or power | Use FAT32; verify 3.3 V and common GND |
 
 ---
 

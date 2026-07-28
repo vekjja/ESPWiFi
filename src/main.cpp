@@ -67,10 +67,10 @@ extern "C" void app_main(void) {
 
     if (rxSession && rxStopped) {
       espwifi.log(INFO, "📡 RX stopped (idle %d ms)", kRxIdleHoldMs);
-      // espwifi.playAudio("chime.wav", 1.0f);
-      // while (espwifi.audioPlaying) {
-      //   espwifi.feedWatchDog();
-      // }
+      espwifi.playAudio("chime.wav", 1.0f);
+      while (espwifi.audioPlaying) {
+        espwifi.feedWatchDog();
+      }
 
       if (espwifi.hasRxRecording()) {
         espwifi.log(INFO, "📢 Responding to RX (captured %s)", kRxWav);

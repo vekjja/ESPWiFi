@@ -158,6 +158,19 @@ void ESPWiFi::initLittleFS() {
 
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
     defined(CONFIG_IDF_TARGET_ESP32C3)
+// Helper: Human-readable SPI host label (SPI3_HOST enum value is 2 on ESP32 = VSPI).
+static const char *spiHostLabel(int hostId) {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+  if (hostId == SPI3_HOST) {
+    return "VSPI";
+  }
+  if (hostId == SPI2_HOST) {
+    return "HSPI";
+  }
+#endif
+  return "SPI";
+}
+
 // Helper: Get default SPI pin configuration from SDCardPins.h
 static void getSpiPinConfig(int &mosi, int &miso, int &sclk, int &cs,
                             int &hostId) {
@@ -166,10 +179,10 @@ static void getSpiPinConfig(int &mosi, int &miso, int &sclk, int &cs,
   miso = SDCARD_SPI_MISO_GPIO_NUM;
   sclk = SDCARD_SPI_SCK_GPIO_NUM;
   cs = SDCARD_SPI_CS_GPIO_NUM;
-  // CRITICAL: Force SPI3_HOST (VSPI) for ESP32-2432S028R
-  // TFT uses SPI2_HOST (HSPI), SD MUST use SPI3_HOST (VSPI)
-#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
-  hostId = SPI3_HOST; // VSPI = 2, explicitly set
+  // Classic ESP32 VSPI boards must use SPI3_HOST for GPIO 18/19/23/5.
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R) || \
+    defined(ESPWiFi_SDCARD_MODEL_ESP32U)
+  hostId = SPI3_HOST;
 #else
   hostId = SDCARD_SPI_HOST; // Use default from SDCardPins.h
 #endif
@@ -287,15 +300,22 @@ void ESPWiFi::initSDCard() {
     // Configure SD card device - SDSPI driver will handle CS pin configuration
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
     host.slot = spiHost;
-    // Set max frequency to 20MHz (SDMMC_FREQ_DEFAULT) for ESP32-2432S028R
-    host.max_freq_khz = SDMMC_FREQ_DEFAULT; // 20MHz - standard default
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32U)
+    // Breadboard modules: start at 400 kHz, then driver negotiates higher.
+    host.max_freq_khz = SDMMC_FREQ_PROBING;
+#else
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT; // 20 MHz
+#endif
 
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = (gpio_num_t)cs;
     slot_config.host_id = spiHost;
 
     // Mount SD card (this can use significant stack)
-    log(INFO, "💾 Attempting SD card mount on SPI%d (CS=%d)...", spiHost, cs);
+    log(INFO,
+        "💾 Attempting SD card mount on %s (host=%d, CS=%d, SCK=%d, MOSI=%d, "
+        "MISO=%d)...",
+        spiHostLabel(spiHost), spiHost, cs, sclk, mosi, miso);
     ret = esp_vfs_fat_sdspi_mount(sdMountPoint.c_str(), &host, &slot_config,
                                   &mount_config, &card);
     if (ret != ESP_OK) {
@@ -304,13 +324,16 @@ void ESPWiFi::initSDCard() {
       sdSpiBusOwned = false;
       sdSpiHost = -1;
       sdInitLastErr = ret;
-      // SPI failed, will try SDMMC below
-      log(WARNING, "💾 SD(SPI) Mount Failed: %s", esp_err_to_name(ret));
+      // SPI failed, will try SDMMC below (unless SPI-only board)
+      log(WARNING, "💾 SD(SPI) Mount Failed: %s (check wiring, 3.3 V, FAT32 card)",
+          esp_err_to_name(ret));
     } else {
       // Success
       sdCard = (void *)card;
       log(INFO, "💾 SD(SPI) Mounted: %s", sdMountPoint.c_str());
+      config["sd"]["installed"] = true;
       config["sd"]["initialized"] = true;
+      requestConfigSave();
     }
     feedWatchDog(1); // Yield after SPI mount attempt
   }
@@ -318,10 +341,9 @@ void ESPWiFi::initSDCard() {
 // Try SDMMC (native interface) if SPI failed
 // Note: Only ESP32 and ESP32-S3 support SDMMC, ESP32-C3 does not
 #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
-  // Some boards (e.g., ESP32-2432S028R smart displays) wire microSD via SPI
-  // only. Attempting SDMMC on those boards just creates long timeouts and noisy
-  // error logs.
-#if !defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R)
+  // Some boards wire microSD via SPI only. Attempting SDMMC on those boards
+  // just creates long timeouts and noisy error logs.
+#if !ESPWiFi_SDCARD_SPI_ONLY
   if (ret != ESP_OK) {
     feedWatchDog(1); // Yield before SDMMC attempt
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -333,13 +355,15 @@ void ESPWiFi::initSDCard() {
     if (ret == ESP_OK) {
       sdCard = (void *)card;
       log(INFO, "💾 SD(SDMMC) Mounted: %s", sdMountPoint.c_str());
+      config["sd"]["installed"] = true;
       config["sd"]["initialized"] = true;
+      requestConfigSave();
     } else {
       // Both SPI and SDMMC failed
       log(WARNING, "💾 SD(SDMMC) Mount Failed: %s", esp_err_to_name(ret));
     }
   }
-#endif // !ESPWiFi_SDCARD_MODEL_ESP32_2432S028R
+#endif // !ESPWiFi_SDCARD_SPI_ONLY
 #endif
 
   // Handle final error state
@@ -436,6 +460,9 @@ bool ESPWiFi::checkSDCard() {
       initSDCard();
       if (sdCard != nullptr) {
         log(INFO, "🔄 💾 SD Card Remounted: %s", sdMountPoint.c_str());
+        config["sd"]["installed"] = true;
+        config["sd"]["initialized"] = true;
+        requestConfigSave();
       }
     }
   }

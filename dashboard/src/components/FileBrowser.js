@@ -49,10 +49,14 @@ const formatBytes = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
-const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
+const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) => {
   const theme = useTheme();
   const DeleteIcon = getDeleteIcon(theme);
   const EditIcon = getEditIcon(theme);
+
+  const sdAvailable =
+    config?.sd?.initialized === true ||
+    (typeof deviceInfo?.sd_total === "number" && deviceInfo.sd_total > 0);
 
   // Check if we should use WebSocket (when controlWs is available and open)
   const useWebSocket = controlWs && controlWs.readyState === WebSocket.OPEN;
@@ -757,11 +761,11 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
   // Initialize - only load on mount if device is online
   useEffect(() => {
     if (config && deviceOnline) {
-      const initialFs = config?.sd?.initialized === true ? "sd" : "lfs";
+      const initialFs = sdAvailable ? "sd" : "lfs";
       fetchFiles("/", initialFs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config, deviceOnline]);
+  }, [config, deviceInfo, deviceOnline, sdAvailable]);
 
   // Show offline message but don't block the component
   const showOfflineWarning = !deviceOnline && files.length === 0;
@@ -811,7 +815,7 @@ const FileBrowserComponent = ({ config, deviceOnline, controlWs }) => {
               },
             }}
           >
-            {config?.sd?.initialized === true && (
+            {sdAvailable && (
               <ToggleButton value="sd">
                 <StorageIcon sx={{ mr: 0.5 }} />
                 <Box sx={{ display: { xs: "none", sm: "inline" } }}>

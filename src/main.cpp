@@ -1,30 +1,104 @@
+#include <cmath>
+
 #include "ESPWiFi.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "nvs_flash.h"
 
 ESPWiFi espwifi;
 
 extern "C" void app_main(void) {
-  espwifi.audioPttPin = 27;
-
   espwifi.start();
   espwifi.toggleWiFi();
 
+  espwifi.audioPttPin = 12;
+
+  const int rxPin = 34;
+  static constexpr const char* kRxWav = "rx.wav";
+  static constexpr float kRxIdleVolts = 1.65f;
+  static constexpr float kRxActiveDelta = 0.18f;
+  static constexpr float kRxIdleDelta = 0.08f;
+  static constexpr int kRxActiveHoldMs = 80;
+  static constexpr int kRxIdleHoldMs = 400;
+
+  bool rxSession = false;
+  unsigned long activeSinceMs = 0;
+  unsigned long idleSinceMs = 0;
+
   for (;;) {
-    espwifi.feedWatchDog();
     espwifi.handleConfigUpdate();
 
-    std::string response = espwifi.oai_completion(
-        "Simple and polite Ham Radio Greeting, with a HAM Radio prep fact");
-
-    espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
-    espwifi.oai_TTS(response, ESPWiFi::ESPWiFi_DAC_PIN_1, 0.9f);
-    while (espwifi.audioPlaying) {
+    if (espwifi.isRxRecording()) {
       espwifi.feedWatchDog();
+      continue;
     }
 
-    espwifi.feedWatchDog(30000);
+    const float rxLevel = espwifi.readAnalog(rxPin);
+    const float rxDeviation = std::fabs(rxLevel - kRxIdleVolts);
+    const bool signalActive = rxDeviation > kRxActiveDelta;
+    const bool signalIdle = rxDeviation < kRxIdleDelta;
+    const unsigned long now = espwifi.millis();
+
+    if (signalActive) {
+      idleSinceMs = 0;
+      if (activeSinceMs == 0) {
+        activeSinceMs = now;
+      }
+    } else if (signalIdle) {
+      activeSinceMs = 0;
+      if (idleSinceMs == 0) {
+        idleSinceMs = now;
+      }
+    }
+
+    const bool rxActive =
+        signalActive && activeSinceMs != 0 &&
+        (now - activeSinceMs) >= static_cast<unsigned long>(kRxActiveHoldMs);
+
+    const bool rxStopped =
+        signalIdle && idleSinceMs != 0 &&
+        (now - idleSinceMs) >= static_cast<unsigned long>(kRxIdleHoldMs);
+
+    if (!rxSession && rxActive) {
+      rxSession = true;
+      espwifi.log(INFO, "📡 RX detected: %.3f V (%.0f mV from idle)", rxLevel,
+                  rxDeviation * 1000.0f);
+      espwifi.startRxRecording(rxPin, kRxWav);
+      espwifi.feedWatchDog();
+      continue;
+    }
+
+    if (rxSession && rxStopped) {
+      espwifi.log(INFO, "📡 RX stopped (idle %d ms)", kRxIdleHoldMs);
+      espwifi.playAudio("chime.wav", 1.0f);
+      while (espwifi.audioPlaying) {
+        espwifi.feedWatchDog();
+      }
+
+      // if (espwifi.hasRxRecording()) {
+      //   espwifi.log(INFO, "📢 Responding to RX (captured %s)", kRxWav);
+      //   espwifi.playAudio(kRxWav, 1.0f);
+      //   while (espwifi.audioPlaying) {
+      //     espwifi.feedWatchDog();
+      //   }
+      // } else {
+      //   espwifi.log(WARNING, "📡 RX ended with no captured audio");
+      // }
+
+      std::string response = espwifi.oai_completion(
+          "Share callsign and that your on a mobile rig and listening for "
+          "traffic. Make it short and concise. add a radio prep fact.");
+      espwifi.log(INFO, "🤖 OpenAI response: %s", response.c_str());
+      if (response.empty()) {
+        espwifi.log(ERROR, "🤖 OpenAI: skipping TTS (empty response)");
+      } else {
+        espwifi.streamTTS(response, 1.0f);
+        // espwifi.TTS(response, 1.0f);
+      }
+
+      espwifi.clearRxRecording();
+      rxSession = false;
+      activeSinceMs = 0;
+      idleSinceMs = 0;
+    }
+
+    espwifi.feedWatchDog();
   }
 }

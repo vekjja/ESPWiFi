@@ -6,6 +6,7 @@ import FileBrowserComponent from "./FileBrowser";
 
 export default function FileBrowserButton({
   config,
+  deviceInfo,
   deviceOnline,
   controlWs,
   onFileBrowser,
@@ -84,6 +85,7 @@ export default function FileBrowserButton({
         >
           <FileBrowserComponent
             config={config}
+            deviceInfo={deviceInfo}
             deviceOnline={deviceOnline}
             controlWs={controlWs}
           />

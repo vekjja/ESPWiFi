@@ -5,9 +5,10 @@
 
 void ESPWiFi::start() {
   config = defaultConfig();
-  initFilesystem();
-  startLogging();
+  initLittleFS();
   readConfig();
+  initSDCard();
+  startLogging();
 #if ESPWiFi_HAS_TFT
   initTFT();
 #endif
@@ -22,8 +23,8 @@ void ESPWiFi::runSystem() {
     handleConfigUpdate();
     checkSDCard();
     streamCamera();
-    renderTFT();     // Run click handlers and LVGL draw
-    feedWatchDog();  // Feed after render to keep watchdog happy
+    renderTFT();
+    feedWatchDog();
   }
 }
 

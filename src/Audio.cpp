@@ -1,28 +1,57 @@
 #ifdef ESPWiFi_DAC_ENABLED
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <memory>
 
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/CoreAudio/AudioAnalog/AnalogAudioStream.h"
+#include "AudioTools/CoreAudio/AudioFilter/Filter.h"
 #include "AudioTools/CoreAudio/ResampleStream.h"
 #include "ESPWiFi.h"
+#include "WavFile.h"
 #include "driver/dac_continuous.h"
+#include "esp_adc/adc_continuous.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_heap_caps.h"
 #include "freertos/stream_buffer.h"
+#include "freertos/task.h"
 
 using namespace audio_tools;
 
 namespace {
 
+// OpenAI TTS returns 24 kHz mono PCM16 WAV.
+static constexpr int kOpenAiTtsSampleRate = 24000;
+
+// Voice-band shaping for DAC -> radio mic input.
+static constexpr float kRadioMicHpfHz = 300.0f;
+static constexpr float kRadioMicLpfHz = 3000.0f;
+
+static constexpr size_t kFileReadChunkBytes = 512;
+static constexpr size_t kStreamReadChunkBytes = 2048;
+static constexpr size_t kStreamPrebufferBytes = 16 * 1024;
+static constexpr size_t kMinPrebufferBytes = 4096;
+
+static constexpr size_t kStreamBufferPreferredBytes = 48 * 1024;
+static constexpr size_t kStreamBufferMinBytes = 16 * 1024;
+static constexpr size_t kStreamBufferMaxBytes = 64 * 1024;
+static constexpr size_t kStreamSessionReserveBytes = 80 * 1024;
+
+// ---- WAV helpers ------------------------------------------------------------
+
 static uint16_t readLe16(const uint8_t* ptr) {
-  return (uint16_t)ptr[0] | ((uint16_t)ptr[1] << 8);
+  return static_cast<uint16_t>(ptr[0] | (static_cast<uint16_t>(ptr[1]) << 8));
 }
 
 static uint32_t readLe32(const uint8_t* ptr) {
-  return (uint32_t)ptr[0] | ((uint32_t)ptr[1] << 8) | ((uint32_t)ptr[2] << 16) |
-         ((uint32_t)ptr[3] << 24);
+  return static_cast<uint32_t>(ptr[0]) | (static_cast<uint32_t>(ptr[1]) << 8) |
+         (static_cast<uint32_t>(ptr[2]) << 16) |
+         (static_cast<uint32_t>(ptr[3]) << 24);
 }
 
 static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
@@ -42,47 +71,55 @@ static bool probeWavFormat(FILE* f, WAVAudioInfo& info) {
       break;
     }
 
-    uint32_t chunkSize = readLe32(chunkHeader + 4);
-    bool isFmt = memcmp(chunkHeader, "fmt ", 4) == 0;
-    bool isData = memcmp(chunkHeader, "data", 4) == 0;
+    const uint32_t chunkSize = readLe32(chunkHeader + 4);
+    const bool isFmt = memcmp(chunkHeader, "fmt ", 4) == 0;
+    const bool isData = memcmp(chunkHeader, "data", 4) == 0;
 
     if (isFmt) {
       if (chunkSize < 16) return false;
       uint8_t fmt[16];
       if (fread(fmt, 1, sizeof(fmt), f) != sizeof(fmt)) return false;
 
-      info.format = (AudioFormat)readLe16(fmt + 0);
-      info.channels = (int)readLe16(fmt + 2);
-      info.sample_rate = (int)readLe32(fmt + 4);
-      info.byte_rate = (int)readLe32(fmt + 8);
-      info.block_align = (int)readLe16(fmt + 12);
-      info.bits_per_sample = (int)readLe16(fmt + 14);
+      info.format = static_cast<AudioFormat>(readLe16(fmt + 0));
+      info.channels = static_cast<int>(readLe16(fmt + 2));
+      info.sample_rate = static_cast<int>(readLe32(fmt + 4));
+      info.byte_rate = static_cast<int>(readLe32(fmt + 8));
+      info.block_align = static_cast<int>(readLe16(fmt + 12));
+      info.bits_per_sample = static_cast<int>(readLe16(fmt + 14));
       info.is_valid = true;
 
-      long remaining = (long)chunkSize - (long)sizeof(fmt);
+      const long remaining =
+          static_cast<long>(chunkSize) - static_cast<long>(sizeof(fmt));
       if (remaining > 0 && fseek(f, remaining, SEEK_CUR) != 0) return false;
       gotFmt = true;
     } else {
       if (isData && gotFmt) {
-        if (fseek(f, 0, SEEK_SET) != 0) return false;
-        return true;
+        return fseek(f, 0, SEEK_SET) == 0;
       }
-      if (chunkSize > 0 && fseek(f, (long)chunkSize, SEEK_CUR) != 0) {
+      if (chunkSize > 0 &&
+          fseek(f, static_cast<long>(chunkSize), SEEK_CUR) != 0) {
         return false;
       }
     }
 
-    if ((chunkSize & 1U) != 0U) {
-      if (fseek(f, 1, SEEK_CUR) != 0) return false;
+    if ((chunkSize & 1U) != 0U && fseek(f, 1, SEEK_CUR) != 0) {
+      return false;
     }
   }
 
-  if (fseek(f, 0, SEEK_SET) != 0) return false;
-  return gotFmt;
+  return fseek(f, 0, SEEK_SET) == 0 && gotFmt;
 }
 
-class VolumePrint : public Print {
+// ---- PCM pipeline (volume + radio band-pass) --------------------------------
+
+class RadioMicPrint : public Print {
  public:
+  void begin(int sampleRate) {
+    sample_rate_ = sampleRate > 0 ? sampleRate : kOpenAiTtsSampleRate;
+    hpf_.begin(kRadioMicHpfHz, static_cast<float>(sample_rate_));
+    lpf_.begin(kRadioMicLpfHz, static_cast<float>(sample_rate_));
+  }
+
   void setVolume(float volume) { volume_ = volume; }
   void setOutput(Print& out) { p_out = &out; }
 
@@ -96,28 +133,39 @@ class VolumePrint : public Print {
     size_t out_samples = 0;
 
     for (size_t i = 0; i + 1 < len; i += 2) {
-      int16_t sample =
-          (int16_t)((uint16_t)data[i] | ((uint16_t)data[i + 1] << 8));
-      int32_t scaled = (int32_t)(sample * volume_);
+      const int16_t sample =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i]) |
+                               (static_cast<uint16_t>(data[i + 1]) << 8));
+
+      float filtered = static_cast<float>(sample) / 32768.0f;
+      filtered = hpf_.process(filtered);
+      filtered = lpf_.process(filtered);
+
+      int32_t scaled = static_cast<int32_t>(filtered * volume_ * 32767.0f);
       if (scaled > 32767) scaled = 32767;
       if (scaled < -32768) scaled = -32768;
-      out_buf[out_samples++] = (int16_t)scaled;
+      out_buf[out_samples++] = static_cast<int16_t>(scaled);
 
       if (out_samples == kChunkSamples) {
-        p_out->write((const uint8_t*)out_buf, out_samples * sizeof(int16_t));
+        p_out->write(reinterpret_cast<const uint8_t*>(out_buf),
+                     out_samples * sizeof(int16_t));
         out_samples = 0;
       }
     }
 
     if (out_samples > 0) {
-      p_out->write((const uint8_t*)out_buf, out_samples * sizeof(int16_t));
+      p_out->write(reinterpret_cast<const uint8_t*>(out_buf),
+                   out_samples * sizeof(int16_t));
     }
     return len;
   }
 
- protected:
+ private:
   Print* p_out = nullptr;
   float volume_ = 1.0f;
+  int sample_rate_ = kOpenAiTtsSampleRate;
+  HighPassFilter<float> hpf_;
+  LowPassFilter<float> lpf_;
 };
 
 class StereoToMonoPrint : public Print {
@@ -134,18 +182,21 @@ class StereoToMonoPrint : public Print {
     size_t out_pos = 0;
 
     for (size_t i = 0; i + 3 < len; i += 4) {
-      int16_t left =
-          (int16_t)((uint16_t)data[i] | ((uint16_t)data[i + 1] << 8));
-      int16_t right =
-          (int16_t)((uint16_t)data[i + 2] | ((uint16_t)data[i + 3] << 8));
-      int16_t mono = (int16_t)(((int32_t)left + (int32_t)right) / 2);
+      const int16_t left =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i]) |
+                               (static_cast<uint16_t>(data[i + 1]) << 8));
+      const int16_t right =
+          static_cast<int16_t>(static_cast<uint16_t>(data[i + 2]) |
+                               (static_cast<uint16_t>(data[i + 3]) << 8));
+      const int16_t mono = static_cast<int16_t>(
+          (static_cast<int32_t>(left) + static_cast<int32_t>(right)) / 2);
 
       if (out_pos + 2 > kOutChunkSize) {
         p_out->write(out_buf, out_pos);
         out_pos = 0;
       }
-      out_buf[out_pos++] = (uint8_t)(mono & 0xFF);
-      out_buf[out_pos++] = (uint8_t)((mono >> 8) & 0xFF);
+      out_buf[out_pos++] = static_cast<uint8_t>(mono & 0xFF);
+      out_buf[out_pos++] = static_cast<uint8_t>((mono >> 8) & 0xFF);
     }
 
     if (out_pos > 0) {
@@ -154,9 +205,11 @@ class StereoToMonoPrint : public Print {
     return len;
   }
 
- protected:
+ private:
   Print* p_out = nullptr;
 };
+
+// ---- DAC / playback helpers -------------------------------------------------
 
 static std::string resolveAudioFilePath(ESPWiFi* self,
                                         const std::string& path) {
@@ -170,7 +223,19 @@ static std::string resolveAudioFilePath(ESPWiFi* self,
   if (path[0] == '/') {
     return self->lfsMountPoint + path;
   }
-  return self->resolvePathOnSD(path);
+  // Bare filenames live on LittleFS (data/); use /sd/... for SD card paths.
+  return self->lfsMountPoint + "/" + path;
+}
+
+static float clampVolume(float volume) {
+  if (volume < 0.0f) return 0.0f;
+  if (volume > 1.0f) return 1.0f;
+  return volume;
+}
+
+static bool isValidDacPin(int outputPin) {
+  return outputPin == ESPWiFi::ESPWiFi_DAC_PIN_1 ||
+         outputPin == ESPWiFi::ESPWiFi_DAC_PIN_2;
 }
 
 static bool configureDacOutput(AnalogConfig& dacCfg, int outputPin) {
@@ -188,6 +253,568 @@ static bool configureDacOutput(AnalogConfig& dacCfg, int outputPin) {
   }
   return false;
 }
+
+static void releaseDac(AnalogAudioStream& dac) {
+  dac.end();
+  vTaskDelay(pdMS_TO_TICKS(50));
+}
+
+static void finishPlaybackTask(ESPWiFi* self) {
+  self->audioPlaying = false;
+  self->audioTask = nullptr;
+  vTaskDelete(nullptr);
+}
+
+// ---- ADC input / RX recording ------------------------------------------------
+
+static constexpr int kRxRecordSampleRate = 22050;
+// ESP32 adc_continuous typically delivers ~80% of sample_freq_hz; fixed WAV rate
+// avoids post-capture math and keeps playback pitch correct on classic ESP32.
+static constexpr int kRxWavSampleRate = 17746;
+static constexpr size_t kRxRecordMaxPcmBytes = 256 * 1024;
+static constexpr size_t kRxRecordMinFreeBytes = 48 * 1024;
+static constexpr size_t kRxMinRecordedPcmBytes = 4096;
+static constexpr int kRxIdleRawCenter = 2048;
+static constexpr int kRxIdleRawDelta = 180;
+static constexpr int kRxCarrierReleaseMs = 400;
+static constexpr int kRxMinRecordMs = 300;
+
+static size_t rxCaptureBufferBytes() {
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  if (largest <= kRxRecordMinFreeBytes + kRxMinRecordedPcmBytes) {
+    return 0;
+  }
+
+  size_t budget = largest - kRxRecordMinFreeBytes;
+  if (budget > kRxRecordMaxPcmBytes) {
+    budget = kRxRecordMaxPcmBytes;
+  }
+  return budget;
+}
+
+class FilePrint : public Print {
+ public:
+  explicit FilePrint(FILE* file) : file_(file) {}
+
+  size_t write(uint8_t b) override {
+    return file_ != nullptr && fwrite(&b, 1, 1, file_) == 1 ? 1 : 0;
+  }
+
+  size_t write(const uint8_t* data, size_t len) override {
+    if (file_ == nullptr || data == nullptr || len == 0) {
+      return 0;
+    }
+    return fwrite(data, 1, len, file_);
+  }
+
+ private:
+  FILE* file_ = nullptr;
+};
+
+static bool gpioToAdc1Channel(int gpio, adc_channel_t* channel) {
+  if (channel == nullptr) {
+    return false;
+  }
+
+  adc_unit_t unit;
+  if (adc_oneshot_io_to_channel(gpio, &unit, channel) != ESP_OK ||
+      unit != ADC_UNIT_1) {
+    return false;
+  }
+  return true;
+}
+
+class RxAdcContinuous {
+ public:
+  bool start(int gpio, int sampleRate) {
+    stop();
+    if (!gpioToAdc1Channel(gpio, &channel_) || sampleRate < 20000) {
+      return false;
+    }
+    sample_rate_ = sampleRate;
+
+    adc_continuous_handle_cfg_t handle_cfg = {
+        .max_store_buf_size = 4096,
+        .conv_frame_size = 1024,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+        .flags = {.flush_pool = true},
+#endif
+    };
+
+    if (adc_continuous_new_handle(&handle_cfg, &handle_) != ESP_OK) {
+      return false;
+    }
+
+    adc_digi_pattern_config_t pattern = {
+        .atten = ADC_ATTEN_DB_12,
+        .channel = static_cast<uint8_t>(channel_),
+        .unit = ADC_UNIT_1,
+        .bit_width = ADC_BITWIDTH_12,
+    };
+
+    adc_continuous_config_t cfg = {
+        .pattern_num = 1,
+        .adc_pattern = &pattern,
+        .sample_freq_hz = static_cast<uint32_t>(sample_rate_),
+        .conv_mode = ADC_CONV_SINGLE_UNIT_1,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
+    };
+
+    if (adc_continuous_config(handle_, &cfg) != ESP_OK ||
+        adc_continuous_start(handle_) != ESP_OK) {
+      stop();
+      return false;
+    }
+
+    return true;
+  }
+
+  void stop() {
+    if (handle_ != nullptr) {
+      (void)adc_continuous_stop(handle_);
+      (void)adc_continuous_deinit(handle_);
+      handle_ = nullptr;
+    }
+  }
+
+  size_t readPcm(int16_t* out, size_t maxSamples, uint32_t timeoutMs,
+                 uint32_t* avgRawOut = nullptr) {
+    if (handle_ == nullptr || out == nullptr || maxSamples == 0) {
+      return 0;
+    }
+
+    adc_digi_output_data_t raw[256];
+    uint32_t bytes_read = 0;
+    const esp_err_t err = adc_continuous_read(
+        handle_, reinterpret_cast<uint8_t*>(raw), sizeof(raw), &bytes_read,
+        timeoutMs);
+    if (err != ESP_OK || bytes_read == 0) {
+      return 0;
+    }
+
+    const int sample_count =
+        static_cast<int>(bytes_read / sizeof(adc_digi_output_data_t));
+    size_t written = 0;
+    uint32_t raw_sum = 0;
+    for (int i = 0; i < sample_count && written < maxSamples; ++i) {
+      const uint16_t raw12 = raw[i].type1.data;
+      raw_sum += raw12;
+      out[written++] = static_cast<int16_t>(
+          (static_cast<int32_t>(raw12) - 2048) << 4);
+    }
+    if (avgRawOut != nullptr && sample_count > 0) {
+      *avgRawOut = raw_sum / static_cast<uint32_t>(sample_count);
+    }
+    return written * sizeof(int16_t);
+  }
+
+ private:
+  adc_continuous_handle_t handle_ = nullptr;
+  adc_channel_t channel_ = ADC_CHANNEL_6;
+  int sample_rate_ = kRxRecordSampleRate;
+};
+
+struct RxRecordContext {
+  ESPWiFi* self = nullptr;
+  int inputPin = -1;
+  std::string path;
+  int sampleRate = kRxRecordSampleRate;
+};
+
+static void finishRxRecordTask(ESPWiFi* self) {
+  self->rxRecording = false;
+  self->rxRecordTask = nullptr;
+  vTaskDelete(nullptr);
+}
+
+static void rxRecordingTask(void* param) {
+  auto ctx = std::unique_ptr<RxRecordContext>(
+      static_cast<RxRecordContext*>(param));
+  ESPWiFi* self = ctx->self;
+
+  const size_t captureBytes = rxCaptureBufferBytes();
+  if (captureBytes < kRxMinRecordedPcmBytes) {
+    self->log(ERROR, "📡 Not enough heap for RX capture (largest=%u)",
+              static_cast<unsigned>(
+                  heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  uint8_t* pcmBuffer = static_cast<uint8_t*>(malloc(captureBytes));
+  if (pcmBuffer == nullptr) {
+    self->log(ERROR, "📡 Failed to allocate RX capture buffer");
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  self->log(INFO, "📡 RX capture buffer: %u bytes (~%.1fs)",
+            static_cast<unsigned>(captureBytes),
+            static_cast<double>(captureBytes) /
+                (2.0 * ctx->sampleRate));
+  self->log(INFO, "📡 RX recording started: %s (%d Hz, GPIO %d)",
+            ctx->path.c_str(), ctx->sampleRate, ctx->inputPin);
+
+  RxAdcContinuous adc;
+  if (!adc.start(ctx->inputPin, ctx->sampleRate)) {
+    self->log(ERROR, "📡 Failed to start ADC input on GPIO %d", ctx->inputPin);
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  int16_t pcmBuf[256];
+  size_t pcmBytesWritten = 0;
+  int carrierLowMs = 0;
+  const unsigned long recordStartMs = self->millis();
+
+  while (self->rxRecording) {
+    self->feedWatchDog();
+
+    uint32_t avgRaw = 0;
+    const size_t n = adc.readPcm(pcmBuf, 256, 50, &avgRaw);
+    if (n > 0) {
+      if (pcmBytesWritten + n > captureBytes) {
+        break;
+      }
+
+      memcpy(pcmBuffer + pcmBytesWritten, pcmBuf, n);
+      pcmBytesWritten += n;
+
+      const int chunkMs =
+          static_cast<int>((n / 2) * 1000 / ctx->sampleRate);
+      if (self->millis() - recordStartMs >
+              static_cast<unsigned long>(kRxMinRecordMs) &&
+          std::abs(static_cast<int>(avgRaw) - kRxIdleRawCenter) <
+              kRxIdleRawDelta) {
+        carrierLowMs += chunkMs > 0 ? chunkMs : 1;
+        if (carrierLowMs >= kRxCarrierReleaseMs) {
+          break;
+        }
+      } else {
+        carrierLowMs = 0;
+      }
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(1));
+    }
+  }
+
+  adc.stop();
+
+  if (pcmBytesWritten < kRxMinRecordedPcmBytes) {
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    self->log(WARNING, "📡 RX recording discarded (only %u PCM bytes)",
+              static_cast<unsigned>(pcmBytesWritten));
+    finishRxRecordTask(self);
+    return;
+  }
+
+  FILE* file = fopen(ctx->path.c_str(), "wb");
+  if (file == nullptr) {
+    self->log(ERROR, "📡 Failed to open RX recording: %s", ctx->path.c_str());
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  if (!wavWritePcm16Mono(file, pcmBuffer, pcmBytesWritten, kRxWavSampleRate)) {
+    self->log(ERROR, "📡 Failed to write RX recording: %s", ctx->path.c_str());
+    fclose(file);
+    remove(ctx->path.c_str());
+    free(pcmBuffer);
+    self->rxRecordingPcmBytes = 0;
+    finishRxRecordTask(self);
+    return;
+  }
+
+  fflush(file);
+  const long fileSize = ftell(file);
+  fclose(file);
+  free(pcmBuffer);
+
+  if (fileSize <= 44) {
+    remove(ctx->path.c_str());
+    self->rxRecordingPcmBytes = 0;
+    self->log(ERROR, "📡 RX recording file write failed: %s", ctx->path.c_str());
+    finishRxRecordTask(self);
+    return;
+  }
+
+  self->rxRecordingPcmBytes = pcmBytesWritten;
+  self->log(INFO, "📡 RX recording saved: %s (%ld bytes, %u PCM bytes)",
+            ctx->path.c_str(), fileSize,
+            static_cast<unsigned>(pcmBytesWritten));
+  finishRxRecordTask(self);
+}
+
+static void setPtt(ESPWiFi* self, int pttPin, bool keyed) {
+  if (pttPin == -1) return;
+  self->setGPIO(pttPin, keyed ? "high" : "low");
+  if (keyed) {
+    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
+  }
+}
+
+struct DacPlayback {
+  AnalogAudioStream dac;
+  RadioMicPrint radio;
+  WAVDecoder* decoder = nullptr;
+
+  bool begin(ESPWiFi* self, int outputPin, int sampleRate, float volume) {
+    auto dacCfg = dac.defaultConfig(TX_MODE);
+    if (!configureDacOutput(dacCfg, outputPin)) {
+      self->log(ERROR, "🔊 Invalid DAC output pin: %d", outputPin);
+      return false;
+    }
+
+    dacCfg.sample_rate = sampleRate;
+    if (!dac.begin(dacCfg)) {
+      self->log(ERROR, "🔊 Failed to start DAC on GPIO %d", outputPin);
+      return false;
+    }
+
+    radio.begin(sampleRate);
+    radio.setVolume(volume);
+    radio.setOutput(dac);
+    return true;
+  }
+
+  bool startDecoder(ESPWiFi* self, Print& sink) {
+    decoder = new WAVDecoder();
+    if (decoder == nullptr) {
+      self->log(ERROR, "🔊 Failed to allocate WAV decoder");
+      return false;
+    }
+
+    decoder->setOutput(sink);
+    decoder->begin();
+    return true;
+  }
+
+  void end() {
+    if (decoder != nullptr) {
+      decoder->end();
+      delete decoder;
+      decoder = nullptr;
+    }
+    releaseDac(dac);
+  }
+};
+
+struct WavChunkReader {
+  std::function<size_t(uint8_t*, size_t)> read;
+  std::function<bool()> waitForMore;
+};
+
+static bool pumpWavDecoder(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
+                           ResampleStream* resampler,
+                           const WavChunkReader& reader, size_t chunkSize) {
+  uint8_t* readBuf = static_cast<uint8_t*>(malloc(chunkSize));
+  if (readBuf == nullptr) {
+    self->log(ERROR, "🔊 Failed to allocate read buffer");
+    return false;
+  }
+
+  setPtt(self, pttPin, true);
+
+  while (self->audioPlaying && decoder.audioInfoEx().sample_rate == 0) {
+    const size_t n = reader.read(readBuf, chunkSize);
+    if (n == 0) {
+      if (reader.waitForMore && reader.waitForMore()) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+        continue;
+      }
+      setPtt(self, pttPin, false);
+      free(readBuf);
+      return false;
+    }
+    decoder.write(readBuf, n);
+  }
+
+  while (self->audioPlaying) {
+    const size_t n = reader.read(readBuf, chunkSize);
+    if (n == 0) {
+      if (reader.waitForMore && reader.waitForMore()) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+        continue;
+      }
+      break;
+    }
+    decoder.write(readBuf, n);
+  }
+
+  if (resampler != nullptr) {
+    resampler->flush();
+  }
+
+  setPtt(self, pttPin, false);
+  free(readBuf);
+  return true;
+}
+
+static ResampleStream* maybeCreateResampler(ESPWiFi* self, Print& sink,
+                                            const WAVAudioInfo& wavInfo,
+                                            int targetRate) {
+  if (!wavInfo.is_valid || wavInfo.sample_rate <= 0 ||
+      wavInfo.sample_rate == targetRate) {
+    return nullptr;
+  }
+
+  AudioInfo from;
+  from.sample_rate = wavInfo.sample_rate;
+  from.channels = wavInfo.channels > 0 ? wavInfo.channels : 2;
+  from.bits_per_sample = wavInfo.bits_per_sample;
+  if (from.bits_per_sample == 8) from.bits_per_sample = 16;
+  if (from.bits_per_sample == 24) from.bits_per_sample = 32;
+
+  auto* resampler = new ResampleStream();
+  if (resampler == nullptr) {
+    return nullptr;
+  }
+
+  resampler->setOutput(sink);
+  if (!resampler->begin(from, targetRate)) {
+    self->log(WARNING, "🔊 Resampler init failed; using passthrough");
+    delete resampler;
+    return nullptr;
+  }
+
+  self->log(INFO, "🔊 Resampling %d Hz → %d Hz", wavInfo.sample_rate,
+            targetRate);
+  return resampler;
+}
+
+// ---- Streaming buffer -------------------------------------------------------
+
+static bool writeToStreamBuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
+                                const uint8_t* data, size_t len) {
+  size_t offset = 0;
+  while (offset < len) {
+    if (!self->audioPlaying) {
+      return false;
+    }
+
+    const size_t sent = xStreamBufferSend(buffer, data + offset, len - offset,
+                                          pdMS_TO_TICKS(1000));
+    if (sent == 0) {
+      if (!self->audioPlaying) {
+        return false;
+      }
+      self->feedWatchDog();
+      continue;
+    }
+    offset += sent;
+  }
+
+  self->feedWatchDog();
+  return true;
+}
+
+static size_t targetStreamBufferBytes() {
+  const size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  const size_t free = esp_get_free_heap_size();
+
+  if (free <= kStreamSessionReserveBytes || largest < kStreamBufferMinBytes) {
+    return 0;
+  }
+
+  size_t budget = largest;
+  const size_t fromFree = free - kStreamSessionReserveBytes;
+  if (fromFree < budget) {
+    budget = fromFree;
+  }
+
+  if (budget < kStreamBufferMinBytes) {
+    return 0;
+  }
+
+  size_t size = kStreamBufferPreferredBytes;
+  if (size > budget) {
+    size = budget;
+  }
+  if (size > kStreamBufferMaxBytes) {
+    size = kStreamBufferMaxBytes;
+  }
+
+  size = (size / 4096) * 4096;
+  if (size < kStreamBufferMinBytes) {
+    size = kStreamBufferMinBytes;
+  }
+  return size;
+}
+
+static StreamBufferHandle_t createStreamBuffer(size_t* outCapacityBytes) {
+  static constexpr size_t kFallbackSizes[] = {48 * 1024, 32 * 1024, 24 * 1024,
+                                              16 * 1024};
+
+  const size_t target = targetStreamBufferBytes();
+  if (outCapacityBytes != nullptr) {
+    *outCapacityBytes = 0;
+  }
+
+  auto trySize = [&](size_t size) -> StreamBufferHandle_t {
+    if (size < kStreamBufferMinBytes) {
+      return nullptr;
+    }
+    StreamBufferHandle_t buffer = xStreamBufferCreate(size, 1);
+    if (buffer != nullptr && outCapacityBytes != nullptr) {
+      *outCapacityBytes = size;
+    }
+    return buffer;
+  };
+
+  if (target != 0) {
+    StreamBufferHandle_t buffer = trySize(target);
+    if (buffer != nullptr) {
+      return buffer;
+    }
+  }
+
+  for (size_t size : kFallbackSizes) {
+    if (target != 0 && size >= target) {
+      continue;
+    }
+    StreamBufferHandle_t buffer = trySize(size);
+    if (buffer != nullptr) {
+      return buffer;
+    }
+  }
+
+  return nullptr;
+}
+
+static size_t streamPrebufferForCapacity(size_t capacityBytes) {
+  size_t prebuffer = kStreamPrebufferBytes;
+  if (prebuffer > capacityBytes / 4) {
+    prebuffer = capacityBytes / 4;
+  }
+  if (prebuffer < kMinPrebufferBytes) {
+    prebuffer = kMinPrebufferBytes;
+  }
+  return prebuffer;
+}
+
+static bool waitForStreamPrebuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
+                                   volatile bool* downloadDone,
+                                   size_t minBytes) {
+  while (self->audioPlaying) {
+    if (xStreamBufferBytesAvailable(buffer) >= minBytes) {
+      return true;
+    }
+    if (downloadDone != nullptr && *downloadDone) {
+      return xStreamBufferBytesAvailable(buffer) > 0;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  return false;
+}
+
+// ---- Task contexts ----------------------------------------------------------
 
 struct AudioPlaybackContext {
   ESPWiFi* self = nullptr;
@@ -221,23 +848,7 @@ static void streamingDownloadTask(void* param) {
     if (!state->self->audioPlaying || data == nullptr || len == 0) {
       return false;
     }
-
-    size_t offset = 0;
-    while (offset < len) {
-      if (!state->self->audioPlaying) {
-        return false;
-      }
-
-      const size_t sent = xStreamBufferSend(state->buffer, data + offset,
-                                            len - offset, pdMS_TO_TICKS(500));
-      if (sent == 0) {
-        continue;
-      }
-      offset += sent;
-    }
-
-    state->self->feedWatchDog();
-    return true;
+    return writeToStreamBuffer(state->self, state->buffer, data, len);
   });
 
   if (state->downloadDone != nullptr) {
@@ -247,135 +858,6 @@ static void streamingDownloadTask(void* param) {
   vTaskDelete(nullptr);
 }
 
-static bool waitForStreamPrebuffer(ESPWiFi* self, StreamBufferHandle_t buffer,
-                                   volatile bool* downloadDone,
-                                   size_t minBytes) {
-  while (self->audioPlaying) {
-    if (xStreamBufferBytesAvailable(buffer) >= minBytes) {
-      return true;
-    }
-    if (downloadDone != nullptr && *downloadDone) {
-      return xStreamBufferBytesAvailable(buffer) > 0;
-    }
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  return false;
-}
-
-static StreamBufferHandle_t createStreamBuffer(size_t preferredBytes) {
-  constexpr size_t kFallbackBytes = 64 * 1024;
-  StreamBufferHandle_t buffer = xStreamBufferCreate(preferredBytes, 1);
-  if (buffer == nullptr && preferredBytes > kFallbackBytes) {
-    buffer = xStreamBufferCreate(kFallbackBytes, 1);
-  }
-  return buffer;
-}
-
-static bool pumpWavDecoderStream(ESPWiFi* self, WAVDecoder& decoder, int pttPin,
-                                 StreamBufferHandle_t buffer,
-                                 volatile bool* downloadDone) {
-  uint8_t* readBuf = static_cast<uint8_t*>(malloc(1024));
-  if (!readBuf) {
-    self->log(ERROR, "🔊 Failed to allocate read buffer");
-    return false;
-  }
-
-  auto receiveChunk = [&]() -> size_t {
-    return xStreamBufferReceive(buffer, readBuf, 1024, pdMS_TO_TICKS(100));
-  };
-
-  while (self->audioPlaying && decoder.audioInfoEx().sample_rate == 0) {
-    const size_t n = receiveChunk();
-    if (n == 0) {
-      if (downloadDone != nullptr && *downloadDone &&
-          xStreamBufferBytesAvailable(buffer) == 0) {
-        free(readBuf);
-        return false;
-      }
-      vTaskDelay(1);
-      continue;
-    }
-    decoder.write(readBuf, n);
-  }
-
-  if (self->audioPlaying && pttPin != -1) {
-    self->setGPIO(pttPin, 1);
-    vTaskDelay(pdMS_TO_TICKS(50));
-    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
-  }
-
-  while (self->audioPlaying) {
-    const size_t n = receiveChunk();
-    if (n == 0) {
-      if (downloadDone != nullptr && *downloadDone &&
-          xStreamBufferBytesAvailable(buffer) == 0) {
-        break;
-      }
-      vTaskDelay(1);
-      continue;
-    }
-    decoder.write(readBuf, n);
-    vTaskDelay(1);
-  }
-
-  if (pttPin != -1) {
-    self->setGPIO(pttPin, 0);
-  }
-
-  free(readBuf);
-  return true;
-}
-
-static void releaseDac(AnalogAudioStream& dac) {
-  dac.end();
-  vTaskDelay(pdMS_TO_TICKS(50));
-}
-
-static bool pumpWavDecoder(
-    ESPWiFi* self, WAVDecoder& decoder, ResampleStream* resampler, int pttPin,
-    const std::function<size_t(uint8_t*, size_t)>& readFn) {
-  uint8_t* readBuf = (uint8_t*)malloc(512);
-  if (!readBuf) {
-    self->log(ERROR, "🔊 Failed to allocate read buffer");
-    return false;
-  }
-
-  if (self->audioPlaying && pttPin != -1) {
-    self->setGPIO(pttPin, 1);
-    self->log(INFO, "🔊 PTT keyed on GPIO %d", pttPin);
-  }
-
-  while (self->audioPlaying && readBuf &&
-         decoder.audioInfoEx().sample_rate == 0) {
-    const size_t n = readFn(readBuf, 512);
-    if (n == 0) {
-      break;
-    }
-    decoder.write(readBuf, n);
-    vTaskDelay(1);
-  }
-
-  while (self->audioPlaying && readBuf) {
-    const size_t n = readFn(readBuf, 512);
-    if (n == 0) {
-      break;
-    }
-    decoder.write(readBuf, n);
-    vTaskDelay(1);
-  }
-
-  if (resampler) {
-    resampler->flush();
-  }
-
-  if (pttPin != -1) {
-    self->setGPIO(pttPin, 0);
-  }
-
-  free(readBuf);
-  return true;
-}
-
 static void streamingAudioPlaybackTask(void* param) {
   StreamingAudioContext ctx = *static_cast<StreamingAudioContext*>(param);
   delete static_cast<StreamingAudioContext*>(param);
@@ -383,97 +865,70 @@ static void streamingAudioPlaybackTask(void* param) {
   ESPWiFi* self = ctx.self;
   const int pttPin = ctx.pttPin;
 
-  constexpr size_t kStreamPrebufferBytes = 16 * 1024;
-  StreamBufferHandle_t streamBuffer = createStreamBuffer(128 * 1024);
+  size_t streamBufferBytes = 0;
+  StreamBufferHandle_t streamBuffer = createStreamBuffer(&streamBufferBytes);
   if (streamBuffer == nullptr) {
-    self->log(ERROR, "🔊 Failed to allocate stream buffer");
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+    self->log(ERROR, "🔊 Failed to allocate stream buffer (free=%u, largest=%u)",
+              static_cast<unsigned>(esp_get_free_heap_size()),
+              static_cast<unsigned>(
+                  heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+    finishPlaybackTask(self);
     return;
   }
 
-  self->log(INFO, "🔊 Stream buffer: %u bytes free capacity",
-            static_cast<unsigned>(xStreamBufferSpacesAvailable(streamBuffer) +
-                                  xStreamBufferBytesAvailable(streamBuffer)));
+  const size_t prebufferBytes = streamPrebufferForCapacity(streamBufferBytes);
+  self->log(INFO, "🔊 Stream buffer: %u bytes (prebuffer %u)",
+            static_cast<unsigned>(streamBufferBytes),
+            static_cast<unsigned>(prebufferBytes));
 
   volatile bool downloadDone = false;
-  StreamingDownloadState downloadState;
-  downloadState.self = self;
-  downloadState.provider = std::move(ctx.provider);
-  downloadState.buffer = streamBuffer;
-  downloadState.downloadDone = &downloadDone;
+  StreamingDownloadState downloadState{self, std::move(ctx.provider),
+                                       streamBuffer, &downloadDone, false};
 
   if (xTaskCreatePinnedToCore(streamingDownloadTask, "tts-download", 12288,
                               &downloadState, 6, nullptr, 0) != pdPASS) {
     self->log(ERROR, "🔊 Failed to create TTS download task");
     vStreamBufferDelete(streamBuffer);
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+    finishPlaybackTask(self);
     return;
   }
 
   if (!waitForStreamPrebuffer(self, streamBuffer, &downloadDone,
-                              kStreamPrebufferBytes)) {
+                              prebufferBytes)) {
     self->log(ERROR, "🔊 Streaming prebuffer failed");
-    self->audioPlaying = false;
     vStreamBufferDelete(streamBuffer);
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+    finishPlaybackTask(self);
     return;
   }
 
-  // 🤖 OpenAI TTS WAV responses are 24 kHz mono PCM16.
-  AnalogAudioStream dac;
-  auto dacCfg = dac.defaultConfig(TX_MODE);
-  if (!configureDacOutput(dacCfg, ctx.outputPin)) {
-    self->log(ERROR, "🔊 Invalid DAC output pin: %d", ctx.outputPin);
-    self->audioPlaying = false;
+  DacPlayback playback;
+  if (!playback.begin(self, ctx.outputPin, kOpenAiTtsSampleRate, ctx.volume) ||
+      !playback.startDecoder(self, playback.radio)) {
+    playback.end();
     vStreamBufferDelete(streamBuffer);
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+    finishPlaybackTask(self);
     return;
   }
-
-  dacCfg.sample_rate = 24000;
-
-  if (!dac.begin(dacCfg)) {
-    self->log(ERROR, "🔊 Failed to start DAC on GPIO %d", ctx.outputPin);
-    self->audioPlaying = false;
-    vStreamBufferDelete(streamBuffer);
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  VolumePrint volumeOut;
-  volumeOut.setVolume(ctx.volume);
-  volumeOut.setOutput(dac);
-
-  WAVDecoder* decoder = new WAVDecoder();
-  if (!decoder) {
-    self->log(ERROR, "🔊 Failed to allocate WAV decoder");
-    releaseDac(dac);
-    self->audioPlaying = false;
-    vStreamBufferDelete(streamBuffer);
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  decoder->setOutput(volumeOut);
-  decoder->begin();
 
   self->log(INFO, "🔊 Streaming WAV playback started (GPIO %d, volume %.2f)",
             ctx.outputPin, ctx.volume);
 
-  const bool playbackOk =
-      pumpWavDecoderStream(self, *decoder, pttPin, streamBuffer, &downloadDone);
+  WavChunkReader reader;
+  reader.read = [streamBuffer](uint8_t* buffer, size_t maxLen) -> size_t {
+    return xStreamBufferReceive(streamBuffer, buffer, maxLen,
+                                pdMS_TO_TICKS(100));
+  };
+  reader.waitForMore = [&downloadDone, streamBuffer]() -> bool {
+    if (downloadDone && xStreamBufferBytesAvailable(streamBuffer) == 0) {
+      return false;
+    }
+    return true;
+  };
 
-  decoder->end();
-  delete decoder;
-  releaseDac(dac);
+  const bool playbackOk = pumpWavDecoder(
+      self, *playback.decoder, pttPin, nullptr, reader, kStreamReadChunkBytes);
+
+  playback.end();
   vStreamBufferDelete(streamBuffer);
 
   if (!downloadState.ok || !playbackOk) {
@@ -482,9 +937,7 @@ static void streamingAudioPlaybackTask(void* param) {
     self->log(INFO, "🔊 Streaming WAV playback finished");
   }
 
-  self->audioPlaying = false;
-  self->audioTask = nullptr;
-  vTaskDelete(nullptr);
+  finishPlaybackTask(self);
 }
 
 static void audioPlaybackTask(void* param) {
@@ -492,23 +945,18 @@ static void audioPlaybackTask(void* param) {
   delete static_cast<AudioPlaybackContext*>(param);
 
   ESPWiFi* self = ctx.self;
-  const std::string& path = ctx.path;
-  const float volume = ctx.volume;
-  const int outputPin = ctx.outputPin;
   const int pttPin = ctx.pttPin;
-  const bool deleteAfterPlay = ctx.deleteAfterPlay;
 
-  FILE* f = fopen(path.c_str(), "rb");
-  if (!f) {
-    self->log(ERROR, "🔊 Failed to open audio file: %s", path.c_str());
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+  self->log(INFO, "🔊 Playing WAV file: %s", ctx.path.c_str());
+  FILE* file = fopen(ctx.path.c_str(), "rb");
+  if (file == nullptr) {
+    self->log(ERROR, "🔊 Failed to open audio file: %s", ctx.path.c_str());
+    finishPlaybackTask(self);
     return;
   }
 
   WAVAudioInfo wavInfo;
-  bool hasWavInfo = probeWavFormat(f, wavInfo);
+  const bool hasWavInfo = probeWavFormat(file, wavInfo);
   if (hasWavInfo) {
     self->log(INFO, "🔊 WAV format: %d Hz, %d ch, %d bit", wavInfo.sample_rate,
               wavInfo.channels, wavInfo.bits_per_sample);
@@ -516,125 +964,77 @@ static void audioPlaybackTask(void* param) {
     self->log(WARNING, "🔊 Could not parse WAV format; using defaults");
   }
 
-  AnalogAudioStream dac;
-  auto dacCfg = dac.defaultConfig(TX_MODE);
-  if (!configureDacOutput(dacCfg, outputPin)) {
-    self->log(ERROR, "🔊 Invalid DAC output pin: %d", outputPin);
-    fclose(f);
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  dacCfg.sample_rate =
+  const int sampleRate =
       hasWavInfo && wavInfo.sample_rate > 0 ? wavInfo.sample_rate : 44100;
 
-  if (!dac.begin(dacCfg)) {
-    self->log(ERROR, "🔊 Failed to start DAC on GPIO %d", outputPin);
-    fclose(f);
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
-    return;
-  }
-
-  VolumePrint volumeOut;
-  volumeOut.setVolume(volume);
-  volumeOut.setOutput(dac);
-
-  WAVDecoder* decoder = new WAVDecoder();
-  if (!decoder) {
-    self->log(ERROR, "🔊 Failed to allocate WAV decoder");
-    releaseDac(dac);
-    fclose(f);
-    self->audioPlaying = false;
-    self->audioTask = nullptr;
-    vTaskDelete(nullptr);
+  DacPlayback playback;
+  if (!playback.begin(self, ctx.outputPin, sampleRate, ctx.volume)) {
+    fclose(file);
+    finishPlaybackTask(self);
     return;
   }
 
   StereoToMonoPrint stereoDownmix;
-  Print* pipelineOut = &volumeOut;
+  Print* pipelineOut = &playback.radio;
 
   if (hasWavInfo && wavInfo.channels > 1) {
-    stereoDownmix.setOutput(volumeOut);
+    stereoDownmix.setOutput(playback.radio);
     pipelineOut = &stereoDownmix;
     self->log(INFO, "🔊 Downmixing stereo WAV to mono for DAC GPIO %d",
-              outputPin);
+              ctx.outputPin);
   }
 
-  ResampleStream* resampler = nullptr;
-  Print* pcmSink = pipelineOut;
-  const int targetRate = dacCfg.sample_rate;
+  ResampleStream* resampler =
+      maybeCreateResampler(self, *pipelineOut, wavInfo, sampleRate);
+  Print& pcmSink =
+      resampler != nullptr ? static_cast<Print&>(*resampler) : *pipelineOut;
 
-  if (hasWavInfo && wavInfo.sample_rate > 0 &&
-      wavInfo.sample_rate != targetRate) {
-    AudioInfo from;
-    from.sample_rate = wavInfo.sample_rate;
-    from.channels = wavInfo.channels > 0 ? wavInfo.channels : 2;
-    from.bits_per_sample = wavInfo.bits_per_sample;
-    if (from.bits_per_sample == 8) from.bits_per_sample = 16;
-    if (from.bits_per_sample == 24) from.bits_per_sample = 32;
-
-    resampler = new ResampleStream();
-    if (resampler) {
-      resampler->setOutput(*pipelineOut);
-      if (resampler->begin(from, targetRate)) {
-        pcmSink = resampler;
-        self->log(INFO, "🔊 Resampling %d Hz → %d Hz", wavInfo.sample_rate,
-                  targetRate);
-      } else {
-        self->log(WARNING, "🔊 Resampler init failed; using passthrough");
-        delete resampler;
-        resampler = nullptr;
-      }
-    }
+  if (!playback.startDecoder(self, pcmSink)) {
+    delete resampler;
+    playback.end();
+    fclose(file);
+    finishPlaybackTask(self);
+    return;
   }
-
-  decoder->setOutput(*pcmSink);
-  decoder->begin();
 
   self->log(INFO, "🔊 DAC playback started: %s (GPIO %d, volume %.2f)",
-            path.c_str(), outputPin, volume);
+            ctx.path.c_str(), ctx.outputPin, ctx.volume);
 
-  pumpWavDecoder(self, *decoder, resampler, pttPin,
-                 [f](uint8_t* buffer, size_t maxLen) {
-                   return fread(buffer, 1, maxLen, f);
-                 });
+  WavChunkReader reader;
+  reader.read = [file](uint8_t* buffer, size_t maxLen) -> size_t {
+    return fread(buffer, 1, maxLen, file);
+  };
 
-  decoder->end();
-  delete decoder;
-  if (resampler) delete resampler;
-  releaseDac(dac);
-  fclose(f);
+  pumpWavDecoder(self, *playback.decoder, pttPin, resampler, reader,
+                 kFileReadChunkBytes);
 
-  if (deleteAfterPlay) {
-    if (remove(path.c_str()) == 0) {
-      self->log(INFO, "🔊 Deleted audio file: %s", path.c_str());
+  playback.end();
+  delete resampler;
+  fclose(file);
+
+  if (ctx.deleteAfterPlay) {
+    if (remove(ctx.path.c_str()) == 0) {
+      self->log(INFO, "🔊 Deleted audio file: %s", ctx.path.c_str());
     } else {
-      self->log(WARNING, "🔊 Failed to delete audio file: %s", path.c_str());
+      self->log(WARNING, "🔊 Failed to delete audio file: %s", ctx.path.c_str());
     }
   }
 
   self->log(INFO, "🔊 DAC playback finished");
-  self->audioPlaying = false;
-  self->audioTask = nullptr;
-  vTaskDelete(nullptr);
+  finishPlaybackTask(self);
 }
 
 }  // namespace
 
 void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
                         bool deleteAfterPlay) {
-  if (outputPin != ESPWiFi_DAC_PIN_1 && outputPin != ESPWiFi_DAC_PIN_2) {
+  if (!isValidDacPin(outputPin)) {
     log(WARNING, "🔊 Invalid DAC pin %d (use GPIO %d or %d)", outputPin,
         ESPWiFi_DAC_PIN_1, ESPWiFi_DAC_PIN_2);
     return;
   }
 
-  if (volume < 0.0f) volume = 0.0f;
-  if (volume > 1.0f) volume = 1.0f;
+  volume = clampVolume(volume);
 
   if (audioTask != nullptr) {
     stopAudioPlayback();
@@ -647,7 +1047,7 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
   }
 
   FILE* probe = fopen(audioFilePath.c_str(), "rb");
-  if (!probe) {
+  if (probe == nullptr) {
     log(ERROR, "🔊 Audio file not found: %s", audioFilePath.c_str());
     return;
   }
@@ -658,9 +1058,8 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
 
   auto* ctx = new AudioPlaybackContext{
       this, audioFilePath, volume, outputPin, audioPttPin, deleteAfterPlay};
-  BaseType_t ok = xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288,
-                                          ctx, 5, &audioTask, 1);
-  if (ok != pdPASS) {
+  if (xTaskCreatePinnedToCore(audioPlaybackTask, "dac-audio", 12288, ctx, 5,
+                              &audioTask, 1) != pdPASS) {
     log(ERROR, "🔊 Failed to create DAC playback task");
     delete ctx;
     audioPlaying = false;
@@ -670,14 +1069,13 @@ void ESPWiFi::playAudio(const std::string& path, float volume, int outputPin,
 
 void ESPWiFi::playStreamingWav(float volume, int outputPin,
                                AudioStreamProvider provider) {
-  if (outputPin != ESPWiFi_DAC_PIN_1 && outputPin != ESPWiFi_DAC_PIN_2) {
+  if (!isValidDacPin(outputPin)) {
     log(WARNING, "🔊 Invalid DAC pin %d (use GPIO %d or %d)", outputPin,
         ESPWiFi_DAC_PIN_1, ESPWiFi_DAC_PIN_2);
     return;
   }
 
-  if (volume < 0.0f) volume = 0.0f;
-  if (volume > 1.0f) volume = 1.0f;
+  volume = clampVolume(volume);
 
   if (audioTask != nullptr) {
     stopAudioPlayback();
@@ -693,10 +1091,8 @@ void ESPWiFi::playStreamingWav(float volume, int outputPin,
 
   auto* ctx = new StreamingAudioContext{this, volume, outputPin, audioPttPin,
                                         std::move(provider)};
-  BaseType_t ok =
-      xTaskCreatePinnedToCore(streamingAudioPlaybackTask, "dac-audio-stream",
-                              16384, ctx, 5, &audioTask, 1);
-  if (ok != pdPASS) {
+  if (xTaskCreatePinnedToCore(streamingAudioPlaybackTask, "dac-audio-stream",
+                              16384, ctx, 5, &audioTask, 1) != pdPASS) {
     log(ERROR, "🔊 Failed to create streaming DAC playback task");
     delete ctx;
     audioPlaying = false;
@@ -719,10 +1115,68 @@ void ESPWiFi::stopAudioPlayback() {
   }
 
   if (audioPttPin != -1) {
-    setGPIO(audioPttPin, 0);
+    setGPIO(audioPttPin, "low");
   }
 
   log(INFO, "🔊 DAC playback stopped");
+}
+
+void ESPWiFi::startRxRecording(int inputPin, const std::string& path,
+                               int sampleRate) {
+  if (inputPin < 0) {
+    log(WARNING, "📡 Invalid RX audio input pin");
+    return;
+  }
+
+  if (sampleRate <= 0) {
+    sampleRate = kRxRecordSampleRate;
+  }
+
+  if (rxRecordTask != nullptr) {
+    return;
+  }
+
+  if (audioPlaying) {
+    log(WARNING, "📡 Cannot record RX audio while DAC playback is active");
+    return;
+  }
+
+  rxRecordingFile = resolveAudioFilePath(this, path);
+  if (rxRecordingFile.empty()) {
+    log(WARNING, "📡 No RX recording path provided");
+    return;
+  }
+
+  rxRecordingPcmBytes = 0;
+  rxRecording = true;
+
+  auto* ctx = new RxRecordContext{this, inputPin, rxRecordingFile, sampleRate};
+  if (xTaskCreatePinnedToCore(rxRecordingTask, "rx-record", 16384, ctx, 5,
+                              &rxRecordTask, 1) != pdPASS) {
+    log(ERROR, "📡 Failed to create RX recording task");
+    delete ctx;
+    rxRecording = false;
+    rxRecordTask = nullptr;
+  }
+}
+
+void ESPWiFi::stopRxRecording() {
+  if (!rxRecording && rxRecordTask == nullptr) {
+    return;
+  }
+
+  rxRecording = false;
+
+  for (int i = 0; i < 200 && rxRecordTask != nullptr; ++i) {
+    feedWatchDog(10);
+  }
+
+  if (rxRecordTask != nullptr) {
+    vTaskDelete(rxRecordTask);
+    rxRecordTask = nullptr;
+  }
+
+  log(INFO, "📡 RX recording stopped");
 }
 
 #endif  // ESPWiFi_DAC_ENABLED

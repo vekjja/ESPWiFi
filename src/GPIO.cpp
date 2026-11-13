@@ -1,20 +1,25 @@
 // GPIO.cpp - GPIO control endpoint (ESP-IDF httpd-safe)
-#include "ESPWiFi.h"
-
 #include "driver/gpio.h"
-#include "driver/ledc.h"
 
 #include <algorithm>
+#include <cmath>
+
+#include "ESPWiFi.h"
+#include "driver/ledc.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
 
 namespace {
 
-// static bool strEqAny(const std::string &s, const char *a, const char *b,
-//                      const char *c = nullptr) {
-//   if (s == a || s == b) {
-//     return true;
-//   }
-//   return (c != nullptr) ? (s == c) : false;
-// }
+static bool validatePin(int pin, std::string *errorMsg) {
+  if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
+    if (errorMsg) {
+      *errorMsg = "Invalid pin number";
+    }
+    return false;
+  }
+  return true;
+}
 
 // Minimal PWM channel manager (avoid heap).
 static bool pwm_timer_configured = false;
@@ -46,7 +51,7 @@ static ledc_channel_t pwm_find_or_alloc_channel_for_pin(int pin) {
       return static_cast<ledc_channel_t>(i);
     }
   }
-  return LEDC_CHANNEL_MAX; // sentinel for "none"
+  return LEDC_CHANNEL_MAX;  // sentinel for "none"
 }
 
 static void pwm_free_channel_for_pin(int pin, ledc_mode_t speed_mode) {
@@ -60,22 +65,156 @@ static void pwm_free_channel_for_pin(int pin, ledc_mode_t speed_mode) {
   }
 }
 
-} // namespace
+static adc_oneshot_unit_handle_t adc1_handle = nullptr;
+static adc_cali_handle_t adc1_cali_handle = nullptr;
 
-// GPIO helper method - set digital pin
-bool ESPWiFi::setGPIO(int pin, bool state, std::string *errorMsg) {
-  // Validate pin
-  if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
+static bool ensureAdc1Calibration(adc_channel_t channel,
+                                  std::string *errorMsg) {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+  static adc_cali_handle_t cali_for_channel[10] = {};
+  if (channel >= 10) {
     if (errorMsg) {
-      *errorMsg = "Invalid pin number";
+      *errorMsg = "Invalid ADC channel";
+    }
+    return false;
+  }
+  if (cali_for_channel[channel] != nullptr) {
+    adc1_cali_handle = cali_for_channel[channel];
+    return true;
+  }
+
+  adc_cali_curve_fitting_config_t config = {
+      .unit_id = ADC_UNIT_1,
+      .chan = channel,
+      .atten = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_DEFAULT,
+  };
+  if (adc_cali_create_scheme_curve_fitting(
+          &config, &cali_for_channel[channel]) != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "ADC calibration init failed";
+    }
+    return false;
+  }
+  adc1_cali_handle = cali_for_channel[channel];
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+  if (adc1_cali_handle != nullptr) {
+    return true;
+  }
+
+  adc_cali_line_fitting_config_t config = {
+    .unit_id = ADC_UNIT_1,
+    .atten = ADC_ATTEN_DB_12,
+    .bitwidth = ADC_BITWIDTH_DEFAULT,
+#if CONFIG_IDF_TARGET_ESP32
+    .default_vref = 1100,
+#endif
+  };
+  if (adc_cali_create_scheme_line_fitting(&config, &adc1_cali_handle) !=
+      ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "ADC calibration init failed";
+    }
+    return false;
+  }
+#else
+  if (errorMsg) {
+    *errorMsg = "ADC calibration not supported";
+  }
+  return false;
+#endif
+
+  return true;
+}
+
+static bool ensureAdc1Channel(int pin, adc_channel_t *channel,
+                              std::string *errorMsg) {
+  adc_unit_t unit;
+  if (adc_oneshot_io_to_channel(pin, &unit, channel) != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "Pin is not an ADC channel";
+    }
+    return false;
+  }
+  if (unit != ADC_UNIT_1) {
+    if (errorMsg) {
+      *errorMsg = "Only ADC1 pins are supported";
     }
     return false;
   }
 
-  // Reset pin to ensure clean state
+  if (adc1_handle == nullptr) {
+    adc_oneshot_unit_init_cfg_t init = {
+      .unit_id = ADC_UNIT_1,
+#if SOC_ADC_RTC_CTRL_SUPPORTED
+      .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
+#else
+      .clk_src = ADC_DIGI_CLK_SRC_DEFAULT,
+#endif
+      .ulp_mode = ADC_ULP_MODE_DISABLE,
+    };
+    if (adc_oneshot_new_unit(&init, &adc1_handle) != ESP_OK) {
+      if (errorMsg) {
+        *errorMsg = "ADC init failed";
+      }
+      return false;
+    }
+  }
+
+  adc_oneshot_chan_cfg_t cfg = {
+      .atten = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_DEFAULT,
+  };
+  if (adc_oneshot_config_channel(adc1_handle, *channel, &cfg) != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "ADC channel config failed";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+static bool isInputState(const std::string &state) { return state == "in"; }
+
+static bool isHighState(const std::string &state) { return state == "high"; }
+
+static bool isLowState(const std::string &state) { return state == "low"; }
+
+}  // namespace
+
+// GPIO helper method - configure pin state ("in", "high", "low")
+bool ESPWiFi::setGPIO(int pin, const std::string &state,
+                      std::string *errorMsg) {
+  if (!validatePin(pin, errorMsg)) {
+    return false;
+  }
+
+  if (isInputState(state)) {
+    esp_err_t err = gpio_set_direction((gpio_num_t)pin, GPIO_MODE_INPUT);
+    if (err != ESP_OK) {
+      if (errorMsg) {
+        *errorMsg = "GPIO input config failed";
+      }
+      log(ERROR, "GPIO input config failed for pin %d: %s", pin,
+          esp_err_to_name(err));
+      return false;
+    }
+    log(INFO, "📍 GPIO %d in", pin);
+    return true;
+  }
+
+  if (!isHighState(state) && !isLowState(state)) {
+    if (errorMsg) {
+      *errorMsg = "Invalid GPIO state (use in, high, or low)";
+    }
+    return false;
+  }
+
+  const bool high = isHighState(state);
+
   (void)gpio_reset_pin((gpio_num_t)pin);
 
-  // Configure as output
   gpio_config_t io_conf = {};
   io_conf.pin_bit_mask = (1ULL << pin);
   io_conf.intr_type = GPIO_INTR_DISABLE;
@@ -92,8 +231,7 @@ bool ESPWiFi::setGPIO(int pin, bool state, std::string *errorMsg) {
     return false;
   }
 
-  // Set level
-  err = gpio_set_level((gpio_num_t)pin, state ? 1 : 0);
+  err = gpio_set_level((gpio_num_t)pin, high ? 1 : 0);
   if (err != ESP_OK) {
     if (errorMsg) {
       *errorMsg = "GPIO write failed";
@@ -102,22 +240,56 @@ bool ESPWiFi::setGPIO(int pin, bool state, std::string *errorMsg) {
     return false;
   }
 
-  log(INFO, "📍 GPIO %d out %s", pin, state ? "high" : "low");
+  log(INFO, "📍 GPIO %d out %s", pin, high ? "high" : "low");
   return true;
 }
 
-// GPIO helper method - get digital pin state
-bool ESPWiFi::getGPIO(int pin, int &state, std::string *errorMsg) {
-  if (pin < 0 || pin >= (int)GPIO_NUM_MAX || pin > 63) {
-    if (errorMsg) {
-      *errorMsg = "Invalid pin number";
-    }
-    return false;
+int ESPWiFi::readDigital(int pin, std::string *errorMsg) {
+  if (!validatePin(pin, errorMsg)) {
+    return -1;
   }
 
-  state = gpio_get_level((gpio_num_t)pin);
-  log(DEBUG, "📍 GPIO %d read %s", pin, state ? "high" : "low");
-  return true;
+  esp_err_t err = gpio_set_direction((gpio_num_t)pin, GPIO_MODE_INPUT);
+  if (err != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "GPIO input config failed";
+    }
+    return -1;
+  }
+
+  const int state = gpio_get_level((gpio_num_t)pin);
+  // log(DEBUG, "📍 GPIO %d read %s", pin, state ? "high" : "low");
+  return state;
+}
+
+float ESPWiFi::readAnalog(int pin, std::string *errorMsg) {
+  adc_channel_t channel;
+  if (!ensureAdc1Channel(pin, &channel, errorMsg)) {
+    return NAN;
+  }
+  if (!ensureAdc1Calibration(channel, errorMsg)) {
+    return NAN;
+  }
+
+  int raw = 0;
+  if (adc_oneshot_read(adc1_handle, channel, &raw) != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "ADC read failed";
+    }
+    return NAN;
+  }
+
+  int voltage_mv = 0;
+  if (adc_cali_raw_to_voltage(adc1_cali_handle, raw, &voltage_mv) != ESP_OK) {
+    if (errorMsg) {
+      *errorMsg = "ADC calibration failed";
+    }
+    return NAN;
+  }
+
+  const float value = voltage_mv / 1000.0f;
+  // log(DEBUG, "📍 GPIO %d analog %.3f V", pin, value);
+  return value;
 }
 
 // GPIO helper method - set PWM

@@ -16,7 +16,7 @@
 // (CameraPins.h doesn't need this; SD does because we expose a default SPI
 // host.)
 #include "sdkconfig.h"
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) ||  \
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) || \
     defined(CONFIG_IDF_TARGET_ESP32C3)
 #include "driver/spi_common.h"
 #endif
@@ -53,7 +53,22 @@
 // Prefer VSPI (SPI3_HOST) on classic ESP32 when available
 // Force SPI3_HOST (VSPI) for ESP32-2432S028R to avoid conflict with TFT on
 // SPI2_HOST
-#define SDCARD_SPI_HOST SPI3_HOST // VSPI = 2
+#define SDCARD_SPI_HOST SPI3_HOST  // VSPI = 2
+
+// -----------------------------------------------------------------------------
+// ESP32-U / generic classic ESP32 dev board (SPI / VSPI)
+// MISO=19, MOSI=23, SCK=18, CS=5
+// -----------------------------------------------------------------------------
+#elif defined(ESPWiFi_SDCARD_MODEL_ESP32U)
+
+#define ESPWiFi_SDCARD_MODEL_SELECTED 1
+
+#define SDCARD_SPI_MISO_GPIO_NUM 19
+#define SDCARD_SPI_MOSI_GPIO_NUM 23
+#define SDCARD_SPI_SCK_GPIO_NUM 18
+#define SDCARD_SPI_CS_GPIO_NUM 5
+
+#define SDCARD_SPI_HOST SPI3_HOST  // VSPI
 
 // -----------------------------------------------------------------------------
 // No SD model selected: mark pins invalid so SD stays disabled unless enabled
@@ -82,4 +97,13 @@
 #define ESPWiFi_HAS_SDCARD 1
 #else
 #define ESPWiFi_HAS_SDCARD 0
+#endif
+
+// Boards wired for SDSPI only (no SDMMC bus) — skip native SDMMC mount fallback.
+#if defined(ESPWiFi_SDCARD_MODEL_ESP32_2432S028R) || \
+    defined(ESPWiFi_SDCARD_MODEL_ESP32U) || \
+    defined(ESPWiFi_SDCARD_MODEL_SEEED_XIAO_ESP32S3)
+#define ESPWiFi_SDCARD_SPI_ONLY 1
+#else
+#define ESPWiFi_SDCARD_SPI_ONLY 0
 #endif

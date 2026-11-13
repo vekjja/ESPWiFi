@@ -311,8 +311,10 @@ class ESPWiFi {
   JsonDocument readRequestBody(httpd_req_t* req);
 
   // GPIO helper methods (used by both HTTP and WebSocket)
-  bool setGPIO(int pin, bool state, std::string* errorMsg = nullptr);
-  bool getGPIO(int pin, int& state, std::string* errorMsg = nullptr);
+  bool setGPIO(int pin, const std::string& state,
+               std::string* errorMsg = nullptr);
+  int readDigital(int pin, std::string* errorMsg = nullptr);
+  float readAnalog(int pin, std::string* errorMsg = nullptr);
   bool setPWM(int pin, int duty, int freq, std::string* errorMsg = nullptr);
 
   // File browser helper methods (used by both HTTP and WebSocket)
@@ -339,7 +341,9 @@ class ESPWiFi {
   JsonDocument getWiFiPowerInfo();
 
   // ---- OpenAI
-  std::string oai_completion(const std::string& prompt);
+  // byteLimit: "none" (default), "heap", or "lfs" — sizes completion for TTS
+  std::string oai_completion(const std::string& prompt,
+                             const std::string& byteLimit = "none");
 
   // ---- Utils
   std::string getStatusFromCode(int statusCode);
@@ -491,14 +495,31 @@ class ESPWiFi {
                  bool deleteAfterPlay = false);
   void playStreamingWav(float volume, int outputPin,
                         AudioStreamProvider provider);
-  void oai_TTS(const std::string& text, int outputPin, float volume = 1.0f);
+  void TTS(const std::string& text, float volume = 1.0f,
+           int outputPin = ESPWiFi_DAC_PIN_1);
+  void streamTTS(const std::string& text, float volume = 1.0f,
+                 int outputPin = ESPWiFi_DAC_PIN_1);
   void stopAudioPlayback();
+
+  void startRxRecording(int inputPin, const std::string& path,
+                        int sampleRate = 22050);
+  void stopRxRecording();
+  bool isRxRecording() const {
+    return rxRecording || rxRecordTask != nullptr;
+  }
+  bool hasRxRecording() const { return rxRecordingPcmBytes > 0; }
+  void clearRxRecording() { rxRecordingPcmBytes = 0; }
 
   volatile bool audioPlaying = false;
   TaskHandle_t audioTask = nullptr;
   std::string audioFilePath;
   int audioOutputPin = -1;
   int audioPttPin = -1;
+
+  volatile bool rxRecording = false;
+  TaskHandle_t rxRecordTask = nullptr;
+  std::string rxRecordingFile;
+  size_t rxRecordingPcmBytes = 0;
 #endif
 
  private:

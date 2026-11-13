@@ -332,6 +332,7 @@ export default function SettingsButtonBar({
       render: () => (
         <FileBrowserButton
           config={config}
+          deviceInfo={deviceInfoOverride}
           deviceOnline={deviceOnline}
           controlWs={controlWs}
         />

@@ -168,6 +168,9 @@ static const char* espwifiIconForIdfTagView(const char* tag, size_t tagLen) {
   if (tagEquals(tag, tagLen, "esp-x509-crt-bundle")) {
     return "🔐";
   }
+  if (tagEquals(tag, tagLen, "gpio")) {
+    return "📍";
+  }
   return "";
 }
 
@@ -550,8 +553,7 @@ void ESPWiFi::logConfigHandler() {
     lastEnabled = currentEnabled;
   }
   if (needLevelMsg) {
-    log(INFO, "📝 Log level: %s -> %s", lastLevel.c_str(),
-        currentLevel.c_str());
+    log(INFO, "📝 Log level: %s -> %s", lastLevel.c_str(), currentLevel.c_str());
     lastLevel = currentLevel;
   }
   if (needPreferMsg) {

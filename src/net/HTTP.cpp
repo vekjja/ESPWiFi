@@ -1,7 +1,12 @@
 #include "HTTP.h"
 
+#include <functional>
+
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 namespace Http {
 namespace {
@@ -50,9 +55,14 @@ bool configureClient(esp_http_client_handle_t client,
   return true;
 }
 
-}  // namespace
+bool isTransientConnectError(esp_err_t err) {
+  return err == ESP_ERR_HTTP_CONNECT || err == ESP_ERR_HTTP_CONNECTING ||
+         err == ESP_FAIL;
+}
 
-Response makeRequest(const Request& request) {
+constexpr int kMaxConnectAttempts = 3;
+
+Response makeRequestOnce(const Request& request) {
   Response response;
   response.body.reserve(1024);
 
@@ -95,7 +105,7 @@ Response makeRequest(const Request& request) {
   return response;
 }
 
-Response makeStreamingRequest(const StreamRequest& request) {
+Response makeStreamingRequestOnce(const StreamRequest& request) {
   Response response;
 
   if (!request.onData) {
@@ -189,6 +199,37 @@ Response makeStreamingRequest(const StreamRequest& request) {
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
   return response;
+}
+
+Response withConnectRetries(const Response& first,
+                            const std::function<Response()>& attemptFn,
+                            const char* label) {
+  Response response = first;
+  for (int attempt = 1; attempt < kMaxConnectAttempts; ++attempt) {
+    if (!isTransientConnectError(response.err)) {
+      break;
+    }
+    ESP_LOGW("HTTP", "%s retry %d/%d (%s, heap=%u)", label, attempt + 1,
+             kMaxConnectAttempts, esp_err_to_name(response.err),
+             static_cast<unsigned>(esp_get_free_heap_size()));
+    vTaskDelay(pdMS_TO_TICKS(500 * attempt));
+    response = attemptFn();
+  }
+  return response;
+}
+
+}  // namespace
+
+Response makeRequest(const Request& request) {
+  return withConnectRetries(makeRequestOnce(request),
+                            [&]() { return makeRequestOnce(request); },
+                            "connect");
+}
+
+Response makeStreamingRequest(const StreamRequest& request) {
+  return withConnectRetries(makeStreamingRequestOnce(request),
+                            [&]() { return makeStreamingRequestOnce(request); },
+                            "stream connect");
 }
 
 std::string joinUrl(const std::string& baseUrl, const char* path) {

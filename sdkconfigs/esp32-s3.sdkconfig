@@ -1,4 +1,4 @@
-# ========================================================================================
+# ----------------------------------------------------------------------------------------
 # ⚠️ ESP32-S3 Board-Specific Configuration  
 # Dual-core Xtensa, BLE-only (NimBLE), PSRAM, Camera support
 #
@@ -29,7 +29,7 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 
 # Bluetooth (BLE Only - ESP32-S3)
-# ==========================================================
+# ----------------------------------------------------------
 # ESP32-S3 only supports BLE, not Classic Bluetooth (BR/EDR)
 # This configuration uses NimBLE for BLE provisioning
 #

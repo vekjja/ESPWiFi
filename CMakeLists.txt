@@ -53,9 +53,11 @@ if(NOT ESPWiFi_DAC_ENABLED AND (NOT DEFINED IDF_TARGET OR NOT IDF_TARGET STREQUA
     list(APPEND EXCLUDE_COMPONENTS arduino-audio-tools)
 endif()
 
+# esp32-camera lives under components/, so IDF builds it unless excluded.
 if(ESPWiFi_HAS_CAMERA)
-    # Add Camera dependencies if enabled
     list(APPEND EXTRA_COMPONENT_DIRS "${COMPONENTS_DIR}/esp32-camera")
+else()
+    list(APPEND EXCLUDE_COMPONENTS esp32-camera)
 endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

@@ -1,4 +1,4 @@
-# ========================================================================================
+# ----------------------------------------------------------------------------------------
 # ⚠️ ESP32 (Classic) Board-Specific Configuration
 # Dual-core Xtensa, Classic Bluetooth (A2DP audio), no PSRAM
 
@@ -9,9 +9,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 
 # Task stacks and buffers reduced to fit DRAM (WiFi+BT A2DP+LVGL on classic ESP32, no PSRAM)
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2560
-CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM=6
-CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM=12
-CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM=12
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=12
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=12
 CONFIG_MDNS_MAX_SERVICES=6
 CONFIG_MDNS_TASK_STACK_SIZE=2560
 CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=2560
@@ -87,7 +87,7 @@ CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
 # CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/espwifi_esp32.csv"
 
 # CPU Configuration (ESP32 dual-core)
-CONFIG_ESP32_DEFAULT_CPU_FREQ_160=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 CONFIG_ESP32_REV_MIN_3=y
 # CONFIG_FREERTOS_UNICORE is not set
 
@@ -97,7 +97,7 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
 
 # Bluetooth (Classic / Bluedroid - A2DP Source)
-# ==========================================================
+# ----------------------------------------------------------
 # ESP32 (including 2432S028R/CYD) supports Classic BT and BLE, but not both
 # with the same stack. For A2DP audio (stream to BT speaker) use these settings.
 #

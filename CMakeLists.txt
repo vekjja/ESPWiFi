@@ -7,17 +7,19 @@ list(APPEND EXTRA_COMPONENT_DIRS
 
 set(COMPONENTS_DIR "${CMAKE_SOURCE_DIR}/components")
 
-# Camera enablement (keep CMake clean: infer from build flags)
-# PlatformIO typically injects -D* macros into compiler flags; we detect any
-# selected ESPWiFi camera model without enumerating models here.
-set(ESPWiFi_HAS_CAMERA OFF)
-foreach(_flags_var IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
-    if(DEFINED ${_flags_var})
-        if("${${_flags_var}}" MATCHES "([\\s]|^)-DESPWiFi_CAMERA_MODEL_[A-Za-z0-9_]+")
-            set(ESPWiFi_HAS_CAMERA ON)
+# Camera enablement. Prefer an explicit -DESPWiFi_HAS_CAMERA=ON from
+# board_build.cmake_extra_args (PlatformIO build_flags are often not visible
+# here yet). Fall back to scanning compiler flags when present.
+if(NOT DEFINED ESPWiFi_HAS_CAMERA)
+    set(ESPWiFi_HAS_CAMERA OFF)
+    foreach(_flags_var IN ITEMS CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_ASM_FLAGS)
+        if(DEFINED ${_flags_var})
+            if("${${_flags_var}}" MATCHES "([\\s]|^)-DESPWiFi_CAMERA_MODEL_[A-Za-z0-9_]+")
+                set(ESPWiFi_HAS_CAMERA ON)
+            endif()
         endif()
-    endif()
-endforeach()
+    endforeach()
+endif()
 
 # ESP-IDF auto-discovers and builds all components under the default `components/` dir.
 # Classic Bluetooth A2DP + arduino-audio-tools are ESP32-only; exclude when disabled or

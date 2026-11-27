@@ -8,6 +8,7 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import InputIcon from "@mui/icons-material/Input";
 import WifiIcon from "@mui/icons-material/Wifi";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import MovieIcon from "@mui/icons-material/Movie";
 
 /** Names and icons shared by settings sections and dashboard modules. */
 export const SECTIONS = {
@@ -20,6 +21,7 @@ export const SECTIONS = {
   pin: { title: "Pin", icon: InputIcon },
   websocket: { title: "WebSocket", icon: WifiIcon },
   music: { title: "Music Player", icon: LibraryMusicIcon },
+  movie: { title: "Movies", icon: MovieIcon },
 };
 
 /**

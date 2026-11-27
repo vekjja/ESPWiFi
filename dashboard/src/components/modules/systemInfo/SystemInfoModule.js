@@ -103,7 +103,7 @@ function NetworkBody({ deviceInfo, config }) {
         inline
         valueSize={networkValueSize}
         label="Device Name:"
-        value={config?.deviceName || "ESPWiFi"}
+        value={config?.deviceName || "espWiFi"}
       />
       <InfoRow
         inline
@@ -133,14 +133,30 @@ function NetworkBody({ deviceInfo, config }) {
   );
 }
 
-function Volume({ label, total, used, minBlock = false }) {
+function Volume({
+  label,
+  total,
+  used,
+  minBlock = false,
+  fields = ["total", "used", "free"],
+}) {
   const free = total - used;
   const percent = total > 0 ? (used / total) * 100 : 0;
+  const rows = {
+    total: ["Total:", total],
+    used: ["Used:", used],
+    free: ["Free:", free],
+  };
   return (
     <InfoPanel label={label} minBlock={minBlock}>
-      <InfoRow inline label="Total:" value={bytesToHumanReadable(total)} />
-      <InfoRow inline label="Used:" value={bytesToHumanReadable(used)} />
-      <InfoRow inline label="Free:" value={bytesToHumanReadable(free)} />
+      {fields.map((key) => (
+        <InfoRow
+          key={key}
+          inline
+          label={rows[key][0]}
+          value={bytesToHumanReadable(rows[key][1])}
+        />
+      ))}
       <UsageBar label="Usage" percent={percent} />
     </InfoPanel>
   );
@@ -177,6 +193,7 @@ function StorageBody({ deviceInfo }) {
           label="LittleFS"
           total={deviceInfo.lfs_total}
           used={deviceInfo.lfs_used}
+          fields={["used", "free", "total"]}
         />
       )}
       {hasSd && (
@@ -185,6 +202,7 @@ function StorageBody({ deviceInfo }) {
           label="SD Card"
           total={deviceInfo.sd_total}
           used={deviceInfo.sd_used}
+          fields={["used", "free", "total"]}
         />
       )}
     </Box>

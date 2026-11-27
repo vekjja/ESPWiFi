@@ -13,6 +13,7 @@ import SettingsModal from "../common/SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import MovieIcon from "@mui/icons-material/Movie";
 import { SECTIONS } from "../common/SectionTitle";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -20,6 +21,7 @@ import PinSettingsModal from "./pin/PinSettingsModal";
 import WebSocketSettingsModal from "./websocket/WebSocketSettingsModal";
 import CameraSettingsModal from "./camera/CameraSettingsModal";
 import MusicPlayerSettingsModal from "./music/MusicPlayerSettingsModal";
+import MoviePlayerSettingsModal from "./movie/MoviePlayerSettingsModal";
 
 export default function AddModuleModal({
   config,
@@ -34,6 +36,7 @@ export default function AddModuleModal({
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [musicPlayerModalOpen, setMusicPlayerModalOpen] = useState(false);
+  const [movieModalOpen, setMovieModalOpen] = useState(false);
 
   const [pinData, setPinData] = useState({
     name: "",
@@ -59,6 +62,10 @@ export default function AddModuleModal({
 
   const [musicPlayerData, setMusicPlayerData] = useState({
     musicDir: "/music",
+  });
+
+  const [movieData, setMovieData] = useState({
+    movieDir: "/movies",
   });
 
   const handleOpenPinModal = () => {
@@ -114,6 +121,22 @@ export default function AddModuleModal({
 
   const handleCloseMusicPlayerModal = () => {
     setMusicPlayerModalOpen(false);
+  };
+
+  const handleOpenMovieModal = () => {
+    setMovieData({
+      name: "",
+      movieDir: "/movies",
+    });
+    setMovieModalOpen(true);
+  };
+
+  const handleCloseMovieModal = () => {
+    setMovieModalOpen(false);
+  };
+
+  const handleMovieDataChange = (changes) => {
+    setMovieData((prev) => ({ ...prev, ...changes }));
   };
 
   // Helper function to generate unique key
@@ -229,6 +252,7 @@ export default function AddModuleModal({
     }
 
     const existingModules = config.modules || [];
+    if (existingModules.some((mod) => mod.type === "musicPlayer")) return;
     const newMusicPlayer = {
       type: "musicPlayer",
       name: musicPlayerData.name || "Music Player",
@@ -243,6 +267,31 @@ export default function AddModuleModal({
     saveConfig(configToSave);
     saveConfigToDevice(configToSave);
     handleCloseMusicPlayerModal();
+    onClose();
+  };
+
+  const handleSaveMovie = () => {
+    if (!movieData.movieDir || movieData.movieDir.trim() === "") {
+      alert("Please enter a movie directory path");
+      return;
+    }
+
+    const existingModules = config.modules || [];
+    if (existingModules.some((mod) => mod.type === "moviePlayer")) return;
+    const newMovie = {
+      type: "moviePlayer",
+      name: movieData.name || "Movies",
+      movieDir: movieData.movieDir.trim().startsWith("/")
+        ? movieData.movieDir.trim()
+        : "/" + movieData.movieDir.trim(),
+      key: generateUniqueKey(existingModules),
+    };
+
+    const updatedModules = [...existingModules, newMovie];
+    const configToSave = { modules: updatedModules };
+    saveConfig(configToSave);
+    saveConfigToDevice(configToSave);
+    handleCloseMovieModal();
     onClose();
   };
 
@@ -272,6 +321,9 @@ export default function AddModuleModal({
     (config?.modules || []).some(
       (mod) => mod.type === "systemInfo" && mod.info === info
     );
+
+  const hasModule = (type) =>
+    (config?.modules || []).some((mod) => mod.type === type);
 
   const CameraIcon = SECTIONS.camera.icon;
   const MemoryIcon = SECTIONS.memory.icon;
@@ -336,7 +388,10 @@ export default function AddModuleModal({
           </ListItem>
 
           <ListItem disablePadding>
-            <ListItemButton onClick={handleOpenMusicPlayerModal}>
+            <ListItemButton
+              onClick={handleOpenMusicPlayerModal}
+              disabled={hasModule("musicPlayer")}
+            >
               <ListItemIcon>
                 <LibraryMusicIcon />
               </ListItemIcon>
@@ -347,7 +402,22 @@ export default function AddModuleModal({
             </ListItemButton>
           </ListItem>
 
-          <Divider sx={{ my: 1 }} />
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={handleOpenMovieModal}
+              disabled={hasModule("moviePlayer")}
+            >
+              <ListItemIcon>
+                <MovieIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Movies"
+                secondary="Play MP4 and MKV from the SD card"
+              />
+            </ListItemButton>
+          </ListItem>
+
+        <Divider sx={{ my: 1 }} />
           <ListItem>
             <ListItemText
               primary="System Info"
@@ -468,6 +538,14 @@ export default function AddModuleModal({
         onSave={handleSaveMusicPlayer}
         musicPlayerData={musicPlayerData}
         onMusicPlayerDataChange={handleMusicPlayerDataChange}
+      />
+
+      <MoviePlayerSettingsModal
+        open={movieModalOpen}
+        onClose={handleCloseMovieModal}
+        onSave={handleSaveMovie}
+        movieData={movieData}
+        onMovieDataChange={handleMovieDataChange}
       />
     </>
   );

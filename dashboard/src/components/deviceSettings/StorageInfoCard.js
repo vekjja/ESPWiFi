@@ -91,24 +91,24 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                     sx={{ mb: 0.5 }}
                   />
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={4}>
-                      <InfoRow
-                        label="Total:"
-                        value={bytesToHumanReadable(deviceInfo.lfs_total)}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12}>
                       <InfoRow
                         label="Used:"
                         value={bytesToHumanReadable(deviceInfo.lfs_used)}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12}>
                       <InfoRow
                         label="Free:"
                         value={bytesToHumanReadable(
                           deviceInfo.lfs_total - deviceInfo.lfs_used
                         )}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <InfoRow
+                        label="Total:"
+                        value={bytesToHumanReadable(deviceInfo.lfs_total)}
                       />
                     </Grid>
                   </Grid>
@@ -166,24 +166,24 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                     sx={{ mb: 0.5 }}
                   />
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={4}>
-                      <InfoRow
-                        label="Total:"
-                        value={bytesToHumanReadable(deviceInfo.sd_total)}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12}>
                       <InfoRow
                         label="Used:"
                         value={bytesToHumanReadable(deviceInfo.sd_used)}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12}>
                       <InfoRow
                         label="Free:"
                         value={bytesToHumanReadable(
                           deviceInfo.sd_total - deviceInfo.sd_used
                         )}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <InfoRow
+                        label="Total:"
+                        value={bytesToHumanReadable(deviceInfo.sd_total)}
                       />
                     </Grid>
                   </Grid>

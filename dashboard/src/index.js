@@ -69,7 +69,7 @@ function renderFatalOverlay(err, extra = "") {
       padding: 16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     ">
-      <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">ESPWiFi failed to load</div>
+      <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">espWiFi failed to load</div>
       <div style="opacity: 0.85; margin-bottom: 12px;">
         If this persists, try a hard refresh or clear the browser cache.
       </div>
@@ -132,7 +132,7 @@ class ErrorBoundary extends React.Component {
           }}
         >
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-            ESPWiFi failed to load
+            espWiFi failed to load
           </div>
           <div style={{ opacity: 0.85, marginBottom: 12 }}>
             If this persists, try a hard refresh or clear the browser cache.

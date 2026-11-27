@@ -71,6 +71,11 @@ export default function Module({
     event.preventDefault();
     const rect = cardRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const slot = cardRef.current.parentElement;
+    if (slot) {
+      slot.setAttribute("data-resizing", "true");
+      slot.style.zIndex = "20";
+    }
     resizeRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -101,9 +106,26 @@ export default function Module({
     if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    const slot = cardRef.current?.parentElement;
+    if (slot) {
+      slot.removeAttribute("data-resizing");
+      slot.style.zIndex = "";
+    }
     if (drag?.size && onResize) onResize(drag.size);
-    setLiveSize(null);
   };
+
+  useEffect(() => {
+    if (!liveSize) return;
+    const width = Number(moduleConfig?.width);
+    const height = Number(moduleConfig?.height);
+    if (
+      moduleConfig?.size === "custom" &&
+      width === liveSize.width &&
+      height === liveSize.height
+    ) {
+      setLiveSize(null);
+    }
+  }, [liveSize, moduleConfig]);
 
   useEffect(() => {
     if (!touched) return undefined;

@@ -18,46 +18,107 @@ import WebSocketModule from "./websocket/WebSocketModule";
 import CameraModule from "./camera/CameraModule";
 import MusicPlayerModule from "./music/MusicPlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
-import { wrapperWidth } from "./moduleConfig";
-
-// One column per this many pixels of board width. Two columns appear once the
-// board can hold two cards, which is what lets a short card sit in the gap
-// beside a taller one.
-const COLUMN_MIN = 380;
+import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
 
 function estimateHeight(module) {
+  let height = 280;
   if (module.type === "systemInfo") {
-    return module.info === "storage" ? 760 : 460;
+    height = module.info === "storage" ? 760 : 460;
+  } else if (module.type === "camera") {
+    height = 540;
+  } else if (module.type === "musicPlayer") {
+    height = 460;
   }
-  if (module.type === "camera") return 540;
-  if (module.type === "musicPlayer") return 460;
-  return 280;
+  return height + 20;
 }
 
-function isWide(module) {
-  return module?.wide === true;
-}
-
-function columnBasis(column) {
-  const requested = column.map((module) => {
-    const width = Number(module.width);
-    return module.size === "custom" && width > 0 ? width : COLUMN_MIN;
-  });
-  return Math.max(COLUMN_MIN, ...requested);
-}
-
-function packColumns(items, heights, columnCount) {
-  const columns = Array.from({ length: columnCount }, () => []);
-  const columnHeights = Array(columnCount).fill(0);
-  items.forEach((item) => {
-    let index = 0;
-    for (let i = 1; i < columnCount; i += 1) {
-      if (columnHeights[i] < columnHeights[index]) index = i;
+function raiseSkyline(skyline, x, width, y) {
+  const right = x + width;
+  const next = [];
+  skyline.forEach((seg) => {
+    const segRight = seg.x + seg.w;
+    if (segRight <= x || seg.x >= right) {
+      next.push(seg);
+      return;
     }
-    columns[index].push(item);
-    columnHeights[index] += heights[String(item.key)] || estimateHeight(item);
+    if (seg.x < x) next.push({ x: seg.x, y: seg.y, w: x - seg.x });
+    if (segRight > right) {
+      next.push({ x: right, y: seg.y, w: segRight - right });
+    }
   });
-  return columns;
+  next.push({ x, y, w: width });
+  next.sort((a, b) => a.x - b.x);
+  const merged = [];
+  next.forEach((seg) => {
+    const last = merged[merged.length - 1];
+    if (last && last.y === seg.y && last.x + last.w === seg.x) {
+      last.w += seg.w;
+    } else {
+      merged.push({ ...seg });
+    }
+  });
+  return merged;
+}
+
+function skylineTop(skyline, x, width) {
+  const right = x + width;
+  let y = 0;
+  skyline.forEach((seg) => {
+    if (seg.x < right && seg.x + seg.w > x) y = Math.max(y, seg.y);
+  });
+  return y;
+}
+
+// Place each module at its own width. Later modules sit beside earlier ones
+// and drop into the gaps under shorter neighbors. Widths are never stretched.
+function packModules(items, heights, boardWidth) {
+  const board = Math.max(0, Math.round(boardWidth || 0));
+  const boxes = new Map();
+  if (!board) {
+    return { boxes, height: 0 };
+  }
+  let skyline = [{ x: 0, y: 0, w: board }];
+  items.forEach((item) => {
+    const slot = Math.max(1, moduleSlotWidth(item, board));
+    const measured = heights[String(item.key)];
+    const customHeight =
+      item.size === "custom" && Number(item.height) > 0
+        ? Math.round(Number(item.height) + MODULE_GUTTER * 2)
+        : 0;
+    const presetHeight =
+      !customHeight && item.size && MODULE_SIZES[item.size] && !item.wide
+        ? MODULE_SIZES[item.size].height + MODULE_GUTTER * 2
+        : 0;
+    const h = customHeight || presetHeight || measured || estimateHeight(item);
+    if (slot >= board) {
+      const y = skyline.reduce((max, seg) => Math.max(max, seg.y), 0);
+      boxes.set(item.key, { x: 0, y, w: board, h });
+      skyline = [{ x: 0, y: y + h, w: board }];
+      return;
+    }
+    const xs = new Set([0]);
+    skyline.forEach((seg) => {
+      xs.add(seg.x);
+      const alignRight = seg.x + seg.w - slot;
+      if (alignRight > 0) xs.add(alignRight);
+    });
+    let best = null;
+    Array.from(xs)
+      .filter((candidate) => candidate >= 0 && candidate + slot <= board)
+      .sort((a, b) => a - b)
+      .forEach((candidate) => {
+        const top = skylineTop(skyline, candidate, slot);
+        if (!best || top < best.y || (top === best.y && candidate < best.x)) {
+          best = { x: candidate, y: top };
+        }
+      });
+    const x = best ? best.x : 0;
+    const y = best ? best.y : 0;
+    boxes.set(item.key, { x, y, w: slot, h });
+    skyline = raiseSkyline(skyline, x, slot, y + h);
+  });
+  const height = skyline.reduce((max, seg) => Math.max(max, seg.y), 0);
+  return { boxes, height };
 }
 
 function masonrySortingStrategy({ rects, activeIndex, overIndex, index }) {
@@ -73,32 +134,7 @@ function masonrySortingStrategy({ rects, activeIndex, overIndex, index }) {
   };
 }
 
-function buildRows(items, heights, boardWidth) {
-  const fitted = Math.max(1, Math.floor((boardWidth || COLUMN_MIN) / COLUMN_MIN));
-  const rows = [];
-  let batch = [];
-  const flush = () => {
-    if (!batch.length) return;
-    const columnCount = Math.max(1, Math.min(fitted, batch.length));
-    rows.push({
-      kind: "columns",
-      columns: packColumns(batch, heights, columnCount),
-    });
-    batch = [];
-  };
-  items.forEach((item) => {
-    if (isWide(item)) {
-      flush();
-      rows.push({ kind: "full", item });
-      return;
-    }
-    batch.push(item);
-  });
-  flush();
-  return rows;
-}
-
-function SortableModule({ module, children }) {
+function SortableModule({ module, box, children }) {
   const {
     attributes,
     listeners,
@@ -109,13 +145,16 @@ function SortableModule({ module, children }) {
   } = useSortable({ id: `module-${module.key}` });
 
   const style = {
+    position: "absolute",
+    left: box.x,
+    top: box.y,
+    width: box.w,
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
-    width: wrapperWidth(module),
-    maxWidth: "100%",
     boxSizing: "border-box",
+    display: "flow-root",
   };
 
   return (
@@ -356,6 +395,7 @@ export default function Modules({
         let changed = false;
         const next = { ...prev };
         entries.forEach((entry) => {
+          if (entry.target.hasAttribute("data-resizing")) return;
           const key = entry.target.getAttribute("data-module-key");
           if (key == null) return;
           const height = Math.round(entry.target.offsetHeight);
@@ -379,8 +419,8 @@ export default function Modules({
     };
   }, [moduleItems]);
 
-  const rows = useMemo(
-    () => buildRows(moduleItems, heights, boardWidth),
+  const layout = useMemo(
+    () => packModules(moduleItems, heights, boardWidth),
     [moduleItems, heights, boardWidth]
   );
 
@@ -445,8 +485,13 @@ export default function Modules({
       );
     }
     if (!child) return null;
+    const box = layout.boxes.get(module.key) || {
+      x: 0,
+      y: 0,
+      w: moduleSlotWidth(module, boardWidth) || boardWidth,
+    };
     return (
-      <SortableModule key={`${module.type}-${module.key}`} module={module}>
+      <SortableModule key={`${module.type}-${module.key}`} module={module} box={box}>
         {child}
       </SortableModule>
     );
@@ -471,39 +516,16 @@ export default function Modules({
       >
         {/* Render all modules together */}
         <SortableContext items={moduleIds} strategy={masonrySortingStrategy}>
-          <div ref={boardRef} style={{ width: "100%", minHeight: "100px" }}>
-            {rows.map((row, rowIndex) =>
-              row.kind === "full" ? (
-                <div key={`full-${row.item.key}`} style={{ width: "100%" }}>
-                  {renderModule(row.item)}
-                </div>
-              ) : (
-                <div
-                  key={`cols-${rowIndex}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    width: "100%",
-                  }}
-                >
-                  {row.columns.map((column, columnIndex) => (
-                    <div
-                      key={columnIndex}
-                      style={{
-                        flex: `${columnBasis(column)} 1 0`,
-                        minWidth: 0,
-                        maxWidth: "100%",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "stretch",
-                      }}
-                    >
-                      {column.map((module) => renderModule(module))}
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
+          <div
+            ref={boardRef}
+            style={{
+              position: "relative",
+              width: "100%",
+              height: layout.height,
+              minHeight: "100px",
+            }}
+          >
+            {moduleItems.map((module) => renderModule(module))}
           </div>
         </SortableContext>
       </Container>

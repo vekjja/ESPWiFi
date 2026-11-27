@@ -25,13 +25,29 @@ export const CONNECTION_CHROME = {
   disconnected: { label: "Disconnected" },
 };
 
-export function wrapperWidth(module) {
-  if (module?.wide) return "100%";
-  const width = Number(module?.width);
-  if (module?.size === "custom" && width > 0) {
-    return `min(${Math.round(width)}px, 100%)`;
-  }
-  return "100%";
+export const MODULE_GUTTER = 10;
+
+// Card border-box width. Wide cards fill the board. A custom size is the
+// pixels from the resize handle and is not stretched to a column.
+export function moduleCardWidth(module) {
+  if (!module || module.wide) return null;
+  const width = Number(module.width);
+  if (module.size === "custom" && width > 0) return Math.round(width);
+  if (module.size && MODULE_SIZES[module.size]) return MODULE_SIZES[module.size].width;
+  if (module.type === "pin") return 260;
+  if (module.type === "webSocket") return 300;
+  if (module.type === "camera" || module.type === "musicPlayer") return 440;
+  if (module.type === "systemInfo") return 360;
+  return 320;
+}
+
+// Outer slot, including the card's horizontal margin, capped to the board.
+export function moduleSlotWidth(module, boardWidth) {
+  const board = Math.max(0, Math.round(boardWidth || 0));
+  if (!board) return 0;
+  if (module?.wide) return board;
+  const card = moduleCardWidth(module);
+  return Math.min(board, card + MODULE_GUTTER * 2);
 }
 
 export function connectionLabel(status) {
@@ -42,8 +58,10 @@ export function connectionLabel(status) {
 
 function squareFrame(width, height) {
   return {
+    width,
     minWidth: width,
     maxWidth: width,
+    height,
     minHeight: height,
     maxHeight: height,
   };
@@ -84,11 +102,11 @@ export function frameSxForModule(moduleConfig) {
   }
 
   if (moduleConfig.size === "custom") {
-    const width = Number(moduleConfig.width) || MODULE_SIZES.medium.width;
+    const width = moduleCardWidth(moduleConfig) || MODULE_SIZES.medium.width;
     const height = customHeight || MODULE_SIZES.medium.height;
     return {
-      width: `min(${width}px, calc(100% - 20px))`,
-      maxWidth: "calc(100% - 20px)",
+      width,
+      maxWidth: `calc(100% - ${MODULE_GUTTER * 2}px)`,
       minWidth: 0,
       height,
       minHeight: height,

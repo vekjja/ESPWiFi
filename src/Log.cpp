@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <sys/time.h>
 
+#include <atomic>
+#include <cerrno>
 #include <cstring>
 
 #include "ESPWiFi.h"
@@ -227,6 +229,88 @@ std::string ESPWiFi::logLevelToString(LogLevel level) {
   }
 }
 
+namespace {
+
+constexpr int kLogSlots = 24;
+constexpr int kLogLineCap = 896;
+
+struct LogSlot {
+  uint16_t len;
+  char text[kLogLineCap];
+};
+
+LogSlot g_logSlots[kLogSlots];
+int g_logHead = 0;
+std::atomic<int> g_logCount{0};
+TaskHandle_t g_logTask = nullptr;
+bool g_logFlushing = false;
+
+bool sdIoError(int err) { return err == EIO || err == ENODEV || err == ENXIO; }
+
+}  // namespace
+
+void ESPWiFi::enqueueLogLine(const std::string& line) {
+  if (line.empty() || deferredLogMutex == nullptr) {
+    return;
+  }
+  if (xSemaphoreTake(deferredLogMutex, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return;
+  }
+  if (g_logCount.load() == kLogSlots) {
+    g_logHead = (g_logHead + 1) % kLogSlots;
+    g_logCount.fetch_sub(1);
+  }
+  LogSlot& slot = g_logSlots[(g_logHead + g_logCount.load()) % kLogSlots];
+  size_t n = line.size();
+  if (n > kLogLineCap) {
+    n = kLogLineCap;
+  }
+  memcpy(slot.text, line.data(), n);
+  if (n == 0 || slot.text[n - 1] != '\n') {
+    if (n >= kLogLineCap) {
+      n = kLogLineCap - 1;
+    }
+    slot.text[n++] = '\n';
+  }
+  slot.len = static_cast<uint16_t>(n);
+  g_logCount.fetch_add(1);
+  xSemaphoreGive(deferredLogMutex);
+}
+
+bool ESPWiFi::popLogLine(std::string& out) {
+  if (deferredLogMutex == nullptr || g_logCount.load() == 0) {
+    return false;
+  }
+  if (xSemaphoreTake(deferredLogMutex, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return false;
+  }
+  if (g_logCount.load() == 0) {
+    xSemaphoreGive(deferredLogMutex);
+    return false;
+  }
+  const LogSlot& slot = g_logSlots[g_logHead];
+  out.assign(slot.text, slot.len);
+  g_logHead = (g_logHead + 1) % kLogSlots;
+  g_logCount.fetch_sub(1);
+  xSemaphoreGive(deferredLogMutex);
+  return true;
+}
+
+void ESPWiFi::flushLogBuffer() {
+  if (g_logFlushing || g_logCount.load() == 0) {
+    return;
+  }
+  g_logFlushing = true;
+  std::string line;
+  while (popLogLine(line)) {
+    if (!writeLog(line)) {
+      enqueueLogLine(line);
+      break;
+    }
+  }
+  g_logFlushing = false;
+}
+
 void ESPWiFi::startLogging() {
   if (loggingStarted) {
     return;
@@ -240,6 +324,11 @@ void ESPWiFi::startLogging() {
   if (deferredLogMutex == nullptr) {
     deferredLogMutex = xSemaphoreCreateMutex();
   }
+
+  // File logging for other tasks is flushed from this task. Media playback
+  // and uploads run on the HTTP task, which cannot append the log while it
+  // already has a file open on the card.
+  g_logTask = xTaskGetCurrentTaskHandle();
 
   std::string cfgLogFile = config["log"]["file"].isNull()
                                ? ""
@@ -271,22 +360,21 @@ bool ESPWiFi::getLogFilesystem(bool& useSD, bool& useLFS) {
   return useSD || useLFS;  // Returns true if a filesystem is available
 }
 
-void ESPWiFi::writeLog(std::string message) {
+bool ESPWiFi::writeLog(std::string message) {
   if (isLogFileDisabled()) {
-    return;
+    return true;
   }
 
   bool useSD, useLFS;
   if (!getLogFilesystem(useSD, useLFS)) {
-    return;
+    return true;
   }
 
-  // Best-effort mutex: wait briefly to reduce dropped *file* log lines, but
-  // keep the wait bounded so logging can't noticeably stall request handling.
-  // (Serial output still prints even if we return early.)
+  // The HTTP task queues lines instead of calling this. Waiting here only
+  // stalls the main loop, so give a busy writer time to finish.
   if (logFileMutex != nullptr) {
-    if (xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(18)) != pdTRUE) {
-      return;
+    if (xSemaphoreTake(logFileMutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+      return false;
     }
   }
 
@@ -301,21 +389,16 @@ void ESPWiFi::writeLog(std::string message) {
       size_t written = fwrite(message.c_str(), 1, len, f);
       if (written == len && fflush(f) == 0) {
         success = true;
-      } else {
-        // Write or flush failed - card may have been removed
-        // Directly deinit to avoid recursion (handleSDCardError calls log())
-        if (sdCard != nullptr) {
-          deinitSDCard();
-        }
       }
+      const int err = errno;
       fclose(f);
-    } else {
-      // Open failed on SD card - may have been removed
-      // Directly deinit to avoid recursion (handleSDCardError calls log())
-      success = false;
-      if (sdCard != nullptr) {
+      if (!success && sdCard != nullptr && sdIoError(err)) {
+        // Card removed. Don't unmount on a busy or full file table, or a
+        // stream that still has the card open would be torn down.
         deinitSDCard();
       }
+    } else if (sdCard != nullptr && sdIoError(errno)) {
+      deinitSDCard();
     }
   }
 
@@ -339,6 +422,9 @@ void ESPWiFi::writeLog(std::string message) {
   if (logFileMutex != nullptr) {
     xSemaphoreGive(logFileMutex);
   }
+  // A hard I/O failure has been attempted. Retrying it on every loop would
+  // stall the device. A lock timeout returns false so the line stays queued.
+  return true;
 }
 
 void ESPWiFi::logImpl(LogLevel level, const std::string& message) {
@@ -353,7 +439,17 @@ void ESPWiFi::logImpl(LogLevel level, const std::string& message) {
   printf("%s %s %s\n", ts.c_str(), levelStr.c_str(), message.c_str());
 
   std::string logLine = ts + levelStr + " " + message + "\n";
-  writeLog(logLine);
+  // Before the log task exists, write immediately (boot, before startLogging).
+  if (deferredLogMutex == nullptr || g_logTask == nullptr) {
+    (void)writeLog(std::move(logLine));
+    return;
+  }
+  enqueueLogLine(logLine);
+  // Only the main task touches the log file. The HTTP task already has the
+  // music or upload file open, and a second open from that task was dropped.
+  if (!g_logFlushing && xTaskGetCurrentTaskHandle() == g_logTask) {
+    flushLogBuffer();
+  }
 }
 
 void ESPWiFi::log(LogLevel level, const char* format, ...) {

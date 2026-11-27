@@ -218,7 +218,13 @@ class ESPWiFi {
   std::string timestamp();
   void logConfigHandler();
   bool shouldLog(LogLevel level);
-  void writeLog(std::string message);
+  // Appends one line to the log file. Returns false only when the file lock
+  // was busy, so the caller can try the same line again.
+  bool writeLog(std::string message);
+  // Writes lines that were queued off the main task (media streaming, uploads).
+  void flushLogBuffer();
+  void enqueueLogLine(const std::string& line);
+  bool popLogLine(std::string& out);
   std::string logLevelToString(LogLevel level);
 
   // Core logging implementation - formats and writes the log message

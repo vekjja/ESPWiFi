@@ -20,6 +20,7 @@ void ESPWiFi::start() {
 void ESPWiFi::runSystem() {
   for (;;) {
     feedWatchDog();
+    flushLogBuffer();
     handleConfigUpdate();
     checkSDCard();
     streamCamera();

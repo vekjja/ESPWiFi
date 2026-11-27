@@ -265,6 +265,8 @@ bool ESPWiFi::queueConfigUpdate(JsonVariantConst updates) {
 }
 
 void ESPWiFi::handleConfigUpdate() {
+  // Custom main loops that never call runSystem() still drain file logs.
+  flushLogBuffer();
 
   if (configUpdate.size() > 0) {
     // Save old config for comparison in handlers

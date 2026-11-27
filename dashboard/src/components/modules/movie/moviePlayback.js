@@ -1,6 +1,8 @@
-// Plays MP4, MOV, WebM, and MKV by demuxing in the browser and decoding
-// with WebCodecs. The file itself stays on the device and is read by range.
+// Plays MP4, MOV, WebM, and MKV by demuxing in the browser. Video uses
+// WebCodecs. AC-3 and E-AC-3 use the Dolby decoder registered above.
+// The file itself stays on the device and is read by range.
 
+import { registerAc3Decoder } from "@mediabunny/ac3";
 import {
   AudioBufferSink,
   CanvasSink,
@@ -11,6 +13,9 @@ import {
   QuickTimeInputFormat,
   WebMInputFormat,
 } from "mediabunny";
+
+// Chrome has no Dolby decoder. This registers AC-3 and E-AC-3 for Mediabunny.
+registerAc3Decoder();
 
 const FORMATS = [
   new Mp4InputFormat(),

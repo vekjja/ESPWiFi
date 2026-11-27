@@ -87,8 +87,8 @@ export default function MoviePlayerSettingsModal({
           <Box sx={{ marginTop: 1 }}>
             <span style={{ fontSize: "0.875rem", color: "text.secondary" }}>
               MP4, MOV, WebM, and MKV. The browser decodes H.264, VP8, VP9, and
-              AV1 video, with AAC, Opus, or FLAC audio. Other audio, such as
-              AC-3 or DTS, is skipped.
+              AV1 video, with AAC, Opus, FLAC, AC-3, or E-AC-3 audio. Other
+              audio, such as DTS, is skipped.
             </span>
           </Box>
         </Box>

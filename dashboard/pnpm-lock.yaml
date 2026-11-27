@@ -26,6 +26,9 @@ importers:
       '@emotion/styled':
         specifier: ^11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.3.3)(react@19.3.1)(supports-color@8.1.1))(@types/react@19.3.3)(react@19.3.1)(supports-color@8.1.1)
+      '@mediabunny/ac3':
+        specifier: 1.66.5
+        version: 1.66.5(mediabunny@1.66.5)
       '@mui/icons-material':
         specifier: ^6.5.0
         version: 6.5.0(@mui/material@6.5.0(@emotion/react@11.14.0(@types/react@19.3.3)(react@19.3.1)(supports-color@8.1.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.3)(react@19.3.1)(supports-color@8.1.1))(@types/react@19.3.3)(react@19.3.1)(supports-color@8.1.1))(@types/react@19.3.3)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@types/react@19.3.3)(react@19.3.1)
@@ -1090,6 +1093,11 @@ packages:
 
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
+
+  '@mediabunny/ac3@1.66.5':
+    resolution: {integrity: sha512-LeDRDKwcYNlIGatthtITVvThjMnro6Ht4uhXvwowsk2hepwynLwoxGYoxYHXSWKmpyM/N8IqedAEiFh/wCrbAg==}
+    peerDependencies:
+      mediabunny: ^1.0.0
 
   '@mui/core-downloads-tracker@6.5.0':
     resolution: {integrity: sha512-LGb8t8i6M2ZtS3Drn3GbTI1DVhDY6FJ9crEey2lZ0aN2EMZo8IZBZj9wRf4vqbZHaWjsYgtbOnJw5V8UWbmK2Q==}
@@ -7272,6 +7280,10 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@leichtgewicht/ip-codec@2.0.5': {}
+
+  '@mediabunny/ac3@1.66.5(mediabunny@1.66.5)':
+    dependencies:
+      mediabunny: 1.66.5
 
   '@mui/core-downloads-tracker@6.5.0': {}
 

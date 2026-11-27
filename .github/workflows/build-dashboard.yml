@@ -1,0 +1,66 @@
+name: Build Embedded Dashboard
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build Embedded Dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install npm dependencies
+        working-directory: dashboard
+        run: npm install
+
+      - name: Build dashboard
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Compute tag name
+        id: tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REF_NAME="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            # PR builds are tagged by PR number + short sha
+            TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            # For tags, keep tag name as-is
+            TAG="${REF_NAME}"
+          else
+            # Branch pushes use branch-sha format
+            TAG="${REF_NAME}-${SHORT_SHA}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Package dashboard zip
+        run: |
+          if [ -d data ] && [ "$(ls -A data)" ]; then
+            cd data
+            TAG="${{ steps.tag.outputs.tag }}"
+            zip -r ../espwifi-dashboard-${TAG}.zip .
+            cd ..
+          fi
+
+      - name: Upload dashboard zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-zip
+          path: espwifi-dashboard-*.zip
+          retention-days: 90
+
+      - name: Upload built dashboard for Docker
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-build
+          path: data/
+          retention-days: 1  # Short retention since it's just for Docker build

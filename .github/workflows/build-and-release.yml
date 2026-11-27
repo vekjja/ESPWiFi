@@ -1,0 +1,54 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "**"
+  pull_request:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  dashboard:
+    name: Build Embedded Dashboard
+    uses: ./.github/workflows/build-dashboard.yml
+
+  dashboard-image:
+    name: Build dashboard Docker Image
+    needs: dashboard
+    if: github.actor != 'github-actions[bot]'
+    uses: ./.github/workflows/build-dashboard-image.yml
+    permissions:
+      contents: read
+      packages: write
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: dashboard-image
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/deploy-espwifi-io.yml
+    secrets: inherit
+    permissions:
+      contents: write
+
+  firmware:
+    name: Build Firmware Binaries
+    needs: dashboard
+    if: false
+    uses: ./.github/workflows/build-firmware.yml
+
+  release:
+    name: Create Release
+    needs: firmware
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/create-release.yml
+    permissions:
+      contents: write

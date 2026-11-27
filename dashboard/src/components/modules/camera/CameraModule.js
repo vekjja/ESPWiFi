@@ -10,7 +10,7 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
 import { SECTIONS } from "../../common/SectionTitle";
 import { buildWebSocketUrl, buildApiUrl } from "../../../utils/api";
-import { createSocketSession } from "../../../utils/socketSession";
+import { attachCameraStream, cameraStreamRunning } from "./cameraStream";
 import { connectionLabel } from "../moduleConfig";
 
 export default function CameraModule({
@@ -24,7 +24,7 @@ export default function CameraModule({
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
-  const [wantsStream, setWantsStream] = useState(false);
+  const [wantsStream, setWantsStream] = useState(() => cameraStreamRunning());
   const [streamStatus, setStreamStatus] = useState("disconnected");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -33,7 +33,7 @@ export default function CameraModule({
     name: config?.name || "",
   });
 
-  const sessionRef = useRef(null);
+  const streamRef = useRef(null);
   const imgRef = useRef(null);
   const containerRef = useRef(null); // Container for fullscreen with rotation
   const imageUrlRef = useRef("");
@@ -48,78 +48,41 @@ export default function CameraModule({
     });
   }, [config?.name]);
 
-  const releaseFrame = () => {
-    if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = "";
-      setImageUrl("");
-    }
-  };
-
-  const stopMediaSocket = () => {
-    const session = sessionRef.current;
-    const ws = session?.getSocket();
-    try {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ cmd: "camera_stop" }));
-      }
-    } catch {
-      // ignore
-    }
-    session?.stop();
-  };
-
   useEffect(() => {
     isMountedRef.current = true;
-    const session = createSocketSession({
+    const link = attachCameraStream({
       getUrl: () => buildWebSocketUrl("/ws/media", hostnameRef.current || null),
-      binary: true,
       onStatus: (status) => {
         if (!isMountedRef.current) return;
         setStreamStatus(status);
         setIsStreaming(status === "connected");
       },
-      onOpen: (ws) => {
-        try {
-          ws.send(JSON.stringify({ cmd: "camera_start" }));
-        } catch {
-          // ignore
-        }
-      },
-      onMessage: (event) => {
-        if (!(event.data instanceof ArrayBuffer)) return;
-        const blob = new Blob([event.data], { type: "image/jpeg" });
-        const objectURL = URL.createObjectURL(blob);
-        if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-          URL.revokeObjectURL(imageUrlRef.current);
-        }
-        imageUrlRef.current = objectURL;
-        setImageUrl(objectURL);
+      onFrame: (url) => {
+        if (!isMountedRef.current) return;
+        imageUrlRef.current = url;
+        setImageUrl(url);
       },
     });
-    sessionRef.current = session;
+    streamRef.current = link;
     return () => {
       isMountedRef.current = false;
-      stopMediaSocket();
-      session.dispose();
-      sessionRef.current = null;
-      if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
+      link.detach();
+      if (streamRef.current === link) streamRef.current = null;
     };
   }, []);
 
   const handleStartStream = () => {
     setWantsStream(true);
-    sessionRef.current?.start();
+    streamRef.current?.start();
   };
 
   const handleStopStream = () => {
     setWantsStream(false);
-    stopMediaSocket();
+    streamRef.current?.stop();
     setIsStreaming(false);
     setStreamStatus("disconnected");
-    releaseFrame();
+    imageUrlRef.current = "";
+    setImageUrl("");
   };
 
   const handleDeleteModule = () => {
@@ -301,6 +264,11 @@ export default function CameraModule({
     ? "Live"
     : connectionLabel(streamStatus);
 
+  const rotation = Number(
+    config?.rotation ?? globalConfig?.camera?.rotation ?? 0
+  );
+  const quarterTurn = Math.abs(rotation) % 180 === 90;
+
   return (
     <>
       <Module
@@ -318,15 +286,28 @@ export default function CameraModule({
         <InfoCard
           embedded
           fluid
+          scale
           title={config?.name || SECTIONS.camera.title}
           icon={SECTIONS.camera.icon}
+        >
+        <Box
+          sx={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            minWidth: 0,
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            containerType: "size",
+            containerName: "camera",
+          }}
         >
         <Box
           ref={containerRef}
           sx={{
             width: "100%",
             flex: "1 1 auto",
-            minHeight: 140,
+            minHeight: 0,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -335,6 +316,8 @@ export default function CameraModule({
             borderRadius: 1,
             position: "relative",
             overflow: "hidden",
+            containerType: "size",
+            containerName: "frame",
             // Fullscreen styles
             "&:fullscreen": {
               width: "100vw",
@@ -376,17 +359,24 @@ export default function CameraModule({
               src={imageUrl}
               alt="Camera Stream"
               style={{
-                width: "100%",
-                height: "100%",
+                position: "absolute",
                 objectFit: "contain",
                 borderRadius: "4px",
-                transform:
-                  config?.rotation || globalConfig?.camera?.rotation
-                    ? `rotate(${
-                        config?.rotation || globalConfig?.camera?.rotation || 0
-                      }deg)`
-                    : undefined,
                 transition: "transform 0.3s ease",
+                ...(quarterTurn
+                  ? {
+                      top: "50%",
+                      left: "50%",
+                      width: "100cqh",
+                      height: "100cqw",
+                      transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                    }
+                  : {
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      transform: rotation ? `rotate(${rotation}deg)` : undefined,
+                    }),
               }}
             />
           ) : (
@@ -399,10 +389,25 @@ export default function CameraModule({
                 color: "text.secondary",
               }}
             >
-              <Typography variant="h6" gutterBottom>
+              <Typography
+                sx={{
+                  fontSize:
+                    "clamp(0.85rem, 22cqh, calc(1.35rem * var(--module-scale, 1)))",
+                  lineHeight: 1.15,
+                  textAlign: "center",
+                }}
+              >
                 📷 Camera {isStreaming ? "Live" : "Ready"}
               </Typography>
-              <Typography variant="body2">
+              <Typography
+                sx={{
+                  fontSize:
+                    "clamp(0.7rem, 14cqh, calc(0.875rem * var(--module-scale, 1)))",
+                  lineHeight: 1.15,
+                  textAlign: "center",
+                  "@container frame (max-height: 64px)": { display: "none" },
+                }}
+              >
                 {isStreaming ? "Streaming in progress" : "Click play to start"}
               </Typography>
             </Box>
@@ -412,20 +417,22 @@ export default function CameraModule({
           <Box
             sx={{
               position: "absolute",
-              bottom: 8,
-              left: 8,
+              bottom: "calc(8px * var(--module-scale, 1))",
+              left: "calc(8px * var(--module-scale, 1))",
               display: "flex",
               alignItems: "center",
-              gap: 1,
+              gap: "calc(8px * var(--module-scale, 1))",
               backgroundColor: "rgba(0, 0, 0, 0.7)",
               borderRadius: 1,
-              padding: "4px 8px",
+              padding:
+                "calc(4px * var(--module-scale, 1)) calc(8px * var(--module-scale, 1))",
+              "@container frame (max-height: 72px)": { display: "none" },
             }}
           >
             <Box
               sx={{
-                width: 8,
-                height: 8,
+                width: "calc(8px * var(--module-scale, 1))",
+                height: "calc(8px * var(--module-scale, 1))",
                 borderRadius: "50%",
                 backgroundColor: !wantsStream
                   ? deviceOnline
@@ -438,7 +445,14 @@ export default function CameraModule({
                   : "warning.main",
               }}
             />
-            <Typography variant="caption" sx={{ color: "white" }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "white",
+                fontSize: "calc(0.75rem * var(--module-scale, 1))",
+                lineHeight: 1.1,
+              }}
+            >
               {streamCaption}
             </Typography>
           </Box>
@@ -450,12 +464,26 @@ export default function CameraModule({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 2,
-            padding: 0.5,
+            flexWrap: "wrap",
+            gap: "calc(8px * var(--module-scale, 1))",
+            padding: "calc(4px * var(--module-scale, 1))",
             backgroundColor: "rgba(0, 0, 0, 0.1)",
             borderRadius: 1,
-            marginTop: 0.5,
+            marginTop: "calc(4px * var(--module-scale, 1))",
             flex: "0 0 auto",
+            "& .MuiIconButton-root": {
+              padding: "calc(8px * var(--module-scale, 1))",
+            },
+            "& .MuiSvgIcon-root": {
+              fontSize: "calc(24px * var(--module-scale, 1))",
+            },
+            "@container camera (max-height: 180px)": {
+              marginTop: "2px",
+              padding: "2px",
+              gap: "2px",
+              "& .MuiIconButton-root": { padding: "4px" },
+              "& .MuiSvgIcon-root": { fontSize: 20 },
+            },
           }}
         >
           <Tooltip
@@ -518,6 +546,7 @@ export default function CameraModule({
               </IconButton>
             </span>
           </Tooltip>
+        </Box>
         </Box>
         </InfoCard>
       </Module>

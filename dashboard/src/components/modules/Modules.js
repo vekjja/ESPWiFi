@@ -19,6 +19,11 @@ import SystemInfoModule from "./systemInfo/SystemInfoModule";
 import LogsModule from "./logs/LogsModule";
 import { ModuleLayoutContext } from "./Module";
 import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
+import {
+  applyModuleLayout,
+  isLayoutPatch,
+  rememberModuleLayout,
+} from "./moduleLayout";
 
 function estimateHeight(module) {
   let height = 280;
@@ -280,10 +285,12 @@ export default function Modules({
 
       // Handle new unified modules format
       if (config.modules && Array.isArray(config.modules)) {
-        modulesArray = config.modules.map((mod, idx) => ({
-          ...mod,
-          key: typeof mod.key === "number" ? mod.key : idx,
-        }));
+        modulesArray = applyModuleLayout(
+          config.modules.map((mod, idx) => ({
+            ...mod,
+            key: typeof mod.key === "number" ? mod.key : idx,
+          }))
+        );
       } else {
         // Convert old separate format to new unified format
         const pins = config.pins || [];
@@ -473,9 +480,10 @@ export default function Modules({
       item.key === key ? { ...item, x: slot.x, y: slot.y } : item
     );
     setModules(next);
-    const updatedConfig = { modules: next };
-    saveConfig(updatedConfig);
-    saveConfigToDevice(updatedConfig);
+    rememberModuleLayout(next);
+    // Position is kept in the browser. Writing it to the device runs the
+    // camera config handler and restarts the camera.
+    saveConfig({ modules: next });
   };
 
   const updateModule = (moduleKey, moduleState) => {
@@ -489,10 +497,14 @@ export default function Modules({
 
     setModules(updatedModules);
 
-    // Update the global config with the updated modules
     const updatedConfig = { modules: updatedModules };
-    saveConfig(updatedConfig); // Update local config
-    saveConfigToDevice(updatedConfig); // Save to device
+    if (isLayoutPatch(moduleState)) {
+      rememberModuleLayout(updatedModules);
+      saveConfig(updatedConfig);
+      return;
+    }
+    saveConfig(updatedConfig);
+    saveConfigToDevice(updatedConfig);
   };
 
   const deleteModule = (moduleKey) => {

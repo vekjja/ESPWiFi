@@ -10,15 +10,15 @@ import React, {
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
 import LinearProgress from "@mui/material/LinearProgress";
-import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
-import { getRSSIThemeColor } from "./utils/rssiUtils";
-import { getAuthToken, clearAuthToken } from "./utils/authUtils";
+import { getApiUrl, buildWebSocketUrl } from "./utils/api";
+import { getRSSIThemeColor } from "./utils/rssi";
+import { getAuthToken, clearAuthToken } from "./utils/auth";
 import { createSocketSession } from "./utils/socketSession";
 
 // Lazy-load heavier UI chunks so first paint is faster
-const Modules = lazy(() => import("./components/Modules"));
-const Login = lazy(() => import("./components/Login"));
-const SettingsButtonBar = lazy(() => import("./components/SettingsButtonBar"));
+const Modules = lazy(() => import("./components/modules/Modules"));
+const Login = lazy(() => import("./components/auth/Login"));
+const SettingsButtonBar = lazy(() => import("./components/toolbar/SettingsButtonBar"));
 
 // Define the theme
 const theme = createTheme({
@@ -380,6 +380,8 @@ function App() {
       }
     };
 
+    let infoBeat = 0;
+
     console.log(
       "[App] Setting up control WebSocket connection to:",
       controlWsUrl
@@ -390,7 +392,22 @@ function App() {
       binary: true,
       heartbeatMs: 3000,
       heartbeatTimeoutMs: 6000,
-      heartbeat: () => JSON.stringify({ cmd: "get_rssi" }),
+      heartbeat: () => {
+        infoBeat += 1;
+        // Memory and storage change while the page is open. Refresh device
+        // info on every other heartbeat so those modules stay current.
+        if (infoBeat % 2 === 0) {
+          const socket = controlWsRef.current;
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            try {
+              socket.send(JSON.stringify({ cmd: "get_info" }));
+            } catch {
+              // ignore
+            }
+          }
+        }
+        return JSON.stringify({ cmd: "get_rssi" });
+      },
       onSocket: (ws) => {
         ws.sendCommand = (cmd, timeoutMs = 10000) => {
           return new Promise((resolve, reject) => {
@@ -681,6 +698,7 @@ function App() {
             saveConfig={updateLocalConfig}
             saveConfigToDevice={saveConfigFromButton}
             deviceOnline={controlConnected}
+            deviceInfo={cloudDeviceInfo}
             controlWs={controlWsRef.current}
             onMusicPlaybackChange={setMusicPlaybackState}
           />

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Fab, Tooltip } from "@mui/material";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import SettingsModal from "./SettingsModal";
+import SettingsModal from "../../common/SettingsModal";
 import FileBrowserComponent from "./FileBrowser";
 
 export default function FileBrowserButton({

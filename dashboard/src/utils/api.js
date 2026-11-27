@@ -1,4 +1,4 @@
-import { getAuthHeader, getAuthToken } from "./authUtils";
+import { getAuthHeader, getAuthToken } from "./auth";
 
 const normalizeProtocol = (protocol) => {
   if (!protocol) return "";

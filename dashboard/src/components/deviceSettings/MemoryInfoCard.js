@@ -7,10 +7,10 @@
 
 import React from "react";
 import { Box, Typography, LinearProgress, Skeleton, Grid } from "@mui/material";
-import MemoryIcon from "@mui/icons-material/Memory";
 import InfoCard from "../common/InfoCard";
+import { SECTIONS } from "../common/SectionTitle";
 import InfoRow from "../common/InfoRow";
-import { bytesToHumanReadable } from "../../utils/formatUtils";
+import { bytesToHumanReadable } from "../../utils/format";
 
 /**
  * MemoryInfoCard Component
@@ -34,7 +34,7 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
 
   if (loading) {
     return (
-      <InfoCard title="Memory" icon={MemoryIcon}>
+      <InfoCard {...SECTIONS.memory}>
         <Skeleton variant="text" width="100%" />
         <Skeleton variant="text" width="100%" />
         <Skeleton variant="rectangular" height={8} />
@@ -43,7 +43,7 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
   }
 
   return (
-    <InfoCard title="Memory" icon={MemoryIcon}>
+    <InfoCard {...SECTIONS.memory}>
       {hasMemoryInfo ? (
         <>
           <Grid container spacing={2}>

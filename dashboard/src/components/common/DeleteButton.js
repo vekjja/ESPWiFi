@@ -1,7 +1,7 @@
 import React from "react";
 import { useTheme } from "@mui/material";
 import IButton from "./IButton";
-import { getDeleteIcon } from "../utils/themeUtils";
+import { getDeleteIcon } from "../../utils/theme";
 
 const DeleteButton = ({ onClick, tooltip, sx = {}, disabled = false }) => {
   const theme = useTheme();

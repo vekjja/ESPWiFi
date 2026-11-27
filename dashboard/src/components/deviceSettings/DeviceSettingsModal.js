@@ -10,11 +10,11 @@ import RestartIcon from "@mui/icons-material/RestartAlt";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
-import IButton from "./IButton";
-import SettingsModal from "./SettingsModal";
-import DeviceSettingsInfoTab from "./deviceSettings/DeviceSettingsInfoTab";
-import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
-import { clearAuthToken } from "../utils/authUtils";
+import IButton from "../common/IButton";
+import SettingsModal from "../common/SettingsModal";
+import DeviceSettingsInfoTab from "./DeviceSettingsInfoTab";
+import { buildApiUrl, getFetchOptions } from "../../utils/api";
+import { clearAuthToken } from "../../utils/auth";
 
 export default function DeviceSettingsModal({
   config,

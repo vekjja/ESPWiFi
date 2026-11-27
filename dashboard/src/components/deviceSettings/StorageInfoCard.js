@@ -15,10 +15,10 @@ import {
   LinearProgress,
   Skeleton,
 } from "@mui/material";
-import StorageIcon from "@mui/icons-material/Storage";
-import SdCardIcon from "@mui/icons-material/SdCard";
 import InfoRow from "../common/InfoRow";
-import { bytesToHumanReadable } from "../../utils/formatUtils";
+import { infoCardSurfaceSx } from "../common/InfoCard";
+import SectionTitle, { SECTIONS } from "../common/SectionTitle";
+import { bytesToHumanReadable } from "../../utils/format";
 
 /**
  * StorageInfoCard Component
@@ -51,16 +51,9 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
   if (loading) {
     return (
       <Grid item xs={12}>
-        <Card>
+        <Card sx={infoCardSurfaceSx}>
           <CardContent sx={{ pb: 3 }}>
-            <Typography
-              variant="h6"
-              gutterBottom
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
-            >
-              <StorageIcon color="primary" />
-              Storage
-            </Typography>
+            <SectionTitle {...SECTIONS.storage} sx={{ mb: 1 }} />
             <Skeleton variant="text" width="100%" />
             <Skeleton variant="text" width="100%" />
             <Skeleton variant="rectangular" height={8} />
@@ -72,16 +65,9 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
 
   return (
     <Grid item xs={12}>
-      <Card>
+      <Card sx={infoCardSurfaceSx}>
         <CardContent sx={{ pb: 3 }}>
-          <Typography
-            variant="h6"
-            gutterBottom
-            sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
-          >
-            <StorageIcon color="primary" />
-            Storage
-          </Typography>
+          <SectionTitle {...SECTIONS.storage} sx={{ mb: 2 }} />
 
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             {/* LittleFS Storage */}
@@ -97,13 +83,13 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                     borderRadius: 1,
                   }}
                 >
-                  <Typography
+                  <SectionTitle
+                    {...SECTIONS.littlefs}
                     variant="subtitle2"
-                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
-                  >
-                    <StorageIcon fontSize="small" />
-                    LittleFS
-                  </Typography>
+                    iconColor="inherit"
+                    iconSize="small"
+                    sx={{ mb: 0.5 }}
+                  />
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={4}>
                       <InfoRow
@@ -172,13 +158,13 @@ export default function StorageInfoCard({ deviceInfo, loading = false }) {
                     borderRadius: 1,
                   }}
                 >
-                  <Typography
+                  <SectionTitle
+                    {...SECTIONS.sd}
                     variant="subtitle2"
-                    sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
-                  >
-                    <SdCardIcon fontSize="small" />
-                    SD Card
-                  </Typography>
+                    iconColor="inherit"
+                    iconSize="small"
+                    sx={{ mb: 0.5 }}
+                  />
                   <Grid container spacing={2}>
                     <Grid item xs={12} sm={4}>
                       <InfoRow

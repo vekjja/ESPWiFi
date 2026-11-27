@@ -26,8 +26,8 @@ import {
   Breadcrumbs,
   Link,
 } from "@mui/material";
-import { getFetchOptions, buildApiUrl } from "../utils/apiUtils";
-import { getAuthHeader } from "../utils/authUtils";
+import { getFetchOptions, buildApiUrl } from "../../../utils/api";
+import { getAuthHeader } from "../../../utils/auth";
 import StorageIcon from "@mui/icons-material/Storage";
 import UploadIcon from "@mui/icons-material/Upload";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -37,8 +37,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import HomeIcon from "@mui/icons-material/Home";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material";
-import { getDeleteIcon, getEditIcon } from "../utils/themeUtils";
-import { getAuthToken } from "../utils/authUtils";
+import { getDeleteIcon, getEditIcon } from "../../../utils/theme";
+import { getAuthToken } from "../../../utils/auth";
 
 // Helper function to format bytes
 const formatBytes = (bytes) => {

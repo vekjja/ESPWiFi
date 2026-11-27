@@ -2,7 +2,7 @@
  * Authentication utilities for managing tokens and auth state
  */
 
-import { safeGetItem, safeRemoveItem, safeSetItem } from "./storageUtils";
+import { safeGetItem, safeRemoveItem, safeSetItem } from "./storage";
 
 const TOKEN_KEY = "espwifi_auth_token";
 

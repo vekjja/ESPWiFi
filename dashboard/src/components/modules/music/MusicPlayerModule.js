@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import Module from "./Module";
+import Module from "../Module";
 import {
   Box,
   Typography,
@@ -25,7 +25,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
-import { buildWebSocketUrl } from "../utils/apiUtils";
+import { buildWebSocketUrl } from "../../../utils/api";
 
 export default function MusicPlayerModule({
   config,
@@ -269,7 +269,7 @@ export default function MusicPlayerModule({
     setCurrentTrackIndex(index);
     setCurrentTime(0);
 
-    // Build ws://.../ws/media URL (include token via apiUtils)
+    // Build ws://.../ws/media URL (include token via api)
     const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
     const mediaWsUrl = buildWebSocketUrl("/ws/media", mdnsHostname || null);
     if (!mediaWsUrl) {

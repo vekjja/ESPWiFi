@@ -19,6 +19,7 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import SectionTitle, { SECTIONS } from "../../common/SectionTitle";
 import BrightnessIcon from "@mui/icons-material/Brightness6";
 import ContrastIcon from "@mui/icons-material/Contrast";
 import TimerIcon from "@mui/icons-material/Timer";
@@ -26,9 +27,9 @@ import ExposureIcon from "@mui/icons-material/WbSunny";
 import RotateIcon from "@mui/icons-material/Rotate90DegreesCcw";
 import StayCurrentLandscapeIcon from "@mui/icons-material/StayCurrentLandscape";
 import StayCurrentPortraitIcon from "@mui/icons-material/StayCurrentPortrait";
-import SettingsModal from "./SettingsModal";
-import SaveButton from "./SaveButton";
-import DeleteButton from "./DeleteButton";
+import SettingsModal from "../../common/SettingsModal";
+import SaveButton from "../../common/SaveButton";
+import DeleteButton from "../../common/DeleteButton";
 
 export default function CameraSettingsModal({
   open,
@@ -216,17 +217,10 @@ export default function CameraSettingsModal({
       open={open}
       onClose={onClose}
       title={
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1,
-          }}
-        >
-          <CameraAltIcon sx={{ color: "primary.main" }} />
-          Camera
-        </Box>
+        <SectionTitle
+          {...SECTIONS.camera}
+          sx={{ justifyContent: "center" }}
+        />
       }
       actions={
         <>

@@ -22,7 +22,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
-import { formatUptime } from "../../utils/formatUtils";
+import { formatUptime } from "../../utils/format";
 
 /**
  * WifiPowerInfoCard Component

@@ -16,12 +16,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import RSSIButton from "./RSSIButton";
-import CameraButton from "./CameraButton";
-import DeviceSettingsButton from "./DeviceSettingsButton";
-import LogsButton from "./LogsButton";
-import FileBrowserButton from "./FileBrowserButton";
-import AddModuleButton from "./AddModuleButton";
+import RSSIButton from "./rssi/RSSIButton";
+import CameraButton from "../modules/camera/CameraButton";
+import DeviceSettingsButton from "../deviceSettings/DeviceSettingsButton";
+import LogsButton from "./logs/LogsButton";
+import FileBrowserButton from "./files/FileBrowserButton";
+import AddModuleButton from "../modules/AddModuleButton";
 
 // Storage keys for persisting button configuration
 const STORAGE_KEY = "settingsButtonOrder.v1";

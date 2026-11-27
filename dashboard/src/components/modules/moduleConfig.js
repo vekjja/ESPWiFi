@@ -30,6 +30,11 @@ const MODULE_TYPE_FRAMES = {
     minHeight: "auto",
     maxHeight: { xs: "90vh", sm: "720px" },
   },
+  systemInfo: {
+    minWidth: 320,
+    maxWidth: 460,
+    minHeight: "auto",
+  },
 };
 
 export const CONNECTION_CHROME = {

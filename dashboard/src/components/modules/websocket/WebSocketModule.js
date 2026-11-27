@@ -3,11 +3,11 @@ import { Typography, TextField, Button, Box } from "@mui/material";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import LinkIcon from "@mui/icons-material/Link";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
-import Module from "./Module";
+import Module from "../Module";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
-import { buildWebSocketUrl } from "../utils/apiUtils";
-import { createSocketSession } from "../utils/socketSession";
-import { connectionLabel } from "./moduleConfig";
+import { buildWebSocketUrl } from "../../../utils/api";
+import { createSocketSession } from "../../../utils/socketSession";
+import { connectionLabel } from "../moduleConfig";
 
 function normalizeWsUrl(raw) {
   let wsUrl = String(raw || "").trim();

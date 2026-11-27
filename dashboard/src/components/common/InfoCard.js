@@ -11,13 +11,23 @@ import {
   Box,
   Card,
   CardContent,
-  Typography,
   IconButton,
   Tooltip,
   Collapse,
   Grid,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
+import SectionTitle from "./SectionTitle";
+
+/** Card surface shared by settings sections and system-info modules. */
+export const infoCardSurfaceSx = {
+  backgroundColor: "background.paper",
+  backgroundImage:
+    "linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05))",
+  border: "none",
+  borderRadius: "3px",
+  boxShadow: 1,
+};
 
 /**
  * InfoCard Component
@@ -45,10 +55,20 @@ export default function InfoCard({
   editContent,
   gridSize = { xs: 12 },
   minHeight = 200,
+  embedded = false,
 }) {
-  return (
-    <Grid item {...gridSize}>
-      <Card sx={{ height: "100%", minHeight }}>
+  const card = (
+      <Card
+        sx={{
+          height: embedded ? "auto" : "100%",
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          minWidth: 0,
+          minHeight,
+          ...infoCardSurfaceSx,
+        }}
+      >
         <CardContent>
           <Box
             sx={{
@@ -58,11 +78,9 @@ export default function InfoCard({
               mb: 2,
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              {Icon && <Icon color="primary" />}
-              <Typography variant="h6">{title}</Typography>
+            <SectionTitle icon={Icon} title={title} sx={{ width: "auto", flex: 1 }}>
               {headerActions}
-            </Box>
+            </SectionTitle>
             {editable && !isEditing && (
               <Tooltip title={`Edit ${title.toLowerCase()}`}>
                 <IconButton onClick={onEdit} size="small">
@@ -74,7 +92,15 @@ export default function InfoCard({
 
           {/* View Mode */}
           <Collapse in={!isEditing}>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 1.5,
+                minWidth: 0,
+                maxWidth: "100%",
+              }}
+            >
               {children}
             </Box>
           </Collapse>
@@ -83,6 +109,8 @@ export default function InfoCard({
           {editContent && <Collapse in={isEditing}>{editContent}</Collapse>}
         </CardContent>
       </Card>
-    </Grid>
   );
+
+  if (embedded) return card;
+  return <Grid item {...gridSize}>{card}</Grid>;
 }

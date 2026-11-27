@@ -1,7 +1,7 @@
 import React from "react";
 import { Typography, Box } from "@mui/material";
 import SignalCellularAltIcon from "@mui/icons-material/SignalCellularAlt";
-import SettingsModal from "./SettingsModal";
+import SettingsModal from "../../common/SettingsModal";
 
 export default function RSSISettingsModal({
   config,

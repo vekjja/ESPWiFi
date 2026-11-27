@@ -2,9 +2,9 @@ import React, { useState, useEffect } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Slider, Box } from "@mui/material";
-import Module from "./Module";
+import Module from "../Module";
 import PinSettingsModal from "./PinSettingsModal";
-import { getFetchOptions } from "../utils/apiUtils";
+import { getFetchOptions } from "../../../utils/api";
 
 export default function PinModule({
   pinNum,

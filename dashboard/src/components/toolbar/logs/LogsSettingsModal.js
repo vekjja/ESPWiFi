@@ -23,8 +23,8 @@ import VerticalAlignTopIcon from "@mui/icons-material/VerticalAlignTop";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import WrapTextIcon from "@mui/icons-material/WrapText";
 import NotesIcon from "@mui/icons-material/Notes";
-import SettingsModal from "./SettingsModal";
-import { buildApiUrl, getFetchOptions } from "../utils/apiUtils";
+import SettingsModal from "../../common/SettingsModal";
+import { buildApiUrl, getFetchOptions } from "../../../utils/api";
 
 export default function LogsSettingsModal({
   config,

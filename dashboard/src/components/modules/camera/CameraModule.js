@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import Module from "./Module";
+import Module from "../Module";
 import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -7,9 +7,10 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
-import { buildWebSocketUrl, buildApiUrl } from "../utils/apiUtils";
-import { createSocketSession } from "../utils/socketSession";
-import { connectionLabel } from "./moduleConfig";
+import { SECTIONS } from "../../common/SectionTitle";
+import { buildWebSocketUrl, buildApiUrl } from "../../../utils/api";
+import { createSocketSession } from "../../../utils/socketSession";
+import { connectionLabel } from "../moduleConfig";
 
 export default function CameraModule({
   config,
@@ -302,7 +303,8 @@ export default function CameraModule({
   return (
     <>
       <Module
-        title={config?.name || "Camera"}
+        title={config?.name || SECTIONS.camera.title}
+        icon={SECTIONS.camera.icon}
         moduleConfig={config}
         online={deviceOnline}
         onSettings={handleOpenSettings}

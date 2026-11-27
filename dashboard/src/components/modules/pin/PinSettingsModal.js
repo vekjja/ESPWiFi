@@ -10,10 +10,10 @@ import {
   Tooltip,
   Box,
 } from "@mui/material";
-import SettingsModal from "./SettingsModal";
-import DeleteButton from "./DeleteButton";
-import SaveButton from "./SaveButton";
-import ModuleSizeFields from "./ModuleSizeFields";
+import SettingsModal from "../../common/SettingsModal";
+import DeleteButton from "../../common/DeleteButton";
+import SaveButton from "../../common/SaveButton";
+import ModuleSizeFields from "../ModuleSizeFields";
 
 export default function PinSettingsModal({
   open,

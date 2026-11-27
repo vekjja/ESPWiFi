@@ -8,11 +8,11 @@
 
 import React, { useEffect, useState } from "react";
 import { Box, Button, Grid, TextField } from "@mui/material";
-import LeakAddIcon from "@mui/icons-material/LeakAdd";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
+import { SECTIONS } from "../common/SectionTitle";
 
 /**
  * NetworkInfoCard Component
@@ -44,8 +44,7 @@ export default function NetworkInfoCard({ deviceInfo, config, onSave }) {
 
   return (
     <InfoCard
-      title="Network"
-      icon={LeakAddIcon}
+      {...SECTIONS.network}
       editable
       isEditing={isEditing}
       onEdit={() => setIsEditing(true)}

@@ -1,5 +1,5 @@
 /**
- * @file storageUtils.js
+ * @file storage.js
  * @brief Safe wrappers around Web Storage for browsers that can throw
  * (notably iOS Safari in some privacy modes).
  */

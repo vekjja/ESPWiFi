@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Box, TextField, Button, Alert, CircularProgress } from "@mui/material";
-import { buildApiUrl } from "../utils/apiUtils";
-import { setAuthToken } from "../utils/authUtils";
-import SettingsModal from "./SettingsModal";
+import { buildApiUrl } from "../../utils/api";
+import { setAuthToken } from "../../utils/auth";
+import SettingsModal from "../common/SettingsModal";
 
 const Login = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState("");

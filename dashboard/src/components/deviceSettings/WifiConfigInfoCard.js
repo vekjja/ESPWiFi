@@ -29,7 +29,7 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
 import MaskedValueField from "../common/MaskedValueField";
-import { getRSSIChipColor, isValidRssi } from "../../utils/rssiUtils";
+import { getRSSIChipColor, isValidRssi } from "../../utils/rssi";
 
 /**
  * WifiConfigInfoCard Component

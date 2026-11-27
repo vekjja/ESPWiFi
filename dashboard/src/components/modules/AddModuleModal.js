@@ -8,17 +8,17 @@ import {
   ListItemText,
   ListItemButton,
 } from "@mui/material";
-import SettingsModal from "./SettingsModal";
+import SettingsModal from "../common/SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
-import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
+import { SECTIONS } from "../common/SectionTitle";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
-import PinSettingsModal from "./PinSettingsModal";
-import WebSocketSettingsModal from "./WebSocketSettingsModal";
-import CameraSettingsModal from "./CameraSettingsModal";
-import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
+import PinSettingsModal from "./pin/PinSettingsModal";
+import WebSocketSettingsModal from "./websocket/WebSocketSettingsModal";
+import CameraSettingsModal from "./camera/CameraSettingsModal";
+import MusicPlayerSettingsModal from "./music/MusicPlayerSettingsModal";
 
 export default function AddModuleModal({
   config,
@@ -245,6 +245,38 @@ export default function AddModuleModal({
     onClose();
   };
 
+  const handleAddSystemInfo = (info) => {
+    const existingModules = config?.modules || [];
+    if (
+      existingModules.some(
+        (mod) => mod.type === "systemInfo" && mod.info === info
+      )
+    ) {
+      return;
+    }
+    const newModule = {
+      type: "systemInfo",
+      info,
+      name: SECTIONS[info]?.title || "System Info",
+      key: generateUniqueKey(existingModules),
+    };
+    const updatedModules = [...existingModules, newModule];
+    const configToSave = { ...config, modules: updatedModules };
+    saveConfig(configToSave);
+    saveConfigToDevice(configToSave);
+    onClose();
+  };
+
+  const hasSystemInfo = (info) =>
+    (config?.modules || []).some(
+      (mod) => mod.type === "systemInfo" && mod.info === info
+    );
+
+  const CameraIcon = SECTIONS.camera.icon;
+  const MemoryIcon = SECTIONS.memory.icon;
+  const NetworkIcon = SECTIONS.network.icon;
+  const StorageIcon = SECTIONS.storage.icon;
+
   return (
     <>
       <SettingsModal
@@ -293,9 +325,12 @@ export default function AddModuleModal({
           <ListItem disablePadding>
             <ListItemButton onClick={handleOpenCameraModal}>
               <ListItemIcon>
-                <CameraAltIcon />
+                <CameraIcon />
               </ListItemIcon>
-              <ListItemText primary="Camera" secondary="Add camera module" />
+              <ListItemText
+                primary={SECTIONS.camera.title}
+                secondary="Add camera module"
+              />
             </ListItemButton>
           </ListItem>
 
@@ -307,6 +342,56 @@ export default function AddModuleModal({
               <ListItemText
                 primary="Music Player"
                 secondary="Play music from SD card"
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <Divider sx={{ my: 1 }} />
+          <ListItem>
+            <ListItemText
+              primary="System Info"
+              secondary="Live memory, network, and storage"
+            />
+          </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => handleAddSystemInfo("memory")}
+              disabled={hasSystemInfo("memory")}
+            >
+              <ListItemIcon>
+                <MemoryIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary={SECTIONS.memory.title}
+                secondary="Free, used, and total heap"
+              />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => handleAddSystemInfo("network")}
+              disabled={hasSystemInfo("network")}
+            >
+              <ListItemIcon>
+                <NetworkIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary={SECTIONS.network.title}
+                secondary="Name, hostname, IP, and MAC"
+              />
+            </ListItemButton>
+          </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => handleAddSystemInfo("storage")}
+              disabled={hasSystemInfo("storage")}
+            >
+              <ListItemIcon>
+                <StorageIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary={SECTIONS.storage.title}
+                secondary="LittleFS and SD card usage"
               />
             </ListItemButton>
           </ListItem>

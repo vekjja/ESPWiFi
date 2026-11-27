@@ -7,9 +7,9 @@ import {
   Divider,
   Box,
 } from "@mui/material";
-import SettingsModal from "./SettingsModal";
+import SettingsModal from "../../common/SettingsModal";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
-import DeleteButton from "./DeleteButton";
+import DeleteButton from "../../common/DeleteButton";
 
 export default function MusicPlayerSettingsModal({
   open,

@@ -1,16 +1,18 @@
 import React from "react";
-import IButton from "./IButton";
-import DeleteButton from "./DeleteButton";
+import IButton from "../common/IButton";
+import DeleteButton from "../common/DeleteButton";
 import { Card, CardContent, Typography } from "@mui/material";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { chromeForModule, frameSxForModule } from "./moduleConfig";
+import SectionTitle from "../common/SectionTitle";
 
 // Height in px for bottom controls (input/send + buttons)
 const BOTTOM_CONTROLS_HEIGHT = 88;
 
 export default function Module({
   title,
+  icon,
   children,
   onSettings,
   onDelete,
@@ -24,6 +26,7 @@ export default function Module({
   bottomContent, // Add new prop
   settingsDisabled = false, // Add new prop for disabling settings
   errorOutline = false, // Add new prop for error outline
+  deletePlacement = "end",
   moduleConfig,
   connectionStatus,
   online,
@@ -81,9 +84,13 @@ export default function Module({
           boxSizing: "border-box",
         }}
       >
-        <Typography variant="body1" align="center" component="div">
-          {title}
-        </Typography>
+        {icon ? (
+          <SectionTitle icon={icon} title={title} sx={{ mb: 1 }} />
+        ) : title ? (
+          <Typography variant="body1" align="center" component="div">
+            {title}
+          </Typography>
+        ) : null}
         {children}
       </CardContent>
       {/* Stack bottomContent and action buttons in a flex column at the bottom */}
@@ -115,7 +122,14 @@ export default function Module({
             paddingTop: 2,
           }}
         >
-          <div style={{ pointerEvents: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", pointerEvents: "auto" }}>
+            {deletePlacement === "start" && onDelete && (
+              <DeleteButton
+                onClick={onDelete}
+                tooltip={deleteTooltip}
+                sx={{ pointerEvents: "auto" }}
+              />
+            )}
             {onSettings && (
               <IButton
                 color="default"
@@ -135,7 +149,7 @@ export default function Module({
               pointerEvents: "auto",
             }}
           >
-            {onDelete && (
+            {deletePlacement !== "start" && onDelete && (
               <DeleteButton
                 onClick={onDelete}
                 tooltip={deleteTooltip}

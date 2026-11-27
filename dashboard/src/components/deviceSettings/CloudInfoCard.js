@@ -28,7 +28,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import InfoCard from "../common/InfoCard";
 import InfoRow from "../common/InfoRow";
 import MaskedValueField from "../common/MaskedValueField";
-import { safeGetItem } from "../../utils/storageUtils";
+import { safeGetItem } from "../../utils/storage";
 import QRCode from "qrcode";
 
 export default function CloudInfoCard({ config, deviceInfo, onSave }) {

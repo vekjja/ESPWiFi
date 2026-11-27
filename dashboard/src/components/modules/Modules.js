@@ -14,10 +14,11 @@ import {
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import PinModule from "./PinModule";
-import WebSocketModule from "./WebSocketModule";
-import CameraModule from "./CameraModule";
-import MusicPlayerModule from "./MusicPlayerModule";
+import PinModule from "./pin/PinModule";
+import WebSocketModule from "./websocket/WebSocketModule";
+import CameraModule from "./camera/CameraModule";
+import MusicPlayerModule from "./music/MusicPlayerModule";
+import SystemInfoModule from "./systemInfo/SystemInfoModule";
 
 // Sortable wrapper component for Pin modules
 function SortablePinModule({
@@ -185,11 +186,51 @@ function SortableMusicPlayerModule({
   );
 }
 
+function SortableSystemInfoModule({
+  module,
+  config,
+  deviceInfo,
+  deviceOnline,
+  onDelete,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: `module-${module.key}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+    maxWidth: "100%",
+    width: "auto",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <SystemInfoModule
+        module={module}
+        config={config}
+        deviceInfo={deviceInfo}
+        deviceOnline={deviceOnline}
+        onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
 export default function Modules({
   config,
   saveConfig,
   saveConfigToDevice,
   deviceOnline = true,
+  deviceInfo = null,
   controlWs,
   onMusicPlaybackChange,
 }) {
@@ -466,6 +507,17 @@ export default function Modules({
                     saveConfigToDevice={saveConfigToDevice}
                     controlWs={controlWs}
                     onMusicPlaybackChange={onMusicPlaybackChange}
+                  />
+                );
+              } else if (module.type === "systemInfo") {
+                return (
+                  <SortableSystemInfoModule
+                    key={`systeminfo-${module.key}`}
+                    module={module}
+                    config={config}
+                    deviceInfo={deviceInfo}
+                    deviceOnline={deviceOnline}
+                    onDelete={deleteModule}
                   />
                 );
               }

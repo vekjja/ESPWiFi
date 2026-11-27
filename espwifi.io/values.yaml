@@ -62,7 +62,7 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "cloudflare-letsencrypt-production"
     external-dns.alpha.kubernetes.io/hostname: espwifi.io
-    external-dns.alpha.kubernetes.io/target: "174.44.105.210"
+    external-dns.alpha.kubernetes.io/target: "174.44.96.142"
   hosts:
   - host: espwifi.io
     paths:

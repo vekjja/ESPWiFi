@@ -6,6 +6,7 @@ import LogsSettingsModal from "./LogsSettingsModal";
 export default function LogsButton({
   config,
   deviceOnline,
+  offlineTitle = "Control socket disconnected",
   saveConfig,
   saveConfigToDevice,
   controlConnected = false,
@@ -27,7 +28,7 @@ export default function LogsButton({
 
   return (
     <>
-      <Tooltip title={!deviceOnline ? "Control socket disconnected" : "Logs"}>
+      <Tooltip title={!deviceOnline ? offlineTitle : "Logs"}>
         {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
         <span>
           <Fab

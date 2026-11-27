@@ -10,14 +10,16 @@ import { Box, Typography } from "@mui/material";
  * @param {React.ReactNode} props.value - Right-side value (can be string, number, or component)
  * @param {Object} props.sx - Additional sx styling
  */
-export default function InfoRow({ label, value, sx = {} }) {
+export default function InfoRow({ label, value, inline = false, sx = {} }) {
   return (
     <Box
       sx={{
         display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: 0.5,
+        flexDirection: inline ? "row" : "column",
+        alignItems: inline ? "baseline" : "flex-start",
+        justifyContent: inline ? "space-between" : undefined,
+        gap: "calc(4px * var(--module-scale, 1))",
+        minWidth: 0,
         ...sx,
       }}
     >
@@ -26,7 +28,8 @@ export default function InfoRow({ label, value, sx = {} }) {
         color="text.secondary"
         sx={{ 
           textTransform: "uppercase", 
-          fontSize: "0.65rem",
+          fontSize: "calc(0.8rem * var(--module-scale, 1))",
+          lineHeight: 1.2,
           fontWeight: 600,
           letterSpacing: 0.5
         }}
@@ -39,7 +42,9 @@ export default function InfoRow({ label, value, sx = {} }) {
           sx={{ 
             fontWeight: 600,
             fontFamily: "monospace",
-            fontSize: "1.1rem"
+            fontSize: "calc(1.35rem * var(--module-scale, 1))",
+            lineHeight: 1.2,
+            margin: 0,
           }}
         >
           {value}

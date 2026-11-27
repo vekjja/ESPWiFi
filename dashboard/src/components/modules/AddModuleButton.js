@@ -6,6 +6,7 @@ import AddModuleModal from "./AddModuleModal";
 export default function AddModuleButton({
   config,
   deviceOnline,
+  offlineTitle = "Control socket disconnected",
   onAddModule,
   saveConfig,
   saveConfigToDevice,
@@ -26,7 +27,7 @@ export default function AddModuleButton({
 
   return (
     <>
-      <Tooltip title={!deviceOnline ? "Control socket disconnected" : "Add Module"}>
+      <Tooltip title={!deviceOnline ? offlineTitle : "Add Module"}>
         {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
         <span>
           <Fab

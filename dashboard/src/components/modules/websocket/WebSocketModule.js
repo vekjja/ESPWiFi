@@ -9,7 +9,7 @@ import { SECTIONS } from "../../common/SectionTitle";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import { buildWebSocketUrl } from "../../../utils/api";
 import { createSocketSession } from "../../../utils/socketSession";
-import { connectionLabel } from "../moduleConfig";
+import { connectionLabel, moduleScrollbarSx } from "../moduleConfig";
 
 function normalizeWsUrl(raw) {
   let wsUrl = String(raw || "").trim();
@@ -36,7 +36,9 @@ export default function WebSocketModule({
   const moduleKey = initialProps.key || index;
 
   const [message, setMessage] = useState("");
-  const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [connectionStatus, setConnectionStatus] = useState(
+    initialProps.connectionState === "connected" ? "connecting" : null
+  );
   const [openModal, setOpenModal] = useState(false);
   const [inputText, setInputText] = useState("");
 
@@ -194,7 +196,7 @@ export default function WebSocketModule({
         width: websocketSettingsData.width,
         height: websocketSettingsData.height,
       }}
-      connectionStatus={connectionStatus}
+      connectionStatus={connectionStatus || undefined}
       onResize={({ width, height }) => {
         setWebSocketSettingsData((prev) => ({
           ...prev,
@@ -262,6 +264,7 @@ export default function WebSocketModule({
               flex: "1 1 auto",
               minHeight: 0,
               overflow: "auto",
+              ...moduleScrollbarSx,
             }}
           >
             <Typography
@@ -294,7 +297,9 @@ export default function WebSocketModule({
                 : "text.secondary"
             }
           >
-            {connectionLabel(connectionStatus)}
+            {connectionStatus
+              ? connectionLabel(connectionStatus)
+              : "Not connected"}
           </Typography>
         </Box>
       )}

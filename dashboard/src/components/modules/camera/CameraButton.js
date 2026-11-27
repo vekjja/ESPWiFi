@@ -6,6 +6,7 @@ import CameraSettingsModal from "./CameraSettingsModal";
 export default function CameraButton({
   config,
   deviceOnline,
+  offlineTitle = "Control socket disconnected",
   saveConfigToDevice,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,7 +28,7 @@ export default function CameraButton({
       <Tooltip
         title={
           !deviceOnline
-            ? "Control socket disconnected"
+            ? offlineTitle
             : !config
             ? "Loading configuration..."
             : !isCameraAvailable

@@ -24,6 +24,7 @@ import NotesIcon from "@mui/icons-material/Notes";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import MenuOutlinedIcon from "@mui/icons-material/MenuOutlined";
 import SettingsModal from "../../common/SettingsModal";
+import { moduleScrollbarSx } from "../../modules/moduleConfig";
 import { buildApiUrl, getFetchOptions } from "../../../utils/api";
 
 export default function LogsSettingsModal({
@@ -41,6 +42,7 @@ export default function LogsSettingsModal({
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const iconOnly = !embedded && isMobile;
 
   const [logs, setLogs] = useState("");
   const [logLoading, setLogLoading] = useState(false);
@@ -62,37 +64,46 @@ export default function LogsSettingsModal({
 
   const menuRowSx = (extra = {}) => ({
     display: "grid",
-    gridTemplateColumns: isMobile ? "1fr" : "44px minmax(0, 1fr)",
+    gridTemplateColumns: iconOnly
+      ? "1fr"
+      : "calc(28px * var(--module-scale, 1)) minmax(0, 1fr)",
     alignItems: "center",
-    justifyItems: isMobile ? "center" : "start",
-    columnGap: 0.75,
+    justifyItems: iconOnly ? "center" : "start",
+    columnGap: "calc(6px * var(--module-scale, 1))",
     cursor: "pointer",
     width: "100%",
     minWidth: 0,
     overflow: "hidden",
-    px: isMobile ? 0 : 0.5,
-    py: isMobile ? 0 : 0.25,
+    px: iconOnly ? 0 : "calc(4px * var(--module-scale, 1))",
+    py: iconOnly ? 0 : "calc(2px * var(--module-scale, 1))",
     borderRadius: 1,
-    "&:hover": isMobile
+    "&:hover": iconOnly
       ? { opacity: 0.85 }
       : { opacity: 0.9, backgroundColor: "action.hover" },
+    "@container logs (max-width: 520px)": {
+      gridTemplateColumns: "1fr",
+      justifyItems: "center",
+    },
     ...extra,
   });
 
   const menuIconSx = (color) => ({
     color,
     pointerEvents: "none",
-    p: isMobile ? 0.25 : 0.5,
-    justifySelf: isMobile ? "center" : "center",
+    p: "calc(4px * var(--module-scale, 1))",
+    justifySelf: "center",
     "& svg": {
-      fontSize: isMobile ? 20 : 24,
+      fontSize: "calc(22px * var(--module-scale, 1))",
     },
   });
 
   const menuLabelSx = (color, extra = {}) => ({
     color,
     pointerEvents: "none",
-    fontSize: "0.9rem",
+    fontSize: "calc(0.9rem * var(--module-scale, 1))",
+    "@container logs (max-width: 520px)": {
+      display: "none",
+    },
     minWidth: 0,
     display: "block",
     whiteSpace: "nowrap",
@@ -509,13 +520,16 @@ export default function LogsSettingsModal({
     <Box
       data-no-dnd="true"
       sx={{
+        containerType: "inline-size",
+        containerName: "logs",
         display: "flex",
-        flexDirection: isMobile ? "column" : "row",
-        gap: 0.75,
+        flexDirection: iconOnly ? "column" : "row",
+        gap: "calc(6px * var(--module-scale, 1))",
         alignItems: "stretch",
         height: "100%",
         flex: 1,
         minHeight: 0,
+        minWidth: 0,
       }}
     >
         {/* Controls */}
@@ -523,16 +537,22 @@ export default function LogsSettingsModal({
           sx={{
             // On desktop the modal content doesn't scroll; the log output does.
             // So we can keep this as a full-height left rail without sticky positioning.
-            position: isMobile ? "sticky" : "relative",
-            top: isMobile ? 0 : "auto",
+            position: iconOnly ? "sticky" : "relative",
+            top: iconOnly ? 0 : "auto",
             zIndex: 10,
             bgcolor: "background.paper",
             boxShadow: 2,
-            flex: isMobile ? "0 0 auto" : "0 0 200px",
-            height: isMobile ? "auto" : "100%",
+            flex: iconOnly ? "0 0 auto" : "0 1 auto",
+            width: iconOnly ? "100%" : "clamp(132px, 30cqw, 220px)",
+            height: iconOnly ? "auto" : "100%",
             minHeight: 0,
-            maxHeight: isMobile ? undefined : "100%",
-            overflow: isMobile ? undefined : "auto",
+            minWidth: 0,
+            maxHeight: iconOnly ? undefined : "100%",
+            overflow: iconOnly ? undefined : "auto",
+            "@container logs (max-width: 520px)": {
+              width: "calc(52px * var(--module-scale, 1))",
+              flex: "0 0 auto",
+            },
             display: "flex",
             flexDirection: "column",
             alignSelf: "stretch",
@@ -576,7 +596,7 @@ export default function LogsSettingsModal({
                   >
                     <DescriptionIcon />
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx(
@@ -622,7 +642,7 @@ export default function LogsSettingsModal({
                       <VerticalAlignBottomOutlinedIcon />
                     )}
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx(
@@ -641,7 +661,7 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     <VerticalAlignTopIcon />
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx("primary.main")}
@@ -695,7 +715,7 @@ export default function LogsSettingsModal({
                   >
                     <AutorenewIcon />
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx(
@@ -718,7 +738,7 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     <FilterListIcon />
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx("primary.main", {
@@ -782,7 +802,7 @@ export default function LogsSettingsModal({
                   >
                     {lineWrap ? <WrapTextIcon /> : <NotesIcon />}
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx(
@@ -806,7 +826,7 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     {onDashboard ? <MenuOutlinedIcon /> : <DashboardOutlinedIcon />}
                   </IconButton>
-                  {!isMobile && (
+                  {!iconOnly && (
                     <Typography
                       variant="body2"
                       sx={menuLabelSx("primary.main")}
@@ -856,6 +876,7 @@ export default function LogsSettingsModal({
                 fontFamily: "monospace",
                 fontSize: "0.8rem",
                 overflow: "auto",
+                ...moduleScrollbarSx,
                 whiteSpace: lineWrap ? "pre-wrap" : "pre",
                 wordBreak: lineWrap ? "break-word" : "normal",
                 minHeight: 0, // Important for flex children

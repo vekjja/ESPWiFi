@@ -27,6 +27,31 @@ export const CONNECTION_CHROME = {
 
 export const MODULE_GUTTER = 10;
 
+// One scrollbar for every module. Hidden until the scroller is hovered,
+// then a thin cyan thumb, matching the music player track list.
+export const moduleScrollbarSx = {
+  scrollbarWidth: "thin",
+  scrollbarColor: "transparent transparent",
+  "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
+    width: 8,
+    height: 8,
+    background: "transparent",
+  },
+  "&::-webkit-scrollbar-track, & *::-webkit-scrollbar-track": {
+    background: "transparent",
+  },
+  "&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb": {
+    background: "transparent",
+    borderRadius: 8,
+  },
+  "&:hover, & *:hover": {
+    scrollbarColor: "rgba(71, 255, 240, 0.45) transparent",
+  },
+  "&:hover::-webkit-scrollbar-thumb, & *:hover::-webkit-scrollbar-thumb": {
+    backgroundColor: "rgba(71, 255, 240, 0.45)",
+  },
+};
+
 // Card border-box width. Wide cards fill the board. A custom size is the
 // pixels from the resize handle and is not stretched to a column.
 export function moduleCardWidth(module) {

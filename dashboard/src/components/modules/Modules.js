@@ -44,7 +44,8 @@ function moduleHeight(item, heights) {
     !customHeight && item.size && MODULE_SIZES[item.size] && !item.wide
       ? MODULE_SIZES[item.size].height + MODULE_GUTTER * 2
       : 0;
-  return customHeight || presetHeight || measured || estimateHeight(item);
+  const preferred = customHeight || presetHeight || 0;
+  return Math.max(preferred, measured || 0) || estimateHeight(item);
 }
 
 function hasAnchor(item) {
@@ -131,18 +132,19 @@ function layoutModules(items, heights, boardWidth, preview) {
   return { boxes, height };
 }
 
-function SortableModule({ module, box, hidden, children }) {
+function SortableModule({ module, box, hidden, front, onSelect, children }) {
   const { attributes, listeners, setNodeRef } = useSortable({
     id: `module-${module.key}`,
     animateLayoutChanges: () => false,
   });
+  const { onPointerDown, ...restListeners } = listeners || {};
 
   const style = {
     position: "absolute",
     left: box.x,
     top: box.y,
     width: box.w,
-    zIndex: hidden ? 0 : 1,
+    zIndex: hidden ? 0 : front ? 4 : 1,
     opacity: hidden ? 0 : 1,
     boxSizing: "border-box",
     display: "flow-root",
@@ -154,7 +156,11 @@ function SortableModule({ module, box, hidden, children }) {
       style={style}
       data-module-key={module.key}
       {...attributes}
-      {...listeners}
+      {...restListeners}
+      onPointerDown={(event) => {
+        onSelect?.(module.key);
+        onPointerDown?.(event);
+      }}
     >
       {children}
     </div>
@@ -176,10 +182,12 @@ export default function Modules({
   const [heights, setHeights] = useState({});
   const [resizePreview, setResizePreview] = useState(null);
   const [dragKey, setDragKey] = useState(null);
+  const [frontKey, setFrontKey] = useState(null);
   const [dropSlot, setDropSlot] = useState(null);
   const [dragSize, setDragSize] = useState(null);
   const dragKeyRef = useRef(null);
   const dropSlotRef = useRef(null);
+  const seenModuleKeysRef = useRef(null);
   const previewRef = useRef(null);
   const layoutRef = useRef({ boxes: new Map() });
   const metricsRef = useRef({ items: [], heights: {}, boardWidth: 0 });
@@ -314,6 +322,42 @@ export default function Modules({
       setModules(modulesArray);
     }
   }, [config]);
+
+  // A module that was just added has no saved position, so the board would
+  // drop it on top of an existing card. Park it in the first open spot and
+  // keep that spot. Modules already on screen are left where they are.
+  useEffect(() => {
+    if (!modules.length) return;
+    const keys = modules.map((module) => module.key);
+    if (seenModuleKeysRef.current == null) {
+      seenModuleKeysRef.current = new Set(keys);
+      return;
+    }
+    const newcomers = modules.filter(
+      (module) =>
+        !seenModuleKeysRef.current.has(module.key) && !hasAnchor(module)
+    );
+    if (!newcomers.length || !boardWidth || dragKeyRef.current != null) {
+      if (!newcomers.length) seenModuleKeysRef.current = new Set(keys);
+      return;
+    }
+    const others = modules.filter(
+      (module) => !newcomers.some((item) => item.key === module.key)
+    );
+    const placed = layoutModules(others, heights, boardWidth, null);
+    const taken = Array.from(placed.boxes.values());
+    const next = modules.map((module) => {
+      if (!newcomers.some((item) => item.key === module.key)) return module;
+      const box = openBox(module, heights, boardWidth, taken);
+      taken.push(box);
+      return { ...module, x: box.x, y: box.y };
+    });
+    seenModuleKeysRef.current = new Set(keys);
+    setModules(next);
+    const partial = { modules: next };
+    saveConfig(partial);
+    saveConfigToDevice(partial);
+  }, [modules, boardWidth, heights, saveConfig, saveConfigToDevice]);
 
   // Use useMemo to ensure stable references
   const moduleItems = useMemo(() => modules, [modules]);
@@ -604,6 +648,8 @@ export default function Modules({
         module={module}
         box={box}
         hidden={module.key === dragKey}
+        front={module.key === frontKey || module.key === dragKey}
+        onSelect={setFrontKey}
       >
         {child}
       </SortableModule>

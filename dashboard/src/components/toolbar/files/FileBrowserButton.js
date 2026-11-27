@@ -8,6 +8,7 @@ export default function FileBrowserButton({
   config,
   deviceInfo,
   deviceOnline,
+  offlineTitle = "Control socket disconnected",
   controlWs,
   onFileBrowser,
 }) {
@@ -25,7 +26,7 @@ export default function FileBrowserButton({
 
   return (
     <>
-      <Tooltip title={!deviceOnline ? "Control socket disconnected" : "File Browser - Browse device files"}>
+      <Tooltip title={!deviceOnline ? offlineTitle : "File Browser - Browse device files"}>
         {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
         <span>
           <Fab

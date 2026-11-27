@@ -177,6 +177,12 @@ function App() {
   });
   const [controlStatus, setControlStatus] = useState("disconnected");
   const controlConnected = controlStatus === "connected";
+  // Reconnecting still has a live device. Only a real drop should look offline.
+  const controlDown =
+    controlStatus === "disconnected" ||
+    controlStatus === "offline" ||
+    controlStatus === "error" ||
+    controlStatus === "auth";
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
   const [cloudRssi, setCloudRssi] = useState(null);
@@ -523,7 +529,12 @@ function App() {
         controlWsRef.current = ws;
       },
       onStatus: (status) => {
-        if (status !== "connected") {
+        const down =
+          status === "disconnected" ||
+          status === "offline" ||
+          status === "error" ||
+          status === "auth";
+        if (down) {
           controlWsRef.current = null;
           setCloudRssi(null);
         }
@@ -706,18 +717,15 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor:
-            controlStatus !== "connected" && controlStatus !== "connecting"
-              ? "error.main"
-              : musicPlaybackState.isPlaying && musicPlaybackState.isPaused
-              ? "musicPlayer.paused"
-              : musicPlaybackState.isPlaying
-              ? "musicPlayer.playing"
-              : controlConnected
-              ? "secondary.light"
-              : "warning.main",
+          backgroundColor: controlDown
+            ? "error.main"
+            : musicPlaybackState.isPlaying && musicPlaybackState.isPaused
+            ? "musicPlayer.paused"
+            : musicPlaybackState.isPlaying
+            ? "musicPlayer.playing"
+            : "secondary.light",
           color:
-            musicPlaybackState.isPlaying || !controlConnected
+            musicPlaybackState.isPlaying || controlDown
               ? "white"
               : "primary.main",
           fontSize: "3em",
@@ -742,6 +750,7 @@ function App() {
         <SettingsButtonBar
           config={effectiveConfig}
           deviceOnline={controlConnected}
+          controlStatus={controlStatus}
           saveConfig={updateLocalConfig}
           saveConfigToDevice={saveConfigFromButton}
           onRefreshConfig={refreshConfigFromDevice}

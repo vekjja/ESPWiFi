@@ -221,6 +221,7 @@ function SortableBarItem({ id, children }) {
 export default function SettingsButtonBar({
   config,
   deviceOnline,
+  controlStatus = "disconnected",
   saveConfig,
   saveConfigToDevice,
   onRefreshConfig,
@@ -244,6 +245,11 @@ export default function SettingsButtonBar({
    * When the control socket is down (deviceOnline=false), buttons that talk
    * to the device are disabled until it reconnects.
    */
+  const offlineTitle =
+    controlStatus === "reconnecting" || controlStatus === "connecting"
+      ? "Reconnecting…"
+      : "Control socket disconnected";
+
   const availableButtons = useMemo(() => {
     const items = [];
     const wifiMode = config?.wifi?.mode || "client";
@@ -261,6 +267,7 @@ export default function SettingsButtonBar({
         <DeviceSettingsButton
           config={config}
           deviceOnline={httpCapable || canCloudConfigure}
+          offlineTitle={offlineTitle}
           saveConfigToDevice={saveConfigToDevice}
           onRefreshConfig={onRefreshConfig}
           cloudMode={cloudMode}
@@ -277,6 +284,7 @@ export default function SettingsButtonBar({
           <RSSIButton
             config={config}
             deviceOnline={deviceOnline}
+            offlineTitle={offlineTitle}
             saveConfig={saveConfig}
             saveConfigToDevice={saveConfigToDevice}
             getRSSIColor={getRSSIColor}
@@ -296,6 +304,7 @@ export default function SettingsButtonBar({
           <CameraButton
             config={config}
             deviceOnline={deviceOnline}
+            offlineTitle={offlineTitle}
             saveConfigToDevice={saveConfigToDevice}
           />
         ),
@@ -312,6 +321,7 @@ export default function SettingsButtonBar({
         <LogsButton
           config={config}
           deviceOnline={logsCapable}
+          offlineTitle={offlineTitle}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           controlConnected={controlConnected}
@@ -330,6 +340,7 @@ export default function SettingsButtonBar({
           config={config}
           deviceInfo={deviceInfoOverride}
           deviceOnline={deviceOnline}
+          offlineTitle={offlineTitle}
           controlWs={controlWs}
         />
       ),
@@ -341,6 +352,7 @@ export default function SettingsButtonBar({
         <AddModuleButton
           config={config}
           deviceOnline={deviceOnline}
+          offlineTitle={offlineTitle}
           saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           missingSettingsButtons={[]}
@@ -364,6 +376,7 @@ export default function SettingsButtonBar({
     onRequestLogs,
     cloudMode,
     controlConnected,
+    offlineTitle,
     deviceInfoOverride,
     controlWs,
   ]);
@@ -596,6 +609,7 @@ export default function SettingsButtonBar({
                       <AddModuleButton
                         config={config}
                         deviceOnline={deviceOnline}
+                        offlineTitle={offlineTitle}
                         saveConfig={saveConfig}
                         saveConfigToDevice={saveConfigToDevice}
                         missingSettingsButtons={missingSettingsButtons}

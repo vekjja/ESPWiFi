@@ -6,6 +6,7 @@ import DeviceSettingsModal from "./DeviceSettingsModal";
 export default function DeviceSettingsButton({
   config,
   deviceOnline,
+  offlineTitle = "Device Offline",
   saveConfigToDevice,
   cloudMode = false,
   controlConnected = false,
@@ -40,7 +41,7 @@ export default function DeviceSettingsButton({
               ? "Loading configuration..."
               : "Device Settings"
             : !deviceOnline
-            ? "Device Offline"
+            ? offlineTitle
             : !config
             ? "Loading configuration..."
             : "Device Settings"

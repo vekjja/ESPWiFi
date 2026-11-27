@@ -8,6 +8,7 @@ import RSSISettingsModal from "./RSSISettingsModal";
 export default function RSSIButton({
   config,
   deviceOnline,
+  offlineTitle = "Control socket disconnected",
   saveConfig,
   saveConfigToDevice,
   onRSSIDataChange,
@@ -44,7 +45,7 @@ export default function RSSIButton({
 
   // Get RSSI status text
   const getRSSIStatusText = (rssiValue) => {
-    if (!deviceOnline) return "Control socket disconnected";
+    if (!deviceOnline) return offlineTitle;
     if (rssiValue === null || rssiValue === undefined)
       return "Connected, waiting for data...";
     return `RSSI: ${rssiValue} dBm`;

@@ -32,16 +32,20 @@ export const infoCardSurfaceSx = {
 /** Type, icons, and bars follow --module-scale from the module shell. */
 const scaleSx = {
   "&& .MuiTypography-caption": {
-    fontSize: "calc(0.65rem * var(--module-scale, 1))",
+    fontSize: "calc(0.8rem * var(--module-scale, 1))",
+    lineHeight: 1.2,
   },
   "&& .MuiTypography-h6": {
-    fontSize: "calc(1.1rem * var(--module-scale, 1))",
+    fontSize: "calc(1.35rem * var(--module-scale, 1))",
+    lineHeight: 1.2,
   },
   "&& .MuiTypography-subtitle2": {
     fontSize: "calc(0.9rem * var(--module-scale, 1))",
+    lineHeight: 1.15,
   },
   "&& .MuiTypography-body2": {
     fontSize: "calc(0.875rem * var(--module-scale, 1))",
+    lineHeight: 1.15,
   },
   "&& .section-title .MuiTypography-root": {
     fontSize: "calc(1.25rem * var(--module-scale, 1))",
@@ -86,6 +90,8 @@ export default function InfoCard({
   embedded = false,
   fluid = false,
   scale = false,
+  fit = false,
+  hug = false,
 }) {
   const card = (
       <Card
@@ -113,6 +119,14 @@ export default function InfoCard({
                   minHeight: 0,
                   width: "100%",
                   boxSizing: "border-box",
+                  ...(scale || fit
+                    ? {
+                        padding: "calc(12px * var(--module-scale, 1))",
+                        "&:last-child": {
+                          paddingBottom: "calc(12px * var(--module-scale, 1))",
+                        },
+                      }
+                    : null),
                 }
               : undefined
           }
@@ -142,6 +156,8 @@ export default function InfoCard({
           {/* View Mode */}
           {fluid ? (
             <Box
+              data-module-fit={fit ? "" : undefined}
+              data-hug={hug ? "" : undefined}
               sx={{
                 display: "flex",
                 flexDirection: "column",
@@ -149,7 +165,7 @@ export default function InfoCard({
                 minHeight: 0,
                 minWidth: 0,
                 maxWidth: "100%",
-                overflow: "auto",
+                overflow: fit ? "auto" : "hidden",
               }}
             >
               {children}

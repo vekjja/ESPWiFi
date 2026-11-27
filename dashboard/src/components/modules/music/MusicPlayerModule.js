@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import Module from "../Module";
+import { moduleScrollbarSx } from "../moduleConfig";
 import InfoCard from "../../common/InfoCard";
 import { SECTIONS } from "../../common/SectionTitle";
 import {
@@ -1424,26 +1425,7 @@ export default function MusicPlayerModule({
               borderRadius: 1,
               flex: "1 1 auto",
               minHeight: 0,
-              scrollbarWidth: "thin",
-              scrollbarColor: "transparent transparent",
-              "&::-webkit-scrollbar": {
-                width: 8,
-                height: 8,
-                background: "transparent",
-              },
-              "&::-webkit-scrollbar-track": {
-                background: "transparent",
-              },
-              "&::-webkit-scrollbar-thumb": {
-                background: "transparent",
-                borderRadius: 8,
-              },
-              "&:hover": {
-                scrollbarColor: "rgba(71, 255, 240, 0.45) transparent",
-              },
-              "&:hover::-webkit-scrollbar-thumb": {
-                backgroundColor: "rgba(71, 255, 240, 0.45)",
-              },
+              ...moduleScrollbarSx,
             }}
           >
             {loading ? (

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import IButton from "../common/IButton";
 import DeleteButton from "../common/DeleteButton";
 import { Box, Card, CardContent, Typography } from "@mui/material";
@@ -6,7 +6,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PhotoSizeSelectSmallIcon from "@mui/icons-material/PhotoSizeSelectSmall";
 import VrpanoIcon from "@mui/icons-material/Vrpano";
-import { chromeForModule, frameSxForModule } from "./moduleConfig";
+import { chromeForModule, frameSxForModule, moduleScrollbarSx } from "./moduleConfig";
 import SectionTitle from "../common/SectionTitle";
 
 const MIN_MODULE_WIDTH = 220;
@@ -25,7 +25,7 @@ function moduleScale(width, height) {
   const h = Number(height);
   if (!w || !h) return 1;
   const basis = Math.min(w, h) / SCALE_BASIS;
-  return Math.round(Math.max(0.7, Math.min(2.4, basis)) * 100) / 100;
+  return Math.round(Math.max(1, Math.min(2.4, basis)) * 100) / 100;
 }
 
 export default function Module({
@@ -64,9 +64,13 @@ export default function Module({
     moduleConfig?.size === "custom"
       ? moduleScale(moduleConfig.width, moduleConfig.height)
       : 1;
-  const scale = liveSize
+  const sizeScale = liveSize
     ? moduleScale(liveSize.width, liveSize.height)
     : savedScale;
+  const [fitScale, setFitScale] = useState(null);
+  const [contentFloor, setContentFloor] = useState(0);
+  const contentFloorRef = useRef(0);
+  const scale = fitScale == null ? sizeScale : Math.min(sizeScale, fitScale);
   const chrome = chromeForModule({
     connectionStatus,
     online,
@@ -103,7 +107,7 @@ export default function Module({
         ? Math.min(limit, Math.max(Math.min(MIN_MODULE_WIDTH, limit), rawWidth))
         : Math.max(MIN_MODULE_WIDTH, rawWidth);
     const height = Math.max(
-      MIN_MODULE_HEIGHT,
+      contentFloorRef.current || MIN_MODULE_HEIGHT,
       Math.round(drag.height + event.clientY - drag.y)
     );
     drag.size = { width, height };
@@ -125,6 +129,82 @@ export default function Module({
     if (moduleConfig?.key != null) layout.previewResize(moduleConfig.key, null);
     if (drag?.size && onResize) onResize(drag.size);
   };
+
+  useLayoutEffect(() => {
+    setFitScale(null);
+  }, [sizeScale]);
+
+  // Memory and network grow to their content. Storage's floor is one volume
+  // so the card can scroll between LittleFS and the SD card.
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return undefined;
+    const measure = () => {
+      const hug = card.querySelector("[data-hug]");
+      const block = card.querySelector("[data-min-block]");
+      let floor = 0;
+      if (hug?.firstElementChild && hug.clientHeight >= 8) {
+        floor = Math.ceil(
+          card.offsetHeight -
+            hug.clientHeight +
+            hug.firstElementChild.offsetHeight
+        );
+      } else if (block?.parentElement && block.parentElement.clientHeight >= 8) {
+        const scroll = block.parentElement;
+        floor = Math.ceil(
+          card.offsetHeight - scroll.clientHeight + block.offsetHeight
+        );
+      } else {
+        return;
+      }
+      floor = Math.max(MIN_MODULE_HEIGHT, floor);
+      contentFloorRef.current = floor;
+      setContentFloor((prev) => (Math.abs(prev - floor) < 2 ? prev : floor));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(card);
+    return () => ro.disconnect();
+  }, [scale, moduleConfig?.height, moduleConfig?.info]);
+
+  // Shrink a fitted body until it sits inside the card. Lists opt out and scroll.
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return undefined;
+    const fit = () => {
+      const node = card.querySelector("[data-module-fit]");
+      if (!node) return;
+      const content = node.firstElementChild;
+      const available = node.clientHeight;
+      const needed = content ? content.offsetHeight : node.scrollHeight;
+      if (available < 8 || needed < 8) return;
+      setFitScale((prev) => {
+        const current = prev == null ? sizeScale : Math.min(prev, sizeScale);
+        let next = current;
+        if (needed > available + 1) {
+          next = Math.max(
+            1,
+            Math.round(current * (available / needed) * 100) / 100
+          );
+        } else if (current < sizeScale - 0.02 && needed < available - 4) {
+          next = Math.min(
+            sizeScale,
+            Math.round(current * (available / needed) * 100) / 100
+          );
+        }
+        return Math.abs(next - current) < 0.02 ? current : next;
+      });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(card);
+    const mo = new MutationObserver(fit);
+    mo.observe(card, { childList: true, subtree: true, characterData: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [sizeScale, fitScale]);
 
   useEffect(() => {
     if (!liveSize) return;
@@ -158,6 +238,11 @@ export default function Module({
     setTouchTick((tick) => tick + 1);
   };
 
+  const configuredHeight =
+    liveSize?.height ||
+    (Number(moduleConfig?.height) > 0 ? Number(moduleConfig.height) : 0);
+  const flooredHeight =
+    contentFloor > 0 ? Math.max(configuredHeight, contentFloor) : 0;
   const liveFrame = liveSize
     ? {
         height: liveSize.height,
@@ -193,6 +278,7 @@ export default function Module({
         maxWidth: "100%",
         boxSizing: "border-box",
         overflow: "hidden",
+        ...moduleScrollbarSx,
         "--module-scale": String(scale),
         "&:active": {
           cursor: "grabbing",
@@ -202,6 +288,13 @@ export default function Module({
         ...(errorOutline ? { borderColor: "error.main" } : null),
         ...sx,
         ...liveFrame,
+        ...(flooredHeight > 0
+          ? {
+              minHeight: contentFloor,
+              height: flooredHeight,
+              maxHeight: flooredHeight,
+            }
+          : null),
         "& .module-actions, & .module-actions *": {
           opacity: liveSize ? 1 : 0,
           pointerEvents: "none",

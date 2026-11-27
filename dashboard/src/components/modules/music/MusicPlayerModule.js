@@ -1414,13 +1414,15 @@ export default function MusicPlayerModule({
             </Box>
           </Box>
 
-          {/* Track list */}
+          {/* Track list. Marked so a finger scroll does not drag the module. */}
           <Box
+            data-no-dnd="true"
             sx={{
               width: "100%",
               maxWidth: "100%",
               boxSizing: "border-box",
               overflow: "auto",
+              touchAction: "pan-y",
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
               flex: "1 1 auto",

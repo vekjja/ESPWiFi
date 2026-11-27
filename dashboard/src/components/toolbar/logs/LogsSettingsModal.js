@@ -6,8 +6,6 @@ import {
   Card,
   CardContent,
   Paper,
-  useTheme,
-  useMediaQuery,
   IconButton,
   Tooltip,
   Menu,
@@ -40,10 +38,6 @@ export default function LogsSettingsModal({
   embedded = false,
   onMoveToToolbar = null,
 }) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const iconOnly = !embedded && isMobile;
-
   const [logs, setLogs] = useState("");
   const [logLoading, setLogLoading] = useState(false);
   const [logError, setLogError] = useState("");
@@ -64,25 +58,24 @@ export default function LogsSettingsModal({
 
   const menuRowSx = (extra = {}) => ({
     display: "grid",
-    gridTemplateColumns: iconOnly
-      ? "1fr"
-      : "calc(28px * var(--module-scale, 1)) minmax(0, 1fr)",
+    gridTemplateColumns: "calc(28px * var(--module-scale, 1)) minmax(0, 1fr)",
     alignItems: "center",
-    justifyItems: iconOnly ? "center" : "start",
+    justifyItems: "start",
     columnGap: "calc(6px * var(--module-scale, 1))",
     cursor: "pointer",
     width: "100%",
     minWidth: 0,
     overflow: "hidden",
-    px: iconOnly ? 0 : "calc(4px * var(--module-scale, 1))",
-    py: iconOnly ? 0 : "calc(2px * var(--module-scale, 1))",
+    px: "calc(4px * var(--module-scale, 1))",
+    py: "calc(2px * var(--module-scale, 1))",
     borderRadius: 1,
-    "&:hover": iconOnly
-      ? { opacity: 0.85 }
-      : { opacity: 0.9, backgroundColor: "action.hover" },
-    "@container logs (max-width: 520px)": {
+    "&:hover": { opacity: 0.9, backgroundColor: "action.hover" },
+    "@container logs (max-width: 560px)": {
       gridTemplateColumns: "1fr",
       justifyItems: "center",
+      width: "auto",
+      flex: "0 0 auto",
+      px: "calc(2px * var(--module-scale, 1))",
     },
     ...extra,
   });
@@ -106,7 +99,7 @@ export default function LogsSettingsModal({
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
-    "@container logs (max-width: 520px)": {
+    "@container logs (max-width: 560px)": {
       display: "none",
     },
     ...extra,
@@ -517,17 +510,19 @@ export default function LogsSettingsModal({
     <Box
       data-no-dnd="true"
       sx={{
-        containerType: embedded ? "size" : "inline-size",
-        containerName: "logs",
         display: "flex",
-        flexDirection: iconOnly ? "column" : "row",
+        flexDirection: "row",
         gap: "calc(6px * var(--module-scale, 1))",
         alignItems: "stretch",
         height: "100%",
         flex: "1 1 auto",
         minHeight: 0,
         minWidth: 0,
+        width: "100%",
         overflow: "hidden",
+        "@container logs (max-width: 560px)": {
+          flexDirection: "column",
+        },
       }}
     >
         {/* Controls */}
@@ -535,20 +530,21 @@ export default function LogsSettingsModal({
           sx={{
             // On desktop the modal content doesn't scroll; the log output does.
             // So we can keep this as a full-height left rail without sticky positioning.
-            position: iconOnly ? "sticky" : "relative",
-            top: iconOnly ? 0 : "auto",
+            position: "relative",
             zIndex: 10,
             bgcolor: "background.paper",
             boxShadow: 2,
-            flex: iconOnly ? "0 0 auto" : "0 0 auto",
-            width: iconOnly ? "100%" : "clamp(132px, 30cqw, 220px)",
-            height: iconOnly ? "auto" : "100%",
+            flex: "0 0 auto",
+            width: "clamp(148px, 30cqw, 220px)",
+            height: "100%",
             minHeight: 0,
             minWidth: 0,
             maxHeight: "100%",
             overflow: "hidden",
-            "@container logs (max-width: 520px)": {
-              width: "calc(52px * var(--module-scale, 1))",
+            "@container logs (max-width: 560px)": {
+              width: "100%",
+              height: "auto",
+              maxHeight: "42%",
               flex: "0 0 auto",
             },
             display: "flex",
@@ -569,16 +565,18 @@ export default function LogsSettingsModal({
           >
             <Box
               sx={{
-                display: isMobile ? "grid" : "flex",
-                gridTemplateColumns: isMobile
-                  ? "repeat(4, minmax(0, 1fr))"
-                  : undefined,
-                justifyItems: isMobile ? "center" : undefined,
-                flexDirection: isMobile ? undefined : "column",
-                flexWrap: isMobile ? undefined : "nowrap",
-                alignItems: isMobile ? "center" : "stretch",
-                gap: isMobile ? 1 : 1,
-                // Keep mobile rows balanced; avoid a single icon on its own line.
+                display: "flex",
+                flexDirection: "column",
+                flexWrap: "nowrap",
+                alignItems: "stretch",
+                gap: 1,
+                "@container logs (max-width: 560px)": {
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  justifyContent: "space-evenly",
+                  alignItems: "center",
+                  gap: 0.5,
+                },
               }}
             >
               {/* Enable/Disable Logging */}
@@ -598,16 +596,14 @@ export default function LogsSettingsModal({
                   >
                     <DescriptionIcon />
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx(
-                        logEnabled ? "primary.main" : "text.disabled"
-                      )}
-                    >
-                      {logEnabled ? "Logging Enabled" : "Logging Disabled"}
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="body2"
+                    sx={menuLabelSx(
+                      logEnabled ? "primary.main" : "text.disabled"
+                    )}
+                  >
+                    {logEnabled ? "Logging Enabled" : "Logging Disabled"}
+                  </Typography>
                 </Box>
               </Tooltip>
 
@@ -644,16 +640,14 @@ export default function LogsSettingsModal({
                       <VerticalAlignBottomOutlinedIcon />
                     )}
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx(
-                        autoScroll ? "primary.main" : "text.disabled"
-                      )}
-                    >
-                      Auto Scroll
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="body2"
+                    sx={menuLabelSx(
+                      autoScroll ? "primary.main" : "text.disabled"
+                    )}
+                  >
+                    Auto Scroll
+                  </Typography>
                 </Box>
               </Tooltip>
 
@@ -663,14 +657,9 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     <VerticalAlignTopIcon />
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx("primary.main")}
-                    >
-                      Top
-                    </Typography>
-                  )}
+                  <Typography variant="body2" sx={menuLabelSx("primary.main")}>
+                    Top
+                  </Typography>
                 </Box>
               </Tooltip>
 
@@ -703,8 +692,6 @@ export default function LogsSettingsModal({
                     opacity: logLoading ? 0.6 : 1,
                     "&:hover": logLoading
                       ? {}
-                      : isMobile
-                      ? { opacity: 0.85 }
                       : { opacity: 0.9, backgroundColor: "action.hover" },
                   })}
                 >
@@ -717,20 +704,18 @@ export default function LogsSettingsModal({
                   >
                     <AutorenewIcon />
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx(
-                        refreshInterval ? "primary.main" : "text.disabled"
-                      )}
-                    >
-                      {logLoading
-                        ? "Loading..."
-                        : `Auto Refresh${
-                            refreshInterval ? ` (${refreshInterval}s)` : ""
-                          }`}
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="body2"
+                    sx={menuLabelSx(
+                      refreshInterval ? "primary.main" : "text.disabled"
+                    )}
+                  >
+                    {logLoading
+                      ? "Loading..."
+                      : `Auto Refresh${
+                          refreshInterval ? ` (${refreshInterval}s)` : ""
+                        }`}
+                  </Typography>
                 </Box>
               </Tooltip>
 
@@ -740,16 +725,14 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     <FilterListIcon />
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx("primary.main", {
-                        textTransform: "capitalize",
-                      })}
-                    >
-                      {logLevel}
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="body2"
+                    sx={menuLabelSx("primary.main", {
+                      textTransform: "capitalize",
+                    })}
+                  >
+                    {logLevel}
+                  </Typography>
                 </Box>
               </Tooltip>
               <Menu
@@ -804,16 +787,14 @@ export default function LogsSettingsModal({
                   >
                     {lineWrap ? <WrapTextIcon /> : <NotesIcon />}
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx(
-                        lineWrap ? "primary.main" : "text.disabled"
-                      )}
-                    >
-                      Line Wrap
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="body2"
+                    sx={menuLabelSx(
+                      lineWrap ? "primary.main" : "text.disabled"
+                    )}
+                  >
+                    Line Wrap
+                  </Typography>
                 </Box>
               </Tooltip>
 
@@ -828,14 +809,9 @@ export default function LogsSettingsModal({
                   <IconButton size="small" sx={menuIconSx("primary.main")}>
                     {onDashboard ? <MenuOutlinedIcon /> : <DashboardOutlinedIcon />}
                   </IconButton>
-                  {!iconOnly && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx("primary.main")}
-                    >
-                      {onDashboard ? "Move to Toolbar" : "Add to Dashboard"}
-                    </Typography>
-                  )}
+                  <Typography variant="body2" sx={menuLabelSx("primary.main")}>
+                    {onDashboard ? "Move to Toolbar" : "Add to Dashboard"}
+                  </Typography>
                 </Box>
               </Tooltip>
             </Box>
@@ -846,10 +822,9 @@ export default function LogsSettingsModal({
         <Card
           sx={{
             flex: "1 1 auto",
+            alignSelf: "stretch",
             minWidth: 0,
             minHeight: 0,
-            height: "100%",
-            maxHeight: "100%",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
@@ -923,8 +898,11 @@ export default function LogsSettingsModal({
           minHeight: 0,
           minWidth: 0,
           width: "100%",
+          height: "100%",
           display: "flex",
           overflow: "hidden",
+          containerType: "inline-size",
+          containerName: "logs",
         }}
       >
         {body}
@@ -965,7 +943,17 @@ export default function LogsSettingsModal({
         pb: { xs: 1.5, sm: 1.25 },
       }}
     >
-      {body}
+      <Box
+        sx={{
+          height: "100%",
+          minHeight: 0,
+          display: "flex",
+          containerType: "inline-size",
+          containerName: "logs",
+        }}
+      >
+        {body}
+      </Box>
     </SettingsModal>
   );
 }

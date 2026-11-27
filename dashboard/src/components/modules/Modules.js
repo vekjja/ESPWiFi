@@ -20,6 +20,29 @@ import LogsModule from "./logs/LogsModule";
 import { ModuleLayoutContext } from "./Module";
 import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
 
+// A scroll or a control inside a module must not start a drag. dnd-kit's
+// PointerSensor otherwise treats the first 8px of a finger scroll as a move.
+class ModulePointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: "onPointerDown",
+      handler: ({ nativeEvent: event }) => {
+        if (!event.isPrimary || event.button !== 0) return false;
+        const target = event.target;
+        if (!(target instanceof Element)) return false;
+        if (
+          target.closest(
+            "[data-no-dnd], input, textarea, select, button, a, label, .MuiSlider-root, .MuiIconButton-root, .MuiSwitch-root, .MuiCheckbox-root"
+          )
+        ) {
+          return false;
+        }
+        return true;
+      },
+    },
+  ];
+}
+
 function estimateHeight(module) {
   let height = 280;
   if (module.type === "systemInfo") {
@@ -194,81 +217,9 @@ export default function Modules({
 
   // Configure sensors for drag detection with activation constraints
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(ModulePointerSensor, {
       activationConstraint: {
-        distance: 8, // Require 8px movement before starting drag
-      },
-      // Exclude input elements from drag activation
-      shouldActivateOnEvent: (event) => {
-        const target = event.target;
-
-        // More comprehensive check for interactive elements
-        const interactiveSelectors = [
-          "input",
-          "textarea",
-          "select",
-          "button",
-          "label",
-          "a",
-          '[role="slider"]',
-          '[role="button"]',
-          '[role="checkbox"]',
-          '[role="switch"]',
-          ".MuiSlider-root",
-          ".MuiSlider-thumb",
-          ".MuiSlider-track",
-          ".MuiSlider-rail",
-          ".MuiSlider-mark",
-          ".MuiSlider-markLabel",
-          ".MuiSlider-valueLabel",
-          ".MuiTextField-root",
-          ".MuiSelect-root",
-          ".MuiSwitch-root",
-          ".MuiCheckbox-root",
-          ".MuiButton-root",
-          ".MuiIconButton-root",
-          ".MuiFab-root",
-          ".IButton",
-          "[aria-valuenow]",
-          "[aria-valuemin]",
-          "[aria-valuemax]",
-          '[data-testid*="slider"]',
-          '[class*="slider"]',
-          '[class*="Slider"]',
-          "[tabindex]",
-          "[onclick]",
-          "[onmousedown]",
-          "[onmouseup]",
-          // Additional Material-UI specific selectors
-          ".MuiSlider-marked",
-          ".MuiSlider-colorPrimary",
-          ".MuiSlider-colorSecondary",
-          ".MuiSlider-sizeSmall",
-          ".MuiSlider-sizeMedium",
-          ".MuiSlider-sizeLarge",
-          ".MuiSlider-disabled",
-          ".MuiSlider-readOnly",
-        ];
-
-        // Check if the target or any of its parents match any interactive selector
-        for (const selector of interactiveSelectors) {
-          if (target.closest(selector)) {
-            return false;
-          }
-        }
-
-        // Additional check: if the element has any event handlers or is part of a form
-        if (
-          target.onclick ||
-          target.onmousedown ||
-          target.onmouseup ||
-          target.closest("form") ||
-          target.closest("[data-no-dnd]")
-        ) {
-          return false;
-        }
-
-        return true;
+        distance: 8,
       },
     })
   );

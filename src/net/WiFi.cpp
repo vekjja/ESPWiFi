@@ -50,54 +50,33 @@ void ESPWiFi::toggleWiFi() {
 }
 
 void ESPWiFi::wifiConfigHandler() {
-  // Determine whether WiFi needs a restart based on changed settings.
-  //
-  // Convention: Compare oldConfig (before) vs config (after update).
-  // We only *schedule* a restart here; handleConfigUpdate() performs it
-  // after all handlers run, so startWiFi() uses the new config.
-  bool wifiNeedsRestart = false;
-
+  // Connection settings are stored with the rest of the config. The radio
+  // keeps its current session until the user restarts from the UI or power
+  // cycles the device, which runs startWiFi() with the saved config.
   const bool oldEnabled = oldConfig["wifi"]["enabled"].as<bool>();
   const bool newEnabled = config["wifi"]["enabled"].as<bool>();
-  if (oldEnabled != newEnabled) {
-    log(DEBUG, "📶 WiFi enabled changed: %d -> %d", oldEnabled, newEnabled);
-    wifiNeedsRestart = true;
-  }
-
   std::string oldMode = oldConfig["wifi"]["mode"].as<std::string>();
   std::string newMode = config["wifi"]["mode"].as<std::string>();
   toLowerCase(oldMode);
   toLowerCase(newMode);
-  if (oldMode != newMode) {
-    log(DEBUG, "📶 WiFi mode changed: %s -> %s", oldMode.c_str(),
-        newMode.c_str());
-    wifiNeedsRestart = true;
+  const std::string oldSsid =
+      oldConfig["wifi"]["client"]["ssid"].as<std::string>();
+  const std::string newSsid = config["wifi"]["client"]["ssid"].as<std::string>();
+  const std::string oldPw =
+      oldConfig["wifi"]["client"]["password"].as<std::string>();
+  const std::string newPw = config["wifi"]["client"]["password"].as<std::string>();
+  const std::string oldApPw =
+      oldConfig["wifi"]["accessPoint"]["password"].as<std::string>();
+  const std::string newApPw =
+      config["wifi"]["accessPoint"]["password"].as<std::string>();
+
+  if (oldEnabled == newEnabled && oldMode == newMode && oldSsid == newSsid &&
+      oldPw == newPw && oldApPw == newApPw) {
+    return;
   }
 
-  std::string oldSsid = oldConfig["wifi"]["client"]["ssid"].as<std::string>();
-  std::string newSsid = config["wifi"]["client"]["ssid"].as<std::string>();
-  if (oldSsid != newSsid) {
-    log(DEBUG, "📶 WiFi SSID changed: '%s' -> '%s'", oldSsid.c_str(),
-        newSsid.c_str());
-    wifiNeedsRestart = true;
-  }
-
-  std::string oldPw = oldConfig["wifi"]["client"]["password"].as<std::string>();
-  std::string newPw = config["wifi"]["client"]["password"].as<std::string>();
-  if (oldPw != newPw) {
-    wifiNeedsRestart = true;
-  }
-
-  if (wifiNeedsRestart) {
-    wifiRestartRequested_ = true;
-    log(INFO, "📶 WiFi config changed, restart requested");
-
-    // Perform the restart immediately
-    log(INFO, "📶 WiFi config changed; restarting WiFi");
-    stopWiFi();                      // Properly stop before restart
-    vTaskDelay(pdMS_TO_TICKS(200));  // Let everything settle
-    startWiFi();
-  }
+  log(INFO,
+      "📶 WiFi connection settings saved; they apply after restart");
 }
 
 void ESPWiFi::initNVS() {

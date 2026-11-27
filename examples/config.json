@@ -2,15 +2,12 @@
     "deviceName": "ESPWiFi",
     "wifi": {
         "enabled": true,
-        "mode": "client",
+        "mode": "accessPoint",
         "mdns": true,
         "accessPoint": {
-            "password": "espWiFi#"
+            "password": "espWiFi123!"
         },
-        "client": {
-            "ssid": "exampleSSID",
-            "password": "examplePassword123"
-        },
+        "client": {},
         "power": {
             "txPower": 19.5,
             "powerSave": "none"
@@ -20,7 +17,7 @@
         "enabled": true
     },
     "log": {
-        "file": "NONE",
+        "file": "/espwifi.log",
         "level": "debug",
         "enabled": true,
         "useSD": true,

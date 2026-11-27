@@ -560,7 +560,6 @@ class ESPWiFi {
   bool configNeedsSave = false;
   JsonDocument configUpdate;  // Temporary storage for config updates
                               // from HTTP handler
-  bool wifiRestartRequested_ = false;
 
   // ---- CORS cache (minimize per-request work/allocations)
   void corsConfigHandler();

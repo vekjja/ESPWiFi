@@ -175,10 +175,9 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout main branch
-        uses: actions/checkout@v3
+      - name: Checkout release
+        uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
 
       - name: Compute tag
@@ -216,21 +215,18 @@ jobs:
             --namespace espwifi-io --create-namespace \
             --set image.tag="${TAG}"
 
-      - name: Update values.yaml
+      - name: Record deployed tag on main
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
+          git fetch origin main
+          git checkout -B main origin/main
           perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
-
-      - name: Commit updated values.yaml
-        shell: bash
-        run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add espwifi.io/values.yaml
-          git commit -m "chore(helm): record deployed tag ${{ steps.vars.outputs.tag }} [skip ci]" || exit 0
+          git commit -m "chore(helm): record deployed tag ${TAG} [skip ci]" || exit 0
           git push origin main
 
   build-firmware:

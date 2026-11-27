@@ -28,6 +28,7 @@ function normalizeWsUrl(raw) {
 }
 
 export default function WebSocketModule({
+  deviceOnline = true,
   index,
   initialProps,
   onUpdate,
@@ -197,6 +198,7 @@ export default function WebSocketModule({
         height: websocketSettingsData.height,
       }}
       connectionStatus={connectionStatus || undefined}
+      online={deviceOnline}
       onResize={({ width, height }) => {
         setWebSocketSettingsData((prev) => ({
           ...prev,

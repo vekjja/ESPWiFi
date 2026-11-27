@@ -328,6 +328,10 @@ export default function Module({
           minHeight: 0,
           overflow: "hidden",
           boxSizing: "border-box",
+          filter: online === false ? "blur(1.5px)" : "none",
+          opacity: online === false ? 0.7 : 1,
+          pointerEvents: online === false ? "none" : "auto",
+          transition: "filter 180ms ease, opacity 180ms ease",
           "& > .MuiCard-root": {
             flex: "1 1 auto",
             minHeight: 0,

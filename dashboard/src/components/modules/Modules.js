@@ -524,6 +524,7 @@ export default function Modules({
           initialProps={module}
           onUpdate={updateModule}
           onDelete={deleteModule}
+          deviceOnline={deviceOnline}
         />
       );
     } else if (module.type === "camera") {

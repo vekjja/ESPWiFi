@@ -69,7 +69,7 @@ const theme = createTheme({
     },
     musicPlayer: {
       playing: "#47FFF0", // Cyan/primary - same as primary for consistency
-      paused: "#FFF424", // Orange/warning - indicates temporary pause
+      paused: "#CB30FF", // Orange/warning - indicates temporary pause
       stopped: "#333", // Gray/secondary - neutral state
     },
   },

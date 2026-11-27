@@ -18,6 +18,7 @@ import WebSocketModule from "./websocket/WebSocketModule";
 import CameraModule from "./camera/CameraModule";
 import MusicPlayerModule from "./music/MusicPlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
+import LogsModule from "./logs/LogsModule";
 import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
 
 function estimateHeight(module) {
@@ -28,6 +29,8 @@ function estimateHeight(module) {
     height = 540;
   } else if (module.type === "musicPlayer") {
     height = 460;
+  } else if (module.type === "logs") {
+    height = 520;
   }
   return height + 20;
 }
@@ -479,6 +482,18 @@ export default function Modules({
           config={config}
           deviceInfo={deviceInfo}
           deviceOnline={deviceOnline}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+        />
+      );
+    } else if (module.type === "logs") {
+      child = (
+        <LogsModule
+          module={module}
+          config={config}
+          deviceOnline={deviceOnline}
+          saveConfig={saveConfig}
+          saveConfigToDevice={saveConfigToDevice}
           onUpdate={updateModule}
           onDelete={deleteModule}
         />

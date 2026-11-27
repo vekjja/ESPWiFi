@@ -6,6 +6,7 @@ import LogsSettingsModal from "./LogsSettingsModal";
 export default function LogsButton({
   config,
   deviceOnline,
+  saveConfig,
   saveConfigToDevice,
   controlConnected = false,
   logsText = "",
@@ -56,6 +57,7 @@ export default function LogsButton({
           open={modalOpen}
           onClose={handleCloseModal}
           config={config}
+          saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           controlConnected={controlConnected}
           logsText={logsText}

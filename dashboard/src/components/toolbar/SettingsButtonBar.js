@@ -302,12 +302,17 @@ export default function SettingsButtonBar({
       });
     }
 
+    const logsOnDashboard = (config?.modules || []).some(
+      (mod) => mod.type === "logs"
+    );
+    if (!logsOnDashboard) {
     items.push({
       id: "logs",
       render: () => (
         <LogsButton
           config={config}
           deviceOnline={logsCapable}
+          saveConfig={saveConfig}
           saveConfigToDevice={saveConfigToDevice}
           controlConnected={controlConnected}
           logsText={logsText}
@@ -316,6 +321,7 @@ export default function SettingsButtonBar({
         />
       ),
     });
+    }
 
     items.push({
       id: "files",

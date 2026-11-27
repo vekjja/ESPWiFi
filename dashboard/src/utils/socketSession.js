@@ -48,6 +48,7 @@ function browserOnline() {
  * @param {number} [options.heartbeatTimeoutMs] One missed heartbeat. No inbound message for this long counts as one miss.
  * @param {number} [options.maxMissedHeartbeats] Reconnect after this many misses in a row. Defaults to 1.
  * @param {() => string | null} [options.heartbeat]
+ * @param {number | (() => number)} [options.connectTimeoutMs] Abandon a socket that is still not open. A function is read on each attempt.
  * @param {boolean} [options.retryWhenUrlMissing]
  */
 export function createSocketSession(options) {
@@ -236,13 +237,17 @@ export function createSocketSession(options) {
 
     ws = socket;
 
-    if (options.connectTimeoutMs) {
+    const timeoutMs =
+      typeof options.connectTimeoutMs === "function"
+        ? options.connectTimeoutMs()
+        : options.connectTimeoutMs;
+    if (timeoutMs > 0) {
       connectTimer = setTimeout(() => {
         connectTimer = null;
         if (myGen !== generation || stopped) return;
         if (socket.readyState === WebSocket.OPEN) return;
         dropConnection(socket, myGen);
-      }, options.connectTimeoutMs);
+      }, timeoutMs);
     }
 
     socket.onopen = () => {

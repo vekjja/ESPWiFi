@@ -38,6 +38,7 @@ export function moduleCardWidth(module) {
   if (module.type === "webSocket") return 300;
   if (module.type === "camera" || module.type === "musicPlayer") return 440;
   if (module.type === "systemInfo") return 360;
+  if (module.type === "logs") return 720;
   return 320;
 }
 

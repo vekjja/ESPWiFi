@@ -21,6 +21,8 @@ import VerticalAlignTopIcon from "@mui/icons-material/VerticalAlignTop";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import WrapTextIcon from "@mui/icons-material/WrapText";
 import NotesIcon from "@mui/icons-material/Notes";
+import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
+import MenuOutlinedIcon from "@mui/icons-material/MenuOutlined";
 import SettingsModal from "../../common/SettingsModal";
 import { buildApiUrl, getFetchOptions } from "../../../utils/api";
 
@@ -33,6 +35,9 @@ export default function LogsSettingsModal({
   logsText = "",
   logsError = "",
   onRequestLogs = null,
+  saveConfig = null,
+  embedded = false,
+  onMoveToToolbar = null,
 }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -448,6 +453,43 @@ export default function LogsSettingsModal({
     setLogLevelMenuAnchor(null);
   };
 
+  const onDashboard =
+    embedded ||
+    (Array.isArray(config?.modules) &&
+      config.modules.some((mod) => mod.type === "logs"));
+
+  const handlePlacement = () => {
+    if (embedded) {
+      if (typeof onMoveToToolbar === "function") onMoveToToolbar();
+      return;
+    }
+    if (!config) return;
+    const existing = Array.isArray(config.modules) ? config.modules : [];
+    if (!existing.some((mod) => mod.type === "logs")) {
+      const maxKey = existing.reduce((max, mod) => {
+        const key = typeof mod.key === "number" ? mod.key : -1;
+        return Math.max(max, key);
+      }, -1);
+      const updated = {
+        ...config,
+        modules: [
+          ...existing,
+          {
+            type: "logs",
+            name: "Logs",
+            key: maxKey + 1,
+            size: "custom",
+            width: 720,
+            height: 520,
+          },
+        ],
+      };
+      if (typeof saveConfig === "function") saveConfig(updated);
+      if (typeof saveConfigToDevice === "function") saveConfigToDevice(updated);
+    }
+    if (typeof onClose === "function") onClose();
+  };
+
   // Initial fetch on mount (only when modal is open)
   useEffect(() => {
     if (open) {
@@ -464,54 +506,19 @@ export default function LogsSettingsModal({
     }
   }, [config]);
 
-  return (
-    <SettingsModal
-      open={open}
-      onClose={onClose}
-      title={
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1,
-            width: "100%",
-          }}
-        >
-          <DescriptionIcon color="primary" />
-          <span>Logs</span>
-        </Box>
-      }
-      maxWidth={false}
-      paperSx={{
-        // Better desktop use of space; keep mobile behavior intact
-        width: { xs: "99%", sm: "99vw" },
-        minWidth: { xs: "90%", sm: "650px" },
-        maxWidth: { xs: "99%", sm: "95vw" },
-        // Stretch a bit further toward the bottom of the viewport on desktop
-        height: { xs: "90%", sm: "88vh" },
-        maxHeight: { xs: "90%", sm: "88vh" },
-      }}
-      // Keep the left rail fixed; only the log output should scroll
-      contentSx={{
-        overflowY: "hidden",
-        // Tighter content spacing so more fits on screen
-        p: { xs: 2, sm: 1.5 },
-        pt: { xs: 1.5, sm: 1.25 },
-        pb: { xs: 1.5, sm: 1.25 },
+  const body = (
+    <Box
+      data-no-dnd="true"
+      sx={{
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        gap: 0.75,
+        alignItems: "stretch",
+        height: "100%",
+        flex: 1,
+        minHeight: 0,
       }}
     >
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          gap: 0.75,
-          alignItems: "stretch",
-          height: "100%",
-          flex: 1,
-          minHeight: 0,
-        }}
-      >
         {/* Controls */}
         <Card
           sx={{
@@ -789,6 +796,27 @@ export default function LogsSettingsModal({
                 </Box>
               </Tooltip>
 
+              <Tooltip
+                title={
+                  onDashboard
+                    ? "Move logs back to the toolbar"
+                    : "Show logs on the dashboard"
+                }
+              >
+                <Box onClick={handlePlacement} sx={menuRowSx()}>
+                  <IconButton size="small" sx={menuIconSx("primary.main")}>
+                    {onDashboard ? <MenuOutlinedIcon /> : <DashboardOutlinedIcon />}
+                  </IconButton>
+                  {!isMobile && (
+                    <Typography
+                      variant="body2"
+                      sx={menuLabelSx("primary.main")}
+                    >
+                      {onDashboard ? "Move to Toolbar" : "Add to Dashboard"}
+                    </Typography>
+                  )}
+                </Box>
+              </Tooltip>
             </Box>
           </CardContent>
         </Card>
@@ -854,7 +882,59 @@ export default function LogsSettingsModal({
             </Paper>
           </CardContent>
         </Card>
+    </Box>
+  );
+
+  if (embedded) {
+    return (
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
+          display: "flex",
+          overflow: "hidden",
+        }}
+      >
+        {body}
       </Box>
+    );
+  }
+
+  return (
+    <SettingsModal
+      open={open}
+      onClose={onClose}
+      title={
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+            width: "100%",
+          }}
+        >
+          <DescriptionIcon color="primary" />
+          <span>Logs</span>
+        </Box>
+      }
+      maxWidth={false}
+      paperSx={{
+        width: { xs: "99%", sm: "99vw" },
+        minWidth: { xs: "90%", sm: "650px" },
+        maxWidth: { xs: "99%", sm: "95vw" },
+        height: { xs: "90%", sm: "88vh" },
+        maxHeight: { xs: "90%", sm: "88vh" },
+      }}
+      contentSx={{
+        overflowY: "hidden",
+        p: { xs: 2, sm: 1.5 },
+        pt: { xs: 1.5, sm: 1.25 },
+        pb: { xs: 1.5, sm: 1.25 },
+      }}
+    >
+      {body}
     </SettingsModal>
   );
 }

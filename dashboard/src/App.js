@@ -15,6 +15,47 @@ import { getRSSIThemeColor } from "./utils/rssi";
 import { getAuthToken, clearAuthToken } from "./utils/auth";
 import { createSocketSession } from "./utils/socketSession";
 
+// espwifi.local resolves over mDNS. The IPv4 answer is immediate, but the
+// IPv6 query sits until it times out (~5s). Chrome's WebSocket uses that
+// full lookup, so a short connect timeout aborts every attempt before the
+// socket can open. Once the device tells us its address, later attempts
+// skip the name.
+const DEVICE_ADDRESS_KEY = "espwifi.deviceAddress";
+const NAME_CONNECT_TIMEOUT_MS = 8000;
+const ADDRESS_CONNECT_TIMEOUT_MS = 2000;
+
+function isDeviceIpv4(value) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value || "");
+  if (!match) return false;
+  if (value === "0.0.0.0") return false;
+  return match.slice(1).every((part) => Number(part) <= 255);
+}
+
+function readDeviceAddress() {
+  try {
+    const saved = sessionStorage.getItem(DEVICE_ADDRESS_KEY);
+    return isDeviceIpv4(saved) ? saved : "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDeviceAddress(address) {
+  try {
+    if (address) sessionStorage.setItem(DEVICE_ADDRESS_KEY, address);
+    else sessionStorage.removeItem(DEVICE_ADDRESS_KEY);
+  } catch {
+    // Private mode can reject storage. The in-memory address still works.
+  }
+}
+
+function socketUrlForAddress(url, address) {
+  if (!url || !isDeviceIpv4(address)) return url;
+  const parsed = new URL(url);
+  parsed.hostname = address;
+  return parsed.toString();
+}
+
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/modules/Modules"));
 const Login = lazy(() => import("./components/auth/Login"));
@@ -325,6 +366,7 @@ function App() {
       }
       if (msg?.cmd === "get_info" && msg?.info) {
         setCloudDeviceInfo(msg.info);
+        if (isDeviceIpv4(msg.info.ip)) rememberAddress(msg.info.ip);
       }
       if (msg?.cmd === "get_rssi") {
         if (typeof msg?.rssi === "number") {
@@ -397,6 +439,21 @@ function App() {
     };
 
     let infoBeat = 0;
+    let deviceAddress = readDeviceAddress();
+    let usedDeviceAddress = false;
+    let opened = false;
+
+    const rememberAddress = (ip) => {
+      if (!isDeviceIpv4(ip) || ip === deviceAddress) return;
+      deviceAddress = ip;
+      writeDeviceAddress(ip);
+    };
+
+    const forgetAddress = () => {
+      deviceAddress = "";
+      usedDeviceAddress = false;
+      writeDeviceAddress("");
+    };
 
     console.log(
       "[App] Setting up control WebSocket connection to:",
@@ -404,7 +461,17 @@ function App() {
     );
 
     const session = createSocketSession({
-      getUrl: () => controlWsUrl,
+      getUrl: () => {
+        // A saved address that never opened is stale. Fall back to the name.
+        if (usedDeviceAddress && !opened) forgetAddress();
+        opened = false;
+        if (deviceAddress) {
+          usedDeviceAddress = true;
+          return socketUrlForAddress(controlWsUrl, deviceAddress);
+        }
+        usedDeviceAddress = false;
+        return controlWsUrl;
+      },
       binary: true,
       heartbeatMs: 1000,
       // A busy stream or upload can delay a reply. Stay connected through
@@ -412,7 +479,10 @@ function App() {
       // to finish closing a dead socket.
       heartbeatTimeoutMs: 1500,
       maxMissedHeartbeats: 3,
-      connectTimeoutMs: 1500,
+      // The name lookup stalls on IPv6 for about five seconds. An address
+      // we already learned connects immediately, so that attempt can fail fast.
+      connectTimeoutMs: () =>
+        deviceAddress ? ADDRESS_CONNECT_TIMEOUT_MS : NAME_CONNECT_TIMEOUT_MS,
       heartbeat: () => {
         infoBeat += 1;
         // Memory and storage change while the page is open. Refresh device
@@ -460,6 +530,7 @@ function App() {
         setControlStatus(status);
       },
       onOpen: (ws) => {
+        opened = true;
         console.log("[App] Control WebSocket connected");
         try {
           ws.send(JSON.stringify({ cmd: "ping" }));

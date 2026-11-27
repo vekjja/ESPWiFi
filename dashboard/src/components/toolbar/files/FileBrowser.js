@@ -26,8 +26,7 @@ import {
   Breadcrumbs,
   Link,
 } from "@mui/material";
-import { getFetchOptions, buildApiUrl } from "../../../utils/api";
-import { getAuthHeader } from "../../../utils/auth";
+import { getFetchOptions, buildApiUrl, buildWebSocketUrl } from "../../../utils/api";
 import StorageIcon from "@mui/icons-material/Storage";
 import UploadIcon from "@mui/icons-material/Upload";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -38,9 +37,56 @@ import HomeIcon from "@mui/icons-material/Home";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useTheme } from "@mui/material";
 import { getDeleteIcon, getEditIcon } from "../../../utils/theme";
-import { getAuthToken } from "../../../utils/auth";
 
 // Helper function to format bytes
+const fileTransferError = (code) => {
+  switch (code) {
+    case "protected":
+      return "That file is protected";
+    case "sd_not_mounted":
+      return "SD card is not mounted";
+    case "lfs_not_mounted":
+      return "Filesystem is not mounted";
+    case "file_open_failed":
+      return "Could not open the file";
+    case "write_failed":
+      return "Write failed";
+    case "invalid_name":
+      return "Invalid file name";
+    case "invalid_path":
+      return "Invalid path";
+    case "is_directory":
+      return "That path is a directory";
+    case "no_active_upload":
+      return "Upload was interrupted";
+    case "no_active_download":
+      return "Download was interrupted";
+    case "unknown_cmd":
+      return "Device firmware needs to be redeployed";
+    default:
+      return code || "Transfer failed";
+  }
+};
+
+const mimeForFile = (name) => {
+  const lower = (name || "").toLowerCase();
+  if (lower.endsWith(".txt") || lower.endsWith(".log") || lower.endsWith(".csv")) {
+    return "text/plain";
+  }
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".mp4")) return "video/mp4";
+  return "application/octet-stream";
+};
+
 const formatBytes = (bytes) => {
   if (bytes === 0) return "0 B";
   const k = 1024;
@@ -98,8 +144,10 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
 
   // Refs for cleanup and request management
   const abortControllerRef = useRef(null);
-  const uploadXhrRef = useRef(null);
-  const downloadXhrRef = useRef(null);
+  const mediaXferRef = useRef(null);
+  const listSeqRef = useRef(0);
+  const openedRef = useRef(false);
+  const promotedSdRef = useRef(false);
 
   // Helper to send WebSocket command and wait for response
   const sendWsCommand = useCallback(
@@ -125,7 +173,7 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
     setDownloadProgress(0);
     setDownloadingFileName("");
     setDownloadIndeterminate(false);
-    downloadXhrRef.current = null;
+    mediaXferRef.current = null;
   }, []);
 
   // Cleanup function for aborting requests
@@ -134,11 +182,9 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      if (uploadXhrRef.current) {
-        uploadXhrRef.current.abort();
-      }
-      if (downloadXhrRef.current) {
-        downloadXhrRef.current.abort();
+      if (mediaXferRef.current) {
+        mediaXferRef.current.close();
+        mediaXferRef.current = null;
       }
     };
   }, []);
@@ -176,162 +222,318 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
     []
   );
 
-  // Open file with authentication and progress tracking
-  const openFileWithAuth = useCallback(
-    async (file) => {
-      // Build proper file URL using hostname from config
-      const mdnsHostname = config?.hostname || config?.deviceName;
-      // Encode the file path properly - split by '/' and encode each segment
-      const encodedPath = file.path
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-      let fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
-
-      setError(null);
-
-      try {
-        console.log(`📂 Opening file: ${fileUrl}`);
-
-        // If auth is enabled, browsers can't attach Authorization headers to
-        // navigation requests. Use ?token=... so the firmware can authorize the
-        // GET while still supporting Range/streaming.
-        const authEnabled = config?.auth?.enabled === true;
-        const token = getAuthToken();
-        if (authEnabled && token) {
-          const sep = fileUrl.includes("?") ? "&" : "?";
-          fileUrl = `${fileUrl}${sep}token=${encodeURIComponent(token)}`;
+  const openMediaSocket = useCallback(() => {
+    const mdnsHostname = config?.hostname || config?.deviceName || null;
+    const url = buildWebSocketUrl("/ws/media", mdnsHostname);
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(url);
+      ws.binaryType = "arraybuffer";
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          ws.close();
+        } catch {
+          // ignore
         }
+        reject(new Error("Cannot connect to device"));
+      }, 8000);
+      ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ws);
+      };
+      ws.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error("Cannot connect to device"));
+      };
+    });
+  }, [config]);
 
-        // Open URL directly in new tab (supports streaming/range).
-        const newWindow = window.open(fileUrl, "_blank");
-        if (!newWindow) {
-          setError(
-            `Popup blocked. Please allow popups for this site, or try downloading the file instead.`
-          );
-        } else {
-          setInfo(`Opening ${file.name}...`);
-        }
-      } catch (err) {
-        setError(`Failed to open file: ${err.message}`);
-        console.error("Error opening file:", err);
-      }
+  const pullFile = useCallback(
+    (file, onProgress) => {
+      return openMediaSocket().then(
+        (ws) =>
+          new Promise((resolve, reject) => {
+            if (mediaXferRef.current && mediaXferRef.current !== ws) {
+              try {
+                mediaXferRef.current.close();
+              } catch {
+                // ignore
+              }
+            }
+            mediaXferRef.current = ws;
+            const parts = [];
+            let received = 0;
+            let total = file?.size || 0;
+            let eof = false;
+            let settled = false;
+            let idle;
+            const finish = (err, blob) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(idle);
+              if (mediaXferRef.current === ws) mediaXferRef.current = null;
+              try {
+                ws.close();
+              } catch {
+                // ignore
+              }
+              if (err) reject(err);
+              else resolve(blob);
+            };
+            const bump = () => {
+              clearTimeout(idle);
+              idle = setTimeout(
+                () => finish(new Error("Request timed out")),
+                30000
+              );
+            };
+            bump();
+            ws.onerror = () => finish(new Error("Network error"));
+            ws.onclose = () => finish(new Error("Connection closed"));
+            ws.onmessage = (ev) => {
+              bump();
+              if (ev.data instanceof ArrayBuffer) {
+                parts.push(ev.data);
+                received += ev.data.byteLength;
+                if (total > 0 && onProgress) {
+                  onProgress(
+                    Math.min(100, Math.round((received / total) * 100))
+                  );
+                }
+                if (eof) {
+                  finish(
+                    null,
+                    new Blob(parts, { type: "application/octet-stream" })
+                  );
+                } else if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ cmd: "file_down_next" }));
+                }
+                return;
+              }
+              if (typeof ev.data !== "string") return;
+              let msg;
+              try {
+                msg = JSON.parse(ev.data);
+              } catch {
+                return;
+              }
+              if (msg.ok === false) {
+                finish(new Error(fileTransferError(msg.error)));
+                return;
+              }
+              if (msg.type === "file_down_start") {
+                total = msg.size || total || 0;
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ cmd: "file_down_next" }));
+                }
+                return;
+              }
+              if (msg.type === "file_chunk" && (msg.len || 0) === 0) {
+                finish(
+                  null,
+                  new Blob(parts, { type: "application/octet-stream" })
+                );
+              } else if (msg.type === "file_chunk") {
+                eof = !!msg.eof;
+              }
+            };
+            ws.send(
+              JSON.stringify({
+                cmd: "file_down_start",
+                fs: fileSystem,
+                path: file.path,
+              })
+            );
+          })
+      );
     },
-    // Note: downloadFileWithAuth is declared later in this component; we avoid
-    // referencing it in the dependency array to prevent TDZ issues.
-    [fileSystem, config]
+    [openMediaSocket, fileSystem]
   );
 
-  // Download file with authentication and progress tracking
-  const downloadFileWithAuth = useCallback(
-    async (file) => {
-      // Build proper file URL using hostname from config
-      const mdnsHostname = config?.hostname || config?.deviceName;
-      // Encode the file path properly - split by '/' and encode each segment
-      const encodedPath = file.path
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-      const fileUrl = buildApiUrl(`/${fileSystem}${encodedPath}`, mdnsHostname);
+  const uploadViaMedia = useCallback(
+    (file) => {
+      return openMediaSocket().then(
+        (ws) =>
+          new Promise((resolve, reject) => {
+            if (mediaXferRef.current && mediaXferRef.current !== ws) {
+              try {
+                mediaXferRef.current.close();
+              } catch {
+                // ignore
+              }
+            }
+            mediaXferRef.current = ws;
+            let settled = false;
+            let idle;
+            const finish = (err) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(idle);
+              if (mediaXferRef.current === ws) mediaXferRef.current = null;
+              try {
+                ws.close();
+              } catch {
+                // ignore
+              }
+              if (err) reject(err);
+              else resolve();
+            };
+            const bump = () => {
+              clearTimeout(idle);
+              idle = setTimeout(
+                () => finish(new Error("Request timed out")),
+                30000
+              );
+            };
+            const sendSlice = (offset, chunkSize) => {
+              const size = chunkSize || 8192;
+              const end = Math.min(offset + size, file.size);
+              if (end <= offset) return;
+              file
+                .slice(offset, end)
+                .arrayBuffer()
+                .then((buf) => {
+                  if (settled || ws.readyState !== WebSocket.OPEN) return;
+                  ws.send(buf);
+                })
+                .catch((err) => finish(err));
+            };
+            bump();
+            ws.onerror = () => finish(new Error("Network error"));
+            ws.onclose = () => finish(new Error("Connection closed"));
+            ws.onmessage = (ev) => {
+              bump();
+              if (typeof ev.data !== "string") return;
+              let msg;
+              try {
+                msg = JSON.parse(ev.data);
+              } catch {
+                return;
+              }
+              if (msg.ok === false) {
+                finish(new Error(fileTransferError(msg.error)));
+                return;
+              }
+              if (msg.type === "file_up_start") {
+                if (file.size > 0) sendSlice(0, msg.chunkSize || 8192);
+                return;
+              }
+              if (msg.type === "file_up_ack") {
+                const offset = msg.offset || 0;
+                if (file.size > 0) {
+                  setUploadProgress(
+                    Math.min(100, Math.round((offset / file.size) * 100))
+                  );
+                }
+                sendSlice(offset, msg.chunkSize || 8192);
+                return;
+              }
+              if (msg.type === "file_up_done") {
+                setUploadProgress(100);
+                finish(null);
+              }
+            };
+            ws.send(
+              JSON.stringify({
+                cmd: "file_up_start",
+                fs: fileSystem,
+                path: currentPath,
+                name: file.name,
+                size: file.size,
+              })
+            );
+          })
+      );
+    },
+    [openMediaSocket, fileSystem, currentPath]
+  );
 
+  // Open a file by pulling it over the media socket, then showing the blob.
+  // The blank tab is opened in this click so the browser still treats it as
+  // a user gesture after the transfer finishes.
+  const openFileWithAuth = useCallback(
+    (file) => {
+      const tab = window.open("about:blank", "_blank");
+      if (!tab) {
+        setError(
+          "Popup blocked. Please allow popups for this site, or try downloading the file instead."
+        );
+        return;
+      }
+      try {
+        tab.document.title = file?.name || "File";
+      } catch {
+        // ignore
+      }
       setIsDownloading(true);
       setDownloadProgress(0);
       setDownloadingFileName(file.name);
       setDownloadIndeterminate(false);
       setError(null);
-
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        downloadXhrRef.current = xhr;
-
-        xhr.open("GET", fileUrl, true);
-        xhr.responseType = "blob";
-
-        // Add authentication header (preferred when available).
-        const authHeader = getAuthHeader();
-        if (authHeader) {
+      pullFile(file, (pct) => {
+        setDownloadProgress(pct);
+        setDownloadIndeterminate(false);
+      })
+        .then((blob) => {
+          const typed = new Blob([blob], { type: mimeForFile(file?.name) });
+          const url = URL.createObjectURL(typed);
+          tab.location.href = url;
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          setInfo(`Opening ${file.name}...`);
+        })
+        .catch((err) => {
           try {
-            xhr.setRequestHeader("Authorization", authHeader);
+            tab.close();
           } catch {
             // ignore
           }
-        }
-
-        // Track download progress
-        xhr.addEventListener("progress", (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round(
-              (event.loaded / event.total) * 100
-            );
-            setDownloadProgress(percentComplete);
-            setDownloadIndeterminate(false);
-          } else {
-            // No Content-Length header, show indeterminate progress
-            setDownloadIndeterminate(true);
-          }
-        });
-
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              // Force a "save as" download rather than letting the browser
-              // stream/preview media types (e.g. audio/mpeg, video/mp4).
-              const responseBlob =
-                xhr.response instanceof Blob
-                  ? xhr.response
-                  : new Blob([xhr.response], {
-                      type: "application/octet-stream",
-                    });
-              const downloadBlob = new Blob([responseBlob], {
-                type: "application/octet-stream",
-              });
-              const blobUrl = URL.createObjectURL(downloadBlob);
-
-              const a = document.createElement("a");
-              a.href = blobUrl;
-              a.download = file?.name || "download";
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-
-              setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-
-              setInfo(`Downloaded ${file.name}`);
-              resolve();
-            } catch (err) {
-              setError(`Failed to download file: ${err.message}`);
-              reject(err);
-            } finally {
-              resetDownloadState();
-            }
-          } else {
-            const errorMsg =
-              xhr.status === 408
-                ? "Request timed out - device may be busy"
-                : `Failed to download file: HTTP ${xhr.status}`;
-            setError(errorMsg);
-            resetDownloadState();
-            reject(new Error(errorMsg));
-          }
-        });
-
-        xhr.addEventListener("error", () => {
-          setError("Failed to download file: Network error");
+          setError(`Failed to open file: ${err.message}`);
+        })
+        .finally(() => {
           resetDownloadState();
-          reject(new Error("Network error"));
         });
-
-        xhr.addEventListener("timeout", () => {
-          setError("Request timed out - device may be busy");
-          resetDownloadState();
-          reject(new Error("Timeout"));
-        });
-
-        xhr.timeout = 60000; // 60 second timeout for large files
-        xhr.send();
-      });
     },
-    [fileSystem, resetDownloadState, config]
+    [pullFile, resetDownloadState]
+  );
+
+  const downloadFileWithAuth = useCallback(
+    async (file) => {
+      setIsDownloading(true);
+      setDownloadProgress(0);
+      setDownloadingFileName(file.name);
+      setDownloadIndeterminate(false);
+      setError(null);
+      try {
+        const blob = await pullFile(file, (pct) => {
+          setDownloadProgress(pct);
+          setDownloadIndeterminate(false);
+        });
+        const downloadBlob = new Blob([blob], {
+          type: "application/octet-stream",
+        });
+        const blobUrl = URL.createObjectURL(downloadBlob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = file?.name || "download";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        setInfo(`Downloaded ${file.name}`);
+      } catch (err) {
+        setError(`Failed to download file: ${err.message}`);
+        throw err;
+      } finally {
+        resetDownloadState();
+      }
+    },
+    [pullFile, resetDownloadState]
   );
 
   // Fetch storage information
@@ -379,6 +581,7 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
   // Fetch files with retry and better error handling
   const fetchFiles = useCallback(
     async (path = currentPath, fs = fileSystem) => {
+      const seq = (listSeqRef.current += 1);
       setLoading(true);
       setError(null);
 
@@ -390,6 +593,7 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
             fs: fs,
             path: path,
           });
+          if (seq !== listSeqRef.current) return;
           setFiles(response.files || []);
           setCurrentPath(path);
           setFileSystem(fs);
@@ -404,12 +608,14 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
           const response = await fetchWithRetry(filesUrl);
 
           const data = await response.json();
+          if (seq !== listSeqRef.current) return;
           setFiles(data.files || []);
           setCurrentPath(path);
           setFileSystem(fs);
           fetchStorageInfo(fs);
         }
       } catch (err) {
+        if (seq !== listSeqRef.current) return;
         let errorMsg = "Failed to load files";
         if (
           err.message === "Request timed out" ||
@@ -428,7 +634,7 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
         setError(errorMsg);
         console.error("Error fetching files:", err);
       } finally {
-        setLoading(false);
+        if (seq === listSeqRef.current) setLoading(false);
       }
     },
     [fetchStorageInfo, fetchWithRetry, useWebSocket, sendWsCommand, config]
@@ -606,112 +812,36 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
     }
   };
 
-  // Upload file with progress tracking
   const handleUpload = (event) => {
     const file = event.target.files[0];
+    event.target.value = "";
     if (!file) return;
 
-    // Check if file is too large for available storage
     if (storageInfo.total > 0 && file.size > storageInfo.free) {
       setError(
         `File too large: ${formatBytes(file.size)}. Only ${formatBytes(
           storageInfo.free
         )} available.`
       );
-      event.target.value = "";
       return;
     }
 
-    // Reset progress and start uploading
     setUploadProgress(0);
     setIsUploading(true);
     setError(null);
-
-    // Create FormData with file
-    const formData = new FormData();
-    formData.append("file", file);
-
-    // Add fs and path as URL parameters
-    const mdnsHostname = config?.hostname || config?.deviceName;
-    const url = buildApiUrl(
-      `/api/files/upload?fs=${encodeURIComponent(
-        fileSystem
-      )}&path=${encodeURIComponent(currentPath)}`,
-      mdnsHostname
-    );
-
-    // Use XMLHttpRequest for progress tracking
-    const xhr = new XMLHttpRequest();
-    uploadXhrRef.current = xhr;
-
-    // Track upload progress
-    xhr.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(percentComplete);
-      }
-    });
-
-    // Handle successful upload
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setUploadProgress(100);
+    uploadViaMedia(file)
+      .then(() => {
         setInfo("File uploaded successfully");
-
-        // Small delay before refreshing to let device finish processing
         setTimeout(() => {
           setIsUploading(false);
           fetchFiles(currentPath, fileSystem);
-        }, 500);
-      } else {
-        // Parse error message
-        let errorMsg = `Upload failed: HTTP ${xhr.status}`;
-        try {
-          const responseText = xhr.responseText;
-          if (responseText) {
-            const errorJson = JSON.parse(responseText);
-            if (errorJson.error) {
-              errorMsg = `Upload failed: ${errorJson.error}`;
-            }
-          }
-        } catch (e) {
-          // Use default error
-        }
-        setError(errorMsg);
+        }, 300);
+      })
+      .catch((err) => {
+        setError(`Upload failed: ${err.message}`);
         setIsUploading(false);
         setUploadProgress(0);
-      }
-      event.target.value = "";
-      uploadXhrRef.current = null;
-    });
-
-    // Handle upload errors
-    xhr.addEventListener("error", () => {
-      setError("Upload failed: Network error");
-      setIsUploading(false);
-      setUploadProgress(0);
-      event.target.value = "";
-      uploadXhrRef.current = null;
-    });
-
-    // Handle upload abort
-    xhr.addEventListener("abort", () => {
-      setIsUploading(false);
-      setUploadProgress(0);
-      event.target.value = "";
-      uploadXhrRef.current = null;
-    });
-
-    // Start the upload
-    xhr.open("POST", url);
-
-    // Add authentication header
-    const authHeader = getAuthHeader();
-    if (authHeader) {
-      xhr.setRequestHeader("Authorization", authHeader);
-    }
-
-    xhr.send(formData);
+      });
   };
 
   // Navigate to parent directory
@@ -758,14 +888,31 @@ const FileBrowserComponent = ({ config, deviceInfo, deviceOnline, controlWs }) =
     return breadcrumbs;
   };
 
-  // Initialize - only load on mount if device is online
+  // Load the root listing when the browser opens. Later device-info
+  // refreshes must not send the view back to root.
   useEffect(() => {
-    if (config && deviceOnline) {
-      const initialFs = sdAvailable ? "sd" : "lfs";
-      fetchFiles("/", initialFs);
+    if (!deviceOnline) {
+      openedRef.current = false;
+      promotedSdRef.current = false;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config, deviceInfo, deviceOnline, sdAvailable]);
+    if (!config) return;
+    if (!openedRef.current) {
+      openedRef.current = true;
+      if (sdAvailable) promotedSdRef.current = true;
+      fetchFiles("/", sdAvailable ? "sd" : "lfs");
+      return;
+    }
+    if (
+      sdAvailable &&
+      !promotedSdRef.current &&
+      currentPath === "/" &&
+      fileSystem === "lfs"
+    ) {
+      promotedSdRef.current = true;
+      fetchFiles("/", "sd");
+    }
+  }, [deviceOnline, config, sdAvailable, fetchFiles, currentPath, fileSystem]);
 
   // Show offline message but don't block the component
   const showOfflineWarning = !deviceOnline && files.length === 0;

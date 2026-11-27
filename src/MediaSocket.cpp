@@ -90,6 +90,106 @@ static bool hasDotDot(const std::string &p) {
   return p.find("..") != std::string::npos;
 }
 
+// File upload/download on /ws/media. One transfer per client, separate from
+// the music FILE* so a song can keep playing on another connection.
+struct FileXferState {
+  int fd = 0;
+  FILE *f = nullptr;
+  bool upload = false;
+  uint32_t offset = 0;
+  uint32_t size = 0;
+  uint32_t chunkSize = 8192;
+  char fullPath[256] = {0};
+};
+
+static constexpr size_t kMaxFileXfers = 4;
+static constexpr uint32_t kFileUpChunk = 8192;
+static constexpr uint32_t kFileDownChunk = 16 * 1024;
+static FileXferState s_files[kMaxFileXfers];
+
+static FileXferState *fileStateForFd(int fd) {
+  for (size_t i = 0; i < kMaxFileXfers; i++) {
+    if (s_files[i].fd == fd) {
+      return &s_files[i];
+    }
+  }
+  return nullptr;
+}
+
+static FileXferState *allocFileState(int fd) {
+  FileXferState *existing = fileStateForFd(fd);
+  if (existing) {
+    return existing;
+  }
+  for (size_t i = 0; i < kMaxFileXfers; i++) {
+    if (s_files[i].fd == 0) {
+      s_files[i].fd = fd;
+      return &s_files[i];
+    }
+  }
+  return nullptr;
+}
+
+static void closeFileXfer(FileXferState *st, bool removePartial) {
+  if (!st) {
+    return;
+  }
+  if (st->f) {
+    fclose(st->f);
+    st->f = nullptr;
+  }
+  if (removePartial && st->fullPath[0] != '\0') {
+    ::remove(st->fullPath);
+  }
+  *st = FileXferState{};
+}
+
+static bool fileNameOk(const std::string &name) {
+  if (name.empty() || name.size() > 120) {
+    return false;
+  }
+  if (name == "." || name == "..") {
+    return false;
+  }
+  if (name.find('/') != std::string::npos ||
+      name.find('\\') != std::string::npos ||
+      name.find('"') != std::string::npos) {
+    return false;
+  }
+  return !hasDotDot(name);
+}
+
+static bool virtToAbs(ESPWiFi *self, const char *fsC, const std::string &rel,
+                      std::string &full, std::string &err) {
+  if (rel.empty() || hasDotDot(rel)) {
+    err = "invalid_path";
+    return false;
+  }
+  std::string path = rel;
+  if (path[0] != '/') {
+    path = "/" + path;
+  }
+  const bool useSd = fsC != nullptr && strcmp(fsC, "sd") == 0;
+  if (useSd) {
+    if (self->sdCard == nullptr) {
+      err = "sd_not_mounted";
+      return false;
+    }
+    full = self->sdMountPoint + path;
+  } else {
+    if (self->lfs == nullptr) {
+      err = "lfs_not_mounted";
+      return false;
+    }
+    full = self->lfsMountPoint + path;
+  }
+  if (full.size() >= sizeof(FileXferState::fullPath)) {
+    err = "invalid_path";
+    return false;
+  }
+  return true;
+}
+
 static uint32_t readBe32(const uint8_t *p) {
   return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 |
          (uint32_t)p[3];
@@ -329,6 +429,16 @@ static void mediaOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
                  st->fullPath);
   }
   closeMusicState(st);
+
+  FileXferState *fx = fileStateForFd(clientFd);
+  if (fx) {
+    const bool partial = fx->upload && fx->offset < fx->size;
+    if (partial) {
+      espwifi->log(INFO, "📁 Upload aborted on disconnect (fd=%d, file=%s)",
+                   clientFd, fx->fullPath);
+    }
+    closeFileXfer(fx, partial);
+  }
 }
 
 static void sendMediaAck(WebSocket *ws, int clientFd,
@@ -341,6 +451,289 @@ static void sendMediaAck(WebSocket *ws, int clientFd,
   (void)ws->sendText(clientFd, out.c_str(), out.size());
 }
 
+static void releaseFileSlot(int clientFd) {
+  FileXferState *prev = fileStateForFd(clientFd);
+  if (!prev) {
+    return;
+  }
+  const bool partial = prev->upload && prev->offset < prev->size;
+  closeFileXfer(prev, partial);
+}
+
+static void handleFileUploadChunk(WebSocket *ws, int clientFd, ESPWiFi *espwifi,
+                                  const uint8_t *data, size_t len) {
+  JsonDocument resp;
+  resp["cmd"] = "file_up_chunk";
+  FileXferState *st = fileStateForFd(clientFd);
+  if (!st || !st->upload || !st->f) {
+    resp["ok"] = false;
+    resp["type"] = "file_up_ack";
+    resp["error"] = "no_active_upload";
+    sendMediaAck(ws, clientFd, resp);
+    return;
+  }
+  if (st->offset >= st->size || (uint32_t)len > st->size - st->offset) {
+    resp["ok"] = false;
+    resp["type"] = "file_up_ack";
+    resp["error"] = "bad_size";
+    sendMediaAck(ws, clientFd, resp);
+    closeFileXfer(st, true);
+    return;
+  }
+  if (!espwifi->writeFileChunk(st->f, data, len)) {
+    resp["ok"] = false;
+    resp["type"] = "file_up_ack";
+    resp["error"] = "write_failed";
+    sendMediaAck(ws, clientFd, resp);
+    closeFileXfer(st, true);
+    return;
+  }
+  st->offset += (uint32_t)len;
+  espwifi->feedWatchDog(1);
+  if (st->offset < st->size) {
+    resp["ok"] = true;
+    resp["type"] = "file_up_ack";
+    resp["offset"] = st->offset;
+    resp["chunkSize"] = st->chunkSize;
+    sendMediaAck(ws, clientFd, resp);
+    return;
+  }
+
+  FILE *out = st->f;
+  st->f = nullptr;
+  const std::string path = st->fullPath;
+  const uint32_t size = st->offset;
+  const bool closed = espwifi->closeFileStream(out, path);
+  closeFileXfer(st, !closed);
+  if (!closed) {
+    resp["ok"] = false;
+    resp["type"] = "file_up_done";
+    resp["error"] = "write_failed";
+    sendMediaAck(ws, clientFd, resp);
+    return;
+  }
+  espwifi->log(INFO, "📁 Upload complete (fd=%d, size=%u, file=%s)", clientFd,
+               (unsigned)size, path.c_str());
+  resp["ok"] = true;
+  resp["type"] = "file_up_done";
+  resp["size"] = size;
+  sendMediaAck(ws, clientFd, resp);
+}
+
+static bool handleFileCommand(WebSocket *ws, int clientFd, ESPWiFi *espwifi,
+                              JsonDocument &req, JsonDocument &resp,
+                              const char *cmd) {
+  if (strcmp(cmd, "file_up_abort") == 0 || strcmp(cmd, "file_down_stop") == 0) {
+    releaseFileSlot(clientFd);
+    resp["type"] = cmd;
+    resp["stopped"] = true;
+    sendMediaAck(ws, clientFd, resp);
+    return true;
+  }
+
+  if (strcmp(cmd, "file_up_start") == 0) {
+    resp["type"] = "file_up_start";
+    const char *fsC = req["fs"] | "lfs";
+    const std::string fs = (fsC != nullptr) ? fsC : "lfs";
+    std::string dir = req["path"] | "/";
+    const std::string name = req["name"] | "";
+    if (!fileNameOk(name)) {
+      resp["ok"] = false;
+      resp["error"] = "invalid_name";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    if (dir.empty()) {
+      dir = "/";
+    }
+    const std::string virt =
+        (dir == "/") ? ("/" + name)
+                     : (dir.back() == '/' ? dir + name : dir + "/" + name);
+    if (espwifi->isProtectedFile(fs, virt)) {
+      resp["ok"] = false;
+      resp["error"] = "protected";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    std::string full;
+    std::string err;
+    if (!virtToAbs(espwifi, fsC, virt, full, err)) {
+      resp["ok"] = false;
+      resp["error"] = err;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    struct stat existing {};
+    if (stat(full.c_str(), &existing) == 0 && S_ISDIR(existing.st_mode)) {
+      resp["ok"] = false;
+      resp["error"] = "is_directory";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    const uint32_t size = req["size"] | 0;
+    releaseFileSlot(clientFd);
+    FILE *out = espwifi->openFileForWrite(full);
+    if (!out) {
+      espwifi->log(WARNING, "📁 Upload open failed (fd=%d, errno=%d, file=%s)",
+                   clientFd, errno, full.c_str());
+      resp["ok"] = false;
+      resp["error"] = "file_open_failed";
+      resp["errno"] = errno;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    if (size == 0) {
+      if (!espwifi->closeFileStream(out, full)) {
+        resp["ok"] = false;
+        resp["error"] = "write_failed";
+        sendMediaAck(ws, clientFd, resp);
+        return true;
+      }
+      resp["type"] = "file_up_done";
+      resp["size"] = 0;
+      resp["name"] = name;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    FileXferState *st = allocFileState(clientFd);
+    if (!st) {
+      fclose(out);
+      ::remove(full.c_str());
+      resp["ok"] = false;
+      resp["error"] = "too_many_transfers";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    st->f = out;
+    st->upload = true;
+    st->offset = 0;
+    st->size = size;
+    st->chunkSize = kFileUpChunk;
+    (void)snprintf(st->fullPath, sizeof(st->fullPath), "%s", full.c_str());
+    espwifi->log(INFO, "📁 Upload start (fd=%d, fs=%s, size=%u, file=%s)",
+                 clientFd, fs.c_str(), (unsigned)size, virt.c_str());
+    resp["chunkSize"] = st->chunkSize;
+    resp["size"] = size;
+    resp["name"] = name;
+    sendMediaAck(ws, clientFd, resp);
+    return true;
+  }
+
+  if (strcmp(cmd, "file_down_start") == 0) {
+    resp["type"] = "file_down_start";
+    const char *fsC = req["fs"] | "lfs";
+    const std::string virt = req["path"] | "";
+    std::string full;
+    std::string err;
+    if (!virtToAbs(espwifi, fsC, virt, full, err)) {
+      resp["ok"] = false;
+      resp["error"] = err;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    struct stat stbuf {};
+    if (stat(full.c_str(), &stbuf) != 0) {
+      resp["ok"] = false;
+      resp["error"] = "file_open_failed";
+      resp["errno"] = errno;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    if (S_ISDIR(stbuf.st_mode)) {
+      resp["ok"] = false;
+      resp["error"] = "is_directory";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    releaseFileSlot(clientFd);
+    FILE *in = fopen(full.c_str(), "rb");
+    if (!in) {
+      resp["ok"] = false;
+      resp["error"] = "file_open_failed";
+      resp["errno"] = errno;
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    FileXferState *st = allocFileState(clientFd);
+    if (!st) {
+      fclose(in);
+      resp["ok"] = false;
+      resp["error"] = "too_many_transfers";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    st->f = in;
+    st->upload = false;
+    st->offset = 0;
+    st->size = stbuf.st_size > 0 ? (uint32_t)stbuf.st_size : 0;
+    st->chunkSize = kFileDownChunk;
+    (void)snprintf(st->fullPath, sizeof(st->fullPath), "%s", full.c_str());
+    std::string name = virt;
+    const size_t slash = name.rfind('/');
+    if (slash != std::string::npos) {
+      name = name.substr(slash + 1);
+    }
+    espwifi->log(INFO, "📁 Download start (fd=%d, size=%u, file=%s)", clientFd,
+                 (unsigned)st->size, virt.c_str());
+    resp["size"] = st->size;
+    resp["chunkSize"] = st->chunkSize;
+    resp["name"] = name;
+    sendMediaAck(ws, clientFd, resp);
+    return true;
+  }
+
+  if (strcmp(cmd, "file_down_next") == 0) {
+    FileXferState *st = fileStateForFd(clientFd);
+    if (!st || st->upload || !st->f) {
+      resp["ok"] = false;
+      resp["type"] = "file_chunk";
+      resp["error"] = "no_active_download";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    uint32_t want = st->chunkSize;
+    if (want == 0 || want > kFileDownChunk) {
+      want = kFileDownChunk;
+    }
+    uint8_t *chunkBuf = (uint8_t *)malloc((size_t)want);
+    if (!chunkBuf) {
+      resp["ok"] = false;
+      resp["type"] = "file_chunk";
+      resp["error"] = "out_of_memory";
+      sendMediaAck(ws, clientFd, resp);
+      return true;
+    }
+    const size_t n = fread(chunkBuf, 1, (size_t)want, st->f);
+    if (n == 0) {
+      free(chunkBuf);
+      resp["type"] = "file_chunk";
+      resp["len"] = 0;
+      resp["eof"] = true;
+      resp["offset"] = st->offset;
+      sendMediaAck(ws, clientFd, resp);
+      closeFileXfer(st, false);
+      return true;
+    }
+    st->offset += (uint32_t)n;
+    const bool eof =
+        feof(st->f) || (st->size > 0 && st->offset >= st->size);
+    resp["type"] = "file_chunk";
+    resp["len"] = (uint32_t)n;
+    resp["eof"] = eof;
+    resp["offset"] = st->offset;
+    sendMediaAck(ws, clientFd, resp);
+    (void)ws->sendBinary(clientFd, chunkBuf, n);
+    free(chunkBuf);
+    espwifi->feedWatchDog(1);
+    if (eof) {
+      closeFileXfer(st, false);
+    }
+    return true;
+  }
+
+  return false;
+}
+
 static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
                            const uint8_t *data, size_t len, void *userCtx) {
   ESPWiFi *espwifi = static_cast<ESPWiFi *>(userCtx);
@@ -348,8 +741,11 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     return;
   }
 
-  // Media control is JSON text; media payloads are sent device->client as
-  // binary.
+  // Uploads arrive as binary frames. Downloads and music are device->client.
+  if (type == HTTPD_WS_TYPE_BINARY) {
+    handleFileUploadChunk(ws, clientFd, espwifi, data, len);
+    return;
+  }
   if (type != HTTPD_WS_TYPE_TEXT) {
     return;
   }
@@ -598,6 +994,10 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     return;
   }
 
+  if (handleFileCommand(ws, clientFd, espwifi, req, resp, cmd)) {
+    return;
+  }
+
 #if !ESPWiFi_HAS_CAMERA
   (void)espwifi;
   if (strcmp(cmd, "camera_start") == 0 || strcmp(cmd, "camera_stop") == 0 ||
@@ -680,7 +1080,7 @@ void ESPWiFi::startMediaWebSocket() {
                                    /*onMessage*/ mediaOnMessage,
                                    /*onConnect*/ mediaOnConnect,
                                    /*onDisconnect*/ mediaOnDisconnect,
-                                   /*maxMessageLen*/ 2048,
+                                   /*maxMessageLen*/ 8192,
                                    /*maxBroadcastLen*/ 200 * 1024,
                                    /*requireAuth*/ false,
                                    /*authCheck*/ wsAuthCheck);

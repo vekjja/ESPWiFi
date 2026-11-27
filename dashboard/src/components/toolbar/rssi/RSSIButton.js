@@ -89,18 +89,12 @@ export default function RSSIButton({
     </Fab>
   );
 
-  // Wrap disabled buttons in a span to fix MUI Tooltip warning
-  if (isDisabled) {
-    return (
-      <Tooltip title={getRSSIStatusText(rssiValue)}>
-        <span>{button}</span>
-      </Tooltip>
-    );
-  }
-
   return (
     <>
-      <Tooltip title={getRSSIStatusText(rssiValue)}>{button}</Tooltip>
+      <Tooltip title={getRSSIStatusText(rssiValue)}>
+        {/* MUI Tooltip cannot attach events to a disabled button; wrap in span */}
+        <span>{button}</span>
+      </Tooltip>
 
       {modalOpen && (
         <RSSISettingsModal

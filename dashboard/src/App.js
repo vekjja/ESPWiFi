@@ -92,9 +92,25 @@ const theme = createTheme({
       },
       defaultProps: {
         arrow: true,
+        placement: "bottom",
+        // The popper sits on top of the anchor and steals the click. Keep the
+        // label below the button, and let clicks pass through the popup.
+        disableInteractive: true,
         enterDelay: 300,
         leaveDelay: 0,
         enterNextDelay: 150,
+        slotProps: {
+          popper: {
+            popperOptions: {
+              modifiers: [
+                {
+                  name: "offset",
+                  options: { offset: [0, 9] },
+                },
+              ],
+            },
+          },
+        },
       },
     },
   },

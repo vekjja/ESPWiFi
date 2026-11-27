@@ -170,7 +170,7 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newPin];
-    const configToSave = { ...config, modules: updatedModules };
+    const configToSave = { modules: updatedModules };
     saveConfig(configToSave); // Update local config
     saveConfigToDevice(configToSave); // Save to device
     handleClosePinModal();
@@ -197,7 +197,7 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newWebSocket];
-    const configToSave = { ...config, modules: updatedModules };
+    const configToSave = { modules: updatedModules };
     saveConfig(configToSave); // Update local config
     saveConfigToDevice(configToSave); // Save to device
     handleCloseWebSocketModal();
@@ -213,7 +213,7 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newCamera];
-    const configToSave = { ...config, modules: updatedModules };
+    const configToSave = { modules: updatedModules };
     saveConfig(configToSave);
     saveConfigToDevice(configToSave);
     handleCloseCameraModal();
@@ -238,7 +238,7 @@ export default function AddModuleModal({
     };
 
     const updatedModules = [...existingModules, newMusicPlayer];
-    const configToSave = { ...config, modules: updatedModules };
+    const configToSave = { modules: updatedModules };
     saveConfig(configToSave);
     saveConfigToDevice(configToSave);
     handleCloseMusicPlayerModal();
@@ -261,7 +261,7 @@ export default function AddModuleModal({
       key: generateUniqueKey(existingModules),
     };
     const updatedModules = [...existingModules, newModule];
-    const configToSave = { ...config, modules: updatedModules };
+    const configToSave = { modules: updatedModules };
     saveConfig(configToSave);
     saveConfigToDevice(configToSave);
     onClose();

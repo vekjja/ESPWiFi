@@ -157,7 +157,6 @@ export default function CameraSettingsModal({
 
       // For device-level: save camera sensor settings
       const updatedConfig = {
-        ...config,
         camera: {
           ...config.camera,
           frameRate: cameraSettings.frameRate,

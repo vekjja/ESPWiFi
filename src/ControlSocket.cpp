@@ -323,7 +323,7 @@ void ESPWiFi::startControlWebSocket() {
       /*onMessage*/ ctrlOnMessage,
       /*onConnect*/ ctrlOnConnect,
       /*onDisconnect*/ ctrlOnDisconnect,
-      /*maxMessageLen*/ 2048,
+      /*maxMessageLen*/ 8192,
       /*maxBroadcastLen*/ 160 * 1024,
       /*requireAuth*/ true, // Enforce auth for control socket (hardening)
       /*authCheck*/ wsAuthCheck);

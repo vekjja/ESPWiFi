@@ -429,7 +429,7 @@ export default function Modules({
       item.key === key ? { ...item, x: slot.x, y: slot.y } : item
     );
     setModules(next);
-    const updatedConfig = { ...config, modules: next };
+    const updatedConfig = { modules: next };
     saveConfig(updatedConfig);
     saveConfigToDevice(updatedConfig);
   };
@@ -446,7 +446,7 @@ export default function Modules({
     setModules(updatedModules);
 
     // Update the global config with the updated modules
-    const updatedConfig = { ...config, modules: updatedModules };
+    const updatedConfig = { modules: updatedModules };
     saveConfig(updatedConfig); // Update local config
     saveConfigToDevice(updatedConfig); // Save to device
   };
@@ -460,7 +460,7 @@ export default function Modules({
     setModules(updatedModules);
 
     // Update the global config
-    const updatedConfig = { ...config, modules: updatedModules };
+    const updatedConfig = { modules: updatedModules };
     console.log("🗑️ Saving updated config:", updatedConfig);
     saveConfig(updatedConfig); // Update local config
     saveConfigToDevice(updatedConfig); // Save to device

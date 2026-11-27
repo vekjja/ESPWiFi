@@ -471,7 +471,6 @@ export default function LogsSettingsModal({
         return Math.max(max, key);
       }, -1);
       const updated = {
-        ...config,
         modules: [
           ...existing,
           {

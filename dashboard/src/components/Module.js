@@ -4,6 +4,7 @@ import DeleteButton from "./DeleteButton";
 import { Card, CardContent, Typography } from "@mui/material";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SettingsIcon from "@mui/icons-material/Settings";
+import { chromeForModule, frameSxForModule } from "./moduleConfig";
 
 // Height in px for bottom controls (input/send + buttons)
 const BOTTOM_CONTROLS_HEIGHT = 88;
@@ -23,17 +24,27 @@ export default function Module({
   bottomContent, // Add new prop
   settingsDisabled = false, // Add new prop for disabling settings
   errorOutline = false, // Add new prop for error outline
+  moduleConfig,
+  connectionStatus,
+  online,
+  active,
+  playback,
 }) {
+  const frame = moduleConfig ? frameSxForModule(moduleConfig) : null;
+  const chrome = chromeForModule({
+    connectionStatus,
+    online,
+    active,
+    playback,
+  });
+
   return (
     <Card
       sx={{
         padding: "10px",
         margin: "10px",
-        // minWidth: "200px",
-        // maxWidth: "400px",
-        // Removed minHeight and maxHeight to allow natural height expansion
         border: "1px solid",
-        borderColor: errorOutline ? "error.main" : "primary.main",
+        borderColor: "primary.main",
         borderRadius: "5px",
         backgroundColor: "secondary.light",
         display: "flex",
@@ -47,7 +58,10 @@ export default function Module({
         "&:active": {
           cursor: "grabbing",
         },
-        ...sx, // Sizing is now controlled by sx from parent modules
+        ...frame,
+        ...chrome,
+        ...(errorOutline ? { borderColor: "error.main" } : null),
+        ...sx,
       }}
     >
       <CardContent

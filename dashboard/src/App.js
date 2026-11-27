@@ -9,12 +9,11 @@ import React, {
 } from "react";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Container from "@mui/material/Container";
-import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
-import Typography from "@mui/material/Typography";
 import { getApiUrl, buildWebSocketUrl } from "./utils/apiUtils";
 import { getRSSIThemeColor } from "./utils/rssiUtils";
 import { getAuthToken, clearAuthToken } from "./utils/authUtils";
+import { createSocketSession } from "./utils/socketSession";
 
 // Lazy-load heavier UI chunks so first paint is faster
 const Modules = lazy(() => import("./components/Modules"));
@@ -110,7 +109,7 @@ function App() {
   const [networkEnabled, setNetworkEnabled] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const controlWsRef = useRef(null);
-  const controlRetryRef = useRef(null);
+  const controlSessionRef = useRef(null);
   const logsFetchRef = useRef({
     inProgress: false,
     expectOffset: null,
@@ -119,15 +118,13 @@ function App() {
     maxBytes: 0,
     tailBytes: 0,
   });
-  const [controlConnected, setControlConnected] = useState(false);
+  const [controlStatus, setControlStatus] = useState("disconnected");
+  const controlConnected = controlStatus === "connected";
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
   const [cloudRssi, setCloudRssi] = useState(null);
   const [cloudLogs, setCloudLogs] = useState("");
   const [cloudLogsError, setCloudLogsError] = useState("");
-  const heartbeatIntervalRef = useRef(null);
-  const heartbeatTimeoutRef = useRef(null);
-
   // Music player state for banner color
   const [musicPlaybackState, setMusicPlaybackState] = useState({
     isPlaying: false,
@@ -280,41 +277,121 @@ function App() {
     // (buildWebSocketUrl reads the token from storage).
   }, [authenticated]);
 
-  // Once boot phase is complete, connect the control socket.
+  // Once boot phase is complete, keep the control socket up.
+  // Reconnects use backoff, pause while the browser is offline, and retry
+  // as soon as the network or the tab comes back. A bad token (close 1008)
+  // stops the loop and asks for login. A dropped network (1006) does not.
   useEffect(() => {
     if (!networkEnabled) return;
     if (!authenticated) return;
     if (!controlWsUrl) return;
+
+    const rejectPending = (reason) => {
+      for (const [, pending] of pendingCommandsRef.current.entries()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error(reason));
+      }
+      pendingCommandsRef.current.clear();
+    };
+
+    const handleControlMessage = (evt, ws) => {
+      let msg;
+      try {
+        msg = JSON.parse(evt?.data || "{}");
+      } catch {
+        return;
+      }
+
+      if (msg?.cmd === "get_config" && msg?.config) {
+        setConfig(msg.config);
+        setLocalConfig(msg.config);
+        setCloudDeviceConfig(msg.config);
+      }
+      if (msg?.cmd === "get_info" && msg?.info) {
+        setCloudDeviceInfo(msg.info);
+      }
+      if (msg?.cmd === "get_rssi") {
+        if (typeof msg?.rssi === "number") {
+          setCloudRssi(msg.rssi);
+        } else {
+          setCloudRssi(null);
+        }
+      }
+
+      if (msg?.cmd && pendingCommandsRef.current.has(msg.cmd)) {
+        const pending = pendingCommandsRef.current.get(msg.cmd);
+        clearTimeout(pending.timeout);
+        pendingCommandsRef.current.delete(msg.cmd);
+        if (msg.ok === false) {
+          pending.reject(new Error(msg.error || "Command failed"));
+        } else {
+          pending.resolve(msg);
+        }
+        return;
+      }
+
+      if (msg?.cmd === "get_logs") {
+        if (msg?.ok === false) {
+          setCloudLogsError(msg?.error || "get_logs_failed");
+          logsFetchRef.current.inProgress = false;
+          logsFetchRef.current.expectOffset = null;
+          logsFetchRef.current.buffer = "";
+          logsFetchRef.current.chunks = 0;
+        } else {
+          setCloudLogsError("");
+        }
+        if (typeof msg?.logs === "string") {
+          const lf = logsFetchRef.current;
+          if (!lf.inProgress) {
+            setCloudLogs(msg.logs);
+          } else {
+            const off = Number.isFinite(msg?.offset) ? Number(msg.offset) : null;
+            if (lf.expectOffset !== null && off !== lf.expectOffset) {
+              return;
+            }
+
+            lf.buffer += msg.logs;
+            lf.chunks += 1;
+            lf.expectOffset = Number.isFinite(msg?.next) ? Number(msg.next) : null;
+
+            if (msg?.eof || lf.chunks % 4 === 0) {
+              setCloudLogs(lf.buffer);
+            }
+
+            if (!msg?.eof && lf.expectOffset !== null) {
+              try {
+                ws.send(
+                  JSON.stringify({
+                    cmd: "get_logs",
+                    offset: lf.expectOffset,
+                    maxBytes: lf.maxBytes,
+                    tailBytes: lf.tailBytes,
+                  })
+                );
+              } catch {
+                lf.inProgress = false;
+              }
+            } else {
+              lf.inProgress = false;
+              lf.expectOffset = null;
+            }
+          }
+        }
+      }
+    };
 
     console.log(
       "[App] Setting up control WebSocket connection to:",
       controlWsUrl
     );
 
-    const connect = () => {
-      if (!networkEnabled) return;
-      const uiUrl = controlWsUrl;
-      if (!uiUrl) return;
-
-      console.log("[App] Connecting control WebSocket:", uiUrl);
-
-      // Tear down any existing socket before reconnect.
-      if (controlWsRef.current) {
-        try {
-          controlWsRef.current.close(1000, "Reconnecting");
-        } catch {
-          // ignore
-        }
-        controlWsRef.current = null;
-      }
-
-      try {
-        const ws = new WebSocket(uiUrl);
-        // Needed for camera streaming over /ws/control.
-        ws.binaryType = "arraybuffer";
-        controlWsRef.current = ws;
-
-        // Add a sendCommand method to the WebSocket for components to use
+    const session = createSocketSession({
+      getUrl: () => controlWsUrl,
+      binary: true,
+      heartbeatMs: 3000,
+      heartbeatTimeoutMs: 6000,
+      heartbeat: () => JSON.stringify({ cmd: "get_rssi" }),
+      onSocket: (ws) => {
         ws.sendCommand = (cmd, timeoutMs = 10000) => {
           return new Promise((resolve, reject) => {
             if (ws.readyState !== WebSocket.OPEN) {
@@ -335,264 +412,52 @@ function App() {
             ws.send(JSON.stringify(cmd));
           });
         };
-
-        ws.onopen = () => {
-          console.log("[App] Control WebSocket connected");
-          setControlConnected(true);
-
-          // Clear any existing heartbeat
-          if (heartbeatIntervalRef.current) {
-            clearInterval(heartbeatIntervalRef.current);
-            heartbeatIntervalRef.current = null;
-          }
-          if (heartbeatTimeoutRef.current) {
-            clearTimeout(heartbeatTimeoutRef.current);
-            heartbeatTimeoutRef.current = null;
-          }
-
-          // Start heartbeat: poll get_rssi every 3 seconds
-          const startHeartbeat = () => {
-            if (heartbeatIntervalRef.current) {
-              clearInterval(heartbeatIntervalRef.current);
-            }
-
-            const sendHeartbeat = () => {
-              const currentWs = controlWsRef.current;
-              if (!currentWs || currentWs.readyState !== WebSocket.OPEN) {
-                return;
-              }
-
-              try {
-                // Set a timeout to detect if we don't get a response
-                if (heartbeatTimeoutRef.current) {
-                  clearTimeout(heartbeatTimeoutRef.current);
-                }
-
-                heartbeatTimeoutRef.current = setTimeout(() => {
-                  console.warn(
-                    "[App] Heartbeat timeout - no RSSI response, reconnecting..."
-                  );
-                  const wsToClose = controlWsRef.current;
-                  if (wsToClose && wsToClose.readyState === WebSocket.OPEN) {
-                    try {
-                      wsToClose.close(1006, "Heartbeat timeout");
-                    } catch {
-                      // ignore
-                    }
-                  }
-                }, 6000); // Allow 6 seconds for response (2x heartbeat interval)
-
-                currentWs.send(JSON.stringify({ cmd: "get_rssi" }));
-              } catch (err) {
-                console.error("[App] Heartbeat send failed:", err);
-                // Close connection on send failure
-                try {
-                  currentWs.close(1006, "Heartbeat send failed");
-                } catch {
-                  // ignore
-                }
-              }
-            };
-
-            // Send initial heartbeat immediately
-            sendHeartbeat();
-
-            // Then poll every 3 seconds
-            heartbeatIntervalRef.current = setInterval(sendHeartbeat, 3000);
-          };
-
-          startHeartbeat();
-
-          try {
-            ws.send(JSON.stringify({ cmd: "ping" }));
-            ws.send(JSON.stringify({ cmd: "get_config" }));
-            ws.send(JSON.stringify({ cmd: "get_info" }));
-          } catch {
-            // ignore
-          }
-        };
-        ws.onmessage = (evt) => {
-          try {
-            const msg = JSON.parse(evt?.data || "{}");
-
-            // Check if this message is a response to a pending command
-            if (msg?.cmd && pendingCommandsRef.current.has(msg.cmd)) {
-              const pending = pendingCommandsRef.current.get(msg.cmd);
-              clearTimeout(pending.timeout);
-              pendingCommandsRef.current.delete(msg.cmd);
-
-              if (msg.ok === false) {
-                pending.reject(new Error(msg.error || "Command failed"));
-              } else {
-                pending.resolve(msg);
-              }
-              return; // Don't process further
-            }
-
-            if (msg?.cmd === "get_config" && msg?.config) {
-              setConfig(msg.config);
-              setLocalConfig(msg.config);
-              setCloudDeviceConfig(msg.config);
-            }
-            if (msg?.cmd === "get_info" && msg?.info) {
-              setCloudDeviceInfo(msg.info);
-            }
-            if (msg?.cmd === "get_rssi") {
-              // Clear heartbeat timeout since we got a response
-              if (heartbeatTimeoutRef.current) {
-                clearTimeout(heartbeatTimeoutRef.current);
-                heartbeatTimeoutRef.current = null;
-              }
-
-              if (typeof msg?.rssi === "number") {
-                setCloudRssi(msg.rssi);
-              } else {
-                setCloudRssi(null);
-              }
-            }
-            if (msg?.cmd === "get_logs") {
-              if (msg?.ok === false) {
-                setCloudLogsError(msg?.error || "get_logs_failed");
-                logsFetchRef.current.inProgress = false;
-                logsFetchRef.current.expectOffset = null;
-                logsFetchRef.current.buffer = "";
-                logsFetchRef.current.chunks = 0;
-              } else {
-                setCloudLogsError("");
-              }
-              if (typeof msg?.logs === "string") {
-                const lf = logsFetchRef.current;
-                if (!lf.inProgress) {
-                  // Back-compat: if logs weren't requested via the chunk fetcher,
-                  // still show the payload.
-                  setCloudLogs(msg.logs);
-                } else {
-                  // Enforce sequential offsets so stale responses don't corrupt
-                  // the buffer if the user re-triggers a fetch.
-                  const off = Number.isFinite(msg?.offset)
-                    ? Number(msg.offset)
-                    : null;
-                  if (lf.expectOffset !== null && off !== lf.expectOffset) {
-                    return;
-                  }
-
-                  lf.buffer += msg.logs;
-                  lf.chunks += 1;
-                  lf.expectOffset = Number.isFinite(msg?.next)
-                    ? Number(msg.next)
-                    : null;
-
-                  // Update UI every few chunks to avoid excessive rerenders.
-                  if (msg?.eof || lf.chunks % 4 === 0) {
-                    setCloudLogs(lf.buffer);
-                  }
-
-                  if (!msg?.eof && lf.expectOffset !== null) {
-                    try {
-                      ws.send(
-                        JSON.stringify({
-                          cmd: "get_logs",
-                          offset: lf.expectOffset,
-                          maxBytes: lf.maxBytes,
-                          tailBytes: lf.tailBytes,
-                        })
-                      );
-                    } catch {
-                      lf.inProgress = false;
-                    }
-                  } else {
-                    lf.inProgress = false;
-                    lf.expectOffset = null;
-                  }
-                }
-              }
-            }
-          } catch {
-            // ignore
-          }
-        };
-        ws.onerror = (err) => {
-          console.error("[App] Control WebSocket error:", err);
-          setControlConnected(false);
-        };
-        ws.onclose = (evt) => {
-          console.log("[App] Control WebSocket closed, code:", evt?.code);
-
-          // Clear heartbeat
-          if (heartbeatIntervalRef.current) {
-            clearInterval(heartbeatIntervalRef.current);
-            heartbeatIntervalRef.current = null;
-          }
-          if (heartbeatTimeoutRef.current) {
-            clearTimeout(heartbeatTimeoutRef.current);
-            heartbeatTimeoutRef.current = null;
-          }
-
+        controlWsRef.current = ws;
+      },
+      onStatus: (status) => {
+        if (status !== "connected") {
           controlWsRef.current = null;
-          setControlConnected(false);
-          setCloudDeviceConfig(null);
-          setCloudDeviceInfo(null);
           setCloudRssi(null);
-
-          // Reject all pending commands
-          for (const [, pending] of pendingCommandsRef.current.entries()) {
-            clearTimeout(pending.timeout);
-            pending.reject(new Error("WebSocket closed"));
-          }
-          pendingCommandsRef.current.clear();
-
-          // If auth is enabled and our token is invalid/rotated, the device will
-          // immediately close the socket. Stop the reconnect loop and prompt login.
-          if (evt?.code === 1006) {
-            const tok = getAuthToken();
-            if (tok && tok !== "null" && tok !== "undefined") {
-              console.warn(
-                "[App] WS closed (1006). Clearing token and requiring login."
-              );
-              clearAuthToken();
-              setAuthenticated(false);
-              setAuthChecked(true);
-              return;
-            }
-          }
-
-          if (evt?.code === 1000) {
-            console.log("[App] Clean close (1000), not reconnecting");
-            return;
-          }
-
-          console.log("[App] Scheduling reconnect...");
-          controlRetryRef.current = setTimeout(connect, 600);
-        };
-      } catch {
-        setControlConnected(false);
-      }
-    };
-
-    connect();
-    return () => {
-      // Clear heartbeat
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-      if (heartbeatTimeoutRef.current) {
-        clearTimeout(heartbeatTimeoutRef.current);
-        heartbeatTimeoutRef.current = null;
-      }
-
-      if (controlRetryRef.current) {
-        clearTimeout(controlRetryRef.current);
-        controlRetryRef.current = null;
-      }
-      if (controlWsRef.current) {
+        }
+        setControlStatus(status);
+      },
+      onOpen: (ws) => {
+        console.log("[App] Control WebSocket connected");
         try {
-          controlWsRef.current.close(1000, "Cleanup");
+          ws.send(JSON.stringify({ cmd: "ping" }));
+          ws.send(JSON.stringify({ cmd: "get_config" }));
+          ws.send(JSON.stringify({ cmd: "get_info" }));
         } catch {
           // ignore
         }
+      },
+      onMessage: handleControlMessage,
+      onClose: (evt) => {
+        console.log("[App] Control WebSocket closed, code:", evt?.code);
         controlWsRef.current = null;
+        logsFetchRef.current.inProgress = false;
+        rejectPending("WebSocket closed");
+      },
+      onAuthFailure: () => {
+        console.warn(
+          "[App] Control socket rejected the token. Requiring login."
+        );
+        clearAuthToken();
+        setAuthenticated(false);
+        setAuthChecked(true);
+      },
+    });
+
+    controlSessionRef.current = session;
+    session.start();
+
+    return () => {
+      session.dispose();
+      if (controlSessionRef.current === session) {
+        controlSessionRef.current = null;
       }
+      controlWsRef.current = null;
+      rejectPending("WebSocket closed");
     };
   }, [networkEnabled, authenticated, controlWsUrl]);
 
@@ -739,6 +604,9 @@ function App() {
               ? "musicPlayer.playing"
               : controlConnected
               ? "secondary.light"
+              : controlStatus === "connecting" ||
+                controlStatus === "reconnecting"
+              ? "warning.main"
               : "error.main",
           color:
             musicPlaybackState.isPlaying || !controlConnected
@@ -758,19 +626,7 @@ function App() {
           transition: "background-color 0.3s ease",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
-          <Typography
-            variant="caption"
-            sx={{ opacity: 0.75, fontFamily: "inherit" }}
-          >
-            {musicPlaybackState.isPlaying
-              ? musicPlaybackState.isPaused
-                ? "Music: paused"
-                : "Music: playing"
-              : `Control: ${controlConnected ? "connected" : "disconnected"}`}
-          </Typography>
-        </Box>
+        {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
       </Container>
 
       {/* Settings Button Bar */}

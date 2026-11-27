@@ -21,7 +21,6 @@ import CameraButton from "./CameraButton";
 import DeviceSettingsButton from "./DeviceSettingsButton";
 import LogsButton from "./LogsButton";
 import FileBrowserButton from "./FileBrowserButton";
-// import BluetoothButton from "./BluetoothButton";
 import AddModuleButton from "./AddModuleButton";
 
 // Storage keys for persisting button configuration
@@ -40,7 +39,6 @@ const NON_REMOVABLE_IDS = new Set([
 const DEFAULT_ORDER_PRIORITY = [
   "rssi",
   "deviceSettings",
-  "bluetooth",
   "addModule",
   "files",
   "logs",
@@ -50,7 +48,6 @@ const DEFAULT_ORDER_PRIORITY = [
 const BUTTON_LABELS = {
   deviceSettings: "Device Settings",
   rssi: "RSSI",
-  bluetooth: "Bluetooth",
   camera: "Camera",
   logs: "Logs",
   files: "File Browser",
@@ -242,11 +239,10 @@ export default function SettingsButtonBar({
   const prevVisibleIdsRef = useRef(new Set());
   /**
    * Build list of available buttons based on device capabilities
-   * Some buttons (camera, bluetooth) only appear if device supports them
+   * Some buttons (camera) only appear if the device has that module.
    *
-   * When control socket is disconnected (deviceOnline=false), all buttons
-   * except devicePicker should be disabled to prevent operations that require
-   * the WebSocket connection (e.g., logs, settings changes).
+   * When the control socket is down (deviceOnline=false), buttons that talk
+   * to the device are disabled until it reconnects.
    */
   const availableButtons = useMemo(() => {
     const items = [];
@@ -290,12 +286,6 @@ export default function SettingsButtonBar({
         ),
       });
     }
-
-    // Always show Bluetooth button - never disabled (keep enabled even during music playback)
-    // items.push({
-    //   id: "bluetooth",
-    //   render: () => <BluetoothButton config={config} />,
-    // });
 
     // Show camera button if camera is installed and there's at least one camera module
     const hasCameraModule = config?.modules?.some((m) => m.type === "camera");

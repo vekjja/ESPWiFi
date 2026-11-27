@@ -880,23 +880,6 @@ export default function MusicPlayerModule({
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
-  // Get border color based on state
-  const getBorderColor = () => {
-    // If music is playing, the device is clearly online (serving files)
-    // even if WebSocket control connection is down
-    if (isPlaying && isPaused) {
-      return "musicPlayer.paused"; // Orange when paused
-    }
-    if (isPlaying) {
-      return "musicPlayer.playing"; // Cyan when playing (device must be online!)
-    }
-    // Only show error/offline state when NOT playing
-    if (!deviceOnline && !isPlaying) {
-      return "error.main"; // Red when offline and not playing
-    }
-    return "primary.main"; // Default primary color
-  };
-
   return (
     <>
       <Module
@@ -1010,17 +993,15 @@ export default function MusicPlayerModule({
             </Box>
           </Box>
         }
+        moduleConfig={config}
+        online={deviceOnline}
+        playback={
+          isPlaying ? (isPaused ? "paused" : "playing") : undefined
+        }
         onSettings={handleOpenSettings}
         settingsDisabled={!deviceOnline}
         settingsTooltip="Settings"
-        errorOutline={!deviceOnline && !isPlaying}
         sx={{
-          width: { xs: "100%", sm: "auto" },
-          minWidth: { xs: "320px", sm: "520px" },
-          maxWidth: { xs: "100%", sm: "820px" },
-          minHeight: "auto",
-          maxHeight: { xs: "90vh", sm: "720px" },
-          borderColor: getBorderColor(),
           "& .MuiCardContent-root": {
             minHeight: "auto",
             paddingBottom: "0px !important",

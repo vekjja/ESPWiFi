@@ -6,9 +6,24 @@ import LinkOffIcon from "@mui/icons-material/LinkOff";
 import Module from "./Module";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import { buildWebSocketUrl } from "../utils/apiUtils";
+import { createSocketSession } from "../utils/socketSession";
+import { connectionLabel } from "./moduleConfig";
 
-// Global connection manager to persist connections across re-renders
-const connectionManager = new Map();
+function normalizeWsUrl(raw) {
+  let wsUrl = String(raw || "").trim();
+  if (!wsUrl) return "";
+  if (wsUrl.startsWith("/")) {
+    wsUrl = buildWebSocketUrl(wsUrl);
+  } else if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
+    wsUrl = `ws://${wsUrl}`;
+  }
+  try {
+    new URL(wsUrl);
+  } catch {
+    return "";
+  }
+  return wsUrl;
+}
 
 export default function WebSocketModule({
   index,
@@ -16,7 +31,6 @@ export default function WebSocketModule({
   onUpdate,
   onDelete,
 }) {
-  // Use the module's key for stable identification
   const moduleKey = initialProps.key || index;
 
   const [message, setMessage] = useState("");
@@ -24,7 +38,6 @@ export default function WebSocketModule({
   const [openModal, setOpenModal] = useState(false);
   const [inputText, setInputText] = useState("");
 
-  // WebSocket settings data for the modal (only for editing)
   const [websocketSettingsData, setWebSocketSettingsData] = useState({
     name: initialProps.name || "",
     url: initialProps.url || "",
@@ -37,162 +50,65 @@ export default function WebSocketModule({
     height: initialProps.height || 240,
   });
 
-  // Use ref to store WebSocket instance
-  const socketRef = useRef(null);
-  // Use ref to preserve message across re-renders
+  const sessionRef = useRef(null);
   const messageRef = useRef("");
+  const urlRef = useRef(initialProps.url || "");
+  const payloadRef = useRef(initialProps.payload || "text");
+  const desiredRef = useRef(initialProps.connectionState === "connected");
+  const skipUrlRestart = useRef(true);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      // Clean up object URL
-      if (typeof message === "string" && message.startsWith("blob:")) {
-        URL.revokeObjectURL(message);
-      }
+  urlRef.current = initialProps.url || "";
+  payloadRef.current = initialProps.payload || "text";
 
-      // Close connection
-      if (
-        socketRef.current &&
-        socketRef.current.readyState !== WebSocket.CLOSED
-      ) {
-        socketRef.current.close();
-      }
-
-      // Remove from connection manager
-      connectionManager.delete(moduleKey);
-    };
-  }, []);
-
-  // Auto-connect if previously connected (only on initial mount)
-  // useEffect(() => {
-  //   // Only auto-connect if explicitly set to connected in initialProps and no socket exists
-  //   if (
-  //     initialProps.connectionState === "connected" &&
-  //     !socketRef.current &&
-  //     !manuallyDisconnected
-  //   ) {
-  //     // Small delay to ensure component is fully mounted
-  //     const timer = setTimeout(() => {
-  //       // Double-check that we still need to connect
-  //       if (
-  //         initialProps.connectionState === "connected" &&
-  //         !socketRef.current &&
-  //         !manuallyDisconnected
-  //       ) {
-  //         createWebSocketConnection();
-  //       }
-  //     }, 100);
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, []); // Empty dependency array - only run on mount
-
-  // Local connection state update (no config save)
-  const updateConnectionState = (newStatus) => {
-    if (newStatus !== connectionStatus) {
-      setConnectionStatus(newStatus);
-
-      // Save the updated connection state
-      const updatedWebSocket = {
-        ...websocketSettingsData,
-        connectionState: newStatus,
-      };
-      onUpdate(moduleKey, updatedWebSocket);
+  const revokeMessageUrl = () => {
+    if (
+      typeof messageRef.current === "string" &&
+      messageRef.current.startsWith("blob:")
+    ) {
+      URL.revokeObjectURL(messageRef.current);
     }
   };
 
-  const createWebSocketConnection = () => {
-    // Check if we already have a connection for this module
-    const existingConnection = connectionManager.get(moduleKey);
-    if (
-      existingConnection &&
-      existingConnection.readyState === WebSocket.OPEN
-    ) {
-      console.log(
-        `WebSocket ${moduleKey} already connected, reusing existing connection`
-      );
-      socketRef.current = existingConnection;
-      updateConnectionState("connected");
-      return existingConnection;
-    }
-
-    // Close existing connection if any
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-
-    let wsUrl = initialProps.url;
-
-    // Convert relative path to absolute URL
-    if (wsUrl.startsWith("/")) {
-      // For relative paths, use the current hostname
-      wsUrl = buildWebSocketUrl(wsUrl);
-    } else if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
-      // If it's not a full WebSocket URL and not relative, assume it's a hostname
-      // and add the default WebSocket protocol
-      wsUrl = `ws://${wsUrl}`;
-    }
-
-    // Validate URL format
-    try {
-      new URL(wsUrl);
-    } catch (error) {
-      console.error(`Invalid WebSocket URL: ${wsUrl}`);
-      updateConnectionState("error");
-      return null;
-    }
-
-    console.log(`WebSocket`, moduleKey, "connecting:", wsUrl);
-
-    try {
-      const ws = new WebSocket(wsUrl);
-
-      if (initialProps.payload === "binary") {
-        ws.binaryType = "arraybuffer";
-      }
-
-      socketRef.current = ws;
-      connectionManager.set(moduleKey, ws);
-      updateConnectionState("connecting");
-
-      ws.onopen = () => {
-        console.log(`WebSocket`, moduleKey, "connected:", wsUrl);
-        updateConnectionState("connected");
-      };
-
-      ws.onmessage = (event) => {
-        if (initialProps.payload === "binary") {
+  useEffect(() => {
+    const session = createSocketSession({
+      getUrl: () => normalizeWsUrl(urlRef.current),
+      prepare: (ws) => {
+        if (payloadRef.current === "binary") ws.binaryType = "arraybuffer";
+      },
+      onStatus: (status) => setConnectionStatus(status),
+      onMessage: (event) => {
+        if (payloadRef.current === "binary") {
           const blob = new Blob([event.data], { type: "image/jpeg" });
           const objectURL = URL.createObjectURL(blob);
+          revokeMessageUrl();
           messageRef.current = objectURL;
           setMessage(objectURL);
         } else {
           messageRef.current = event.data;
           setMessage(event.data);
         }
-      };
+      },
+    });
+    sessionRef.current = session;
 
-      ws.onerror = (error) => {
-        console.error(`WebSocket ${moduleKey} error:`, error);
-        updateConnectionState("error");
-      };
+    if (desiredRef.current) session.start();
 
-      ws.onclose = (event) => {
-        console.log(`WebSocket`, moduleKey, "disconnected:", wsUrl);
-        updateConnectionState("disconnected");
-        socketRef.current = null;
-        connectionManager.delete(moduleKey);
-      };
+    return () => {
+      session.dispose();
+      sessionRef.current = null;
+      revokeMessageUrl();
+    };
+  }, [moduleKey]);
 
-      return ws;
-    } catch (error) {
-      console.error(`Failed to create WebSocket for ${wsUrl}:`, error);
-      updateConnectionState("error");
-      return null;
+  // A saved URL or payload change should reopen the socket the user asked to keep up.
+  useEffect(() => {
+    if (skipUrlRestart.current) {
+      skipUrlRestart.current = false;
+      return;
     }
-  };
+    if (desiredRef.current) sessionRef.current?.start();
+  }, [initialProps.url, initialProps.payload]);
 
-  // Only sync modal state from props when opening the modal
   const handleSettingsClick = () => {
     setWebSocketSettingsData({
       name: initialProps.name || "",
@@ -217,26 +133,14 @@ export default function WebSocketModule({
   };
 
   const handleDeleteSocket = () => {
-    // Best-effort cleanup before removing the module
-    try {
-      if (
-        socketRef.current &&
-        socketRef.current.readyState !== WebSocket.CLOSED
-      ) {
-        socketRef.current.close();
-      }
-    } catch {
-      // ignore
-    }
-    socketRef.current = null;
-    connectionManager.delete(moduleKey);
+    desiredRef.current = false;
+    sessionRef.current?.stop();
     onDelete(moduleKey);
     handleCloseModal();
   };
 
   const handleSaveSettings = () => {
-    // Include connectionState when saving settings
-    const updatedWebSocket = {
+    onUpdate(moduleKey, {
       type: initialProps.type,
       key: initialProps.key,
       url: websocketSettingsData.url,
@@ -245,230 +149,150 @@ export default function WebSocketModule({
       fontSize: Number(websocketSettingsData.fontSize),
       enableSending: websocketSettingsData.enableSending,
       imageRotation: Number(websocketSettingsData.imageRotation),
-      connectionState: connectionStatus, // Save the current connection state
+      connectionState: desiredRef.current ? "connected" : "disconnected",
       size: websocketSettingsData.size,
       width: websocketSettingsData.width,
       height: websocketSettingsData.height,
-    };
-
-    onUpdate(moduleKey, updatedWebSocket);
+    });
     handleCloseModal();
   };
 
   const handleConnect = () => {
-    createWebSocketConnection();
+    desiredRef.current = true;
+    sessionRef.current?.start();
+    onUpdate(moduleKey, { connectionState: "connected" });
   };
 
   const handleDisconnect = () => {
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-      connectionManager.delete(moduleKey);
-      // Immediately update the connection status manually
-      updateConnectionState("disconnected");
-    } else {
-      // If there's no socket but status is still connected, fix the status
-      if (connectionStatus === "connected") {
-        updateConnectionState("disconnected");
-      }
-    }
+    desiredRef.current = false;
+    sessionRef.current?.stop();
+    onUpdate(moduleKey, { connectionState: "disconnected" });
   };
 
   const handleSend = () => {
-    if (
-      inputText.trim() &&
-      socketRef.current &&
-      socketRef.current.readyState === WebSocket.OPEN
-    ) {
-      socketRef.current.send(inputText);
-      setInputText("");
-    }
+    const socket = sessionRef.current?.getSocket();
+    if (!inputText.trim() || !socket) return;
+    socket.send(inputText);
+    setInputText("");
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === "Enter") {
-      handleSend();
-    }
+    if (event.key === "Enter") handleSend();
   };
 
-  // Remove the useEffect that syncs websocketSettingsData from initialProps on every prop change
-
-  // Determine icon and tooltip based on connection status
-  const getConnectionIcon = () => {
-    switch (connectionStatus) {
-      case "connected":
-        return LinkIcon;
-      case "connecting":
-        return RestartAltIcon;
-      case "error":
-        return LinkOffIcon;
-      default:
-        return LinkOffIcon;
-    }
-  };
-
-  const getConnectionTooltip = () => {
-    switch (connectionStatus) {
-      case "connected":
-        return "Disconnect";
-      case "connecting":
-        return "Connecting...";
-      case "error":
-        return "Connection Error - Click to retry";
-      default:
-        return "Connect";
-    }
-  };
-
-  // Size mapping
-  const sizeMap = {
-    small: { width: 180, height: 180 },
-    medium: { width: 240, height: 240 },
-    large: { width: 320, height: 320 },
-  };
-  const effectiveSize =
-    websocketSettingsData.size === "custom"
-      ? {
-          width: websocketSettingsData.width,
-          height: websocketSettingsData.height,
-        }
-      : sizeMap[websocketSettingsData.size] || sizeMap.medium;
+  const connected = connectionStatus === "connected";
+  const busy =
+    connectionStatus === "connecting" || connectionStatus === "reconnecting";
 
   return (
     <Module
       title={initialProps.name || "WebSocket" + moduleKey}
+      moduleConfig={{
+        ...initialProps,
+        size: websocketSettingsData.size,
+        width: websocketSettingsData.width,
+        height: websocketSettingsData.height,
+      }}
+      connectionStatus={connectionStatus}
       onSettings={handleSettingsClick}
       settingsTooltip="WebSocket Settings"
-      onReconnect={
-        connectionStatus === "connected" ? handleDisconnect : handleConnect
+      onReconnect={connected ? handleDisconnect : handleConnect}
+      reconnectTooltip={
+        connected ? "Disconnect" : busy ? connectionLabel(connectionStatus) : "Connect"
       }
-      reconnectTooltip={getConnectionTooltip()}
-      reconnectIcon={getConnectionIcon()}
-      reconnectColor={connectionStatus === "connected" ? "primary" : "error"}
-      sx={{
-        backgroundColor:
-          connectionStatus === "connected"
-            ? "secondary.light"
-            : "secondary.dark",
-        borderColor:
-          connectionStatus === "connected" ? "primary.main" : "secondary.main",
-        minWidth: effectiveSize.width,
-        maxWidth: effectiveSize.width,
-        minHeight: effectiveSize.height,
-        maxHeight: effectiveSize.height,
-      }}
+      reconnectIcon={connected ? LinkIcon : busy ? RestartAltIcon : LinkOffIcon}
+      reconnectColor={connected ? "primary" : "error"}
     >
-      {/* Main content only, no input/send area here */}
-      {connectionStatus === "connecting" ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "120px",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            Connecting...
-          </Typography>
-        </div>
-      ) : connectionStatus === "error" ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "120px",
-          }}
-        >
-          <Typography variant="caption" color="error">
-            Connection Error
-          </Typography>
-        </div>
-      ) : connectionStatus === "disconnected" ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            height: "120px",
-          }}
-        >
-          <Typography variant="caption" color="text.secondary">
-            Disconnected
-          </Typography>
-        </div>
-      ) : initialProps.payload === "binary" ? (
-        messageRef.current &&
-        typeof messageRef.current === "string" &&
-        messageRef.current.startsWith("blob:") ? (
-          <img
-            src={messageRef.current}
-            alt="WebSocket"
-            style={{
-              width: "100%",
-              marginTop: "10px",
-              maxHeight: "120px",
-              objectFit: "contain",
-              transform: `rotate(${initialProps.imageRotation || 0}deg)`,
-            }}
-          />
+      {connected ? (
+        initialProps.payload === "binary" ? (
+          messageRef.current &&
+          typeof messageRef.current === "string" &&
+          messageRef.current.startsWith("blob:") ? (
+            <img
+              src={message}
+              alt="WebSocket"
+              style={{
+                width: "100%",
+                marginTop: "10px",
+                maxHeight: "120px",
+                objectFit: "contain",
+                transform: `rotate(${initialProps.imageRotation || 0}deg)`,
+              }}
+            />
+          ) : (
+            <Typography variant="caption" color="text.secondary">
+              Waiting for image...
+            </Typography>
+          )
         ) : (
-          <Typography variant="caption" color="text.secondary">
-            Waiting for image...
-          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "60px",
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                wordBreak: "break-all",
+                textAlign: "center",
+                fontSize: initialProps.fontSize || 14,
+                maxHeight: "120px",
+                overflow: "auto",
+              }}
+            >
+              {typeof message === "string" ? message : ""}
+            </Typography>
+          </Box>
         )
       ) : (
         <Box
           sx={{
             display: "flex",
-            alignItems: "center",
             justifyContent: "center",
-            // Remove height: "120px"
-            minHeight: "60px", // Optional: just to keep a little space
+            alignItems: "center",
+            height: "120px",
           }}
         >
           <Typography
-            variant="body2"
-            sx={{
-              wordBreak: "break-all",
-              textAlign: "center",
-              fontSize: initialProps.fontSize || 14,
-              maxHeight: "120px",
-              overflow: "auto",
-            }}
+            variant="caption"
+            color={
+              connectionStatus === "error" || connectionStatus === "offline"
+                ? "error"
+                : "text.secondary"
+            }
           >
-            {typeof messageRef.current === "string" ? messageRef.current : ""}
+            {connectionLabel(connectionStatus)}
           </Typography>
         </Box>
       )}
 
-      {/* Show send input and button below main content if enabled and connected */}
-      {connectionStatus === "connected" &&
-        initialProps.enableSending !== false && (
-          <Box
-            sx={{ mt: 1, mb: 1, px: 1, display: "flex", gap: 1, width: "100%" }}
+      {connected && initialProps.enableSending !== false && (
+        <Box
+          sx={{ mt: 1, mb: 1, px: 1, display: "flex", gap: 1, width: "100%" }}
+        >
+          <TextField
+            label="Send message"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyPress}
+            variant="outlined"
+            size="small"
+            fullWidth
+            placeholder="Type a message..."
+          />
+          <Button
+            onClick={handleSend}
+            variant="contained"
+            size="small"
+            disabled={!inputText || !inputText.trim()}
           >
-            <TextField
-              label="Send message"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              variant="outlined"
-              size="small"
-              fullWidth
-              placeholder="Type a message..."
-            />
-            <Button
-              onClick={handleSend}
-              variant="contained"
-              size="small"
-              disabled={!inputText || !inputText.trim()}
-            >
-              Send
-            </Button>
-          </Box>
-        )}
+            Send
+          </Button>
+        </Box>
+      )}
 
       <WebSocketSettingsModal
         open={openModal}

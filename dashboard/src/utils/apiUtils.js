@@ -1,27 +1,5 @@
 import { getAuthHeader, getAuthToken } from "./authUtils";
 
-/**
- * Check if the dashboard is hosted from espwifi.io
- * Used to determine if we should show initial device setup flow
- * @returns {boolean} True if hosted from espwifi.io domain
- */
-export const isHostedFromEspWiFiIo = () => {
-  // Allow testing in development mode ONLY (not in production builds)
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.REACT_APP_TEST_HOSTED_MODE === "true"
-  ) {
-    console.log("[apiUtils] Test hosted mode enabled via env var (dev only)");
-    return true;
-  }
-
-  const hostname = window.location.hostname.toLowerCase();
-  const isHosted =
-    hostname === "espwifi.io" || hostname.endsWith(".espwifi.io");
-  console.log("[apiUtils] Hostname check:", hostname, "→", isHosted);
-  return isHosted;
-};
-
 const normalizeProtocol = (protocol) => {
   if (!protocol) return "";
   // Accept "http", "http:", "https", "https:" (same for ws/wss)
@@ -230,60 +208,4 @@ export const getFetchOptions = (options = {}) => {
     ...options,
     headers,
   };
-};
-
-/**
- * Redeem a device claim code via the cloud API
- * @param {string} claimCode - The 6-character claim code
- * @param {string} cloudBaseUrl - Cloud broker base URL (from device config or default)
- * @param {string} tunnel - Optional tunnel identifier (defaults to "ws_control")
- * @returns {Promise<Object>} Claim result with device info and WebSocket URLs
- */
-export const redeemClaimCode = async (
-  claimCode,
-  cloudBaseUrl = "https://cloud.espwifi.io",
-  tunnel = "ws_control"
-) => {
-  const code = String(claimCode || "")
-    .trim()
-    .toUpperCase();
-  if (!code || code.length !== 6) {
-    throw new Error("Invalid claim code format");
-  }
-
-  const url = `${cloudBaseUrl}/api/claim`;
-
-  console.log("[apiUtils] Redeeming claim code at:", url);
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ code, tunnel }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error(
-        "[apiUtils] Claim redemption failed:",
-        response.status,
-        text
-      );
-      throw new Error(text || `HTTP ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log("[apiUtils] Claim redemption successful:", result);
-
-    if (!result.ok) {
-      throw new Error(result.error || "Claim redemption failed");
-    }
-
-    return result;
-  } catch (error) {
-    console.error("[apiUtils] Error redeeming claim code:", error);
-    throw error;
-  }
 };

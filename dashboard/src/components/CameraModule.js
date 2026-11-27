@@ -8,6 +8,8 @@ import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CameraSettingsModal from "./CameraSettingsModal";
 import { buildWebSocketUrl, buildApiUrl } from "../utils/apiUtils";
+import { createSocketSession } from "../utils/socketSession";
+import { connectionLabel } from "./moduleConfig";
 
 export default function CameraModule({
   config,
@@ -20,6 +22,8 @@ export default function CameraModule({
 }) {
   const moduleKey = config?.key;
   const [isStreaming, setIsStreaming] = useState(false);
+  const [wantsStream, setWantsStream] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("disconnected");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -27,12 +31,13 @@ export default function CameraModule({
     name: config?.name || "",
   });
 
-  const wsRef = useRef(null);
+  const sessionRef = useRef(null);
   const imgRef = useRef(null);
   const containerRef = useRef(null); // Container for fullscreen with rotation
   const imageUrlRef = useRef("");
   const isMountedRef = useRef(true);
-  const intentionalCloseRef = useRef(false);
+  const hostnameRef = useRef(globalConfig?.hostname || globalConfig?.deviceName);
+  hostnameRef.current = globalConfig?.hostname || globalConfig?.deviceName;
 
   // Update settings data when config changes
   useEffect(() => {
@@ -41,112 +46,78 @@ export default function CameraModule({
     });
   }, [config?.name]);
 
-  const handleStartStream = () => {
-    // LAN: connect to /ws/media (camera streaming is request-driven)
-    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
-    const cameraWsUrl = buildWebSocketUrl("/ws/media", mdnsHostname || null);
-
-    if (!cameraWsUrl) {
-      console.error("Failed to build camera WebSocket URL");
-      return;
-    }
-
-    try {
-      intentionalCloseRef.current = false; // Reset flag when starting stream
-      const ws = new WebSocket(cameraWsUrl);
-      ws.binaryType = "arraybuffer";
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log("🎞️ Media WebSocket connected:", cameraWsUrl);
-        // Request camera streaming
-        try {
-          ws.send(JSON.stringify({ cmd: "camera_start" }));
-        } catch (e) {
-          console.warn("Failed to send camera_start:", e);
-        }
-        setIsStreaming(true);
-      };
-
-      ws.onmessage = (event) => {
-        if (event.data instanceof ArrayBuffer) {
-          const blob = new Blob([event.data], { type: "image/jpeg" });
-          const objectURL = URL.createObjectURL(blob);
-          if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-            URL.revokeObjectURL(imageUrlRef.current);
-          }
-          imageUrlRef.current = objectURL;
-          setImageUrl(objectURL);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error("🎞️ Media WebSocket error:", error);
-        setIsStreaming(false);
-        // Auto-reconnect on error after a delay (if not intentionally closed)
-        setTimeout(() => {
-          if (
-            isMountedRef.current &&
-            wsRef.current === ws &&
-            !intentionalCloseRef.current
-          ) {
-            console.log(
-              "🎞️ Attempting to reconnect media socket after error..."
-            );
-            handleStartStream();
-          }
-        }, 2000);
-      };
-
-      ws.onclose = (event) => {
-        console.log("🎞️ Media WebSocket closed", event.code);
-        setIsStreaming(false);
-        wsRef.current = null;
-
-        // Auto-reconnect if closed unexpectedly (not a normal close and not intentional)
-        if (
-          event.code !== 1000 &&
-          isMountedRef.current &&
-          !intentionalCloseRef.current
-        ) {
-          console.log("🎞️ Unexpected close, attempting to reconnect in 2s...");
-          setTimeout(() => {
-            if (isMountedRef.current && !intentionalCloseRef.current) {
-              handleStartStream();
-            }
-          }, 2000);
-        }
-      };
-    } catch (error) {
-      console.error("📷 Failed to create camera WebSocket:", error);
-    }
-  };
-
-  const handleStopStream = () => {
-    // Mark as intentional close to prevent auto-reconnect
-    intentionalCloseRef.current = true;
-
-    // Close WebSocket
-    if (wsRef.current) {
-      // Best-effort request to stop streaming before disconnect.
-      try {
-        if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ cmd: "camera_stop" }));
-        }
-      } catch (e) {
-        // ignore
-      }
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    setIsStreaming(false);
-
-    // Clean up image URL
+  const releaseFrame = () => {
     if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
       URL.revokeObjectURL(imageUrlRef.current);
       imageUrlRef.current = "";
       setImageUrl("");
     }
+  };
+
+  const stopMediaSocket = () => {
+    const session = sessionRef.current;
+    const ws = session?.getSocket();
+    try {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ cmd: "camera_stop" }));
+      }
+    } catch {
+      // ignore
+    }
+    session?.stop();
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const session = createSocketSession({
+      getUrl: () => buildWebSocketUrl("/ws/media", hostnameRef.current || null),
+      binary: true,
+      onStatus: (status) => {
+        if (!isMountedRef.current) return;
+        setStreamStatus(status);
+        setIsStreaming(status === "connected");
+      },
+      onOpen: (ws) => {
+        try {
+          ws.send(JSON.stringify({ cmd: "camera_start" }));
+        } catch {
+          // ignore
+        }
+      },
+      onMessage: (event) => {
+        if (!(event.data instanceof ArrayBuffer)) return;
+        const blob = new Blob([event.data], { type: "image/jpeg" });
+        const objectURL = URL.createObjectURL(blob);
+        if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
+          URL.revokeObjectURL(imageUrlRef.current);
+        }
+        imageUrlRef.current = objectURL;
+        setImageUrl(objectURL);
+      },
+    });
+    sessionRef.current = session;
+    return () => {
+      isMountedRef.current = false;
+      stopMediaSocket();
+      session.dispose();
+      sessionRef.current = null;
+      if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(imageUrlRef.current);
+      }
+    };
+  }, []);
+
+  const handleStartStream = () => {
+    setWantsStream(true);
+    sessionRef.current?.start();
+  };
+
+  const handleStopStream = () => {
+    setWantsStream(false);
+    stopMediaSocket();
+    setIsStreaming(false);
+    setStreamStatus("disconnected");
+    releaseFrame();
   };
 
   const handleDeleteModule = () => {
@@ -320,37 +291,24 @@ export default function CameraModule({
     };
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      intentionalCloseRef.current = true; // Mark as intentional on unmount
-
-      // Clean up object URL
-      if (imageUrlRef.current && imageUrlRef.current.startsWith("blob:")) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
-
-      // Close connection
-      handleStopStream();
-    };
-  }, []);
+  const streamCaption = !wantsStream
+    ? deviceOnline
+      ? "Idle"
+      : "Offline"
+    : isStreaming
+    ? "Live"
+    : connectionLabel(streamStatus);
 
   return (
     <>
       <Module
         title={config?.name || "Camera"}
+        moduleConfig={config}
+        online={deviceOnline}
         onSettings={handleOpenSettings}
         settingsDisabled={!deviceOnline}
         settingsTooltip={"Settings"}
-        errorOutline={false}
-        data-camera-module="true"
         sx={{
-          minWidth: "400px",
-          maxWidth: "500px",
-          minHeight: "auto",
-          maxHeight: "500px",
-          borderColor: !deviceOnline ? "error.main" : "primary.main",
           "& .MuiCardContent-root": {
             minHeight: "auto",
             paddingBottom: "0px !important",
@@ -462,15 +420,19 @@ export default function CameraModule({
                 width: 8,
                 height: 8,
                 borderRadius: "50%",
-                backgroundColor: !deviceOnline
-                  ? "error.main"
+                backgroundColor: !wantsStream
+                  ? deviceOnline
+                    ? "primary.main"
+                    : "error.main"
                   : isStreaming
                   ? "success.main"
-                  : "primary.main",
+                  : streamStatus === "error" || streamStatus === "offline"
+                  ? "error.main"
+                  : "warning.main",
               }}
             />
             <Typography variant="caption" sx={{ color: "white" }}>
-              {!deviceOnline ? "Offline" : isStreaming ? "Live" : "Idle"}
+              {streamCaption}
             </Typography>
           </Box>
         </Box>
@@ -490,7 +452,7 @@ export default function CameraModule({
         >
           <Tooltip
             title={
-              isStreaming
+              wantsStream
                 ? "Stop Stream"
                 : !deviceOnline
                 ? "Device Offline"
@@ -499,13 +461,16 @@ export default function CameraModule({
           >
             <span>
               <IconButton
-                onClick={isStreaming ? handleStopStream : handleStartStream}
-                disabled={!deviceOnline}
+                onClick={wantsStream ? handleStopStream : handleStartStream}
+                disabled={!deviceOnline && !wantsStream}
                 sx={{
-                  color: !deviceOnline ? "text.disabled" : "primary.main",
+                  color:
+                    !deviceOnline && !wantsStream
+                      ? "text.disabled"
+                      : "primary.main",
                 }}
               >
-                {isStreaming ? <PauseIcon /> : <PlayArrowIcon />}
+                {wantsStream ? <PauseIcon /> : <PlayArrowIcon />}
               </IconButton>
             </span>
           </Tooltip>

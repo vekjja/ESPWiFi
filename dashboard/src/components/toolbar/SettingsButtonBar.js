@@ -544,7 +544,6 @@ export default function SettingsButtonBar({
         backgroundColor: "background.paper",
         borderRadius: 0,
         p: 1,
-        mx: -1, // Extend to edges
       }}
     >
       <DndContext

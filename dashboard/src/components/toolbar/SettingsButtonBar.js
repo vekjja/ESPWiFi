@@ -231,7 +231,6 @@ export default function SettingsButtonBar({
   logsText = "",
   logsError = "",
   onRequestLogs = null,
-  cloudMode = false,
   controlConnected = false,
   deviceInfoOverride = null,
   controlWs = null,
@@ -255,23 +254,17 @@ export default function SettingsButtonBar({
     const wifiMode = config?.wifi?.mode || "client";
     // RSSI button is available when config exists and not in access point mode
     const rssiAvailable = Boolean(config) && wifiMode !== "accessPoint";
-    // In paired/tunnel mode, use the control socket to support settings/logs.
-    // Keep other HTTP-backed features (files/modules) disabled for now.
-    const canCloudConfigure = cloudMode && controlConnected;
-    const httpCapable = deviceOnline && !cloudMode;
-    const logsCapable = (cloudMode && controlConnected) || deviceOnline;
+    const logsCapable = deviceOnline;
 
     items.push({
       id: "deviceSettings",
       render: () => (
         <DeviceSettingsButton
           config={config}
-          deviceOnline={httpCapable || canCloudConfigure}
+          deviceOnline={deviceOnline}
           offlineTitle={offlineTitle}
           saveConfigToDevice={saveConfigToDevice}
           onRefreshConfig={onRefreshConfig}
-          cloudMode={cloudMode}
-          controlConnected={controlConnected}
           deviceInfoOverride={deviceInfoOverride}
         />
       ),
@@ -374,7 +367,6 @@ export default function SettingsButtonBar({
     logsText,
     logsError,
     onRequestLogs,
-    cloudMode,
     controlConnected,
     offlineTitle,
     deviceInfoOverride,

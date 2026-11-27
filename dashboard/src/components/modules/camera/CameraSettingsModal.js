@@ -254,7 +254,7 @@ export default function CameraSettingsModal({
                   placeholder="Enter camera name"
                   fullWidth
                   variant="outlined"
-                  helperText="Camera always streams over /ws/control (LAN or cloud tunnel)"
+                  helperText="Camera streams over the control socket"
                 />
               </CardContent>
             </Card>

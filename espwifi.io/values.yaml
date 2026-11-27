@@ -1,4 +1,4 @@
-# Default values for torch.cloud.
+# Default values for espwifi.io.
 # This is a YAML-formatted file.
 
 # kubectl create namespace espwifi-io
@@ -72,38 +72,6 @@ ingress:
   - secretName: espwifi.io-tls
     hosts:
     - espwifi.io
-
-# Cloud broker (cloud.espwifi.io)
-cloud:
-  enabled: true
-
-  image:
-    repository: ghcr.io/vekjja/espwifi-cloud
-    pullPolicy: Always
-    tag: "dev-0.1.6"
-
-  service:
-    type: ClusterIP
-    port: 8080
-
-  ingress:
-    enabled: true
-    className: "nginx"
-    annotations:
-      cert-manager.io/cluster-issuer: "cloudflare-letsencrypt-production"
-      external-dns.alpha.kubernetes.io/hostname: cloud.espwifi.io
-      external-dns.alpha.kubernetes.io/target: "174.44.105.210"
-    hosts:
-    - host: cloud.espwifi.io
-      paths:
-      - path: /
-        pathType: Prefix
-    tls:
-    - secretName: cloud.espwifi.io-tls
-      hosts:
-      - cloud.espwifi.io
-
-  resources: {}
 
 resources: {}
   # limits:

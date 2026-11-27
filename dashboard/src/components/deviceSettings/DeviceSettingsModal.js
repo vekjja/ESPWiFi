@@ -22,7 +22,6 @@ export default function DeviceSettingsModal({
   saveConfigToDevice,
   open = false,
   onClose,
-  cloudMode = false,
   deviceInfoOverride = null,
 }) {
   // Device info state
@@ -49,14 +48,8 @@ export default function DeviceSettingsModal({
       setInfoLoading(false);
       return;
     }
-    if (cloudMode) {
-      setDeviceInfo(null);
-      setInfoError("Control tunnel not connected");
-      setInfoLoading(false);
-      return;
-    }
     fetchDeviceInfo();
-  }, [cloudMode, deviceInfoOverride]);
+  }, [deviceInfoOverride]);
 
   /**
    * Handle modal close
@@ -77,11 +70,7 @@ export default function DeviceSettingsModal({
         setInfoError("");
       } else {
         setDeviceInfo(null);
-        setInfoError(
-          cloudMode
-            ? "Control tunnel not connected"
-            : "Control WebSocket not connected"
-        );
+        setInfoError("Control WebSocket not connected");
       }
     } finally {
       setInfoLoading(false);
@@ -98,15 +87,10 @@ export default function DeviceSettingsModal({
           await p;
         }
       } finally {
-        // Refresh runtime info (cloud tunnel connected/registered, etc).
-        if (cloudMode) {
-          setDeviceInfo(deviceInfoOverride || null);
-        } else {
-          await fetchDeviceInfo();
-        }
+        await fetchDeviceInfo();
       }
     },
-    [saveConfigToDevice, cloudMode, deviceInfoOverride]
+    [saveConfigToDevice, deviceInfoOverride]
   );
 
   /**

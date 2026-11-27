@@ -445,7 +445,6 @@ jobs:
           
           echo "**🐳 Docker Images:**" >> release_notes.md
           echo "- \`ghcr.io/vekjja/espwifi:${VERSION}\` - Dashboard Docker Image" >> release_notes.md
-          echo "- \`ghcr.io/vekjja/espwifi-cloud:${VERSION}\` - Cloud Tunnel Docker Image" >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

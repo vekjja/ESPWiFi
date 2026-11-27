@@ -795,7 +795,6 @@ function App() {
               // ignore
             }
           }}
-          cloudMode={false}
           controlConnected={controlConnected}
           deviceInfoOverride={cloudDeviceInfo}
           controlWs={controlWsRef.current}

@@ -24,24 +24,16 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Flatten the artifact directory structure, excluding metadata files
           find release-artifacts -type f ! -name 'metadata-*.json' -exec cp {} release/ \;
-
-          echo "Found ${#ENVIRONMENTS[@]} environments: ${ENVIRONMENTS[*]}"
-
           ls -lh release/
 
       - name: Extract release notes from tag
         id: release_notes
         run: |
-          # Extract version from tag
           VERSION="${GITHUB_REF_NAME}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-          # Read metadata from all built environments (from artifacts, not release)
           METADATA_FILES=(release-artifacts/*/metadata-*.json)
-
-          # Build arrays from metadata files
           ENVIRONMENTS=()
           CHIPS=()
           BAUDS=()
@@ -61,21 +53,15 @@ jobs:
             fi
           done
 
-          # Start release notes
           cat > release_notes.md << RELEASE_START
           ## 📦 Packaged Environments:
           RELEASE_START
 
-          # Add environment list dynamically
           for env in "${ENVIRONMENTS[@]}"; do
             echo "- ${env^^}" >> release_notes.md
           done
           echo "" >> release_notes.md
 
-          cat >> release_notes.md << 'RELEASE_CONTINUE'
-          RELEASE_CONTINUE
-
-          # Generate file list dynamically
           echo "**💽 Firmware Binaries:**" >> release_notes.md
           for env in "${ENVIRONMENTS[@]}"; do
             echo "- \`espwifi-firmware-${env}-${VERSION}.bin\` - ${env^^} firmware" >> release_notes.md

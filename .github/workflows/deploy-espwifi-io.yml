@@ -16,18 +16,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Compute tag
-        id: vars
-        shell: bash
-        run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF_NAME}"
-          else
-            TAG="${GITHUB_REF_NAME}-${SHORT_SHA}"
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
@@ -35,44 +23,27 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Configure kubeconfig
-        shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${HOME}/.kube"
           echo "${{ secrets.KUBECONFIG }}" > "${HOME}/.kube/config"
           chmod 600 "${HOME}/.kube/config"
 
-      - name: Drop broken ingress admission webhook
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The admission service is gone, so every Ingress apply fails closed.
-          kubectl get validatingwebhookconfiguration -o name | while read -r cfg; do
-            if kubectl get "$cfg" -o jsonpath='{range .webhooks[*]}{.name}{"\n"}{end}' \
-              | grep -qx 'validate.nginx.ingress.kubernetes.io'; then
-              kubectl delete "$cfg"
-            fi
-          done
-
       - name: Helm upgrade
-        shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ steps.vars.outputs.tag }}"
           helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
             --namespace espwifi-io --create-namespace \
-            --set image.tag="${TAG}"
+            --set image.tag="${GITHUB_REF_NAME}"
 
       - name: Record deployed tag on main
-        shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ steps.vars.outputs.tag }}"
           git fetch origin main
           git checkout -B main origin/main
-          perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
+          perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${GITHUB_REF_NAME}\\3/m" espwifi.io/values.yaml
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add espwifi.io/values.yaml
-          git commit -m "chore(helm): record deployed tag ${TAG} [skip ci]" || exit 0
+          git commit -m "chore(helm): record deployed tag ${GITHUB_REF_NAME} [skip ci]" || exit 0
           git push origin main

@@ -31,13 +31,10 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           REF_NAME="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            # PR builds are tagged by PR number + short sha
             TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # For tags, keep tag name as-is
             TAG="${REF_NAME}"
           else
-            # Branch pushes use branch-sha format
             TAG="${REF_NAME}-${SHORT_SHA}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -63,4 +60,4 @@ jobs:
         with:
           name: dashboard-build
           path: data/
-          retention-days: 1  # Short retention since it's just for Docker build
+          retention-days: 1

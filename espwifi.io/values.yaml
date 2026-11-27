@@ -21,7 +21,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/vekjja/espwifi
   pullPolicy: Always
-  tag: "dev-0.1.6"
+  tag: "dev-0.0.0"
 
 imagePullSecrets:
 - name: ghcr-secret
@@ -56,22 +56,21 @@ service:
 # Create this secret with: kubectl create secret generic espwifi.io-env --from-env-file=.env
 envSecretName: espwifi.io-env
 
-ingress:
+# Expose the dashboard through the shared kgateway HTTPRoute.
+# The HTTPS listener on http-gateway asks cert-manager for the certificate.
+httpRoute:
   enabled: true
-  className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "cloudflare-letsencrypt-production"
-    external-dns.alpha.kubernetes.io/hostname: espwifi.io
-    external-dns.alpha.kubernetes.io/target: "174.44.96.142"
-  hosts:
-  - host: espwifi.io
-    paths:
-    - path: /
-      pathType: Prefix
-  tls:
-  - secretName: espwifi.io-tls
-    hosts:
-    - espwifi.io
+  annotations: {}
+  parentRefs:
+  - name: http-gateway
+    namespace: kgateway-system
+  hostnames:
+  - "espwifi.io"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
 
 resources: {}
   # limits:

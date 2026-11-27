@@ -1,5 +1,8 @@
 name: Build and Release
 
+# Tag pushes build the dashboard image and install the espwifi.io chart.
+# Firmware and the GitHub release stay in the pipeline and do not run.
+
 on:
   push:
     branches:

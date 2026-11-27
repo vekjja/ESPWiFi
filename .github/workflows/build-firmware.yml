@@ -11,10 +11,6 @@ jobs:
     strategy:
       matrix:
         include:
-          # - environment: esp32
-          #   chip: esp32
-          #   baud: 460800
-          #   bootloader_offset: "0x1000"
           - environment: esp32-c3
             chip: esp32c3
             baud: 921600
@@ -65,13 +61,10 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           REF_NAME="${GITHUB_REF_NAME}"
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            # PR builds are tagged by PR number + short sha
             TAG="pr-${{ github.event.number }}-${SHORT_SHA}"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            # For tags, keep tag name as-is
             TAG="${REF_NAME}"
           else
-            # Branch pushes use branch-sha format
             TAG="${REF_NAME}-${SHORT_SHA}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -88,20 +81,16 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           ENV="${{ matrix.environment }}"
 
-          # Copy the main firmware binary with new naming convention: espwifi-[type]-[env]-[tag].ext
           cp .pio/build/$ENV/firmware.bin artifacts/espwifi-firmware-${ENV}-${TAG}.bin
 
-          # Copy partition table if it exists
           if [ -f .pio/build/$ENV/partitions.bin ]; then
             cp .pio/build/$ENV/partitions.bin artifacts/espwifi-partitions-${ENV}-${TAG}.bin
           fi
 
-          # Copy bootloader if it exists
           if [ -f .pio/build/$ENV/bootloader.bin ]; then
             cp .pio/build/$ENV/bootloader.bin artifacts/espwifi-bootloader-${ENV}-${TAG}.bin
           fi
 
-          # Create metadata file for this environment
           cat > artifacts/metadata-${ENV}.json << EOF
           {
             "environment": "${{ matrix.environment }}",

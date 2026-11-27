@@ -44,6 +44,7 @@ export default function SectionTitle({
         gap: 1,
         width: "100%",
         minWidth: 0,
+        position: "relative",
         ...sx,
       }}
     >

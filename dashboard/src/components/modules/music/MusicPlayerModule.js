@@ -1009,7 +1009,7 @@ export default function MusicPlayerModule({
             <Box
               component="span"
               sx={{
-                position: "relative",
+                position: "static",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1017,6 +1017,9 @@ export default function MusicPlayerModule({
                 height: { xs: 34, sm: 40 },
               }}
             >
+              {showSearch ? (
+                <Box sx={{ width: { xs: 34, sm: 40 }, height: { xs: 34, sm: 40 } }} />
+              ) : (
               <Tooltip title="Search songs">
                 <span>
                   <IconButton
@@ -1028,30 +1031,26 @@ export default function MusicPlayerModule({
                         : "primary.main",
                       padding: { xs: "4px", sm: 1 },
                       minWidth: 0,
-                      opacity: showSearch ? 0 : 1,
-                      pointerEvents: showSearch ? "none" : "auto",
-                      transition: "opacity 120ms ease",
                     }}
                   >
                     <SearchIcon sx={{ fontSize: { xs: 18, sm: 22 } }} />
                   </IconButton>
                 </span>
               </Tooltip>
+              )}
 
               <Box
                 component="span"
                 sx={{
                   position: "absolute",
-                  left: 0,
+                  right: 0,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  overflow: "hidden",
-                  width: showSearch ? { xs: 170, sm: 230, md: 280 } : 0,
-                  opacity: showSearch ? 1 : 0,
-                  pointerEvents: showSearch ? "auto" : "none",
-                  transition:
-                    "width 240ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease",
-                  willChange: "width, opacity",
+                  zIndex: 2,
+                  boxSizing: "border-box",
+                  display: showSearch ? "block" : "none",
+                  width: "min(100%, 360px)",
+                  maxWidth: "100%",
                 }}
               >
                 <TextField
@@ -1060,10 +1059,17 @@ export default function MusicPlayerModule({
                   placeholder="Search…"
                   size="small"
                   autoComplete="off"
+                  autoFocus={showSearch}
                   sx={{
-                    width: { xs: 170, sm: 230, md: 280 },
+                    width: "100%",
+                    maxWidth: "100%",
+                    minWidth: 0,
+                    boxSizing: "border-box",
                     "& .MuiInputBase-root": {
+                      boxSizing: "border-box",
+                      height: { xs: 32, sm: 36 },
                       fontSize: { xs: "0.8rem", sm: "0.85rem" },
+                      backgroundColor: "background.paper",
                     },
                   }}
                   InputProps={{
@@ -1099,6 +1105,8 @@ export default function MusicPlayerModule({
         <Box
           sx={{
             width: "100%",
+            maxWidth: "100%",
+            boxSizing: "border-box",
             flex: "1 1 auto",
             minHeight: 0,
             display: "flex",
@@ -1111,12 +1119,13 @@ export default function MusicPlayerModule({
           <Box
             sx={{
               width: "100%",
-              minHeight: { xs: "34px", sm: "54px" },
+              maxWidth: "100%",
+              boxSizing: "border-box",
+              flex: "0 0 auto",
               display: "flex",
               flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              // Single cohesive playback control box background
+              alignItems: "stretch",
+              justifyContent: "flex-start",
               backgroundColor: "rgba(0, 0, 0, 0.12)",
               borderRadius: 1,
               padding: { xs: "6px", sm: 1.25 },
@@ -1128,13 +1137,13 @@ export default function MusicPlayerModule({
               align="center"
               sx={{
                 fontWeight: "bold",
-                fontSize: { xs: "0.65rem", sm: "0.8rem" },
-                px: { xs: 0.5, sm: 1 },
-                lineHeight: { xs: 1.2, sm: 1.5 },
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                fontSize: { xs: "0.8rem", sm: "0.9rem" },
+                lineHeight: 1.35,
+                width: "100%",
+                flex: "0 0 auto",
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                textAlign: "center",
               }}
             >
               {currentTrack ? currentTrack.name : "No track selected"}
@@ -1145,8 +1154,12 @@ export default function MusicPlayerModule({
                 color="text.secondary"
                 align="center"
                 sx={{
-                  fontSize: { xs: "0.55rem", sm: "0.7rem" },
-                  lineHeight: 1.2,
+                  fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                  lineHeight: 1.3,
+                  width: "100%",
+                  flex: "0 0 auto",
+                  mt: 0.25,
+                  textAlign: "center",
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
@@ -1154,29 +1167,20 @@ export default function MusicPlayerModule({
               </Typography>
             ) : null}
 
-            {/* Controls + timeline layout: transport centered over the scrub bar */}
             <Box
               sx={{
                 width: "100%",
+                maxWidth: "100%",
+                boxSizing: "border-box",
                 mt: 0.25,
-                px: { xs: 0.5, sm: 1 },
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "auto 1fr auto",
-                  sm: "auto 1fr auto auto",
-                },
-                gridTemplateRows: { xs: "auto auto auto", sm: "auto auto" },
-                alignItems: "center",
-                columnGap: { xs: 0.6, sm: 0.8 },
-                rowGap: { xs: 0.5, sm: 0.25 },
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "stretch",
+                gap: 0.5,
               }}
             >
-              {/* Transport row (centered over scrub column) */}
               <Box
                 sx={{
-                  gridRow: 1,
-                  gridColumn: { xs: "1 / -1", sm: 2 },
-                  justifySelf: "center",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1266,15 +1270,21 @@ export default function MusicPlayerModule({
                 </Tooltip>
               </Box>
 
-              {/* Timeline row */}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              >
               <Typography
                 variant="caption"
                 color="text.secondary"
                 sx={{
-                  gridRow: 2,
-                  gridColumn: 1,
                   fontSize: { xs: "0.55rem", sm: "0.7rem" },
-                  minWidth: { xs: 28, sm: 36 },
+                  flex: "0 0 auto",
                   textAlign: "left",
                   opacity: duration > 0 ? 1 : 0.6,
                   fontVariantNumeric: "tabular-nums",
@@ -1301,10 +1311,10 @@ export default function MusicPlayerModule({
                 size="small"
                 disabled={!currentTrack || !(duration > 0)}
                 sx={{
-                  gridRow: 2,
-                  gridColumn: 2,
-                  width: "100%",
+                  flex: "1 1 auto",
+                  width: "auto",
                   minWidth: 0,
+                  mx: 0.25,
                   "& .MuiSlider-thumb": {
                     width: { xs: 10, sm: 12 },
                     height: { xs: 10, sm: 12 },
@@ -1323,10 +1333,8 @@ export default function MusicPlayerModule({
                 variant="caption"
                 color="text.secondary"
                 sx={{
-                  gridRow: 2,
-                  gridColumn: 3,
                   fontSize: { xs: "0.55rem", sm: "0.7rem" },
-                  minWidth: { xs: 28, sm: 36 },
+                  flex: "0 0 auto",
                   textAlign: "right",
                   opacity: duration > 0 ? 1 : 0.6,
                   fontVariantNumeric: "tabular-nums",
@@ -1335,35 +1343,45 @@ export default function MusicPlayerModule({
                 {formatTime(duration)}
               </Typography>
 
-              {/* Right side: volume then cast (kept in-frame) */}
               <Box
                 sx={{
-                  // Move up into the transport row on desktop; keep below on mobile
-                  gridRow: { xs: 3, sm: 1 },
-                  gridColumn: { xs: "1 / -1", sm: 4 },
-                  justifySelf: { xs: "end", sm: "end" },
                   display: "flex",
                   alignItems: "center",
-                  gap: 0.75,
+                  flex: "0 1 auto",
+                  gap: 0.5,
+                  minWidth: 0,
+                  maxWidth: "46%",
                   opacity: isCasting ? 0.5 : 1,
                 }}
               >
-                {/* Own box/pill */}
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.5,
-                    minWidth: 0,
-                    // Match the playback control box background
-                    backgroundColor: "rgba(0, 0, 0, 0.12)",
-                    borderRadius: 1,
-                    px: { xs: 0.5, sm: 0.75 },
-                    py: { xs: 0.25, sm: 0.35 },
-                    // Nudge down slightly (was lifted up too much)
-                    transform: { xs: "none", sm: "translateY(-1px)" },
-                  }}
-                >
+                  <VolumeUpIcon sx={{ fontSize: { xs: 18, sm: 20 }, flex: "0 0 auto" }} />
+                  <Slider
+                    value={volume * 100}
+                    onChange={handleVolumeChange}
+                    disabled={isCasting}
+                    min={0}
+                    max={100}
+                    step={1}
+                    size="small"
+                    color="secondary"
+                    sx={{
+                      width: "auto",
+                      flex: "1 1 72px",
+                      minWidth: 48,
+                      maxWidth: 96,
+                      "& .MuiSlider-thumb": {
+                        width: { xs: 10, sm: 12 },
+                        height: { xs: 10, sm: 12 },
+                      },
+                      "& .MuiSlider-track": {
+                        height: { xs: 2, sm: 3 },
+                      },
+                      "& .MuiSlider-rail": {
+                        height: { xs: 2, sm: 3 },
+                        opacity: 0.3,
+                      },
+                    }}
+                  />
                   <Tooltip
                     title={
                       isCasting
@@ -1390,34 +1408,7 @@ export default function MusicPlayerModule({
                       </IconButton>
                     </span>
                   </Tooltip>
-
-                  <VolumeUpIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
-                  <Slider
-                    value={volume * 100}
-                    onChange={handleVolumeChange}
-                    disabled={isCasting}
-                    min={0}
-                    max={100}
-                    step={1}
-                    size="small"
-                    color="secondary"
-                    sx={{
-                      width: { xs: 150, sm: 120, md: 150 },
-                      maxWidth: "100%",
-                      "& .MuiSlider-thumb": {
-                        width: { xs: 10, sm: 12 },
-                        height: { xs: 10, sm: 12 },
-                      },
-                      "& .MuiSlider-track": {
-                        height: { xs: 2, sm: 3 },
-                      },
-                      "& .MuiSlider-rail": {
-                        height: { xs: 2, sm: 3 },
-                        opacity: 0.3,
-                      },
-                    }}
-                  />
-                </Box>
+              </Box>
               </Box>
             </Box>
           </Box>
@@ -1427,11 +1418,32 @@ export default function MusicPlayerModule({
             sx={{
               width: "100%",
               maxWidth: "100%",
+              boxSizing: "border-box",
               overflow: "auto",
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
               flex: "1 1 auto",
               minHeight: 0,
+              scrollbarWidth: "thin",
+              scrollbarColor: "transparent transparent",
+              "&::-webkit-scrollbar": {
+                width: 8,
+                height: 8,
+                background: "transparent",
+              },
+              "&::-webkit-scrollbar-track": {
+                background: "transparent",
+              },
+              "&::-webkit-scrollbar-thumb": {
+                background: "transparent",
+                borderRadius: 8,
+              },
+              "&:hover": {
+                scrollbarColor: "rgba(71, 255, 240, 0.45) transparent",
+              },
+              "&:hover::-webkit-scrollbar-thumb": {
+                backgroundColor: "rgba(71, 255, 240, 0.45)",
+              },
             }}
           >
             {loading ? (
@@ -1492,11 +1504,13 @@ export default function MusicPlayerModule({
                         primaryTypographyProps={{
                           sx: {
                             fontSize: { xs: "0.7rem", sm: "0.875rem" },
-                            lineHeight: { xs: 1.2, sm: 1.5 },
+                            lineHeight: 1.3,
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            display: "block",
                             width: "100%",
                           },
                         }}

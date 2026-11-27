@@ -45,7 +45,8 @@ function browserOnline() {
  * @param {(status: string) => void} [options.onStatus]
  * @param {(event: CloseEvent) => void} [options.onAuthFailure] Stops retrying.
  * @param {number} [options.heartbeatMs] Send heartbeat() on this interval while open.
- * @param {number} [options.heartbeatTimeoutMs] Close if no message arrives in this window.
+ * @param {number} [options.heartbeatTimeoutMs] One missed heartbeat. No inbound message for this long counts as one miss.
+ * @param {number} [options.maxMissedHeartbeats] Reconnect after this many misses in a row. Defaults to 1.
  * @param {() => string | null} [options.heartbeat]
  * @param {boolean} [options.retryWhenUrlMissing]
  */
@@ -61,6 +62,7 @@ export function createSocketSession(options) {
   let retryTimer = null;
   let heartbeatTimer = null;
   let heartbeatWatchdog = null;
+  let missedHeartbeats = 0;
   let connectTimer = null;
   let online = browserOnline();
 
@@ -90,6 +92,11 @@ export function createSocketSession(options) {
       clearTimeout(heartbeatWatchdog);
       heartbeatWatchdog = null;
     }
+  };
+
+  const missLimit = () => {
+    const limit = options.maxMissedHeartbeats;
+    return limit > 0 ? limit : 1;
   };
 
   const clearConnectTimer = () => {
@@ -123,17 +130,28 @@ export function createSocketSession(options) {
 
   // Arm once per unanswered heartbeat. Later sends must not extend the
   // window, or a silent server would never time out while we keep writing.
+  // A window with no inbound message is one miss. The socket stays up until
+  // maxMissedHeartbeats of those happen in a row, so a busy stream or upload
+  // can delay a reply without forcing a reconnect.
   const armWatchdog = (socket, myGen) => {
     const timeoutMs = options.heartbeatTimeoutMs;
     if (!timeoutMs || heartbeatWatchdog) return;
     heartbeatWatchdog = setTimeout(() => {
       heartbeatWatchdog = null;
-      dropConnection(socket, myGen);
+      if (myGen !== generation || stopped) return;
+      missedHeartbeats += 1;
+      if (missedHeartbeats >= missLimit()) {
+        missedHeartbeats = 0;
+        dropConnection(socket, myGen);
+        return;
+      }
+      armWatchdog(socket, myGen);
     }, timeoutMs);
   };
 
   const startHeartbeat = (socket, myGen) => {
     clearHeartbeat();
+    missedHeartbeats = 0;
     const interval = options.heartbeatMs;
     if (!interval || typeof options.heartbeat !== "function") return;
 
@@ -247,7 +265,9 @@ export function createSocketSession(options) {
 
     socket.onmessage = (event) => {
       if (myGen !== generation || stopped) return;
-      // Silence is measured from the last message, not the next heartbeat.
+      // Any inbound message clears the miss streak. Silence is measured
+      // from the last message, not the next heartbeat.
+      missedHeartbeats = 0;
       clearWatchdog();
       armWatchdog(socket, myGen);
       try {

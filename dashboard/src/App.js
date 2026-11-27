@@ -391,9 +391,11 @@ function App() {
       getUrl: () => controlWsUrl,
       binary: true,
       heartbeatMs: 1000,
-      // One missed reply is enough. The session turns offline here instead of
-      // waiting for the browser to finish closing a dead socket.
+      // A busy stream or upload can delay a reply. Stay connected through
+      // three missed heartbeats, then drop without waiting on the browser
+      // to finish closing a dead socket.
       heartbeatTimeoutMs: 1500,
+      maxMissedHeartbeats: 3,
       connectTimeoutMs: 1500,
       heartbeat: () => {
         infoBeat += 1;

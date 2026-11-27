@@ -14,8 +14,6 @@ import {
   MenuItem,
 } from "@mui/material";
 import DescriptionIcon from "@mui/icons-material/Description";
-import PowerSettingsNewIcon from "@mui/icons-material/PowerSettingsNew";
-import PowerOffIcon from "@mui/icons-material/PowerOff";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import VerticalAlignBottomIcon from "@mui/icons-material/VerticalAlignBottom";
 import VerticalAlignBottomOutlinedIcon from "@mui/icons-material/VerticalAlignBottomOutlined";
@@ -47,7 +45,7 @@ export default function LogsSettingsModal({
   // Auto refresh interval: null (disabled) or 3 seconds
   const [refreshInterval, setRefreshInterval] = useState(null);
   const [autoScroll, setAutoScroll] = useState(false);
-  const [lineWrap, setLineWrap] = useState(false);
+  const [lineWrap, setLineWrap] = useState(true);
   const [logLevelMenuAnchor, setLogLevelMenuAnchor] = useState(null);
   const logContainerRef = useRef(null);
   const refreshIntervalRef = useRef(null);
@@ -194,13 +192,6 @@ export default function LogsSettingsModal({
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      // Prefer control socket (works in cloud tunnel mode).
-      if (typeof onRequestLogs === "function") {
-        await onRequestLogs();
-        clearTimeout(timeoutId);
-        return;
-      }
-
       // The device serves logs as a normal file:
       // - SD:  /sd/<logFilePath>
       // - LFS: /lfs/<logFilePath>
@@ -252,7 +243,14 @@ export default function LogsSettingsModal({
 
         if (response.ok) {
           // eslint-disable-next-line no-await-in-loop
-          const text = await response.text();
+          let text = await response.text();
+          if (text.length > tailBytes) {
+            text = text.slice(-tailBytes);
+            const nl = text.indexOf("\n");
+            if (nl >= 0 && nl < text.length - 1) {
+              text = text.slice(nl + 1);
+            }
+          }
           setLogs(text);
           setLogError("");
           clearTimeout(timeoutId);
@@ -269,6 +267,13 @@ export default function LogsSettingsModal({
       }
 
       clearTimeout(timeoutId);
+
+      // Both candidates failed. The control socket can still report why.
+      if (typeof onRequestLogs === "function" && lastResponse?.status !== 200) {
+        await onRequestLogs();
+        clearTimeout(timeoutId);
+        return;
+      }
 
       // Both candidates failed.
       if (lastResponse?.status === 404) {
@@ -298,11 +303,12 @@ export default function LogsSettingsModal({
     }
   };
 
-  // When logs are provided via control socket, mirror them into local state.
+  // Socket log chunks are a fallback. An empty or partial payload must not
+  // wipe a log file that already loaded.
   useEffect(() => {
     if (!controlConnected) return;
-    if (typeof logsText === "string") {
-      setLogs(logsText);
+    if (typeof logsText === "string" && logsText.length > 0) {
+      setLogs((prev) => (prev && prev.length > logsText.length ? prev : logsText));
     }
     if (typeof logsError === "string" && logsError) {
       setLogError(logsError);
@@ -442,64 +448,6 @@ export default function LogsSettingsModal({
     setLogLevelMenuAnchor(null);
   };
 
-  // Handle view logs in new window (must include auth headers; window.open can't set headers)
-  const handleViewLogs = async () => {
-    // Open first to avoid popup blockers, then navigate once we have the blob URL
-    const newTab = window.open("", "_blank");
-    if (newTab) {
-      newTab.document.title = "Logs";
-      newTab.document.body.style.background = "#111";
-      newTab.document.body.style.color = "#fff";
-      newTab.document.body.style.fontFamily = "system-ui, sans-serif";
-      newTab.document.body.style.padding = "16px";
-      newTab.document.body.textContent = "Loading logs…";
-    }
-
-    const fetchUrl = buildApiUrl("/logs");
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    try {
-      const response = await fetch(
-        fetchUrl,
-        getFetchOptions({ method: "GET", signal: controller.signal })
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const contentType =
-        response.headers.get("content-type") || "text/plain;charset=utf-8";
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(
-        new Blob([blob], { type: contentType })
-      );
-
-      if (newTab) {
-        newTab.location.href = blobUrl;
-      } else {
-        window.open(blobUrl, "_blank");
-      }
-
-      // Revoke after navigation has time to happen
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      const msg =
-        error?.name === "AbortError"
-          ? "Request timed out - device may be offline"
-          : `Failed to open logs: ${error.message || error}`;
-
-      setLogError(msg);
-      if (newTab) {
-        newTab.document.body.textContent = msg;
-      }
-    }
-  };
-
   // Initial fetch on mount (only when modal is open)
   useEffect(() => {
     if (open) {
@@ -620,7 +568,7 @@ export default function LogsSettingsModal({
                       logEnabled ? "primary.main" : "text.disabled"
                     )}
                   >
-                    {logEnabled ? <PowerSettingsNewIcon /> : <PowerOffIcon />}
+                    <DescriptionIcon />
                   </IconButton>
                   {!isMobile && (
                     <Typography
@@ -841,22 +789,6 @@ export default function LogsSettingsModal({
                 </Box>
               </Tooltip>
 
-              {/* View Logs */}
-              <Tooltip title="Open logs in new tab">
-                <Box onClick={handleViewLogs} sx={menuRowSx()}>
-                  <IconButton size="small" sx={menuIconSx("primary.main")}>
-                    <DescriptionIcon />
-                  </IconButton>
-                  {!isMobile && (
-                    <Typography
-                      variant="body2"
-                      sx={menuLabelSx("primary.main")}
-                    >
-                      Log
-                    </Typography>
-                  )}
-                </Box>
-              </Tooltip>
             </Box>
           </CardContent>
         </Card>

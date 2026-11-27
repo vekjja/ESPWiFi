@@ -586,7 +586,7 @@ void ESPWiFi::setMediaCameraStreamSubscribed(int clientFd, bool enable) {
 
   if ((size_t)mediaCameraStreamSubCount_ >= kMaxMediaCameraStreamSubscribers) {
     log(WARNING,
-        "🎞️ Media camera subscriber limit reached; ignoring fd=%d",
+        "📱 Media camera subscriber limit reached; ignoring fd=%d",
         clientFd);
     return;
   }

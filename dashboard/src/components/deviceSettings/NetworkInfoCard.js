@@ -90,7 +90,7 @@ export default function NetworkInfoCard({ deviceInfo, config, onSave }) {
         <Grid item xs={12} sm={4}>
           <InfoRow
             label="Device Name:"
-            value={config?.deviceName || "ESPWiFi"}
+            value={config?.deviceName || "espWiFi"}
           />
         </Grid>
         <Grid item xs={12} sm={4}>

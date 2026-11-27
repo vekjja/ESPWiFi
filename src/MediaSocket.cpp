@@ -31,10 +31,10 @@ static bool wsAuthCheck(httpd_req_t *req, void *userCtx) {
 }
 
 // ----------------------------------------------------------------------------
-// Music streaming (per-client file -> binary chunks on request)
+// Media streaming (per-client file -> binary chunks on request)
 // ----------------------------------------------------------------------------
 
-struct MusicStreamState {
+struct MediaStreamState {
   int fd = 0;
   FILE *f = nullptr;
   uint32_t offset = 0;
@@ -50,40 +50,40 @@ struct MusicStreamState {
   char mime[48] = {0};
 };
 
-static constexpr size_t kMaxMusicStreams = 8;
-static MusicStreamState s_music[kMaxMusicStreams];
+static constexpr size_t kMaxMediaStreams = 8;
+static MediaStreamState s_media[kMaxMediaStreams];
 
-static MusicStreamState *musicStateForFd(int fd) {
-  for (size_t i = 0; i < kMaxMusicStreams; i++) {
-    if (s_music[i].fd == fd) {
-      return &s_music[i];
+static MediaStreamState *mediaStateForFd(int fd) {
+  for (size_t i = 0; i < kMaxMediaStreams; i++) {
+    if (s_media[i].fd == fd) {
+      return &s_media[i];
     }
   }
   return nullptr;
 }
 
-static MusicStreamState *allocMusicState(int fd) {
-  MusicStreamState *existing = musicStateForFd(fd);
+static MediaStreamState *allocMediaState(int fd) {
+  MediaStreamState *existing = mediaStateForFd(fd);
   if (existing) {
     return existing;
   }
-  for (size_t i = 0; i < kMaxMusicStreams; i++) {
-    if (s_music[i].fd == 0) {
-      s_music[i].fd = fd;
-      return &s_music[i];
+  for (size_t i = 0; i < kMaxMediaStreams; i++) {
+    if (s_media[i].fd == 0) {
+      s_media[i].fd = fd;
+      return &s_media[i];
     }
   }
   return nullptr;
 }
 
-static void closeMusicState(MusicStreamState *st) {
+static void closeMediaState(MediaStreamState *st) {
   if (!st) {
     return;
   }
   if (st->f) {
     fclose(st->f);
   }
-  *st = MusicStreamState{};
+  *st = MediaStreamState{};
 }
 
 static bool hasDotDot(const std::string &p) {
@@ -91,7 +91,7 @@ static bool hasDotDot(const std::string &p) {
 }
 
 // File upload/download on /ws/media. One transfer per client, separate from
-// the music FILE* so a song can keep playing on another connection.
+// the media FILE* so a song or movie can keep playing on another connection.
 struct FileXferState {
   int fd = 0;
   FILE *f = nullptr;
@@ -260,7 +260,7 @@ static uint32_t snapMp3Frame(FILE *f, uint32_t pos, uint32_t limit) {
 
 // Reads just enough of the file to learn duration, bitrate, and where the
 // audio frames start. The file position is restored to the beginning.
-static void probeMusicInfo(FILE *f, uint32_t fileSize, MusicStreamState *st) {
+static void probeMediaInfo(FILE *f, uint32_t fileSize, MediaStreamState *st) {
   if (!f || !st) return;
   st->audioStart = 0;
   st->audioBytes = fileSize;
@@ -401,7 +401,7 @@ static void mediaOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
   if (!espwifi) {
     return;
   }
-  espwifi->log(INFO, "🎞️ LAN client connected to /ws/media (fd=%d)", clientFd);
+  espwifi->log(INFO, "📱 LAN client connected to /ws/media (fd=%d)", clientFd);
 }
 
 static void mediaOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
@@ -411,7 +411,7 @@ static void mediaOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
     return;
   }
 
-  espwifi->log(INFO, "🎞️ LAN client disconnected from /ws/media (fd=%d)",
+  espwifi->log(INFO, "📱 LAN client disconnected from /ws/media (fd=%d)",
                clientFd);
 
 #if ESPWiFi_HAS_CAMERA
@@ -419,16 +419,16 @@ static void mediaOnDisconnect(WebSocket *ws, int clientFd, void *userCtx) {
   espwifi->clearMediaCameraStreamSubscribed(clientFd);
 #endif
 
-  // Stop music stream for this client (close file handle).
-  MusicStreamState *st = musicStateForFd(clientFd);
+  // Stop the media stream for this client (close file handle).
+  MediaStreamState *st = mediaStateForFd(clientFd);
   if (st && st->f) {
     espwifi->log(INFO,
-                 "🎵 Music stream closed on disconnect (fd=%d, offset=%u, "
+                 "📱 Media stream closed on disconnect (fd=%d, offset=%u, "
                  "chunks=%u, file=%s)",
                  clientFd, (unsigned)st->offset, (unsigned)st->chunksSent,
                  st->fullPath);
   }
-  closeMusicState(st);
+  closeMediaState(st);
 
   FileXferState *fx = fileStateForFd(clientFd);
   if (fx) {
@@ -741,7 +741,7 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     return;
   }
 
-  // Uploads arrive as binary frames. Downloads and music are device->client.
+  // Uploads arrive as binary frames. Downloads and media are device->client.
   if (type == HTTPD_WS_TYPE_BINARY) {
     handleFileUploadChunk(ws, clientFd, espwifi, data, len);
     return;
@@ -769,9 +769,9 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
   resp["cmd"] = cmd;
 
   // --------------------------
-  // Music streaming commands
+  // Media streaming commands
   // --------------------------
-  if (strcmp(cmd, "music_start") == 0) {
+  if (strcmp(cmd, "media_start") == 0) {
     const char *fsC = req["fs"] | "sd";   // "sd" or "lfs"
     const char *pathC = req["path"] | ""; // "/music/foo.mp3"
     const char *mimeC = req["mime"] | "audio/mpeg";
@@ -785,14 +785,14 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
 
     std::string rel = (pathC != nullptr) ? std::string(pathC) : "";
     if (rel.empty()) {
-      espwifi->log(WARNING, "🎵 music_start missing path (fd=%d)", clientFd);
+      espwifi->log(WARNING, "📱 media_start missing path (fd=%d)", clientFd);
       resp["ok"] = false;
       resp["error"] = "missing_path";
       sendMediaAck(ws, clientFd, resp);
       return;
     }
     if (hasDotDot(rel)) {
-      espwifi->log(WARNING, "🎵 music_start invalid path (fd=%d, path=%s)",
+      espwifi->log(WARNING, "📱 media_start invalid path (fd=%d, path=%s)",
                    clientFd, rel.c_str());
       resp["ok"] = false;
       resp["error"] = "invalid_path";
@@ -808,7 +808,7 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         useSd ? espwifi->sdMountPoint : espwifi->lfsMountPoint;
     const std::string full = base + rel;
 
-    MusicStreamState *st = allocMusicState(clientFd);
+    MediaStreamState *st = allocMediaState(clientFd);
     if (!st) {
       resp["ok"] = false;
       resp["error"] = "too_many_streams";
@@ -817,8 +817,8 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     }
 
     // Close any previous stream for this fd
-    closeMusicState(st);
-    st = allocMusicState(clientFd);
+    closeMediaState(st);
+    st = allocMediaState(clientFd);
     if (!st) {
       resp["ok"] = false;
       resp["error"] = "stream_alloc_failed";
@@ -836,13 +836,13 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     FILE *f = fopen(full.c_str(), "rb");
     if (!f) {
       espwifi->log(WARNING,
-                   "🎵 music_start open failed (fd=%d, errno=%d, file=%s)",
+                   "📱 media_start open failed (fd=%d, errno=%d, file=%s)",
                    clientFd, errno, full.c_str());
       resp["ok"] = false;
       resp["error"] = "file_open_failed";
       resp["errno"] = errno;
       sendMediaAck(ws, clientFd, resp);
-      closeMusicState(st);
+      closeMediaState(st);
       return;
     }
 
@@ -854,17 +854,17 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     (void)snprintf(st->fullPath, sizeof(st->fullPath), "%s", full.c_str());
     (void)snprintf(st->mime, sizeof(st->mime), "%s",
                    (mimeC != nullptr) ? mimeC : "audio/mpeg");
-    probeMusicInfo(f, totalSize, st);
+    probeMediaInfo(f, totalSize, st);
 
     espwifi->log(
         INFO,
-        "🎵 music_start (fd=%d, fs=%s, chunk=%u, size=%u, duration=%ums, "
+        "📱 media_start (fd=%d, fs=%s, chunk=%u, size=%u, duration=%ums, "
         "bitrate=%u, rate=%u, mime=%s, path=%s)",
         clientFd, useSd ? "sd" : "lfs", (unsigned)st->chunkSize,
         (unsigned)st->size, (unsigned)st->durationMs, (unsigned)st->bitrate,
         (unsigned)st->sampleRate, st->mime, rel.c_str());
 
-    resp["type"] = "music_start";
+    resp["type"] = "media_start";
     resp["fs"] = useSd ? "sd" : "lfs";
     resp["path"] = rel;
     resp["mime"] = st->mime;
@@ -885,25 +885,25 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     return;
   }
 
-  if (strcmp(cmd, "music_stop") == 0) {
-    MusicStreamState *st = musicStateForFd(clientFd);
+  if (strcmp(cmd, "media_stop") == 0) {
+    MediaStreamState *st = mediaStateForFd(clientFd);
     if (st && st->f) {
-      espwifi->log(INFO, "🎵 music_stop (fd=%d, offset=%u, chunks=%u, file=%s)",
+      espwifi->log(INFO, "📱 media_stop (fd=%d, offset=%u, chunks=%u, file=%s)",
                    clientFd, (unsigned)st->offset, (unsigned)st->chunksSent,
                    st->fullPath);
     } else {
-      espwifi->log(DEBUG, "🎵 music_stop (fd=%d, no active stream)", clientFd);
+      espwifi->log(DEBUG, "📱 media_stop (fd=%d, no active stream)", clientFd);
     }
-    closeMusicState(st);
-    resp["type"] = "music_stop";
+    closeMediaState(st);
+    resp["type"] = "media_stop";
     resp["stopped"] = true;
     sendMediaAck(ws, clientFd, resp);
     return;
   }
 
-  if (strcmp(cmd, "music_seek") == 0) {
-    resp["type"] = "music_seek";
-    MusicStreamState *st = musicStateForFd(clientFd);
+  if (strcmp(cmd, "media_seek") == 0) {
+    resp["type"] = "media_seek";
+    MediaStreamState *st = mediaStateForFd(clientFd);
     if (!st || !st->f || st->durationMs == 0 || st->audioBytes == 0) {
       resp["ok"] = false;
       resp["error"] = "no_active_stream";
@@ -927,7 +927,7 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       return;
     }
     st->offset = at;
-    espwifi->log(DEBUG, "🎵 music_seek (fd=%d, ms=%u, offset=%u)", clientFd,
+    espwifi->log(DEBUG, "📱 media_seek (fd=%d, ms=%u, offset=%u)", clientFd,
                  (unsigned)ms, (unsigned)at);
     resp["ms"] = ms;
     resp["offset"] = at;
@@ -935,10 +935,86 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     return;
   }
 
-  if (strcmp(cmd, "music_next") == 0) {
-    MusicStreamState *st = musicStateForFd(clientFd);
+  if (strcmp(cmd, "media_read") == 0) {
+    MediaStreamState *st = mediaStateForFd(clientFd);
     if (!st || !st->f) {
-      espwifi->log(VERBOSE, "🎵 music_next no active stream (fd=%d)", clientFd);
+      resp["ok"] = false;
+      resp["error"] = "no_active_stream";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    uint32_t offset = req["offset"] | 0;
+    uint32_t want = req["maxBytes"] | st->chunkSize;
+    if (want < 1024) {
+      want = 1024;
+    }
+    if (want > 48 * 1024) {
+      want = 48 * 1024;
+    }
+    if (st->size > 0 && offset >= st->size) {
+      resp["type"] = "media_chunk";
+      resp["len"] = 0;
+      resp["eof"] = true;
+      resp["offset"] = offset;
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+    if (st->size > 0 && offset + want > st->size) {
+      want = st->size - offset;
+    }
+
+    // fseek takes a signed long. Movies larger than that cannot be ranged.
+    if (offset > 0x7fffffffu) {
+      resp["ok"] = false;
+      resp["error"] = "seek_failed";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    clearerr(st->f);
+    if (fseek(st->f, (long)offset, SEEK_SET) != 0) {
+      resp["ok"] = false;
+      resp["error"] = "seek_failed";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    uint8_t *chunkBuf = (uint8_t *)malloc((size_t)want);
+    if (!chunkBuf) {
+      resp["ok"] = false;
+      resp["error"] = "out_of_memory";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    size_t n = fread(chunkBuf, 1, (size_t)want, st->f);
+    if (n == 0) {
+      free(chunkBuf);
+      resp["type"] = "media_chunk";
+      resp["len"] = 0;
+      resp["eof"] = true;
+      resp["offset"] = offset;
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+
+    st->offset = offset + (uint32_t)n;
+    st->chunksSent += 1;
+    resp["type"] = "media_chunk";
+    resp["len"] = (uint32_t)n;
+    resp["eof"] = false;
+    resp["offset"] = st->offset;
+    sendMediaAck(ws, clientFd, resp);
+    (void)ws->sendBinary(clientFd, chunkBuf, n);
+    free(chunkBuf);
+    return;
+  }
+
+  if (strcmp(cmd, "media_next") == 0) {
+    MediaStreamState *st = mediaStateForFd(clientFd);
+    if (!st || !st->f) {
+      espwifi->log(VERBOSE, "📱 media_next no active stream (fd=%d)", clientFd);
       resp["ok"] = false;
       resp["error"] = "no_active_stream";
       sendMediaAck(ws, clientFd, resp);
@@ -965,15 +1041,15 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     if (n == 0) {
       free(chunkBuf);
       const bool eof = feof(st->f) != 0;
-      espwifi->log(INFO, "🎵 music_eof (fd=%d, offset=%u, chunks=%u, file=%s)",
+      espwifi->log(INFO, "📱 media_eof (fd=%d, offset=%u, chunks=%u, file=%s)",
                    clientFd, (unsigned)st->offset, (unsigned)st->chunksSent,
                    st->fullPath);
-      resp["type"] = "music_chunk";
+      resp["type"] = "media_chunk";
       resp["len"] = 0;
       resp["eof"] = eof;
       resp["offset"] = st->offset;
       sendMediaAck(ws, clientFd, resp);
-      // Leave the file open so music_seek can reposition after the last byte.
+      // Leave the file open so media_seek can reposition after the last byte.
       return;
     }
 
@@ -981,10 +1057,10 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     st->chunksSent += 1;
     // Avoid spamming per-chunk logs. Emit a periodic progress log.
     if ((st->chunksSent % 64) == 1) {
-      espwifi->log(DEBUG, "🎵 music_progress (fd=%d, offset=%u, chunks=%u)",
+      espwifi->log(DEBUG, "📱 media_progress (fd=%d, offset=%u, chunks=%u)",
                    clientFd, (unsigned)st->offset, (unsigned)st->chunksSent);
     }
-    resp["type"] = "music_chunk";
+    resp["type"] = "media_chunk";
     resp["len"] = (uint32_t)n;
     resp["eof"] = false;
     resp["offset"] = st->offset;
@@ -1085,11 +1161,11 @@ void ESPWiFi::startMediaWebSocket() {
                                    /*requireAuth*/ false,
                                    /*authCheck*/ wsAuthCheck);
   if (!mediaSocStarted) {
-    log(ERROR, "🎞️ Media WebSocket failed to start");
+    log(ERROR, "📱 Media WebSocket failed to start");
     return;
   }
 
-  log(INFO, "🎞️ Media WebSocket started: /ws/media");
+  log(INFO, "📱 Media WebSocket started: /ws/media");
 #endif
 }
 
@@ -1102,6 +1178,6 @@ void ESPWiFi::stopMediaWebSocket() {
   }
   mediaSoc.end();
   mediaSocStarted = false;
-  log(INFO, "🎞️ Media WebSocket stopped");
+  log(INFO, "📱 Media WebSocket stopped");
 #endif
 }

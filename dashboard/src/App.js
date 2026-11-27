@@ -204,6 +204,9 @@ function App() {
   const apiURL = getApiUrl();
   const headerRef = useRef(null);
   const pendingCommandsRef = useRef(new Map()); // Map of cmd -> {resolve, reject, timeout}
+  // Replies are matched by command name, so only one command can be in
+  // flight. Music and movies both list files on connect; queue them.
+  const commandQueueRef = useRef(Promise.resolve());
 
   // Measure header height and expose as CSS var to avoid brittle vh math on mobile.
   useEffect(() => {
@@ -507,24 +510,37 @@ function App() {
       },
       onSocket: (ws) => {
         ws.sendCommand = (cmd, timeoutMs = 10000) => {
-          return new Promise((resolve, reject) => {
-            if (ws.readyState !== WebSocket.OPEN) {
-              reject(new Error("WebSocket not connected"));
-              return;
-            }
+          const run = () =>
+            new Promise((resolve, reject) => {
+              if (ws.readyState !== WebSocket.OPEN) {
+                reject(new Error("WebSocket not connected"));
+                return;
+              }
 
-            const timeout = setTimeout(() => {
-              pendingCommandsRef.current.delete(cmd.cmd);
-              reject(new Error("Command timeout"));
-            }, timeoutMs);
+              const timeout = setTimeout(() => {
+                pendingCommandsRef.current.delete(cmd.cmd);
+                reject(new Error("Command timeout"));
+              }, timeoutMs);
 
-            pendingCommandsRef.current.set(cmd.cmd, {
-              resolve,
-              reject,
-              timeout,
+              pendingCommandsRef.current.set(cmd.cmd, {
+                resolve,
+                reject,
+                timeout,
+              });
+              try {
+                ws.send(JSON.stringify(cmd));
+              } catch (error) {
+                clearTimeout(timeout);
+                pendingCommandsRef.current.delete(cmd.cmd);
+                reject(error);
+              }
             });
-            ws.send(JSON.stringify(cmd));
-          });
+          const queued = commandQueueRef.current.then(run, run);
+          commandQueueRef.current = queued.then(
+            () => {},
+            () => {}
+          );
+          return queued;
         };
         controlWsRef.current = ws;
       },
@@ -753,7 +769,7 @@ function App() {
           transition: "background-color 0.3s ease",
         }}
       >
-        {localConfig?.["deviceName"] || config?.["deviceName"] || "ESPWiFi"}
+        {localConfig?.["deviceName"] || config?.["deviceName"] || "espWiFi"}
       </Container>
 
       {/* Settings Button Bar */}

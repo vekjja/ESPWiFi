@@ -49,7 +49,7 @@ const Login = ({ onLoginSuccess }) => {
       open={true}
       onClose={() => {}} // Prevent closing - user must login
       disableEscapeKeyDown={true} // Prevent ESC key from closing
-      title="ESPWiFi Login"
+      title="espWiFi Login"
       maxWidth="sm"
       actions={
         <Button

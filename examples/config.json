@@ -1,5 +1,5 @@
 {
-    "deviceName": "ESPWiFi",
+    "deviceName": "espWiFi",
     "wifi": {
         "enabled": true,
         "mode": "accessPoint",

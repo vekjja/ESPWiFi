@@ -312,7 +312,7 @@ export default function MusicPlayerModule({
     if (!streamActiveRef.current || awaitingRef.current || eofRef.current) return;
     awaitingRef.current = true;
     try {
-      ws.send(JSON.stringify({ cmd: "music_next" }));
+      ws.send(JSON.stringify({ cmd: "media_next" }));
     } catch {
       awaitingRef.current = false;
     }
@@ -341,7 +341,7 @@ export default function MusicPlayerModule({
       const sendStop = () => {
         try {
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ cmd: "music_stop" }));
+            ws.send(JSON.stringify({ cmd: "media_stop" }));
           }
         } catch {
           // ignore
@@ -383,7 +383,7 @@ export default function MusicPlayerModule({
     }
   };
 
-  // Stream over /ws/media. The length comes back with music_start, and
+  // Stream over /ws/media. The length comes back with media_start, and
   // playback begins as soon as the first chunks arrive.
   const handleSelectTrack = (file, index) => {
     const audio = audioRef.current;
@@ -570,7 +570,7 @@ export default function MusicPlayerModule({
       try {
         ws.send(
           JSON.stringify({
-            cmd: "music_start",
+            cmd: "media_start",
             fs: "sd",
             path: filePath,
             mime,
@@ -578,7 +578,7 @@ export default function MusicPlayerModule({
           })
         );
       } catch (error) {
-        console.error("🎵 Failed to send music_start:", error);
+        console.error("🎵 Failed to send media_start:", error);
       }
     };
 
@@ -592,14 +592,14 @@ export default function MusicPlayerModule({
           return;
         }
         if (discardRef.current && msg?.ok === false) {
-          console.warn("🎵 music_seek failed:", msg?.error || "unknown");
+          console.warn("🎵 media_seek failed:", msg?.error || "unknown");
           discardRef.current = false;
           pullChunk();
           return;
         }
-        if (msg?.type === "music_start") {
+        if (msg?.type === "media_start") {
           if (msg?.ok === false) {
-            console.error("🎵 music_start failed:", msg?.error || "unknown");
+            console.error("🎵 media_start failed:", msg?.error || "unknown");
             stopStream();
             setIsPlaying(false);
             setIsPaused(false);
@@ -610,7 +610,7 @@ export default function MusicPlayerModule({
           armPull();
           return;
         }
-        if (msg?.type === "music_seek") {
+        if (msg?.type === "media_seek") {
           discardRef.current = false;
           awaitingRef.current = false;
           eofRef.current = false;
@@ -619,7 +619,7 @@ export default function MusicPlayerModule({
           pullChunk();
           return;
         }
-        if (msg?.type === "music_chunk") {
+        if (msg?.type === "media_chunk") {
           if (msg?.eof) {
             awaitingRef.current = false;
             eofRef.current = true;
@@ -819,7 +819,7 @@ export default function MusicPlayerModule({
       reopenMseRef.current();
     }
     try {
-      ws.send(JSON.stringify({ cmd: "music_seek", ms: Math.round(tt * 1000) }));
+      ws.send(JSON.stringify({ cmd: "media_seek", ms: Math.round(tt * 1000) }));
     } catch {
       discardRef.current = false;
       return false;

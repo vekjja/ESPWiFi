@@ -361,6 +361,7 @@ export default function Modules({
     });
     seenModuleKeysRef.current = new Set(keys);
     setModules(next);
+    rememberModuleLayout(next);
     const partial = { modules: next };
     saveConfig(partial);
     saveConfigToDevice(partial);
@@ -514,12 +515,11 @@ export default function Modules({
     console.log("🗑️ Updated modules after filter:", updatedModules);
 
     setModules(updatedModules);
+    rememberModuleLayout(updatedModules);
 
-    // Update the global config
     const updatedConfig = { modules: updatedModules };
-    console.log("🗑️ Saving updated config:", updatedConfig);
-    saveConfig(updatedConfig); // Update local config
-    saveConfigToDevice(updatedConfig); // Save to device
+    saveConfig(updatedConfig);
+    saveConfigToDevice(updatedConfig);
   };
 
   useLayoutEffect(() => {

@@ -488,9 +488,6 @@ export default function LogsSettingsModal({
             type: "logs",
             name: "Logs",
             key: maxKey + 1,
-            size: "custom",
-            width: 720,
-            height: 520,
           },
         ],
       };

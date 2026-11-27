@@ -14,6 +14,7 @@ import { getApiUrl, buildWebSocketUrl } from "./utils/api";
 import { getRSSIThemeColor } from "./utils/rssi";
 import { getAuthToken, clearAuthToken } from "./utils/auth";
 import { createSocketSession } from "./utils/socketSession";
+import { omitLayoutFromConfig } from "./components/modules/moduleLayout";
 
 // espwifi.local resolves over mDNS. The IPv4 answer is immediate, but the
 // IPv6 query sits until it times out (~5s). Chrome's WebSocket uses that
@@ -177,12 +178,6 @@ function App() {
   });
   const [controlStatus, setControlStatus] = useState("disconnected");
   const controlConnected = controlStatus === "connected";
-  // Reconnecting still has a live device. Only a real drop should look offline.
-  const controlDown =
-    controlStatus === "disconnected" ||
-    controlStatus === "offline" ||
-    controlStatus === "error" ||
-    controlStatus === "auth";
   const [cloudDeviceConfig, setCloudDeviceConfig] = useState(null);
   const [cloudDeviceInfo, setCloudDeviceInfo] = useState(null);
   const [cloudRssi, setCloudRssi] = useState(null);
@@ -366,9 +361,10 @@ function App() {
       }
 
       if (msg?.cmd === "get_config" && msg?.config) {
-        setConfig(msg.config);
-        setLocalConfig(msg.config);
-        setCloudDeviceConfig(msg.config);
+        const nextConfig = omitLayoutFromConfig(msg.config);
+        setConfig(nextConfig);
+        setLocalConfig(nextConfig);
+        setCloudDeviceConfig(nextConfig);
       }
       if (msg?.cmd === "get_info" && msg?.info) {
         setCloudDeviceInfo(msg.info);
@@ -594,10 +590,11 @@ function App() {
    * @param {Object} newConfig - The new configuration object (can be partial)
    */
   const updateLocalConfig = (newConfig) => {
-    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
+    const cleaned = omitLayoutFromConfig(newConfig);
+    setLocalConfig((prevConfig) => ({ ...prevConfig, ...cleaned, apiURL }));
     // If we're operating from a tunneled device config, keep it in sync for
     // immediate UI updates.
-    setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
+    setCloudDeviceConfig((prev) => (prev ? { ...prev, ...cleaned } : prev));
   };
 
   /**
@@ -609,13 +606,14 @@ function App() {
   const saveConfigFromButton = useCallback(
     (newConfig) => {
       // One mode: send config over control WS (no HTTP config endpoint).
-      // Optimistically update local UI config.
+      // Placement and size stay in the browser, so they never go out in a save.
+      const cleaned = omitLayoutFromConfig(newConfig);
       setLocalConfig((prevConfig) => ({
         ...prevConfig,
-        ...newConfig,
+        ...cleaned,
         apiURL,
       }));
-      setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
+      setCloudDeviceConfig((prev) => (prev ? { ...prev, ...cleaned } : prev));
 
       const ws = controlWsRef.current;
       if (!ws || ws.readyState !== 1) {
@@ -623,7 +621,7 @@ function App() {
         return Promise.resolve(null);
       }
       try {
-        ws.send(JSON.stringify({ cmd: "set_config", config: newConfig }));
+        ws.send(JSON.stringify({ cmd: "set_config", config: cleaned }));
         setTimeout(() => {
           try {
             ws.send(JSON.stringify({ cmd: "get_config" }));
@@ -717,7 +715,7 @@ function App() {
         ref={headerRef}
         sx={{
           fontFamily: theme.typography.headerFontFamily,
-          backgroundColor: controlDown
+          backgroundColor: !controlConnected
             ? "error.main"
             : musicPlaybackState.isPlaying && musicPlaybackState.isPaused
             ? "musicPlayer.paused"
@@ -725,7 +723,7 @@ function App() {
             ? "musicPlayer.playing"
             : "secondary.light",
           color:
-            musicPlaybackState.isPlaying || controlDown
+            musicPlaybackState.isPlaying || !controlConnected
               ? "white"
               : "primary.main",
           fontSize: "3em",

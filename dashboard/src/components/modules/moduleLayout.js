@@ -44,3 +44,21 @@ export function applyModuleLayout(modules) {
     return { ...module, ...saved };
   });
 }
+
+// Position and size stay in the browser. The device config only lists modules.
+export function omitModuleLayout(modules) {
+  if (!Array.isArray(modules)) return modules;
+  return modules.map((module) => {
+    if (!module || typeof module !== "object") return module;
+    const next = { ...module };
+    LAYOUT_KEYS.forEach((key) => delete next[key]);
+    return next;
+  });
+}
+
+export function omitLayoutFromConfig(config) {
+  if (!config || typeof config !== "object" || !Array.isArray(config.modules)) {
+    return config;
+  }
+  return { ...config, modules: omitModuleLayout(config.modules) };
+}

@@ -109,9 +109,9 @@ const theme = createTheme({
       main: "#ffa726", // Default Material-UI warning color for dark mode (yellow/orange)
     },
     musicPlayer: {
-      playing: "#AA00FF", // #AA00FF
-      paused: "#ffa726", // #FFA726
-      stopped: "#333", // #333
+      playing: "#8400FF",
+      paused: "#ffa726",
+      stopped: "#333",
     },
   },
   components: {

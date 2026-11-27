@@ -206,6 +206,18 @@ jobs:
           echo "${{ secrets.KUBECONFIG }}" > "${HOME}/.kube/config"
           chmod 600 "${HOME}/.kube/config"
 
+      - name: Drop broken ingress admission webhook
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The admission service is gone, so every Ingress apply fails closed.
+          kubectl get validatingwebhookconfiguration -o name | while read -r cfg; do
+            if kubectl get "$cfg" -o jsonpath='{range .webhooks[*]}{.name}{"\n"}{end}' \
+              | grep -qx 'validate.nginx.ingress.kubernetes.io'; then
+              kubectl delete "$cfg"
+            fi
+          done
+
       - name: Helm upgrade
         shell: bash
         run: |

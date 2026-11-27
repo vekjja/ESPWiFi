@@ -3,19 +3,27 @@ import { Box, LinearProgress, Typography } from "@mui/material";
 import Module from "../Module";
 import InfoCard from "../../common/InfoCard";
 import InfoRow from "../../common/InfoRow";
-import SectionTitle, { SECTIONS } from "../../common/SectionTitle";
+import { SECTIONS } from "../../common/SectionTitle";
 import { bytesToHumanReadable } from "../../../utils/format";
 import { moduleScrollbarSx } from "../moduleConfig";
+
+const usageCaptionSx = {
+  fontSize: "calc(0.8rem * var(--module-scale, 1))",
+  lineHeight: 1.2,
+  fontWeight: 600,
+  letterSpacing: 0.5,
+  textTransform: "uppercase",
+};
 
 function UsageBar({ label, percent }) {
   const value = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   return (
-    <Box sx={{ mt: 1 }}>
+    <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={usageCaptionSx}>
           {label}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={usageCaptionSx}>
           {value.toFixed(1)}%
         </Typography>
       </Box>
@@ -23,10 +31,15 @@ function UsageBar({ label, percent }) {
         variant="determinate"
         value={value}
         sx={{
-          height: "calc(8px * var(--module-scale, 1))",
+          "&&": {
+            height: 8,
+            minHeight: 8,
+            maxHeight: 8,
+          },
           borderRadius: 1,
-          backgroundColor: "action.hover",
+          backgroundColor: "background.paper",
           "& .MuiLinearProgress-bar": {
+            height: 8,
             borderRadius: 1,
             backgroundColor: "primary.main",
           },
@@ -44,88 +57,92 @@ function EmptyNote({ children }) {
   );
 }
 
+const panelSx = {
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
+  minWidth: 0,
+  flex: "0 0 auto",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "flex-start",
+  gap: "calc(12px * var(--module-scale, 1))",
+  p: "calc(12px * var(--module-scale, 1))",
+  backgroundColor: "action.hover",
+  borderRadius: 1,
+};
+
+function InfoPanel({ label, minBlock = false, children }) {
+  return (
+    <Box data-min-block={minBlock ? "" : undefined} sx={panelSx}>
+      {label ? (
+        <Typography color="text.secondary" sx={usageCaptionSx}>
+          {label}
+        </Typography>
+      ) : null}
+      {children}
+    </Box>
+  );
+}
+
 function MemoryBody({ deviceInfo }) {
   const free = deviceInfo?.free_heap;
   const total = deviceInfo?.total_heap;
   const used = deviceInfo?.used_heap;
   const ready = free !== undefined && total && used !== undefined;
   if (!ready) return <EmptyNote>No memory information available</EmptyNote>;
-  const percent = (used / total) * 100;
-  return (
-    <Box
-      sx={{
-        width: "100%",
-        flex: "0 0 auto",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-start",
-        gap: "calc(12px * var(--module-scale, 1))",
-      }}
-    >
-      <InfoRow inline label="Used Heap:" value={bytesToHumanReadable(used)} />
-      <InfoRow inline label="Free Heap:" value={bytesToHumanReadable(free)} />
-      <InfoRow inline label="Total Heap:" value={bytesToHumanReadable(total)} />
-      <UsageBar label="Memory Usage" percent={percent} />
-    </Box>
-  );
+  return <Volume total={total} used={used} />;
 }
+
+const networkValueSize = "calc(0.95rem * var(--module-scale, 1))";
 
 function NetworkBody({ deviceInfo, config }) {
   return (
-    <Box
-      sx={{
-        width: "100%",
-        flex: "0 0 auto",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-start",
-        gap: "calc(12px * var(--module-scale, 1))",
-      }}
-    >
-      <InfoRow inline label="Device Name:" value={config?.deviceName || "ESPWiFi"} />
-      <InfoRow inline label="Hostname:" value={deviceInfo?.hostname || "N/A"} />
-      <InfoRow inline label="mDNS Hostname:" value={deviceInfo?.mdns || "N/A"} />
-      <InfoRow inline label="IP Address:" value={deviceInfo?.ip || "N/A"} />
-      <InfoRow inline label="MAC Address:" value={deviceInfo?.mac || "N/A"} />
-    </Box>
+    <InfoPanel>
+      <InfoRow
+        inline
+        valueSize={networkValueSize}
+        label="Device Name:"
+        value={config?.deviceName || "ESPWiFi"}
+      />
+      <InfoRow
+        inline
+        valueSize={networkValueSize}
+        label="Hostname:"
+        value={deviceInfo?.hostname || "N/A"}
+      />
+      <InfoRow
+        inline
+        valueSize={networkValueSize}
+        label="mDNS Hostname:"
+        value={deviceInfo?.mdns || "N/A"}
+      />
+      <InfoRow
+        inline
+        valueSize={networkValueSize}
+        label="IP Address:"
+        value={deviceInfo?.ip || "N/A"}
+      />
+      <InfoRow
+        inline
+        valueSize={networkValueSize}
+        label="MAC Address:"
+        value={deviceInfo?.mac || "N/A"}
+      />
+    </InfoPanel>
   );
 }
 
-function Volume({ section, total, used, minBlock = false }) {
+function Volume({ label, total, used, minBlock = false }) {
   const free = total - used;
   const percent = total > 0 ? (used / total) * 100 : 0;
   return (
-    <Box
-      data-min-block={minBlock ? "" : undefined}
-      sx={{
-        width: "100%",
-        maxWidth: "100%",
-        boxSizing: "border-box",
-        minWidth: 0,
-        flex: "0 0 auto",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-start",
-        gap: "calc(12px * var(--module-scale, 1))",
-        p: "calc(12px * var(--module-scale, 1))",
-        backgroundColor: "action.hover",
-        borderRadius: 1,
-      }}
-    >
-      <SectionTitle
-        {...section}
-        variant="subtitle2"
-        iconColor="inherit"
-        iconSize="small"
-        sx={{ mb: 0.5 }}
-      />
+    <InfoPanel label={label} minBlock={minBlock}>
       <InfoRow inline label="Total:" value={bytesToHumanReadable(total)} />
       <InfoRow inline label="Used:" value={bytesToHumanReadable(used)} />
       <InfoRow inline label="Free:" value={bytesToHumanReadable(free)} />
       <UsageBar label="Usage" percent={percent} />
-    </Box>
+    </InfoPanel>
   );
 }
 
@@ -150,14 +167,14 @@ function StorageBody({ deviceInfo }) {
         ...moduleScrollbarSx,
         display: "flex",
         flexDirection: "column",
-        justifyContent: "flex-start",
+        justifyContent: "safe center",
         gap: "calc(12px * var(--module-scale, 1))",
       }}
     >
       {hasLfs && (
         <Volume
           minBlock
-          section={SECTIONS.littlefs}
+          label="LittleFS"
           total={deviceInfo.lfs_total}
           used={deviceInfo.lfs_used}
         />
@@ -165,7 +182,7 @@ function StorageBody({ deviceInfo }) {
       {hasSd && (
         <Volume
           minBlock={!hasLfs}
-          section={SECTIONS.sd}
+          label="SD Card"
           total={deviceInfo.sd_total}
           used={deviceInfo.sd_used}
         />
@@ -228,6 +245,7 @@ export default function SystemInfoModule({
         embedded
         fluid
         scale
+        center
         hug={info !== "storage"}
         minHeight="auto"
         title={title}

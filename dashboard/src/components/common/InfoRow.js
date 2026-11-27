@@ -10,7 +10,13 @@ import { Box, Typography } from "@mui/material";
  * @param {React.ReactNode} props.value - Right-side value (can be string, number, or component)
  * @param {Object} props.sx - Additional sx styling
  */
-export default function InfoRow({ label, value, inline = false, sx = {} }) {
+export default function InfoRow({
+  label,
+  value,
+  inline = false,
+  valueSize = "calc(1.35rem * var(--module-scale, 1))",
+  sx = {},
+}) {
   return (
     <Box
       sx={{
@@ -37,12 +43,12 @@ export default function InfoRow({ label, value, inline = false, sx = {} }) {
         {label}
       </Typography>
       {typeof value === "string" || typeof value === "number" ? (
-        <Typography 
-          variant="h6" 
-          sx={{ 
+        <Typography
+          component="div"
+          sx={{
             fontWeight: 600,
             fontFamily: "monospace",
-            fontSize: "calc(1.35rem * var(--module-scale, 1))",
+            fontSize: valueSize,
             lineHeight: 1.2,
             margin: 0,
           }}

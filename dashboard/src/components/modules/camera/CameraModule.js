@@ -408,7 +408,7 @@ export default function CameraModule({
                   "@container frame (max-height: 64px)": { display: "none" },
                 }}
               >
-                {isStreaming ? "Streaming in progress" : "Click play to start"}
+                {/* {isStreaming ? "Streaming in progress" : "Click play to start streaming"} */}
               </Typography>
             </Box>
           )}

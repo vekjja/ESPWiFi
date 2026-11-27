@@ -56,9 +56,6 @@ const scaleSx = {
   "&& .section-title .MuiSvgIcon-root": {
     fontSize: "calc(24px * var(--module-scale, 1))",
   },
-  "&& .MuiLinearProgress-root": {
-    height: "calc(8px * var(--module-scale, 1))",
-  },
 };
 
 /**
@@ -92,6 +89,7 @@ export default function InfoCard({
   scale = false,
   fit = false,
   hug = false,
+  center = false,
 }) {
   const card = (
       <Card
@@ -166,6 +164,7 @@ export default function InfoCard({
                 minWidth: 0,
                 maxWidth: "100%",
                 overflow: fit ? "auto" : "hidden",
+                justifyContent: center ? "safe center" : "flex-start",
               }}
             >
               {children}

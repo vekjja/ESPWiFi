@@ -61,6 +61,7 @@ export function createSocketSession(options) {
   let retryTimer = null;
   let heartbeatTimer = null;
   let heartbeatWatchdog = null;
+  let connectTimer = null;
   let online = browserOnline();
 
   const setStatus = (status) => {
@@ -91,6 +92,35 @@ export function createSocketSession(options) {
     }
   };
 
+  const clearConnectTimer = () => {
+    if (connectTimer) {
+      clearTimeout(connectTimer);
+      connectTimer = null;
+    }
+  };
+
+  // A powered-off device never completes the WebSocket close handshake, and
+  // the browser can sit in CLOSING for about ten seconds. Drop our side of
+  // the session immediately and let that close finish in the background.
+  const dropConnection = (socket, myGen) => {
+    if (myGen !== generation || stopped) return;
+    clearConnectTimer();
+    clearHeartbeat();
+    if (socket) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      if (ws === socket) ws = null;
+      try {
+        socket.close(4000, "dropped");
+      } catch {
+        // ignore
+      }
+    }
+    scheduleRetry();
+  };
+
   // Arm once per unanswered heartbeat. Later sends must not extend the
   // window, or a silent server would never time out while we keep writing.
   const armWatchdog = (socket, myGen) => {
@@ -98,14 +128,7 @@ export function createSocketSession(options) {
     if (!timeoutMs || heartbeatWatchdog) return;
     heartbeatWatchdog = setTimeout(() => {
       heartbeatWatchdog = null;
-      if (myGen !== generation || stopped) return;
-      if (socket.readyState !== WebSocket.OPEN) return;
-      // 4000 is an application close code. 1006 cannot be sent by the client.
-      try {
-        socket.close(4000, "heartbeat timeout");
-      } catch {
-        // ignore
-      }
+      dropConnection(socket, myGen);
     }, timeoutMs);
   };
 
@@ -122,11 +145,7 @@ export function createSocketSession(options) {
         if (payload != null) socket.send(payload);
         armWatchdog(socket, myGen);
       } catch {
-        try {
-          socket.close(4000, "heartbeat send failed");
-        } catch {
-          // ignore
-        }
+        dropConnection(socket, myGen);
       }
     };
 
@@ -199,8 +218,18 @@ export function createSocketSession(options) {
 
     ws = socket;
 
+    if (options.connectTimeoutMs) {
+      connectTimer = setTimeout(() => {
+        connectTimer = null;
+        if (myGen !== generation || stopped) return;
+        if (socket.readyState === WebSocket.OPEN) return;
+        dropConnection(socket, myGen);
+      }, options.connectTimeoutMs);
+    }
+
     socket.onopen = () => {
       if (myGen !== generation || stopped) return;
+      clearConnectTimer();
       attempt = 0;
       try {
         options.onSocket?.(socket);
@@ -218,7 +247,9 @@ export function createSocketSession(options) {
 
     socket.onmessage = (event) => {
       if (myGen !== generation || stopped) return;
+      // Silence is measured from the last message, not the next heartbeat.
       clearWatchdog();
+      armWatchdog(socket, myGen);
       try {
         options.onMessage?.(event, socket);
       } catch {
@@ -232,6 +263,7 @@ export function createSocketSession(options) {
 
     socket.onclose = (event) => {
       if (myGen !== generation) return;
+      clearConnectTimer();
       clearHeartbeat();
       if (ws === socket) ws = null;
       if (stopped) return;
@@ -307,6 +339,7 @@ export function createSocketSession(options) {
       stopped = true;
       generation += 1;
       clearRetry();
+      clearConnectTimer();
       clearHeartbeat();
       const current = ws;
       ws = null;

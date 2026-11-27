@@ -41,6 +41,11 @@ struct MusicStreamState {
   uint32_t size = 0;
   uint32_t chunkSize = 16 * 1024;
   uint32_t chunksSent = 0;
+  uint32_t durationMs = 0;
+  uint32_t bitrate = 0;
+  uint32_t sampleRate = 0;
+  uint32_t audioStart = 0;
+  uint32_t audioBytes = 0;
   char fullPath[256] = {0};
   char mime[48] = {0};
 };
@@ -83,6 +88,174 @@ static void closeMusicState(MusicStreamState *st) {
 
 static bool hasDotDot(const std::string &p) {
   return p.find("..") != std::string::npos;
+}
+
+static uint32_t readBe32(const uint8_t *p) {
+  return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 |
+         (uint32_t)p[3];
+}
+
+static uint32_t readLe32(const uint8_t *p) {
+  return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 |
+         (uint32_t)p[3] << 24;
+}
+
+static int mp3SampleRate(int versionBits, int srIdx) {
+  static const int v1[] = {44100, 48000, 32000};
+  static const int v2[] = {22050, 24000, 16000};
+  static const int v25[] = {11025, 12000, 8000};
+  if (srIdx < 0 || srIdx > 2) {
+    return 0;
+  }
+  if (versionBits == 3) return v1[srIdx];
+  if (versionBits == 2) return v2[srIdx];
+  if (versionBits == 0) return v25[srIdx];
+  return 0;
+}
+
+static int mp3Bitrate(int versionBits, int bitrateIdx) {
+  static const int v1[] = {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
+  static const int v2[] = {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0};
+  if (bitrateIdx <= 0 || bitrateIdx >= 15) return 0;
+  const int kbps = (versionBits == 3) ? v1[bitrateIdx] : v2[bitrateIdx];
+  return kbps * 1000;
+}
+
+// Reads just enough of the file to learn duration, bitrate, and where the
+// audio frames start. The file position is restored to the beginning.
+static void probeMusicInfo(FILE *f, uint32_t fileSize, MusicStreamState *st) {
+  if (!f || !st) return;
+  st->audioStart = 0;
+  st->audioBytes = fileSize;
+  st->durationMs = 0;
+  st->bitrate = 0;
+  st->sampleRate = 0;
+
+  uint8_t buf[2048];
+  const size_t n = fread(buf, 1, sizeof(buf), f);
+  if (n >= 12 && memcmp(buf, "RIFF", 4) == 0 && memcmp(buf + 8, "WAVE", 4) == 0) {
+    size_t off = 12;
+    uint32_t byteRate = 0;
+    uint32_t dataBytes = 0;
+    while (off + 8 <= n) {
+      const uint32_t chunkSize = readLe32(buf + off + 4);
+      if (memcmp(buf + off, "fmt ", 4) == 0 && off + 20 <= n) {
+        byteRate = readLe32(buf + off + 16);
+        st->sampleRate = readLe32(buf + off + 12);
+      } else if (memcmp(buf + off, "data", 4) == 0) {
+        dataBytes = chunkSize;
+        st->audioStart = (uint32_t)(off + 8);
+        break;
+      }
+      if (chunkSize > 1024 * 1024) break;
+      off += 8 + (size_t)chunkSize + (chunkSize & 1);
+    }
+    if (dataBytes == 0 && fileSize > st->audioStart) {
+      dataBytes = fileSize - st->audioStart;
+    }
+    st->audioBytes = dataBytes;
+    st->bitrate = byteRate * 8;
+    if (byteRate > 0 && dataBytes > 0) {
+      st->durationMs = (uint32_t)(((uint64_t)dataBytes * 1000ull) / byteRate);
+    }
+    clearerr(f);
+    fseek(f, 0, SEEK_SET);
+    return;
+  }
+
+  size_t audioOff = 0;
+  if (n >= 10 && memcmp(buf, "ID3", 3) == 0) {
+    const uint32_t tagSize = ((uint32_t)(buf[6] & 0x7f) << 21) |
+                             ((uint32_t)(buf[7] & 0x7f) << 14) |
+                             ((uint32_t)(buf[8] & 0x7f) << 7) |
+                             (uint32_t)(buf[9] & 0x7f);
+    const uint32_t tagBytes = 10 + tagSize + ((buf[5] & 0x10) ? 10 : 0);
+    st->audioStart = tagBytes;
+    audioOff = tagBytes;
+  }
+
+  size_t available = n;
+  if (audioOff >= n) {
+    if (fseek(f, (long)st->audioStart, SEEK_SET) != 0) {
+      clearerr(f);
+      fseek(f, 0, SEEK_SET);
+      return;
+    }
+    available = fread(buf, 1, sizeof(buf), f);
+    if (available < 4) {
+      clearerr(f);
+      fseek(f, 0, SEEK_SET);
+      return;
+    }
+    audioOff = 0;
+  }
+
+  size_t sync = audioOff;
+  int version = 0;
+  int bitrate = 0;
+  int sampleRate = 0;
+  int samplesPerFrame = 1152;
+  bool found = false;
+  for (size_t i = audioOff; i + 4 < available; i++) {
+    if (buf[i] != 0xFF || (buf[i + 1] & 0xE0) != 0xE0) continue;
+    version = (buf[i + 1] >> 3) & 3;
+    const int layer = (buf[i + 1] >> 1) & 3;
+    const int bitrateIdx = (buf[i + 2] >> 4) & 0xF;
+    const int srIdx = (buf[i + 2] >> 2) & 3;
+    if (version == 1 || layer != 1 || srIdx == 3) continue;
+    bitrate = mp3Bitrate(version, bitrateIdx);
+    sampleRate = mp3SampleRate(version, srIdx);
+    if (bitrate <= 0 || sampleRate <= 0) continue;
+    samplesPerFrame = (version == 3) ? 1152 : 576;
+    sync = i;
+    found = true;
+    break;
+  }
+
+  if (found) {
+    st->bitrate = (uint32_t)bitrate;
+    st->sampleRate = (uint32_t)sampleRate;
+    if (audioOff != 0) {
+      st->audioStart += (uint32_t)(sync - audioOff);
+    } else if (st->audioStart == 0) {
+      st->audioStart = (uint32_t)sync;
+    }
+    uint32_t frames = 0;
+    const size_t frameAvail = available - sync;
+    const size_t scan = frameAvail < 180 ? frameAvail : 180;
+    for (size_t i = 0; i + 8 < scan; i++) {
+      const bool xing = memcmp(buf + sync + i, "Xing", 4) == 0;
+      const bool info = memcmp(buf + sync + i, "Info", 4) == 0;
+      if (!xing && !info) continue;
+      const uint32_t flags = readBe32(buf + sync + i + 4);
+      if ((flags & 1) && i + 12 <= frameAvail) {
+        frames = readBe32(buf + sync + i + 8);
+      }
+      break;
+    }
+    if (fileSize > st->audioStart) {
+      st->audioBytes = fileSize - st->audioStart;
+    }
+    if (fileSize > 128) {
+      uint8_t tag[3] = {0};
+      if (fseek(f, (long)fileSize - 128, SEEK_SET) == 0 &&
+          fread(tag, 1, 3, f) == 3 && memcmp(tag, "TAG", 3) == 0 &&
+          st->audioBytes > 128) {
+        st->audioBytes -= 128;
+      }
+    }
+    if (frames > 0 && sampleRate > 0) {
+      st->durationMs = (uint32_t)(((uint64_t)frames * (uint64_t)samplesPerFrame *
+                                   1000ull) /
+                                  (uint64_t)sampleRate);
+    } else if (st->bitrate > 0 && st->audioBytes > 0) {
+      st->durationMs = (uint32_t)(((uint64_t)st->audioBytes * 8ull * 1000ull) /
+                                  st->bitrate);
+    }
+  }
+
+  clearerr(f);
+  fseek(f, 0, SEEK_SET);
 }
 
 static void mediaOnConnect(WebSocket *ws, int clientFd, void *userCtx) {
@@ -248,12 +421,15 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     (void)snprintf(st->fullPath, sizeof(st->fullPath), "%s", full.c_str());
     (void)snprintf(st->mime, sizeof(st->mime), "%s",
                    (mimeC != nullptr) ? mimeC : "audio/mpeg");
+    probeMusicInfo(f, totalSize, st);
 
     espwifi->log(
         INFO,
-        "🎵 music_start (fd=%d, fs=%s, chunk=%u, size=%u, mime=%s, path=%s)",
+        "🎵 music_start (fd=%d, fs=%s, chunk=%u, size=%u, duration=%ums, "
+        "bitrate=%u, rate=%u, mime=%s, path=%s)",
         clientFd, useSd ? "sd" : "lfs", (unsigned)st->chunkSize,
-        (unsigned)st->size, st->mime, rel.c_str());
+        (unsigned)st->size, (unsigned)st->durationMs, (unsigned)st->bitrate,
+        (unsigned)st->sampleRate, st->mime, rel.c_str());
 
     resp["type"] = "music_start";
     resp["fs"] = useSd ? "sd" : "lfs";
@@ -262,6 +438,15 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     resp["chunkSize"] = (uint32_t)st->chunkSize;
     if (st->size > 0) {
       resp["size"] = (uint32_t)st->size;
+    }
+    if (st->durationMs > 0) {
+      resp["durationMs"] = st->durationMs;
+    }
+    if (st->bitrate > 0) {
+      resp["bitrate"] = st->bitrate;
+    }
+    if (st->sampleRate > 0) {
+      resp["sampleRate"] = st->sampleRate;
     }
     sendMediaAck(ws, clientFd, resp);
     return;
@@ -279,6 +464,36 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
     closeMusicState(st);
     resp["type"] = "music_stop";
     resp["stopped"] = true;
+    sendMediaAck(ws, clientFd, resp);
+    return;
+  }
+
+  if (strcmp(cmd, "music_seek") == 0) {
+    MusicStreamState *st = musicStateForFd(clientFd);
+    if (!st || !st->f || st->durationMs == 0 || st->audioBytes == 0) {
+      resp["ok"] = false;
+      resp["error"] = "no_active_stream";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+    uint32_t ms = req["ms"] | 0;
+    if (ms > st->durationMs) ms = st->durationMs;
+    const uint32_t pos =
+        st->audioStart +
+        (uint32_t)(((uint64_t)ms * (uint64_t)st->audioBytes) / st->durationMs);
+    const uint32_t clamped = (st->size > 0 && pos > st->size) ? st->size : pos;
+    if (fseek(st->f, (long)clamped, SEEK_SET) != 0) {
+      resp["ok"] = false;
+      resp["error"] = "seek_failed";
+      sendMediaAck(ws, clientFd, resp);
+      return;
+    }
+    st->offset = clamped;
+    espwifi->log(DEBUG, "🎵 music_seek (fd=%d, ms=%u, offset=%u)", clientFd,
+                 (unsigned)ms, (unsigned)clamped);
+    resp["type"] = "music_seek";
+    resp["ms"] = ms;
+    resp["offset"] = clamped;
     sendMediaAck(ws, clientFd, resp);
     return;
   }
@@ -321,7 +536,7 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
       resp["eof"] = eof;
       resp["offset"] = st->offset;
       sendMediaAck(ws, clientFd, resp);
-      closeMusicState(st);
+      // Leave the file open so music_seek can reposition after the last byte.
       return;
     }
 

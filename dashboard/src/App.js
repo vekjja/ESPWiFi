@@ -390,8 +390,11 @@ function App() {
     const session = createSocketSession({
       getUrl: () => controlWsUrl,
       binary: true,
-      heartbeatMs: 3000,
-      heartbeatTimeoutMs: 6000,
+      heartbeatMs: 1000,
+      // One missed reply is enough. The session turns offline here instead of
+      // waiting for the browser to finish closing a dead socket.
+      heartbeatTimeoutMs: 1500,
+      connectTimeoutMs: 1500,
       heartbeat: () => {
         infoBeat += 1;
         // Memory and storage change while the page is open. Refresh device
@@ -615,16 +618,15 @@ function App() {
         sx={{
           fontFamily: theme.typography.headerFontFamily,
           backgroundColor:
-            musicPlaybackState.isPlaying && musicPlaybackState.isPaused
+            controlStatus !== "connected" && controlStatus !== "connecting"
+              ? "error.main"
+              : musicPlaybackState.isPlaying && musicPlaybackState.isPaused
               ? "musicPlayer.paused"
               : musicPlaybackState.isPlaying
               ? "musicPlayer.playing"
               : controlConnected
               ? "secondary.light"
-              : controlStatus === "connecting" ||
-                controlStatus === "reconnecting"
-              ? "warning.main"
-              : "error.main",
+              : "warning.main",
           color:
             musicPlaybackState.isPlaying || !controlConnected
               ? "white"

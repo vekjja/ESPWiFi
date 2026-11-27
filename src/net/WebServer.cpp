@@ -1,5 +1,4 @@
 // WebServer.cpp - ESP-IDF HTTP Server Implementation
-#include <ArduinoJson.h>
 #include <errno.h>
 #include <sys/stat.h>
 
@@ -7,14 +6,9 @@
 #include <string>
 
 #include "ESPWiFi.h"
-#include "esp_idf_version.h"
-#include "esp_chip_info.h"
-#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_https_server.h"
-#include "esp_log.h"
-#include "esp_mac.h"
-#include "esp_wifi.h"
+#include "esp_idf_version.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
@@ -531,208 +525,71 @@ esp_err_t ESPWiFi::sendFileResponse(httpd_req_t* req,
   // Determine content type based on file extension (ignore query string)
   std::string contentType = getContentType(filePath);
   httpd_resp_set_type(req, contentType.c_str());
+  httpd_resp_set_status(req, "200 OK");
 
-  // Check for Range header (for video/audio streaming)
-  size_t rangeHeaderLen = httpd_req_get_hdr_value_len(req, "Range");
-  long rangeStart = 0;
-  long rangeEnd = fileSize - 1;
-  bool isRangeRequest = false;
+  log(ACCESS, "🗄️ Serving File: %s (%ld bytes)", filePath.c_str(), fileSize);
 
-  if (rangeHeaderLen > 0 && rangeHeaderLen < 128) {
-    char rangeHeader[128];
-    if (httpd_req_get_hdr_value_str(req, "Range", rangeHeader,
-                                    sizeof(rangeHeader)) == ESP_OK) {
-      // Parse "bytes=start-end" or "bytes=start-"
-      if (strncmp(rangeHeader, "bytes=", 6) == 0) {
-        char* rangeStr = rangeHeader + 6;
-        char* dashPos = strchr(rangeStr, '-');
-        if (dashPos) {
-          *dashPos = '\0';
-          rangeStart = atol(rangeStr);
-          if (*(dashPos + 1) != '\0') {
-            rangeEnd = atol(dashPos + 1);
-          }
-          // Validate range
-          if (rangeStart >= 0 && rangeStart < fileSize) {
-            if (rangeEnd >= fileSize) {
-              rangeEnd = fileSize - 1;
-            }
-            if (rangeEnd >= rangeStart) {
-              isRangeRequest = true;
-              log(DEBUG, "🗄️ Range request: bytes=%ld-%ld/%ld", rangeStart,
-                  rangeEnd, fileSize);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Accept-Ranges header to indicate we support range requests
-  httpd_resp_set_hdr(req, "Accept-Ranges", "bytes");
-
-  // Seek to start position if this is a range request
-  if (isRangeRequest && rangeStart > 0) {
-    if (fseek(file, rangeStart, SEEK_SET) != 0) {
-      fclose(file);
-      return sendJsonResponse(req, 500, "{\"error\":\"Failed to seek file\"}",
-                              &clientInfoRef);
-    }
+  constexpr size_t CHUNK_SIZE = 2048;
+  char* buffer = (char*)malloc(CHUNK_SIZE);
+  if (!buffer) {
+    fclose(file);
+    log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
+    return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
+                            &clientInfoRef);
   }
 
   esp_err_t ret = ESP_OK;
   size_t totalSent = 0;
-  size_t bytesToSend = isRangeRequest ? (rangeEnd - rangeStart + 1) : fileSize;
+  const size_t bytesToSend = static_cast<size_t>(fileSize);
 
-  // For range requests, we need to send exact bytes with Content-Length
-  // For full files, we can use chunked encoding for progressive streaming
-  if (isRangeRequest) {
-    // Handle range request: stream in chunks using direct socket send
-    // Set 206 Partial Content status
-    httpd_resp_set_status(req, "206 Partial Content");
+  while (totalSent < bytesToSend && ret == ESP_OK) {
+    feedWatchDog();
+    size_t toRead = (bytesToSend - totalSent < CHUNK_SIZE)
+                        ? (bytesToSend - totalSent)
+                        : CHUNK_SIZE;
 
-    // Set Content-Range header
-    char contentRangeStr[64];
-    snprintf(contentRangeStr, sizeof(contentRangeStr), "bytes %ld-%ld/%ld",
-             rangeStart, rangeEnd, fileSize);
-    httpd_resp_set_hdr(req, "Content-Range", contentRangeStr);
-
-    // Set Content-Length for the range
-    char contentLengthStr[32];
-    snprintf(contentLengthStr, sizeof(contentLengthStr), "%zu", bytesToSend);
-    httpd_resp_set_hdr(req, "Content-Length", contentLengthStr);
-
-    log(DEBUG, "🗄️ Serving range %ld-%ld (%zu bytes) of %ld byte file",
-        rangeStart, rangeEnd, bytesToSend, fileSize);
-
-    // Get socket for direct sending
-    int sockfd = httpd_req_to_sockfd(req);
-
-    // Stream the range in chunks using direct socket send
-    // Use 32KB chunks for faster streaming (MP3 players need quick initial
-    // buffer)
-    constexpr size_t CHUNK_SIZE = 32768;
-    char* buffer = (char*)malloc(CHUNK_SIZE);
-    if (!buffer) {
-      fclose(file);
-      log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
-      return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
-                              &clientInfoRef);
-    }
-
-    while (totalSent < bytesToSend && ret == ESP_OK) {
-      size_t toRead = (bytesToSend - totalSent < CHUNK_SIZE)
-                          ? (bytesToSend - totalSent)
-                          : CHUNK_SIZE;
-
-      size_t bytesRead = fread(buffer, 1, toRead, file);
-      if (bytesRead == 0) {
-        if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
-          free(buffer);
-          fclose(file);
-          handleSDCardError();
-          logAccess(503, clientInfoRef, totalSent);
-          return ESP_FAIL;
-        }
-        log(ERROR,
-            "Failed to read range: got %zu bytes, expected %zu at offset %zu",
-            bytesRead, toRead, totalSent);
-        ret = ESP_FAIL;
-        break;
+    size_t bytesRead = fread(buffer, 1, toRead, file);
+    if (bytesRead == 0) {
+      if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
+        free(buffer);
+        fclose(file);
+        handleSDCardError();
+        return sendJsonResponse(req, 503, "{\"error\":\"SD card unavailable\"}",
+                                &clientInfoRef);
       }
-
-      // Send directly to socket (no chunked encoding)
-      ssize_t sent =
-          httpd_socket_send(req->handle, sockfd, buffer, bytesRead, 0);
-      if (sent < 0) {
-        log(ERROR, "Failed to send range chunk at %zu bytes: error %d",
-            totalSent, (int)sent);
-        ret = ESP_FAIL;
-        break;
-      }
-
-      // Feed watchdog once per chunk (after send completes)
-      feedWatchDog();
-
-      totalSent += bytesRead;
+      log(ERROR, "fread returned 0, expected %zu bytes (sent %zu of %zu so far)",
+          toRead, totalSent, bytesToSend);
+      ret = ESP_FAIL;
+      break;
     }
+    feedWatchDog();
 
-    free(buffer);
-    fclose(file);
-    log(DEBUG, "🗄️ Range request completed: %s (sent %zu bytes)",
-        (ret == ESP_OK) ? "OK" : "FAILED", totalSent);
-    logAccess((ret == ESP_OK) ? 206 : 500, clientInfoRef, totalSent);
-    return ret;
-  } else {
-    // Full file request: use chunked encoding for progressive streaming
-    httpd_resp_set_status(req, "200 OK");
-
-    log(ACCESS, "🗄️ Serving File: %s (%ld bytes) using chunked encoding",
-        filePath.c_str(), fileSize);
-
-    // Use smaller chunk size to reduce memory pressure (2KB instead of 4KB)
-    // Allocate from heap (not stack) to ensure it's in regular RAM, not
-    // PSRAM
-    constexpr size_t CHUNK_SIZE = 2048;
-    char* buffer = (char*)malloc(CHUNK_SIZE);
-    if (!buffer) {
-      fclose(file);
-      log(ERROR, "Out of memory allocating %zu byte buffer", CHUNK_SIZE);
-      return sendJsonResponse(req, 500, "{\"error\":\"Out of memory\"}",
-                              &clientInfoRef);
+    ret = httpd_resp_send_chunk(req, buffer, bytesRead);
+    if (ret != ESP_OK) {
+      log(ERROR, "httpd_resp_send_chunk failed at %zu bytes: %s", totalSent,
+          esp_err_to_name(ret));
+      break;
     }
+    feedWatchDog();
 
-    while (totalSent < bytesToSend && ret == ESP_OK) {
-      feedWatchDog();
-      size_t toRead = (bytesToSend - totalSent < CHUNK_SIZE)
-                          ? (bytesToSend - totalSent)
-                          : CHUNK_SIZE;
-
-      size_t bytesRead = fread(buffer, 1, toRead, file);
-      if (bytesRead == 0) {
-        if (fsAvailable && filePath.rfind("/sd/", 0) == 0 && errno == 5) {
-          free(buffer);
-          fclose(file);
-          handleSDCardError();
-          return sendJsonResponse(
-              req, 503, "{\"error\":\"SD card unavailable\"}", &clientInfoRef);
-        }
-        log(ERROR,
-            "fread returned 0, expected %zu bytes (sent %zu of %zu so far)",
-            toRead, totalSent, bytesToSend);
-        ret = ESP_FAIL;
-        break;
-      }
-      feedWatchDog();
-
-      ret = httpd_resp_send_chunk(req, buffer, bytesRead);
-      if (ret != ESP_OK) {
-        log(ERROR, "httpd_resp_send_chunk failed at %zu bytes: %s", totalSent,
-            esp_err_to_name(ret));
-        break;
-      }
-      feedWatchDog();
-
-      totalSent += bytesRead;
-    }
-
-    // Finalize chunked transfer
-    if (ret == ESP_OK) {
-      feedWatchDog();
-      ret = httpd_resp_send_chunk(req, nullptr, 0);
-      if (ret != ESP_OK) {
-        log(ERROR, "Failed to finalize chunked transfer: %s",
-            esp_err_to_name(ret));
-      } else {
-        log(ACCESS, "🗄️ File transfer completed: %s (%zu bytes)",
-            filePath.c_str(), totalSent);
-      }
-      feedWatchDog();
-    }
-
-    free(buffer);
-    fclose(file);
-    logAccess((ret == ESP_OK) ? 200 : 500, clientInfoRef, totalSent);
-    return ret;
+    totalSent += bytesRead;
   }
+
+  if (ret == ESP_OK) {
+    feedWatchDog();
+    ret = httpd_resp_send_chunk(req, nullptr, 0);
+    if (ret != ESP_OK) {
+      log(ERROR, "Failed to finalize chunked transfer: %s",
+          esp_err_to_name(ret));
+    } else {
+      log(ACCESS, "🗄️ File transfer completed: %s (%zu bytes)",
+          filePath.c_str(), totalSent);
+    }
+    feedWatchDog();
+  }
+
+  free(buffer);
+  fclose(file);
+  logAccess((ret == ESP_OK) ? 200 : 500, clientInfoRef, totalSent);
+  return ret;
 }

@@ -27,6 +27,13 @@ import CloseIcon from "@mui/icons-material/Close";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import MusicPlayerSettingsModal from "./MusicPlayerSettingsModal";
 import { buildWebSocketUrl } from "../../../utils/api";
+import {
+  canUseMse,
+  createPcmPlayer,
+  estimateTrack,
+  mimeForName,
+  unlockContext,
+} from "./streamAudio";
 
 export default function MusicPlayerModule({
   config,
@@ -50,7 +57,8 @@ export default function MusicPlayerModule({
   const [settingsData, setSettingsData] = useState({
     musicDir: config?.musicDir || "/music",
   });
-  const [duration, setDuration] = useState(0); // seconds (finite; may reflect seekable end)
+  const [duration, setDuration] = useState(0); // seconds
+  const [trackMeta, setTrackMeta] = useState(null);
   const [currentTime, setCurrentTime] = useState(0); // seconds
   const [seekPreviewTime, setSeekPreviewTime] = useState(null); // seconds or null
   const [volume, setVolume] = useState(0.7);
@@ -65,13 +73,24 @@ export default function MusicPlayerModule({
   const objectUrlRef = useRef("");
   const pendingChunkLenRef = useRef(0);
   const streamActiveRef = useRef(false);
+  const streamSeqRef = useRef(0);
+  const awaitingRef = useRef(false);
+  const eofRef = useRef(false);
+  const discardRef = useRef(false);
+  const modeRef = useRef("");
+  const knownDurationRef = useRef(0);
+  const fileSizeRef = useRef(0);
+  const sawAudioRef = useRef(false);
+  const pcmRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const gainRef = useRef(null);
+  const volumeRef = useRef(0.7);
   const stopInProgressRef = useRef(false);
   const suppressAudioErrorRef = useRef(false);
-  const streamSeqRef = useRef(0);
   const isSeekingRef = useRef(false);
   const pendingSeekTimeRef = useRef(null);
   const userPausedRef = useRef(false);
-  const primingRef = useRef(false);
+  volumeRef.current = volume;
 
   // Supported audio file extensions
   const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"];
@@ -106,34 +125,27 @@ export default function MusicPlayerModule({
 
     // Event listeners for audio element
     audio.addEventListener("loadedmetadata", () => {
+      if (knownDurationRef.current > 0) return;
       const d = Number(audio.duration);
-      if (Number.isFinite(d) && d > 0) {
-        setDuration(d);
-      }
+      if (Number.isFinite(d) && d > 0) setDuration(d);
     });
 
     audio.addEventListener("timeupdate", () => {
-      if (!isSeekingRef.current) {
-        const t = Number(audio.currentTime);
-        if (Number.isFinite(t)) {
-          setCurrentTime(t);
-        }
-
-        // Some streaming modes report duration=Infinity; use seekable end instead.
-        let maxT = Number(audio.duration);
-        if (!Number.isFinite(maxT) || maxT <= 0) {
-          try {
-            if (audio.seekable && audio.seekable.length > 0) {
-              maxT = Number(audio.seekable.end(audio.seekable.length - 1));
-            }
-          } catch {
-            // ignore
+      if (modeRef.current === "pcm" || isSeekingRef.current) return;
+      const t = Number(audio.currentTime);
+      if (Number.isFinite(t)) setCurrentTime(t);
+      if (knownDurationRef.current > 0) return;
+      let maxT = Number(audio.duration);
+      if (!Number.isFinite(maxT) || maxT <= 0) {
+        try {
+          if (audio.seekable && audio.seekable.length > 0) {
+            maxT = Number(audio.seekable.end(audio.seekable.length - 1));
           }
-        }
-        if (Number.isFinite(maxT) && maxT > 0) {
-          setDuration(maxT);
+        } catch {
+          // ignore
         }
       }
+      if (Number.isFinite(maxT) && maxT > 0) setDuration(maxT);
     });
 
     audio.addEventListener("ended", () => {
@@ -160,7 +172,7 @@ export default function MusicPlayerModule({
     audio.addEventListener("pause", () => {
       // Ignore pauses triggered by teardown, track switching, or the
       // silent clip used to unlock playback on a phone.
-      if (stopInProgressRef.current || primingRef.current) {
+      if (stopInProgressRef.current || suppressAudioErrorRef.current) {
         return;
       }
       userPausedRef.current = true;
@@ -183,6 +195,15 @@ export default function MusicPlayerModule({
     audioRef.current = audio;
 
     return () => {
+      streamActiveRef.current = false;
+      if (pcmRef.current) pcmRef.current.stop();
+      if (mediaWsRef.current) {
+        try {
+          mediaWsRef.current.close();
+        } catch {
+          // ignore
+        }
+      }
       audio.pause();
       audio.src = "";
       audio.remove();
@@ -255,169 +276,217 @@ export default function MusicPlayerModule({
     }
   }, [deviceOnline, config?.musicDir, controlWs]);
 
-  // Phones only allow play() in the same tap that started it. A silent clip
-  // during that tap unlocks the element so the file can start once it arrives.
-  const primeAudio = () => {
+  const ensureAudioGraph = () => {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtxRef.current) {
+      const ctx = new Ctx();
+      const gain = ctx.createGain();
+      gain.gain.value = volumeRef.current;
+      gain.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      gainRef.current = gain;
+    }
+    if (gainRef.current) gainRef.current.gain.value = volumeRef.current;
+    return audioCtxRef.current;
+  };
+
+  const pullChunk = () => {
+    const ws = mediaWsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!streamActiveRef.current || awaitingRef.current || eofRef.current) return;
+    awaitingRef.current = true;
+    try {
+      ws.send(JSON.stringify({ cmd: "music_next" }));
+    } catch {
+      awaitingRef.current = false;
+    }
+  };
+
+  const stopStream = () => {
+    suppressAudioErrorRef.current = true;
+    setTimeout(() => {
+      suppressAudioErrorRef.current = false;
+    }, 300);
+    streamActiveRef.current = false;
+    awaitingRef.current = false;
+    eofRef.current = false;
+    discardRef.current = false;
+    pendingChunkLenRef.current = 0;
+    modeRef.current = "";
+    if (pcmRef.current) {
+      pcmRef.current.stop();
+      pcmRef.current = null;
+    }
+    const ws = mediaWsRef.current;
+    mediaWsRef.current = null;
+    if (ws) {
+      const sendStop = () => {
+        try {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ cmd: "music_stop" }));
+          }
+        } catch {
+          // ignore
+        }
+        try {
+          ws.close(1000, "stop");
+        } catch {
+          // ignore
+        }
+      };
+      if (ws.readyState === WebSocket.CONNECTING) ws.onopen = sendStop;
+      else sendStop();
+    }
+    sourceBufferRef.current = null;
+    mediaSourceRef.current = null;
+    if (objectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(objectUrlRef.current);
+      } catch {
+        // ignore
+      }
+      objectUrlRef.current = "";
+    }
     const audio = audioRef.current;
-    if (!audio) return;
-    primingRef.current = true;
-    if (!audio.src) {
-      audio.src =
-        "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
-    }
-    const started = audio.play();
-    if (started && typeof started.then === "function") {
-      started
-        .then(() => {
-          audio.pause();
-          audio.currentTime = 0;
-          primingRef.current = false;
-        })
-        .catch(() => {
-          primingRef.current = false;
-        });
-    } else {
-      primingRef.current = false;
+    if (audio) {
+      stopInProgressRef.current = true;
+      try {
+        audio.pause();
+      } catch {
+        // ignore
+      }
+      try {
+        audio.removeAttribute("src");
+        audio.load();
+      } catch {
+        // ignore
+      }
+      stopInProgressRef.current = false;
     }
   };
 
-  const prefersFullDownload = () => {
-    if (typeof window === "undefined") return false;
-    const ua = navigator.userAgent || "";
-    const ios =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    return (
-      ios || window.matchMedia("(hover: none), (pointer: coarse)").matches
-    );
-  };
+  // Stream over /ws/media. The length comes back with music_start, and
+  // playback begins as soon as the first chunks arrive.
+  const handleSelectTrack = (file, index) => {
+    const audio = audioRef.current;
+    if (!audio || !file) return;
 
-  // Handle track selection
-  const handleSelectTrack = async (file, index) => {
-    if (!audioRef.current) return;
-    primeAudio();
-
-    // Bump sequence so any in-flight WS/audio events from older streams are ignored.
-    const mySeq = (streamSeqRef.current = streamSeqRef.current + 1);
-
-    // Stop any existing playback/stream before switching tracks
-    await handleStop();
+    const mySeq = (streamSeqRef.current += 1);
     userPausedRef.current = false;
-
-    const musicDir = config?.musicDir || "/music";
-    const filePath = `${musicDir}/${file.name}`;
-
-    console.log("🎵 Playing track:", file.name);
-
-    // Update state immediately
+    stopStream();
+    knownDurationRef.current = 0;
+    fileSizeRef.current = 0;
+    sawAudioRef.current = false;
+    setDuration(0);
+    setTrackMeta(null);
     setCurrentTrack(file);
     setCurrentTrackIndex(index);
     setCurrentTime(0);
+    setIsPlaying(true);
+    setIsPaused(false);
 
-    // Build ws://.../ws/media URL (include token via api)
-    const mdnsHostname = globalConfig?.hostname || globalConfig?.deviceName;
-    const mediaWsUrl = buildWebSocketUrl("/ws/media", mdnsHostname || null);
+    const musicDir = config?.musicDir || "/music";
+    const filePath = `${musicDir}/${file.name}`;
+    const mime = mimeForName(file.name);
+    const useMse = canUseMse(mime);
+    modeRef.current = useMse ? "mse" : "pcm";
+
+    const ctx = ensureAudioGraph();
+    if (ctx) unlockContext(ctx);
+    if (!useMse && ctx && gainRef.current) {
+      pcmRef.current = createPcmPlayer({
+        ctx,
+        gain: gainRef.current,
+        onTime: (t) => {
+          if (!isSeekingRef.current) setCurrentTime(t);
+        },
+        onStart: () => {
+          setIsPlaying(true);
+          setIsPaused(false);
+        },
+        onEnded: () => {
+          if (mySeq !== streamSeqRef.current) return;
+          handleSkipNext();
+        },
+      });
+    }
+
+    const mediaWsUrl = buildWebSocketUrl(
+      "/ws/media",
+      globalConfig?.hostname || globalConfig?.deviceName || null
+    );
     if (!mediaWsUrl) {
       console.error("🎵 Failed to build media WebSocket URL.");
       return;
     }
 
-    // Setup websocket
     streamActiveRef.current = true;
-    pendingChunkLenRef.current = 0;
-
+    eofRef.current = false;
+    awaitingRef.current = false;
+    let startReady = false;
+    const armPull = () => {
+      if (!startReady) return;
+      if (useMse && !sourceBufferRef.current) return;
+      pullChunk();
+    };
     const ws = new WebSocket(mediaWsUrl);
     ws.binaryType = "arraybuffer";
     mediaWsRef.current = ws;
 
-    // Guess MIME; server will also accept mime hint
-    const lower = String(file.name || "").toLowerCase();
-    const mime = lower.endsWith(".mp3")
-      ? "audio/mpeg"
-      : lower.endsWith(".ogg")
-      ? "audio/ogg"
-      : "audio/mpeg";
-
-    // Decide playback pipeline:
-    // - If MediaSource is available AND supports this mime, stream progressively.
-    // - Otherwise, download full file over WS, then play from a Blob URL.
-    const canMse =
-      !prefersFullDownload() &&
-      typeof window !== "undefined" &&
-      "MediaSource" in window &&
-      typeof window.MediaSource?.isTypeSupported === "function" &&
-      window.MediaSource.isTypeSupported(mime);
-
-    let ms = null;
-    let sourceOpen = false;
-    let startAck = null;
-    const blobParts = [];
-
-    const setAudioSrcObjectUrl = (url) => {
-      if (!audioRef.current) return;
-      audioRef.current.src = url;
-      try {
-        audioRef.current.load();
-      } catch {
-        // ignore
-      }
-    };
-
-    if (canMse) {
-      ms = new MediaSource();
+    if (useMse) {
+      const MS = window.MediaSource || window.ManagedMediaSource;
+      const ms = new MS();
       mediaSourceRef.current = ms;
       const objUrl = URL.createObjectURL(ms);
       objectUrlRef.current = objUrl;
-      setAudioSrcObjectUrl(objUrl);
-
-      const onSourceOpen = () => {
-        sourceOpen = true;
-        // If we already got music_start, we can init SB now.
-        if (!startAck || sourceBufferRef.current) return;
-        try {
-          const sb = ms.addSourceBuffer(startAck?.mime || mime);
-          sourceBufferRef.current = sb;
-          sb.addEventListener("updateend", () => {
-            // Pull next chunk after append completes
-            if (streamActiveRef.current) {
-              try {
-                ws.send(JSON.stringify({ cmd: "music_next" }));
-              } catch {
-                // ignore
-              }
-            }
-          });
-          // Kick off first chunk
-          try {
-            ws.send(JSON.stringify({ cmd: "music_next" }));
-          } catch {
-            // ignore
-          }
-        } catch (e) {
-          console.error("🎵 addSourceBuffer failed:", e);
-          handleStop();
-        }
-      };
-
-      // Attach immediately to avoid sourceopen race.
-      ms.addEventListener("sourceopen", onSourceOpen, { once: true });
-      if (ms.readyState === "open") {
-        onSourceOpen();
+      audio.src = objUrl;
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {});
       }
-    } else {
-      // Blob-download mode: don't set src until we have full file.
-      mediaSourceRef.current = null;
-      sourceBufferRef.current = null;
-      objectUrlRef.current = "";
-      setAudioSrcObjectUrl("");
+      ms.addEventListener(
+        "sourceopen",
+        () => {
+          if (mySeq !== streamSeqRef.current || sourceBufferRef.current) return;
+          try {
+            const sb = ms.addSourceBuffer(mime);
+            try {
+              sb.mode = "sequence";
+            } catch {
+              // ignore
+            }
+            sourceBufferRef.current = sb;
+            sb.addEventListener("updateend", () => {
+              if (mySeq !== streamSeqRef.current) return;
+              if (streamActiveRef.current && !eofRef.current) pullChunk();
+            });
+            armPull();
+          } catch (error) {
+            console.error("🎵 addSourceBuffer failed:", error);
+            stopStream();
+          }
+        },
+        { once: true }
+      );
     }
 
-    const startCmd = {
-      cmd: "music_start",
-      fs: "sd",
-      path: filePath,
-      mime,
-      chunkSize: 16384,
+    const applyTrackInfo = (msg) => {
+      const durationMs = Number(msg?.durationMs);
+      const bitrate = Number(msg?.bitrate);
+      const sampleRate = Number(msg?.sampleRate);
+      const size = Number(msg?.size);
+      fileSizeRef.current = Number.isFinite(size) ? size : 0;
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        knownDurationRef.current = durationMs / 1000;
+        setDuration(durationMs / 1000);
+      }
+      setTrackMeta({
+        durationMs: Number.isFinite(durationMs) ? durationMs : 0,
+        bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+        sampleRate: Number.isFinite(sampleRate) ? sampleRate : 0,
+        size: Number.isFinite(size) ? size : 0,
+      });
     };
 
     ws.onopen = () => {
@@ -430,17 +499,22 @@ export default function MusicPlayerModule({
         return;
       }
       try {
-        ws.send(JSON.stringify(startCmd));
-      } catch (e) {
-        console.error("🎵 Failed to send music_start:", e);
+        ws.send(
+          JSON.stringify({
+            cmd: "music_start",
+            fs: "sd",
+            path: filePath,
+            mime,
+            chunkSize: 16384,
+          })
+        );
+      } catch (error) {
+        console.error("🎵 Failed to send music_start:", error);
       }
     };
 
     ws.onmessage = async (event) => {
-      if (mySeq !== streamSeqRef.current) {
-        return;
-      }
-      // Text: control/metadata; Binary: audio bytes
+      if (mySeq !== streamSeqRef.current) return;
       if (typeof event.data === "string") {
         let msg;
         try {
@@ -448,267 +522,166 @@ export default function MusicPlayerModule({
         } catch {
           return;
         }
-
         if (msg?.type === "music_start") {
           if (msg?.ok === false) {
             console.error("🎵 music_start failed:", msg?.error || "unknown");
-            handleStop();
+            stopStream();
+            setIsPlaying(false);
+            setIsPaused(false);
             return;
           }
-          startAck = msg;
-
-          // Kick off streaming in blob mode immediately.
-          if (!canMse) {
-            try {
-              ws.send(JSON.stringify({ cmd: "music_next" }));
-            } catch {
-              // ignore
-            }
-          } else {
-            // If source is already open, init SB now.
-            if (sourceOpen && ms && !sourceBufferRef.current) {
-              try {
-                const sb = ms.addSourceBuffer(startAck?.mime || mime);
-                sourceBufferRef.current = sb;
-                sb.addEventListener("updateend", () => {
-                  if (streamActiveRef.current) {
-                    try {
-                      ws.send(JSON.stringify({ cmd: "music_next" }));
-                    } catch {
-                      // ignore
-                    }
-                  }
-                });
-                try {
-                  ws.send(JSON.stringify({ cmd: "music_next" }));
-                } catch {
-                  // ignore
-                }
-              } catch (e) {
-                console.error("🎵 addSourceBuffer failed:", e);
-                handleStop();
-              }
-            }
-          }
+          applyTrackInfo(msg);
+          startReady = true;
+          armPull();
+          return;
         }
-
+        if (msg?.type === "music_seek") {
+          discardRef.current = false;
+          awaitingRef.current = false;
+          eofRef.current = false;
+          streamActiveRef.current = true;
+          pullChunk();
+          return;
+        }
         if (msg?.type === "music_chunk") {
           if (msg?.eof) {
-            if (canMse && ms) {
+            awaitingRef.current = false;
+            eofRef.current = true;
+            if (useMse && mediaSourceRef.current?.readyState === "open") {
               try {
-                if (ms.readyState === "open") ms.endOfStream();
+                mediaSourceRef.current.endOfStream();
               } catch {
                 // ignore
               }
-            } else {
-              // Blob-download complete: create a playable URL and start playback.
-              try {
-                const blob = new Blob(blobParts, {
-                  type: startAck?.mime || mime,
-                });
-                const url = URL.createObjectURL(blob);
-                objectUrlRef.current = url;
-                setAudioSrcObjectUrl(url);
-                if (!userPausedRef.current) {
-                  await audioRef.current.play();
-                }
-              } catch (e) {
-                console.error("🎵 Failed to play downloaded track:", e);
-              }
-              // Close stream after completion
-              try {
-                ws.close(1000, "music_eof");
-              } catch {
-                // ignore
-              }
+            } else if (pcmRef.current) {
+              pcmRef.current.markEof();
             }
             return;
           }
           pendingChunkLenRef.current = Number(msg?.len || 0);
         }
-
         return;
       }
 
-      if (event.data instanceof ArrayBuffer) {
-        if (mySeq !== streamSeqRef.current) {
-          return;
-        }
-        const expected = pendingChunkLenRef.current;
-        if (!expected || expected <= 0) {
-          return;
-        }
-
-        const buf = new Uint8Array(event.data);
-        pendingChunkLenRef.current = 0;
-
-        if (canMse) {
-          const sb = sourceBufferRef.current;
-          if (!sb) return;
-
-          // Wait until sourceBuffer is ready
-          const append = () => {
-            try {
-              if (!sb.updating) {
-                sb.appendBuffer(buf);
-              } else {
-                setTimeout(append, 10);
-              }
-            } catch (e) {
-              console.error("🎵 appendBuffer failed:", e);
-            }
-          };
-          append();
-
-          // Start playback as soon as we have some buffered data
-          if (!userPausedRef.current && audioRef.current?.paused) {
-            try {
-              await audioRef.current.play();
-            } catch {
-              // ignore autoplay restrictions; user initiated click should allow
-            }
-          }
-        } else {
-          // Blob-download mode: buffer bytes, then request next chunk.
-          blobParts.push(buf);
-          try {
-            ws.send(JSON.stringify({ cmd: "music_next" }));
-          } catch {
-            // ignore
+      if (!(event.data instanceof ArrayBuffer)) return;
+      const expected = pendingChunkLenRef.current;
+      pendingChunkLenRef.current = 0;
+      awaitingRef.current = false;
+      if (!expected) return;
+      if (discardRef.current) return;
+      const buf = new Uint8Array(event.data).slice();
+      if (!sawAudioRef.current) {
+        sawAudioRef.current = true;
+        if (!(knownDurationRef.current > 0)) {
+          const guessed = estimateTrack(buf, fileSizeRef.current);
+          if (guessed?.durationMs > 0) {
+            knownDurationRef.current = guessed.durationMs / 1000;
+            setDuration(knownDurationRef.current);
+            setTrackMeta((prev) => ({
+              durationMs: guessed.durationMs,
+              bitrate: prev?.bitrate || guessed.bitrate,
+              sampleRate: prev?.sampleRate || guessed.sampleRate,
+              size: prev?.size || fileSizeRef.current,
+            }));
           }
         }
       }
+
+      if (useMse) {
+        const sb = sourceBufferRef.current;
+        if (!sb) return;
+        const append = () => {
+          try {
+            if (!sb.updating) sb.appendBuffer(buf);
+            else setTimeout(append, 10);
+          } catch (error) {
+            console.error("🎵 appendBuffer failed:", error);
+          }
+        };
+        append();
+        if (!userPausedRef.current && audio.paused) {
+          try {
+            await audio.play();
+          } catch {
+            // playback can start on the next chunk
+          }
+        }
+        return;
+      }
+
+      if (pcmRef.current) pcmRef.current.push(buf, mime);
+      pullChunk();
     };
 
-    ws.onerror = (e) => {
-      // Don't spam errors when we're intentionally stopping/switching.
-      if (mySeq !== streamSeqRef.current || stopInProgressRef.current) {
-        return;
-      }
-      console.warn("🎵 media socket error:", e);
-      handleStop();
+    ws.onerror = () => {
+      if (mySeq !== streamSeqRef.current || stopInProgressRef.current) return;
+      console.warn("🎵 media socket error");
     };
 
     ws.onclose = () => {
-      // When switching tracks we intentionally supersede old sockets.
-      if (mySeq !== streamSeqRef.current || stopInProgressRef.current) {
-        return;
-      }
-      // Unexpected close: stop playback.
-      if (streamActiveRef.current) {
-        handleStop();
+      if (mySeq !== streamSeqRef.current || stopInProgressRef.current) return;
+      if (streamActiveRef.current && !eofRef.current) {
+        stopStream();
+        setIsPlaying(false);
+        setIsPaused(false);
       }
     };
   };
 
-  // Handle play/pause
   const handlePlayPause = async () => {
-    if (!audioRef.current) return;
-    primeAudio();
-
-    // If no track selected, play the first one
     if (!currentTrack && musicFiles.length > 0) {
       handleSelectTrack(musicFiles[0], 0);
       return;
     }
+    if (!currentTrack) return;
 
-    // Toggle play/pause
-    if (isPlaying && !isPaused) {
-      audioRef.current.pause();
-    } else {
-      try {
-        await audioRef.current.play();
-      } catch (error) {
-        console.error("🎵 Error playing audio:", error);
+    const ctx = ensureAudioGraph();
+    if (ctx) unlockContext(ctx);
+
+    if (modeRef.current === "pcm" && pcmRef.current) {
+      if (isPlaying && !isPaused) {
+        userPausedRef.current = true;
+        pcmRef.current.pause();
+        setIsPaused(true);
+        return;
       }
+      userPausedRef.current = false;
+      pcmRef.current.resume();
+      setIsPaused(false);
+      setIsPlaying(true);
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying && !isPaused) {
+      userPausedRef.current = true;
+      audio.pause();
+      return;
+    }
+    if (!streamActiveRef.current && !audio.src) {
+      handleSelectTrack(currentTrack, currentTrackIndex);
+      return;
+    }
+    userPausedRef.current = false;
+    try {
+      await audio.play();
+    } catch (error) {
+      console.error("🎵 Error playing audio:", error);
     }
   };
 
-  // Handle stop
   const handleStop = async () => {
-    if (!audioRef.current) return;
-
     stopInProgressRef.current = true;
     suppressAudioErrorRef.current = true;
     setTimeout(() => {
       suppressAudioErrorRef.current = false;
     }, 250);
-
-    try {
-      // Stop media stream first (best-effort)
-      streamActiveRef.current = false;
-      if (mediaWsRef.current) {
-        const ws = mediaWsRef.current;
-        mediaWsRef.current = null;
-
-        // Avoid browser console noise: don't close while CONNECTING.
-        if (ws.readyState === WebSocket.CONNECTING) {
-          ws.onopen = () => {
-            try {
-              ws.send(JSON.stringify({ cmd: "music_stop" }));
-            } catch {
-              // ignore
-            }
-            try {
-              ws.close(1000, "stop_after_connect");
-            } catch {
-              // ignore
-            }
-          };
-        } else {
-          try {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ cmd: "music_stop" }));
-            }
-          } catch {
-            // ignore
-          }
-          try {
-            ws.close(1000, "stop");
-          } catch {
-            // ignore
-          }
-        }
-      }
-    } finally {
-      // Tear down MediaSource / blob URL
-      sourceBufferRef.current = null;
-      mediaSourceRef.current = null;
-      pendingChunkLenRef.current = 0;
-      if (objectUrlRef.current && objectUrlRef.current.startsWith("blob:")) {
-        try {
-          URL.revokeObjectURL(objectUrlRef.current);
-        } catch {
-          // ignore
-        }
-        objectUrlRef.current = "";
-      }
-
-      // Stop local audio playback and abort network requests
-      try {
-        audioRef.current.pause();
-      } catch {
-        // ignore
-      }
-      try {
-        audioRef.current.currentTime = 0;
-      } catch {
-        // ignore
-      }
-
-      // Clear the source to abort ongoing requests
-      try {
-        audioRef.current.src = "";
-        audioRef.current.load(); // Reset the audio element
-      } catch {
-        // ignore
-      }
-
-      setCurrentTime(0);
-      setIsPlaying(false);
-      setIsPaused(false);
-      stopInProgressRef.current = false;
-    }
+    stopStream();
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setIsPaused(false);
+    stopInProgressRef.current = false;
   };
 
   // Handle skip next
@@ -730,9 +703,10 @@ export default function MusicPlayerModule({
   const handleVolumeChange = (event, newValue) => {
     const newVolume = newValue / 100;
     setVolume(newVolume);
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume;
-    }
+    volumeRef.current = newVolume;
+    if (audioRef.current) audioRef.current.volume = newVolume;
+    if (gainRef.current) gainRef.current.gain.value = newVolume;
+    if (pcmRef.current) pcmRef.current.setVolume(newVolume);
 
     if (isCasting) {
       console.log(
@@ -741,8 +715,12 @@ export default function MusicPlayerModule({
     }
   };
 
-  // Scrub/seek handlers
   const clampToSeekable = (t) => {
+    const limit = knownDurationRef.current || duration;
+    if (limit && Number.isFinite(limit)) {
+      if (t < 0) return 0;
+      if (t > limit) return limit;
+    }
     const a = audioRef.current;
     if (!a) return t;
     try {
@@ -757,29 +735,40 @@ export default function MusicPlayerModule({
     } catch {
       // ignore
     }
-    // Fallback clamp to [0, duration]
-    if (duration && Number.isFinite(duration)) {
-      if (t < 0) return 0;
-      if (t > duration) return duration;
-    }
     return t;
   };
 
   const applySeek = (t) => {
-    const a = audioRef.current;
-    if (!a) return false;
-    const tt = clampToSeekable(t);
-    try {
-      if (typeof a.fastSeek === "function") {
-        a.fastSeek(tt);
-      } else {
-        a.currentTime = tt;
+    const limit = knownDurationRef.current || duration || t;
+    const tt = Math.max(0, Math.min(Number(t) || 0, limit));
+    if (modeRef.current === "pcm" && pcmRef.current) {
+      discardRef.current = true;
+      awaitingRef.current = false;
+      eofRef.current = false;
+      streamActiveRef.current = true;
+      pcmRef.current.seek(tt);
+      setCurrentTime(tt);
+      const ws = mediaWsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ cmd: "music_seek", ms: Math.round(tt * 1000) }));
+        } catch {
+          // ignore
+        }
       }
       pendingSeekTimeRef.current = null;
       return true;
+    }
+    const a = audioRef.current;
+    if (!a) return false;
+    const clamped = clampToSeekable(tt);
+    try {
+      if (typeof a.fastSeek === "function") a.fastSeek(clamped);
+      else a.currentTime = clamped;
+      pendingSeekTimeRef.current = null;
+      return true;
     } catch {
-      // Some browsers throw if not seekable yet; retry on canplay/loadedmetadata.
-      pendingSeekTimeRef.current = tt;
+      pendingSeekTimeRef.current = clamped;
       return false;
     }
   };
@@ -919,6 +908,20 @@ export default function MusicPlayerModule({
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
+
+  const trackMetaLabel = (() => {
+    if (!currentTrack) return "";
+    const parts = [];
+    if (duration > 0) parts.push(formatTime(duration));
+    if (trackMeta?.bitrate > 0) {
+      parts.push(`${Math.round(trackMeta.bitrate / 1000)} kbps`);
+    }
+    if (trackMeta?.sampleRate > 0) {
+      const khz = trackMeta.sampleRate / 1000;
+      parts.push(`${Number.isInteger(khz) ? khz.toFixed(0) : khz.toFixed(1)} kHz`);
+    }
+    return parts.join(" · ");
+  })();
 
   // Format file size
   const formatFileSize = (bytes) => {
@@ -1083,7 +1086,20 @@ export default function MusicPlayerModule({
             >
               {currentTrack ? currentTrack.name : "No track selected"}
             </Typography>
-            {/* (status text removed; times are shown next to scrub bar) */}
+            {trackMetaLabel ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                align="center"
+                sx={{
+                  fontSize: { xs: "0.55rem", sm: "0.7rem" },
+                  lineHeight: 1.2,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {trackMetaLabel}
+              </Typography>
+            ) : null}
 
             {/* Controls + timeline layout: transport centered over the scrub bar */}
             <Box

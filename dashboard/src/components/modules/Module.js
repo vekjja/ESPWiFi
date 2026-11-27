@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import IButton from "../common/IButton";
 import DeleteButton from "../common/DeleteButton";
 import { Box, Card, CardContent, Typography } from "@mui/material";
@@ -12,6 +12,13 @@ import SectionTitle from "../common/SectionTitle";
 const MIN_MODULE_WIDTH = 220;
 const MIN_MODULE_HEIGHT = 160;
 const SCALE_BASIS = 340;
+
+// The board publishes how wide a card can grow and a live size preview so
+// neighbors move while the corner is dragged, before the size is saved.
+export const ModuleLayoutContext = React.createContext({
+  maxCardWidth: () => 0,
+  previewResize: () => {},
+});
 
 function moduleScale(width, height) {
   const w = Number(width);
@@ -47,6 +54,7 @@ export default function Module({
 }) {
   const cardRef = useRef(null);
   const resizeRef = useRef(null);
+  const layout = useContext(ModuleLayoutContext);
   const [liveSize, setLiveSize] = useState(null);
   const [touched, setTouched] = useState(false);
   const [touchTick, setTouchTick] = useState(0);
@@ -88,16 +96,19 @@ export default function Module({
   const moveResize = (event) => {
     const drag = resizeRef.current;
     if (!drag) return;
-    const width = Math.max(
-      MIN_MODULE_WIDTH,
-      Math.round(drag.width + event.clientX - drag.x)
-    );
+    const rawWidth = Math.round(drag.width + event.clientX - drag.x);
+    const limit = layout.maxCardWidth(moduleConfig?.key);
+    const width =
+      limit > 0
+        ? Math.min(limit, Math.max(Math.min(MIN_MODULE_WIDTH, limit), rawWidth))
+        : Math.max(MIN_MODULE_WIDTH, rawWidth);
     const height = Math.max(
       MIN_MODULE_HEIGHT,
       Math.round(drag.height + event.clientY - drag.y)
     );
     drag.size = { width, height };
     setLiveSize(drag.size);
+    if (moduleConfig?.key != null) layout.previewResize(moduleConfig.key, drag.size);
   };
 
   const endResize = (event) => {
@@ -111,6 +122,7 @@ export default function Module({
       slot.removeAttribute("data-resizing");
       slot.style.zIndex = "";
     }
+    if (moduleConfig?.key != null) layout.previewResize(moduleConfig.key, null);
     if (drag?.size && onResize) onResize(drag.size);
   };
 

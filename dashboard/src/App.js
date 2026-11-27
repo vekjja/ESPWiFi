@@ -782,7 +782,7 @@ function App() {
         />
       </Suspense>
 
-      <Container>
+      <Container maxWidth={false} disableGutters sx={{ width: "100%" }}>
         <Suspense fallback={<LinearProgress color="inherit" />}>
           <Modules
             config={effectiveConfig}

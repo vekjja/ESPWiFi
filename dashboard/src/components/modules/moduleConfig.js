@@ -57,11 +57,11 @@ export function connectionLabel(status) {
   );
 }
 
-function squareFrame(width, height) {
+function fixedFrame(width, height) {
   return {
     width,
-    minWidth: width,
-    maxWidth: width,
+    maxWidth: `calc(100% - ${MODULE_GUTTER * 2}px)`,
+    minWidth: 0,
     height,
     minHeight: height,
     maxHeight: height,
@@ -105,19 +105,12 @@ export function frameSxForModule(moduleConfig) {
   if (moduleConfig.size === "custom") {
     const width = moduleCardWidth(moduleConfig) || MODULE_SIZES.medium.width;
     const height = customHeight || MODULE_SIZES.medium.height;
-    return {
-      width,
-      maxWidth: `calc(100% - ${MODULE_GUTTER * 2}px)`,
-      minWidth: 0,
-      height,
-      minHeight: height,
-      maxHeight: height,
-    };
+    return fixedFrame(width, height);
   }
 
   if (moduleConfig.size && MODULE_SIZES[moduleConfig.size]) {
     const preset = MODULE_SIZES[moduleConfig.size];
-    return squareFrame(preset.width, preset.height);
+    return fixedFrame(preset.width, preset.height);
   }
 
   return fluidFrame();

@@ -1,24 +1,23 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { Container } from "@mui/material";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  arrayMove,
   SortableContext,
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import PinModule from "./pin/PinModule";
 import WebSocketModule from "./websocket/WebSocketModule";
 import CameraModule from "./camera/CameraModule";
 import MusicPlayerModule from "./music/MusicPlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
 import LogsModule from "./logs/LogsModule";
+import { ModuleLayoutContext } from "./Module";
 import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
 
 function estimateHeight(module) {
@@ -72,92 +71,120 @@ function skylineTop(skyline, x, width) {
   return y;
 }
 
-// Place each module at its own width. Later modules sit beside earlier ones
-// and drop into the gaps under shorter neighbors. Widths are never stretched.
-function packModules(items, heights, boardWidth) {
+function moduleHeight(item, heights) {
+  const measured = heights[String(item.key)];
+  const customHeight =
+    item.size === "custom" && Number(item.height) > 0
+      ? Math.round(Number(item.height) + MODULE_GUTTER * 2)
+      : 0;
+  const presetHeight =
+    !customHeight && item.size && MODULE_SIZES[item.size] && !item.wide
+      ? MODULE_SIZES[item.size].height + MODULE_GUTTER * 2
+      : 0;
+  return customHeight || presetHeight || measured || estimateHeight(item);
+}
+
+function placeItem(skyline, boxes, item, heights, board) {
+  const slot = Math.max(1, moduleSlotWidth(item, board));
+  const h = moduleHeight(item, heights);
+  if (slot >= board) {
+    const y = skyline.reduce((max, seg) => Math.max(max, seg.y), 0);
+    boxes.set(item.key, { x: 0, y, w: board, h });
+    return [{ x: 0, y: y + h, w: board }];
+  }
+  const xs = new Set([0]);
+  skyline.forEach((seg) => {
+    xs.add(seg.x);
+    const alignRight = seg.x + seg.w - slot;
+    if (alignRight > 0) xs.add(alignRight);
+  });
+  let best = null;
+  Array.from(xs)
+    .filter((candidate) => candidate >= 0 && candidate + slot <= board)
+    .sort((a, b) => a - b)
+    .forEach((candidate) => {
+      const top = skylineTop(skyline, candidate, slot);
+      if (!best || top < best.y || (top === best.y && candidate < best.x)) {
+        best = { x: candidate, y: top };
+      }
+    });
+  const x = best ? best.x : 0;
+  const y = best ? best.y : 0;
+  boxes.set(item.key, { x, y, w: slot, h });
+  return raiseSkyline(skyline, x, slot, y + h);
+}
+
+// Place each module at its own width and height. Later modules sit beside
+// earlier ones and drop into the gaps under shorter neighbors. A resize pin
+// keeps the card under the pointer; the others keep their own sizes.
+function packModules(items, heights, boardWidth, pin) {
   const board = Math.max(0, Math.round(boardWidth || 0));
   const boxes = new Map();
   if (!board) {
     return { boxes, height: 0 };
   }
-  let skyline = [{ x: 0, y: 0, w: board }];
+  const above = [];
+  const rest = [];
   items.forEach((item) => {
-    const slot = Math.max(1, moduleSlotWidth(item, board));
-    const measured = heights[String(item.key)];
-    const customHeight =
-      item.size === "custom" && Number(item.height) > 0
-        ? Math.round(Number(item.height) + MODULE_GUTTER * 2)
-        : 0;
-    const presetHeight =
-      !customHeight && item.size && MODULE_SIZES[item.size] && !item.wide
-        ? MODULE_SIZES[item.size].height + MODULE_GUTTER * 2
-        : 0;
-    const h = customHeight || presetHeight || measured || estimateHeight(item);
-    if (slot >= board) {
-      const y = skyline.reduce((max, seg) => Math.max(max, seg.y), 0);
-      boxes.set(item.key, { x: 0, y, w: board, h });
-      skyline = [{ x: 0, y: y + h, w: board }];
-      return;
-    }
-    const xs = new Set([0]);
-    skyline.forEach((seg) => {
-      xs.add(seg.x);
-      const alignRight = seg.x + seg.w - slot;
-      if (alignRight > 0) xs.add(alignRight);
-    });
-    let best = null;
-    Array.from(xs)
-      .filter((candidate) => candidate >= 0 && candidate + slot <= board)
-      .sort((a, b) => a - b)
-      .forEach((candidate) => {
-        const top = skylineTop(skyline, candidate, slot);
-        if (!best || top < best.y || (top === best.y && candidate < best.x)) {
-          best = { x: candidate, y: top };
-        }
-      });
-    const x = best ? best.x : 0;
-    const y = best ? best.y : 0;
-    boxes.set(item.key, { x, y, w: slot, h });
-    skyline = raiseSkyline(skyline, x, slot, y + h);
+    if (pin && item.key === pin.key) return;
+    const origin = pin?.origins?.get(item.key);
+    if (pin && origin && origin.y + origin.h <= pin.y + 1) above.push(item);
+    else rest.push(item);
+  });
+  let skyline = [{ x: 0, y: 0, w: board }];
+  above.forEach((item) => {
+    skyline = placeItem(skyline, boxes, item, heights, board);
+  });
+  if (pin) {
+    const pinned = items.find((item) => item.key === pin.key);
+    const wide = !!pinned?.wide;
+    const x = wide ? 0 : Math.max(0, Math.min(pin.x, board - 1));
+    const slot = wide
+      ? board
+      : Math.max(1, Math.min(board - x, Math.round(pin.width) + MODULE_GUTTER * 2));
+    const h = Math.max(1, Math.round(pin.height) + MODULE_GUTTER * 2);
+    const box = { x, y: pin.y, w: slot, h };
+    boxes.set(pin.key, box);
+    skyline = raiseSkyline(skyline, box.x, box.w, box.y + box.h);
+  }
+  rest.forEach((item) => {
+    skyline = placeItem(skyline, boxes, item, heights, board);
   });
   const height = skyline.reduce((max, seg) => Math.max(max, seg.y), 0);
   return { boxes, height };
 }
 
-function masonrySortingStrategy({ rects, activeIndex, overIndex, index }) {
-  const newRects = arrayMove(rects, overIndex, activeIndex);
-  const oldRect = rects[index];
-  const newRect = newRects[index];
-  if (!newRect || !oldRect) return null;
-  return {
-    x: newRect.left - oldRect.left,
-    y: newRect.top - oldRect.top,
-    scaleX: 1,
-    scaleY: 1,
-  };
+// Reading order: the pointer inserts before the first card it is above or
+// to the left of, so a drop in open space lands in that gap.
+function insertIndex(others, boxes, x, y) {
+  let index = others.length;
+  for (let i = 0; i < others.length; i += 1) {
+    const box = boxes.get(others[i].key);
+    if (!box) continue;
+    if (y >= box.y + box.h) continue;
+    if (y < box.y) return i;
+    if (x < box.x + box.w / 2) return i;
+    index = i + 1;
+  }
+  return index;
 }
 
-function SortableModule({ module, box, children }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `module-${module.key}` });
+function SortableModule({ module, box, hidden, sliding, children }) {
+  const { attributes, listeners, setNodeRef } = useSortable({
+    id: `module-${module.key}`,
+    animateLayoutChanges: () => false,
+  });
 
   const style = {
     position: "absolute",
     left: box.x,
     top: box.y,
     width: box.w,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
+    zIndex: hidden ? 0 : 1,
+    opacity: hidden ? 0 : 1,
     boxSizing: "border-box",
     display: "flow-root",
+    transition: sliding ? "left 140ms ease, top 140ms ease" : undefined,
   };
 
   return (
@@ -186,6 +213,16 @@ export default function Modules({
   const boardRef = useRef(null);
   const [boardWidth, setBoardWidth] = useState(0);
   const [heights, setHeights] = useState({});
+  const [resizePreview, setResizePreview] = useState(null);
+  const [dragKey, setDragKey] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
+  const [dragSize, setDragSize] = useState(null);
+  const dragKeyRef = useRef(null);
+  const dropIndexRef = useRef(null);
+  const dragOriginsRef = useRef(null);
+  const previewRef = useRef(null);
+  const layoutRef = useRef({ boxes: new Map() });
+  const metricsRef = useRef({ items: [], heights: {}, boardWidth: 0 });
 
   // Configure sensors for drag detection with activation constraints
   const sensors = useSensors(
@@ -320,32 +357,113 @@ export default function Modules({
 
   // Use useMemo to ensure stable references
   const moduleItems = useMemo(() => modules, [modules]);
+  metricsRef.current = { items: moduleItems, heights, boardWidth };
+  previewRef.current = resizePreview;
 
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
+  const layoutApi = useMemo(
+    () => ({
+      maxCardWidth(key) {
+        const board = metricsRef.current.boardWidth;
+        if (!board) return 0;
+        const preview = previewRef.current;
+        const x =
+          preview && preview.key === key
+            ? preview.x
+            : layoutRef.current.boxes.get(key)?.x || 0;
+        return Math.max(1, board - x - MODULE_GUTTER * 2);
+      },
+      previewResize(key, size) {
+        setResizePreview((prev) => {
+          if (!size) return null;
+          if (
+            prev &&
+            prev.key === key &&
+            prev.width === size.width &&
+            prev.height === size.height
+          ) {
+            return prev;
+          }
+          if (prev && prev.key === key) {
+            return { ...prev, width: size.width, height: size.height };
+          }
+          const origins = new Map(layoutRef.current.boxes);
+          const box = origins.get(key) || { x: 0, y: 0 };
+          return {
+            key,
+            x: box.x,
+            y: box.y,
+            width: size.width,
+            height: size.height,
+            origins,
+          };
+        });
+      },
+    }),
+    []
+  );
 
-    if (!over || active.id === over.id) return;
+  const clearDrag = () => {
+    dragKeyRef.current = null;
+    dropIndexRef.current = null;
+    dragOriginsRef.current = null;
+    setDragKey(null);
+    setDropIndex(null);
+    setDragSize(null);
+  };
 
-    {
-      const oldIndex = moduleItems.findIndex(
-        (module) => `module-${module.key}` === active.id.toString()
-      );
-      const newIndex = moduleItems.findIndex(
-        (module) => `module-${module.key}` === over.id.toString()
-      );
+  const handleDragStart = (event) => {
+    const key = moduleItems.find(
+      (module) => `module-${module.key}` === String(event.active?.id)
+    )?.key;
+    if (key == null) return;
+    const index = moduleItems.findIndex((module) => module.key === key);
+    dragKeyRef.current = key;
+    dropIndexRef.current = index;
+    dragOriginsRef.current = new Map(layoutRef.current.boxes);
+    setDragKey(key);
+    setDropIndex(index);
+    const initial = event.active?.rect?.current?.initial;
+    if (initial) setDragSize({ width: initial.width, height: initial.height });
+  };
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        const reorderedModules = arrayMove(moduleItems, oldIndex, newIndex);
-
-        // Update local state first
-        setModules(reorderedModules);
-
-        // Update the global config with the reordered modules
-        const updatedConfig = { ...config, modules: reorderedModules };
-        saveConfig(updatedConfig); // Update local config
-        saveConfigToDevice(updatedConfig); // Save to device
-      }
+  const handleDragMove = (event) => {
+    const key = dragKeyRef.current;
+    if (key == null || !boardRef.current) return;
+    const rect =
+      event.active?.rect?.current?.translated ||
+      event.active?.rect?.current?.initial;
+    if (!rect) return;
+    const board = boardRef.current.getBoundingClientRect();
+    const x = rect.left + rect.width / 2 - board.left;
+    const y = rect.top + rect.height / 2 - board.top;
+    const { items } = metricsRef.current;
+    const others = items.filter((item) => item.key !== key);
+    const index = insertIndex(others, dragOriginsRef.current || new Map(), x, y);
+    if (dropIndexRef.current !== index) {
+      dropIndexRef.current = index;
+      setDropIndex(index);
     }
+  };
+
+  const handleDragEnd = () => {
+    const key = dragKeyRef.current;
+    const index = dropIndexRef.current;
+    const items = metricsRef.current.items;
+    clearDrag();
+    if (key == null || index == null) return;
+    const active = items.find((item) => item.key === key);
+    if (!active) return;
+    const others = items.filter((item) => item.key !== key);
+    const next = others.slice();
+    next.splice(Math.max(0, Math.min(index, others.length)), 0, active);
+    const unchanged =
+      next.length === items.length &&
+      next.every((item, i) => item.key === items[i].key);
+    if (unchanged) return;
+    setModules(next);
+    const updatedConfig = { ...config, modules: next };
+    saveConfig(updatedConfig);
+    saveConfigToDevice(updatedConfig);
   };
 
   const updateModule = (moduleKey, moduleState) => {
@@ -401,6 +519,12 @@ export default function Modules({
           if (entry.target.hasAttribute("data-resizing")) return;
           const key = entry.target.getAttribute("data-module-key");
           if (key == null) return;
+          if (
+            dragKeyRef.current != null &&
+            String(key) === String(dragKeyRef.current)
+          ) {
+            return;
+          }
           const height = Math.round(entry.target.offsetHeight);
           if (Math.abs((next[key] || 0) - height) > 4) {
             next[key] = height;
@@ -422,10 +546,21 @@ export default function Modules({
     };
   }, [moduleItems]);
 
+  const orderedItems = useMemo(() => {
+    if (dragKey == null || dropIndex == null) return moduleItems;
+    const active = moduleItems.find((item) => item.key === dragKey);
+    if (!active) return moduleItems;
+    const others = moduleItems.filter((item) => item.key !== dragKey);
+    const next = others.slice();
+    next.splice(Math.max(0, Math.min(dropIndex, others.length)), 0, active);
+    return next;
+  }, [moduleItems, dragKey, dropIndex]);
+
   const layout = useMemo(
-    () => packModules(moduleItems, heights, boardWidth),
-    [moduleItems, heights, boardWidth]
+    () => packModules(orderedItems, heights, boardWidth, resizePreview),
+    [orderedItems, heights, boardWidth, resizePreview]
   );
+  layoutRef.current = layout;
 
   const renderModule = (module) => {
     let child = null;
@@ -506,44 +641,78 @@ export default function Modules({
       w: moduleSlotWidth(module, boardWidth) || boardWidth,
     };
     return (
-      <SortableModule key={`${module.type}-${module.key}`} module={module} box={box}>
+      <SortableModule
+        key={`${module.type}-${module.key}`}
+        module={module}
+        box={box}
+        hidden={module.key === dragKey}
+        sliding={dragKey != null}
+      >
         {child}
       </SortableModule>
     );
   };
 
-  // Create IDs for module items
-  const moduleIds = moduleItems.map((module) => `module-${module.key}`);
+  const moduleIds = orderedItems.map((module) => `module-${module.key}`);
+  const dropBox = dragKey != null ? layout.boxes.get(dragKey) : null;
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <Container
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          marginTop: 2,
-        }}
+    <ModuleLayoutContext.Provider value={layoutApi}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+        onDragCancel={clearDrag}
       >
-        {/* Render all modules together */}
-        <SortableContext items={moduleIds} strategy={masonrySortingStrategy}>
-          <div
-            ref={boardRef}
-            style={{
-              position: "relative",
-              width: "100%",
-              height: layout.height,
-              minHeight: "100px",
-            }}
-          >
-            {moduleItems.map((module) => renderModule(module))}
-          </div>
-        </SortableContext>
-      </Container>
-    </DndContext>
+        <div style={{ width: "100%", marginTop: 16 }}>
+          <SortableContext items={moduleIds} strategy={() => null}>
+            <div
+              ref={boardRef}
+              style={{
+                position: "relative",
+                width: "100%",
+                height: layout.height,
+                minHeight: "100px",
+              }}
+            >
+              {dropBox ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: dropBox.x + MODULE_GUTTER,
+                    top: dropBox.y + MODULE_GUTTER,
+                    width: Math.max(0, dropBox.w - MODULE_GUTTER * 2),
+                    height: Math.max(0, dropBox.h - MODULE_GUTTER * 2),
+                    border: "1px dashed rgba(71, 255, 240, 0.75)",
+                    borderRadius: 5,
+                    background: "rgba(71, 255, 240, 0.06)",
+                    pointerEvents: "none",
+                    zIndex: 0,
+                    transition: "left 140ms ease, top 140ms ease",
+                  }}
+                />
+              ) : null}
+              {orderedItems.map((module) => renderModule(module))}
+            </div>
+          </SortableContext>
+          <DragOverlay dropAnimation={null}>
+            {dragKey != null && dragSize ? (
+              <div
+                style={{
+                  width: dragSize.width,
+                  height: dragSize.height,
+                  border: "1px solid rgba(71, 255, 240, 0.9)",
+                  borderRadius: 5,
+                  background: "rgba(18, 18, 18, 0.55)",
+                  boxSizing: "border-box",
+                }}
+              />
+            ) : null}
+          </DragOverlay>
+        </div>
+      </DndContext>
+    </ModuleLayoutContext.Provider>
   );
 }

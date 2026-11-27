@@ -252,6 +252,7 @@ export default function AddModuleModal({
     }
 
     const existingModules = config.modules || [];
+    if (existingModules.some((mod) => mod.type === "musicPlayer")) return;
     const newMusicPlayer = {
       type: "musicPlayer",
       name: musicPlayerData.name || "Music Player",
@@ -276,6 +277,7 @@ export default function AddModuleModal({
     }
 
     const existingModules = config.modules || [];
+    if (existingModules.some((mod) => mod.type === "moviePlayer")) return;
     const newMovie = {
       type: "moviePlayer",
       name: movieData.name || "Movies",
@@ -319,6 +321,9 @@ export default function AddModuleModal({
     (config?.modules || []).some(
       (mod) => mod.type === "systemInfo" && mod.info === info
     );
+
+  const hasModule = (type) =>
+    (config?.modules || []).some((mod) => mod.type === type);
 
   const CameraIcon = SECTIONS.camera.icon;
   const MemoryIcon = SECTIONS.memory.icon;
@@ -383,7 +388,10 @@ export default function AddModuleModal({
           </ListItem>
 
           <ListItem disablePadding>
-            <ListItemButton onClick={handleOpenMusicPlayerModal}>
+            <ListItemButton
+              onClick={handleOpenMusicPlayerModal}
+              disabled={hasModule("musicPlayer")}
+            >
               <ListItemIcon>
                 <LibraryMusicIcon />
               </ListItemIcon>
@@ -395,7 +403,10 @@ export default function AddModuleModal({
           </ListItem>
 
           <ListItem disablePadding>
-            <ListItemButton onClick={handleOpenMovieModal}>
+            <ListItemButton
+              onClick={handleOpenMovieModal}
+              disabled={hasModule("moviePlayer")}
+            >
               <ListItemIcon>
                 <MovieIcon />
               </ListItemIcon>

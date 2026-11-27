@@ -62,6 +62,7 @@ export function moduleCardWidth(module) {
   if (module.type === "pin") return 260;
   if (module.type === "webSocket") return 300;
   if (module.type === "camera" || module.type === "musicPlayer") return 440;
+  if (module.type === "moviePlayer") return 520;
   if (module.type === "systemInfo") return 360;
   if (module.type === "logs") return 720;
   return 320;
@@ -146,6 +147,19 @@ export function frameSxForModule(moduleConfig) {
       };
     }
     return fixedFrame(moduleCardWidth(moduleConfig) || 440, height);
+  }
+
+  if (moduleConfig.type === "moviePlayer" && !customHeight) {
+    const height = 560;
+    if (moduleConfig.wide) {
+      return {
+        ...fluidFrame(),
+        height,
+        minHeight: height,
+        maxHeight: height,
+      };
+    }
+    return fixedFrame(moduleCardWidth(moduleConfig) || 520, height);
   }
 
   if (moduleConfig.wide) {

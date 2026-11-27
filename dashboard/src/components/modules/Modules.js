@@ -18,7 +18,12 @@ import MusicPlayerModule from "./music/MusicPlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
 import LogsModule from "./logs/LogsModule";
 import { ModuleLayoutContext } from "./Module";
-import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
+import {
+  MODULE_GUTTER,
+  MODULE_SIZES,
+  moduleSlotWidth,
+  viewableCardHeight,
+} from "./moduleConfig";
 
 // A scroll or a control inside a module must not start a drag. dnd-kit's
 // PointerSensor otherwise treats the first 8px of a finger scroll as a move.
@@ -50,7 +55,7 @@ function estimateHeight(module) {
   } else if (module.type === "camera") {
     height = 540;
   } else if (module.type === "musicPlayer") {
-    height = 460;
+    height = viewableCardHeight();
   } else if (module.type === "logs") {
     height = 520;
   }
@@ -202,6 +207,9 @@ export default function Modules({
   const [modules, setModules] = useState([]);
   const boardRef = useRef(null);
   const [boardWidth, setBoardWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerHeight
+  );
   const [heights, setHeights] = useState({});
   const [resizePreview, setResizePreview] = useState(null);
   const [dragKey, setDragKey] = useState(null);
@@ -460,6 +468,12 @@ export default function Modules({
   }, []);
 
   useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
     const board = boardRef.current;
     if (!board) return undefined;
     const ro = new ResizeObserver((entries) => {
@@ -499,7 +513,7 @@ export default function Modules({
 
   const layout = useMemo(
     () => layoutModules(moduleItems, heights, boardWidth, resizePreview),
-    [moduleItems, heights, boardWidth, resizePreview]
+    [moduleItems, heights, boardWidth, resizePreview, viewportHeight]
   );
   layoutRef.current = layout;
 

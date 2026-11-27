@@ -76,6 +76,27 @@ export function moduleSlotWidth(module, boardWidth) {
   return Math.min(board, card + MODULE_GUTTER * 2);
 }
 
+// Card height that fits in the dashboard under the sticky header and toolbar.
+// Used as the starting size for a music player until the user resizes it.
+export function viewableCardHeight() {
+  if (typeof window === "undefined") return 460;
+  let chromeBottom = 0;
+  const headerPx = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      "--app-header-height"
+    )
+  );
+  if (Number.isFinite(headerPx)) chromeBottom = headerPx;
+  document.querySelectorAll(".MuiPaper-root").forEach((el) => {
+    if (getComputedStyle(el).position !== "sticky") return;
+    const bottom = el.getBoundingClientRect().bottom;
+    if (bottom > chromeBottom) chromeBottom = bottom;
+  });
+  // Board gap above the cards, plus the card's own top and bottom margin.
+  const outside = chromeBottom + 16 + MODULE_GUTTER * 2;
+  return Math.max(160, Math.round(window.innerHeight - outside));
+}
+
 export function connectionLabel(status) {
   return (
     CONNECTION_CHROME[status]?.label || CONNECTION_CHROME.disconnected.label
@@ -113,6 +134,19 @@ export function frameSxForModule(moduleConfig) {
     moduleConfig.size === "custom" && Number(moduleConfig.height) > 0
       ? Number(moduleConfig.height)
       : null;
+
+  if (moduleConfig.type === "musicPlayer" && !customHeight) {
+    const height = viewableCardHeight();
+    if (moduleConfig.wide) {
+      return {
+        ...fluidFrame(),
+        height,
+        minHeight: height,
+        maxHeight: height,
+      };
+    }
+    return fixedFrame(moduleCardWidth(moduleConfig) || 440, height);
+  }
 
   if (moduleConfig.wide) {
     return {

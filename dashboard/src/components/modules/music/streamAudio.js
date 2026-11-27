@@ -41,7 +41,15 @@ export function mimeForName(name) {
   return "audio/mpeg";
 }
 
+function isIos() {
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
+
 export function canUseMse(mime) {
+  // iOS will not play audio/mpeg through MediaSource. It decodes the bytes.
+  if (isIos()) return false;
   const MS = window.MediaSource || window.ManagedMediaSource;
   return Boolean(
     MS &&
@@ -239,13 +247,23 @@ function decodeBuffer(ctx, bytes) {
   });
 }
 
-export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
+function plausibleDuration(byteLength, audioBuffer) {
+  if (!audioBuffer || !(audioBuffer.duration > 0.05)) return false;
+  const bps = (byteLength * 8) / audioBuffer.duration;
+  return bps >= 8000 && bps <= 400000;
+}
+
+export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded, onFallback }) {
   let pieces = [];
   let nodes = [];
   let nextWhen = 0;
   let origin = 0;
   let playhead = 0;
   let base = 0;
+  let segmentStart = 0;
+  let scheduled = 0;
+  let latest = null;
+  let raw = new Uint8Array(0);
   let carry = new Uint8Array(0);
   let wavFmt = null;
   let mime = "audio/mpeg";
@@ -256,6 +274,8 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
   let stopped = false;
   let started = false;
   let ended = false;
+  let warned = false;
+  let decodedAt = 0;
   let timer = 0;
 
   const position = () => {
@@ -301,6 +321,12 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
 
   const schedule = (buffer, trackStart, skip = 0) => {
     if (stopped || paused) return;
+    const playable = buffer.duration - skip;
+    if (!(playable > 0.02)) return;
+    if (ctx.state !== "running") {
+      const pending = ctx.resume();
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
+    }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     src.connect(gain);
@@ -316,8 +342,12 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       tick();
     }
     const when = Math.max(nextWhen, now + 0.01);
-    src.start(when, skip);
-    nextWhen = when + Math.max(0, buffer.duration - skip);
+    try {
+      src.start(when, skip);
+    } catch {
+      return;
+    }
+    nextWhen = when + playable;
     src.onended = () => {
       nodes = nodes.filter((node) => node !== src);
       finishIfDrained();
@@ -332,6 +362,30 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
     schedule(audioBuffer, start, 0);
   };
 
+  // Phones reject a bare MP3 frame. Decode the original bytes gathered so
+  // far, and only schedule the part we have not already queued.
+  const adopt = (audioBuffer) => {
+    latest = audioBuffer;
+    if (paused || stopped) {
+      scheduled = audioBuffer.duration;
+      return;
+    }
+    const fresh = audioBuffer.duration - scheduled;
+    if (fresh < 0.05) return;
+    const skip = scheduled;
+    scheduled = audioBuffer.duration;
+    schedule(audioBuffer, segmentStart, skip);
+  };
+
+  const resumeCtx = async () => {
+    if (ctx.state === "running") return;
+    try {
+      await ctx.resume();
+    } catch {
+      // The tap already resumed this context. A later resume can fail.
+    }
+  };
+
   return {
     push(bytes, nextMime) {
       if (stopped || !bytes || bytes.length === 0) return;
@@ -341,40 +395,68 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       chain = chain
         .then(async () => {
           if (stopped || ticket !== epoch) return;
-          carry = concat(carry, copy);
-          let ready = null;
           if (mime === "audio/wav") {
+            carry = concat(carry, copy);
             const split = splitWav(carry, wavFmt);
             wavFmt = split.fmt || wavFmt;
-            ready = split.ready;
             carry = split.rest || new Uint8Array(0);
-          } else if (mime === "audio/mpeg") {
-            const split = splitMp3(carry);
-            ready = split.ready;
-            carry = split.rest || new Uint8Array(0);
-          } else {
-            ready = carry.length > 0 ? carry : null;
-            carry = new Uint8Array(0);
-          }
-          if (!ready || ready.length < 64) return;
-          try {
-            const audioBuffer = await decodeBuffer(ctx, ready);
+            if (!split.ready || split.ready.length < 64) return;
+            const audioBuffer = await decodeBuffer(ctx, split.ready);
             if (stopped || ticket !== epoch) return;
             addBuffer(audioBuffer);
-          } catch (error) {
-            if (ticket !== epoch || stopped) return;
-            carry = concat(ready, carry);
-            console.warn("🎵 Waiting for more audio before decode:", error);
+            return;
           }
+          raw = concat(raw, copy);
+          if (!eof && raw.length < 2048) return;
+          if (!eof && scheduled > 0 && raw.length - decodedAt < 32768) return;
+          decodedAt = raw.length;
+          await resumeCtx();
+          let audioBuffer = null;
+          try {
+            audioBuffer = await decodeBuffer(ctx, raw);
+          } catch {
+            audioBuffer = null;
+          }
+          if (stopped || ticket !== epoch) return;
+          if (!audioBuffer || (!eof && !plausibleDuration(raw.length, audioBuffer))) {
+            if (!warned) {
+              warned = true;
+              console.warn("🎵 Waiting for more audio before decode");
+            }
+            return;
+          }
+          adopt(audioBuffer);
         })
         .catch((error) => {
           console.error("🎵 Stream decode failed:", error);
         });
     },
     markEof() {
-      chain = chain.then(() => {
+      chain = chain.then(async () => {
         if (stopped) return;
         eof = true;
+        if (mime !== "audio/wav" && raw.length > 0) {
+          await resumeCtx();
+          try {
+            const audioBuffer = await decodeBuffer(ctx, raw);
+            if (!stopped && audioBuffer && audioBuffer.duration > 0.05) {
+              adopt(audioBuffer);
+            } else if (!audioBuffer) {
+              console.error("🎵 Could not decode audio");
+            }
+          } catch (error) {
+            console.error("🎵 Could not decode audio:", error);
+          }
+        }
+        if (
+          raw.length > 0 &&
+          typeof onFallback === "function" &&
+          (!started || ctx.state !== "running")
+        ) {
+          stopNodes();
+          onFallback(raw, mime);
+          return;
+        }
         finishIfDrained();
       });
     },
@@ -389,16 +471,25 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       if (stopped || !paused) return;
       paused = false;
       ended = false;
-      origin = ctx.currentTime;
       nextWhen = 0;
+      const pending = ctx.resume();
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
       let startedPiece = false;
-      pieces.forEach((piece) => {
-        const end = piece.start + piece.buffer.duration;
-        if (end <= playhead + 0.01) return;
-        const skip = Math.max(0, playhead - piece.start);
-        schedule(piece.buffer, piece.start, skip);
-        startedPiece = true;
-      });
+      if (latest) {
+        const skip = Math.max(0, playhead - segmentStart);
+        if (skip < latest.duration - 0.02) {
+          schedule(latest, segmentStart, skip);
+          startedPiece = true;
+        }
+      } else {
+        pieces.forEach((piece) => {
+          const end = piece.start + piece.buffer.duration;
+          if (end <= playhead + 0.01) return;
+          const skip = Math.max(0, playhead - piece.start);
+          schedule(piece.buffer, piece.start, skip);
+          startedPiece = true;
+        });
+      }
       if (!startedPiece) tick();
     },
     seek(seconds) {
@@ -407,6 +498,10 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       stopNodes();
       stopTimer();
       pieces = [];
+      latest = null;
+      scheduled = 0;
+      segmentStart = seconds;
+      raw = new Uint8Array(0);
       carry = new Uint8Array(0);
       wavFmt = null;
       base = seconds;
@@ -415,6 +510,8 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       nextWhen = 0;
       eof = false;
       ended = false;
+      warned = false;
+      decodedAt = 0;
       paused = wasPaused;
       onTime(seconds);
     },
@@ -424,6 +521,8 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
       stopTimer();
       stopNodes();
       pieces = [];
+      latest = null;
+      raw = new Uint8Array(0);
       carry = new Uint8Array(0);
     },
     setVolume(value) {
@@ -432,17 +531,73 @@ export function createPcmPlayer({ ctx, gain, onTime, onStart, onEnded }) {
   };
 }
 
-export function unlockContext(ctx) {
-  if (!ctx) return;
+let silentWavUrl = "";
+
+function silentWav() {
+  if (silentWavUrl) return silentWavUrl;
+  const dataSize = 16;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const write = (offset, text) => {
+    for (let i = 0; i < text.length; i += 1) {
+      view.setUint8(offset + i, text.charCodeAt(i));
+    }
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 8000, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  write(36, "data");
+  view.setUint32(40, dataSize, true);
+  silentWavUrl = URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+  return silentWavUrl;
+}
+
+// iOS ignores Web Audio until this tap has started an actual media element
+// and a buffer is running on the context. Both have to happen before any await.
+export function primeAudioElement(audio) {
+  if (!audio) return;
   try {
-    const silence = ctx.createBuffer(1, 1, ctx.sampleRate || 44100);
-    const src = ctx.createBufferSource();
-    src.buffer = silence;
-    src.connect(ctx.destination);
-    src.start();
+    audio.src = silentWav();
+    const pending = audio.play();
+    if (pending && typeof pending.catch === "function") pending.catch(() => {});
   } catch {
     // ignore
   }
+}
+
+export function unlockContext(ctx, gain) {
+  if (!ctx) return;
   const pending = ctx.resume();
   if (pending && typeof pending.catch === "function") pending.catch(() => {});
+  if (gain) {
+    try {
+      gain.disconnect();
+    } catch {
+      // already disconnected
+    }
+    gain.connect(ctx.destination);
+  }
+  if (ctx.__espwifiKeeper) return;
+  try {
+    const rate = ctx.sampleRate || 44100;
+    const buffer = ctx.createBuffer(1, rate, rate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < channel.length; i += 128) channel[i] = 0.00002;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    src.connect(ctx.destination);
+    src.start();
+    ctx.__espwifiKeeper = src;
+  } catch {
+    // ignore
+  }
 }

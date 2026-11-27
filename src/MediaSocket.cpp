@@ -121,6 +121,43 @@ static int mp3Bitrate(int versionBits, int bitrateIdx) {
   return kbps * 1000;
 }
 
+static int mp3FrameBytes(const uint8_t *p, size_t n) {
+  if (!p || n < 4) return 0;
+  if (p[0] != 0xFF || (p[1] & 0xE0) != 0xE0) return 0;
+  const int version = (p[1] >> 3) & 3;
+  const int layer = (p[1] >> 1) & 3;
+  const int bitrateIdx = (p[2] >> 4) & 0xF;
+  const int srIdx = (p[2] >> 2) & 3;
+  const int padding = (p[2] >> 1) & 1;
+  if (version == 1 || layer != 1 || srIdx == 3) return 0;
+  const int bitrate = mp3Bitrate(version, bitrateIdx);
+  const int sampleRate = mp3SampleRate(version, srIdx);
+  if (bitrate <= 0 || sampleRate <= 0) return 0;
+  const int coeff = (version == 3) ? 144 : 72;
+  return (coeff * bitrate) / sampleRate + padding;
+}
+
+static uint32_t snapMp3Frame(FILE *f, uint32_t pos, uint32_t limit) {
+  if (!f) return pos;
+  if (pos >= limit || fseek(f, (long)pos, SEEK_SET) != 0) {
+    fseek(f, (long)pos, SEEK_SET);
+    return pos;
+  }
+  uint8_t buf[2048];
+  size_t n = fread(buf, 1, sizeof(buf), f);
+  if (limit > pos && n > (size_t)(limit - pos)) {
+    n = (size_t)(limit - pos);
+  }
+  for (size_t i = 0; i + 4 < n; i++) {
+    if (mp3FrameBytes(buf + i, n - i) <= 0) continue;
+    const uint32_t at = pos + (uint32_t)i;
+    if (fseek(f, (long)at, SEEK_SET) == 0) return at;
+    break;
+  }
+  fseek(f, (long)pos, SEEK_SET);
+  return pos;
+}
+
 // Reads just enough of the file to learn duration, bitrate, and where the
 // audio frames start. The file position is restored to the beginning.
 static void probeMusicInfo(FILE *f, uint32_t fileSize, MusicStreamState *st) {
@@ -469,6 +506,7 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
   }
 
   if (strcmp(cmd, "music_seek") == 0) {
+    resp["type"] = "music_seek";
     MusicStreamState *st = musicStateForFd(clientFd);
     if (!st || !st->f || st->durationMs == 0 || st->audioBytes == 0) {
       resp["ok"] = false;
@@ -482,18 +520,21 @@ static void mediaOnMessage(WebSocket *ws, int clientFd, httpd_ws_type_t type,
         st->audioStart +
         (uint32_t)(((uint64_t)ms * (uint64_t)st->audioBytes) / st->durationMs);
     const uint32_t clamped = (st->size > 0 && pos > st->size) ? st->size : pos;
-    if (fseek(st->f, (long)clamped, SEEK_SET) != 0) {
+    uint32_t at = clamped;
+    const uint32_t limit = st->size > 0 ? st->size : clamped;
+    if (strstr(st->mime, "mpeg") != nullptr) {
+      at = snapMp3Frame(st->f, clamped, limit);
+    } else if (fseek(st->f, (long)clamped, SEEK_SET) != 0) {
       resp["ok"] = false;
       resp["error"] = "seek_failed";
       sendMediaAck(ws, clientFd, resp);
       return;
     }
-    st->offset = clamped;
+    st->offset = at;
     espwifi->log(DEBUG, "🎵 music_seek (fd=%d, ms=%u, offset=%u)", clientFd,
-                 (unsigned)ms, (unsigned)clamped);
-    resp["type"] = "music_seek";
+                 (unsigned)ms, (unsigned)at);
     resp["ms"] = ms;
-    resp["offset"] = clamped;
+    resp["offset"] = at;
     sendMediaAck(ws, clientFd, resp);
     return;
   }

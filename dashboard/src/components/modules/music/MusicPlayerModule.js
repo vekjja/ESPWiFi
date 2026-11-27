@@ -32,6 +32,7 @@ import {
   createPcmPlayer,
   estimateTrack,
   mimeForName,
+  primeAudioElement,
   unlockContext,
 } from "./streamAudio";
 
@@ -78,6 +79,8 @@ export default function MusicPlayerModule({
   const eofRef = useRef(false);
   const discardRef = useRef(false);
   const modeRef = useRef("");
+  const timeOriginRef = useRef(0);
+  const reopenMseRef = useRef(null);
   const knownDurationRef = useRef(0);
   const fileSizeRef = useRef(0);
   const sawAudioRef = useRef(false);
@@ -88,7 +91,6 @@ export default function MusicPlayerModule({
   const stopInProgressRef = useRef(false);
   const suppressAudioErrorRef = useRef(false);
   const isSeekingRef = useRef(false);
-  const pendingSeekTimeRef = useRef(null);
   const userPausedRef = useRef(false);
   volumeRef.current = volume;
 
@@ -132,7 +134,7 @@ export default function MusicPlayerModule({
 
     audio.addEventListener("timeupdate", () => {
       if (modeRef.current === "pcm" || isSeekingRef.current) return;
-      const t = Number(audio.currentTime);
+      const t = timeOriginRef.current + Number(audio.currentTime);
       if (Number.isFinite(t)) setCurrentTime(t);
       if (knownDurationRef.current > 0) return;
       let maxT = Number(audio.duration);
@@ -149,13 +151,19 @@ export default function MusicPlayerModule({
     });
 
     audio.addEventListener("ended", () => {
-      // Auto-play next track
+      if (modeRef.current === "pcm") return;
+      if (discardRef.current || suppressAudioErrorRef.current) return;
       handleSkipNext();
     });
 
     audio.addEventListener("error", (e) => {
       // Rapid track switching / intentional stop can trigger transient errors.
-      if (suppressAudioErrorRef.current || stopInProgressRef.current) {
+      // The phone unlock clip also fires this and must not cancel the song.
+      if (
+        modeRef.current === "pcm" ||
+        suppressAudioErrorRef.current ||
+        stopInProgressRef.current
+      ) {
         return;
       }
       console.error("🎵 Audio error:", e);
@@ -170,9 +178,13 @@ export default function MusicPlayerModule({
     });
 
     audio.addEventListener("pause", () => {
-      // Ignore pauses triggered by teardown, track switching, or the
-      // silent clip used to unlock playback on a phone.
-      if (stopInProgressRef.current || suppressAudioErrorRef.current) {
+      // The phone path plays a tiny silent clip during the tap. That clip
+      // ending is not the user pausing the song.
+      if (
+        modeRef.current === "pcm" ||
+        stopInProgressRef.current ||
+        suppressAudioErrorRef.current
+      ) {
         return;
       }
       userPausedRef.current = true;
@@ -292,6 +304,8 @@ export default function MusicPlayerModule({
   };
 
   const pullChunk = () => {
+    if (discardRef.current) return;
+    if (modeRef.current === "mse" && !sourceBufferRef.current) return;
     const ws = mediaWsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (!streamActiveRef.current || awaitingRef.current || eofRef.current) return;
@@ -314,6 +328,8 @@ export default function MusicPlayerModule({
     discardRef.current = false;
     pendingChunkLenRef.current = 0;
     modeRef.current = "";
+    timeOriginRef.current = 0;
+    reopenMseRef.current = null;
     if (pcmRef.current) {
       pcmRef.current.stop();
       pcmRef.current = null;
@@ -393,7 +409,8 @@ export default function MusicPlayerModule({
     modeRef.current = useMse ? "mse" : "pcm";
 
     const ctx = ensureAudioGraph();
-    if (ctx) unlockContext(ctx);
+    if (ctx) unlockContext(ctx, gainRef.current);
+    if (!useMse) primeAudioElement(audio);
     if (!useMse && ctx && gainRef.current) {
       pcmRef.current = createPcmPlayer({
         ctx,
@@ -408,6 +425,35 @@ export default function MusicPlayerModule({
         onEnded: () => {
           if (mySeq !== streamSeqRef.current) return;
           handleSkipNext();
+        },
+        onFallback: (bytes, type) => {
+          if (mySeq !== streamSeqRef.current) return;
+          suppressAudioErrorRef.current = true;
+          setTimeout(() => {
+            suppressAudioErrorRef.current = false;
+          }, 400);
+          modeRef.current = "file";
+          timeOriginRef.current = 0;
+          const url = URL.createObjectURL(
+            new Blob([bytes], { type: type || "audio/mpeg" })
+          );
+          if (objectUrlRef.current) {
+            try {
+              URL.revokeObjectURL(objectUrlRef.current);
+            } catch {
+              // ignore
+            }
+          }
+          objectUrlRef.current = url;
+          audio.src = url;
+          const pending = audio.play();
+          if (pending && typeof pending.catch === "function") {
+            pending.catch((error) => {
+              console.error("🎵 Phone playback failed:", error);
+              setIsPlaying(false);
+              setIsPaused(false);
+            });
+          }
         },
       });
     }
@@ -434,21 +480,38 @@ export default function MusicPlayerModule({
     ws.binaryType = "arraybuffer";
     mediaWsRef.current = ws;
 
-    if (useMse) {
+    const attachMse = () => {
       const MS = window.MediaSource || window.ManagedMediaSource;
+      if (!MS) return;
+      suppressAudioErrorRef.current = true;
+      setTimeout(() => {
+        suppressAudioErrorRef.current = false;
+      }, 400);
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {
+          // ignore
+        }
+        objectUrlRef.current = "";
+      }
+      sourceBufferRef.current = null;
       const ms = new MS();
       mediaSourceRef.current = ms;
       const objUrl = URL.createObjectURL(ms);
       objectUrlRef.current = objUrl;
       audio.src = objUrl;
-      const playPromise = audio.play();
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(() => {});
+      if (!userPausedRef.current) {
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(() => {});
+        }
       }
       ms.addEventListener(
         "sourceopen",
         () => {
           if (mySeq !== streamSeqRef.current || sourceBufferRef.current) return;
+          if (mediaSourceRef.current !== ms) return;
           try {
             const sb = ms.addSourceBuffer(mime);
             try {
@@ -459,9 +522,10 @@ export default function MusicPlayerModule({
             sourceBufferRef.current = sb;
             sb.addEventListener("updateend", () => {
               if (mySeq !== streamSeqRef.current) return;
+              if (discardRef.current) return;
               if (streamActiveRef.current && !eofRef.current) pullChunk();
             });
-            armPull();
+            if (!discardRef.current) armPull();
           } catch (error) {
             console.error("🎵 addSourceBuffer failed:", error);
             stopStream();
@@ -469,6 +533,10 @@ export default function MusicPlayerModule({
         },
         { once: true }
       );
+    };
+    if (useMse) {
+      reopenMseRef.current = attachMse;
+      attachMse();
     }
 
     const applyTrackInfo = (msg) => {
@@ -522,6 +590,12 @@ export default function MusicPlayerModule({
         } catch {
           return;
         }
+        if (discardRef.current && msg?.ok === false) {
+          console.warn("🎵 music_seek failed:", msg?.error || "unknown");
+          discardRef.current = false;
+          pullChunk();
+          return;
+        }
         if (msg?.type === "music_start") {
           if (msg?.ok === false) {
             console.error("🎵 music_start failed:", msg?.error || "unknown");
@@ -540,6 +614,7 @@ export default function MusicPlayerModule({
           awaitingRef.current = false;
           eofRef.current = false;
           streamActiveRef.current = true;
+          if (modeRef.current === "mse" && !sourceBufferRef.current) return;
           pullChunk();
           return;
         }
@@ -636,7 +711,7 @@ export default function MusicPlayerModule({
     if (!currentTrack) return;
 
     const ctx = ensureAudioGraph();
-    if (ctx) unlockContext(ctx);
+    if (ctx) unlockContext(ctx, gainRef.current);
 
     if (modeRef.current === "pcm" && pcmRef.current) {
       if (isPlaying && !isPaused) {
@@ -715,62 +790,40 @@ export default function MusicPlayerModule({
     }
   };
 
-  const clampToSeekable = (t) => {
-    const limit = knownDurationRef.current || duration;
-    if (limit && Number.isFinite(limit)) {
-      if (t < 0) return 0;
-      if (t > limit) return limit;
-    }
-    const a = audioRef.current;
-    if (!a) return t;
-    try {
-      if (a.seekable && a.seekable.length > 0) {
-        const start = a.seekable.start(0);
-        const end = a.seekable.end(a.seekable.length - 1);
-        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
-          if (t < start) return start;
-          if (t > end) return end;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return t;
-  };
-
   const applySeek = (t) => {
     const limit = knownDurationRef.current || duration || t;
     const tt = Math.max(0, Math.min(Number(t) || 0, limit));
-    if (modeRef.current === "pcm" && pcmRef.current) {
-      discardRef.current = true;
-      awaitingRef.current = false;
-      eofRef.current = false;
-      streamActiveRef.current = true;
-      pcmRef.current.seek(tt);
-      setCurrentTime(tt);
-      const ws = mediaWsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(JSON.stringify({ cmd: "music_seek", ms: Math.round(tt * 1000) }));
-        } catch {
-          // ignore
-        }
+    if (modeRef.current === "file") {
+      const fileAudio = audioRef.current;
+      if (!fileAudio) return false;
+      try {
+        fileAudio.currentTime = tt;
+      } catch {
+        return false;
       }
-      pendingSeekTimeRef.current = null;
+      setCurrentTime(tt);
       return true;
     }
-    const a = audioRef.current;
-    if (!a) return false;
-    const clamped = clampToSeekable(tt);
+    const ws = mediaWsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    discardRef.current = true;
+    awaitingRef.current = false;
+    eofRef.current = false;
+    streamActiveRef.current = true;
+    timeOriginRef.current = tt;
+    setCurrentTime(tt);
+    if (modeRef.current === "pcm" && pcmRef.current) {
+      pcmRef.current.seek(tt);
+    } else if (modeRef.current === "mse" && reopenMseRef.current) {
+      reopenMseRef.current();
+    }
     try {
-      if (typeof a.fastSeek === "function") a.fastSeek(clamped);
-      else a.currentTime = clamped;
-      pendingSeekTimeRef.current = null;
-      return true;
+      ws.send(JSON.stringify({ cmd: "music_seek", ms: Math.round(tt * 1000) }));
     } catch {
-      pendingSeekTimeRef.current = clamped;
+      discardRef.current = false;
       return false;
     }
+    return true;
   };
 
   const handleSeekChange = (event, newValue) => {

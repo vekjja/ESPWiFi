@@ -138,6 +138,19 @@ export function frameSxForModule(moduleConfig) {
     return fixedFrame(preset.width, preset.height);
   }
 
+  if (moduleConfig.type === "logs") {
+    const height = 480;
+    if (moduleConfig.wide) {
+      return {
+        ...fluidFrame(),
+        height,
+        minHeight: height,
+        maxHeight: height,
+      };
+    }
+    return fixedFrame(moduleCardWidth(moduleConfig) || 720, height);
+  }
+
   return fluidFrame();
 }
 

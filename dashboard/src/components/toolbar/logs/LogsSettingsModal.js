@@ -101,14 +101,14 @@ export default function LogsSettingsModal({
     color,
     pointerEvents: "none",
     fontSize: "calc(0.9rem * var(--module-scale, 1))",
-    "@container logs (max-width: 520px)": {
-      display: "none",
-    },
     minWidth: 0,
     display: "block",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    "@container logs (max-width: 520px)": {
+      display: "none",
+    },
     ...extra,
   });
 
@@ -517,16 +517,17 @@ export default function LogsSettingsModal({
     <Box
       data-no-dnd="true"
       sx={{
-        containerType: "inline-size",
+        containerType: embedded ? "size" : "inline-size",
         containerName: "logs",
         display: "flex",
         flexDirection: iconOnly ? "column" : "row",
         gap: "calc(6px * var(--module-scale, 1))",
         alignItems: "stretch",
         height: "100%",
-        flex: 1,
+        flex: "1 1 auto",
         minHeight: 0,
         minWidth: 0,
+        overflow: "hidden",
       }}
     >
         {/* Controls */}
@@ -539,13 +540,13 @@ export default function LogsSettingsModal({
             zIndex: 10,
             bgcolor: "background.paper",
             boxShadow: 2,
-            flex: iconOnly ? "0 0 auto" : "0 1 auto",
+            flex: iconOnly ? "0 0 auto" : "0 0 auto",
             width: iconOnly ? "100%" : "clamp(132px, 30cqw, 220px)",
             height: iconOnly ? "auto" : "100%",
             minHeight: 0,
             minWidth: 0,
-            maxHeight: iconOnly ? undefined : "100%",
-            overflow: iconOnly ? undefined : "auto",
+            maxHeight: "100%",
+            overflow: "hidden",
             "@container logs (max-width: 520px)": {
               width: "calc(52px * var(--module-scale, 1))",
               flex: "0 0 auto",
@@ -557,9 +558,13 @@ export default function LogsSettingsModal({
         >
           <CardContent
             sx={{
-              py: isMobile ? 1.25 : 1.5,
-              px: isMobile ? 1.5 : 1.5,
-              flex: 1,
+              py: "calc(8px * var(--module-scale, 1))",
+              px: "calc(8px * var(--module-scale, 1))",
+              flex: "1 1 auto",
+              minHeight: 0,
+              overflow: "auto",
+              ...moduleScrollbarSx,
+              "&:last-child": { paddingBottom: "calc(8px * var(--module-scale, 1))" },
             }}
           >
             <Box
@@ -840,20 +845,26 @@ export default function LogsSettingsModal({
         {/* Log Viewer */}
         <Card
           sx={{
-            flex: 1,
+            flex: "1 1 auto",
             minWidth: 0,
             minHeight: 0,
+            height: "100%",
+            maxHeight: "100%",
             display: "flex",
             flexDirection: "column",
+            overflow: "hidden",
           }}
         >
           <CardContent
             sx={{
-              flex: 1,
+              flex: "1 1 auto",
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
-              p: 1.5,
+              p: "calc(12px * var(--module-scale, 1))",
+              "&:last-child": {
+                paddingBottom: "calc(12px * var(--module-scale, 1))",
+              },
             }}
           >
             {logError && (
@@ -866,12 +877,14 @@ export default function LogsSettingsModal({
               ref={logContainerRef}
               onScroll={handleLogScroll}
               sx={{
-                flex: 1,
-                p: 1.5,
+                flex: "1 1 auto",
+                p: "calc(12px * var(--module-scale, 1))",
                 bgcolor: "grey.900",
                 color: "grey.100",
                 fontFamily: "monospace",
-                fontSize: "0.8rem",
+                fontSize:
+                  "clamp(0.7rem, 2.2cqw, calc(0.85rem * var(--module-scale, 1)))",
+                lineHeight: 1.35,
                 overflow: "auto",
                 ...moduleScrollbarSx,
                 whiteSpace: lineWrap ? "pre-wrap" : "pre",
@@ -906,9 +919,10 @@ export default function LogsSettingsModal({
     return (
       <Box
         sx={{
-          flex: 1,
+          flex: "1 1 auto",
           minHeight: 0,
-          height: "100%",
+          minWidth: 0,
+          width: "100%",
           display: "flex",
           overflow: "hidden",
         }}

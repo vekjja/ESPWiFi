@@ -68,8 +68,8 @@ const theme = createTheme({
       main: "#ffa726", // Default Material-UI warning color for dark mode (yellow/orange)
     },
     musicPlayer: {
-      playing: "#47FFF0", // Cyan/primary - same as primary for consistency
-      paused: "#CB30FF", // Orange/warning - indicates temporary pause
+      playing: "#AA00FF", // #AA00FF/primary - same as primary for consistency
+      paused: "#ffa726", // Orange/warning - indicates temporary pause
       stopped: "#333", // Gray/secondary - neutral state
     },
   },

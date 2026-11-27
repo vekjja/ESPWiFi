@@ -49,6 +49,12 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
           <Grid container spacing={2}>
             <Grid item xs={12} sm={4}>
               <InfoRow
+                label="Used Heap:"
+                value={bytesToHumanReadable(used_heap)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <InfoRow
                 label="Free Heap:"
                 value={bytesToHumanReadable(free_heap)}
               />
@@ -57,12 +63,6 @@ export default function MemoryInfoCard({ deviceInfo, loading = false }) {
               <InfoRow
                 label="Total Heap:"
                 value={bytesToHumanReadable(total_heap)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <InfoRow
-                label="Used Heap:"
-                value={bytesToHumanReadable(used_heap)}
               />
             </Grid>
           </Grid>

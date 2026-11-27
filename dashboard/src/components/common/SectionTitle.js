@@ -5,6 +5,9 @@ import LeakAddIcon from "@mui/icons-material/LeakAdd";
 import StorageIcon from "@mui/icons-material/Storage";
 import SdCardIcon from "@mui/icons-material/SdCard";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import InputIcon from "@mui/icons-material/Input";
+import WifiIcon from "@mui/icons-material/Wifi";
+import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 
 /** Names and icons shared by settings sections and dashboard modules. */
 export const SECTIONS = {
@@ -14,6 +17,9 @@ export const SECTIONS = {
   littlefs: { title: "LittleFS", icon: StorageIcon },
   sd: { title: "SD Card", icon: SdCardIcon },
   camera: { title: "Camera", icon: CameraAltIcon },
+  pin: { title: "Pin", icon: InputIcon },
+  websocket: { title: "WebSocket", icon: WifiIcon },
+  music: { title: "Music Player", icon: LibraryMusicIcon },
 };
 
 /**
@@ -31,6 +37,7 @@ export default function SectionTitle({
 }) {
   return (
     <Box
+      className="section-title"
       sx={{
         display: "flex",
         alignItems: "center",
@@ -41,10 +48,19 @@ export default function SectionTitle({
       }}
     >
       {Icon ? <Icon color={iconColor} fontSize={iconSize} /> : null}
-      <Typography variant={variant} component="div">
+      <Typography
+        variant={variant}
+        component="div"
+        noWrap
+        sx={{ minWidth: 0 }}
+      >
         {title}
       </Typography>
-      {children}
+      {children ? (
+        <Box sx={{ ml: "auto", display: "flex", alignItems: "center", minWidth: 0 }}>
+          {children}
+        </Box>
+      ) : null}
     </Box>
   );
 }

@@ -3,6 +3,8 @@ import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Slider, Box } from "@mui/material";
 import Module from "../Module";
+import InfoCard from "../../common/InfoCard";
+import { SECTIONS } from "../../common/SectionTitle";
 import PinSettingsModal from "./PinSettingsModal";
 import { getFetchOptions } from "../../../utils/api";
 
@@ -276,7 +278,6 @@ export default function PinModule({
 
   return (
     <Module
-      title={moduleTitle}
       moduleConfig={{
         ...initialProps,
         size: pinSettingsData.size,
@@ -285,6 +286,7 @@ export default function PinModule({
       }}
       online={deviceOnline}
       active={!!effectiveIsOn}
+      onDelete={handleDeletePin}
       onSettings={handleOpenPinModal}
       settingsDisabled={!deviceOnline}
       settingsTooltip={
@@ -292,10 +294,18 @@ export default function PinModule({
           ? `Pin Settings (Remote: ${remoteURL})`
           : "Pin Settings"
       }
-      sx={{
-        justifyContent: "center",
+      onResize={({ width, height }) => {
+        setPinSettingsData((prev) => ({
+          ...prev,
+          size: "custom",
+          width,
+          height,
+        }));
+        onUpdate?.(moduleKey, { size: "custom", width, height });
       }}
+      onToggleWide={() => onUpdate?.(moduleKey, { wide: !initialProps.wide })}
     >
+      <InfoCard embedded fluid title={moduleTitle} icon={SECTIONS.pin.icon}>
       <Box
         sx={{
           display: "flex",
@@ -304,7 +314,7 @@ export default function PinModule({
           justifyContent: "center",
           flex: 1,
           width: "100%",
-          padding: "10px",
+          minHeight: 0,
         }}
       >
         <FormControlLabel
@@ -345,12 +355,13 @@ export default function PinModule({
               data-no-dnd="true"
               sx={{
                 width: "100%",
-                maxWidth: "180px",
+                maxWidth: "100%",
               }}
             />
           </Box>
         )}
       </Box>
+      </InfoCard>
 
       <PinSettingsModal
         open={openPinModal}

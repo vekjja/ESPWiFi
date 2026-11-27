@@ -4,6 +4,8 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import LinkIcon from "@mui/icons-material/Link";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
 import Module from "../Module";
+import InfoCard from "../../common/InfoCard";
+import { SECTIONS } from "../../common/SectionTitle";
 import WebSocketSettingsModal from "./WebSocketSettingsModal";
 import { buildWebSocketUrl } from "../../../utils/api";
 import { createSocketSession } from "../../../utils/socketSession";
@@ -186,7 +188,6 @@ export default function WebSocketModule({
 
   return (
     <Module
-      title={initialProps.name || "WebSocket" + moduleKey}
       moduleConfig={{
         ...initialProps,
         size: websocketSettingsData.size,
@@ -194,6 +195,19 @@ export default function WebSocketModule({
         height: websocketSettingsData.height,
       }}
       connectionStatus={connectionStatus}
+      onResize={({ width, height }) => {
+        setWebSocketSettingsData((prev) => ({
+          ...prev,
+          size: "custom",
+          width,
+          height,
+        }));
+        onUpdate?.(moduleKey, { size: "custom", width, height });
+      }}
+      onToggleWide={() =>
+        onUpdate?.(moduleKey, { wide: !initialProps.wide })
+      }
+      onDelete={handleDeleteSocket}
       onSettings={handleSettingsClick}
       settingsTooltip="WebSocket Settings"
       onReconnect={connected ? handleDisconnect : handleConnect}
@@ -203,6 +217,21 @@ export default function WebSocketModule({
       reconnectIcon={connected ? LinkIcon : busy ? RestartAltIcon : LinkOffIcon}
       reconnectColor={connected ? "primary" : "error"}
     >
+      <InfoCard
+        embedded
+        fluid
+        title={initialProps.name || SECTIONS.websocket.title}
+        icon={SECTIONS.websocket.icon}
+      >
+      <Box
+        sx={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
       {connected ? (
         initialProps.payload === "binary" ? (
           messageRef.current &&
@@ -213,8 +242,8 @@ export default function WebSocketModule({
               alt="WebSocket"
               style={{
                 width: "100%",
-                marginTop: "10px",
-                maxHeight: "120px",
+                flex: "1 1 auto",
+                minHeight: 0,
                 objectFit: "contain",
                 transform: `rotate(${initialProps.imageRotation || 0}deg)`,
               }}
@@ -230,7 +259,9 @@ export default function WebSocketModule({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              minHeight: "60px",
+              flex: "1 1 auto",
+              minHeight: 0,
+              overflow: "auto",
             }}
           >
             <Typography
@@ -239,8 +270,6 @@ export default function WebSocketModule({
                 wordBreak: "break-all",
                 textAlign: "center",
                 fontSize: initialProps.fontSize || 14,
-                maxHeight: "120px",
-                overflow: "auto",
               }}
             >
               {typeof message === "string" ? message : ""}
@@ -253,7 +282,8 @@ export default function WebSocketModule({
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            height: "120px",
+            flex: "1 1 auto",
+            minHeight: 80,
           }}
         >
           <Typography
@@ -293,6 +323,8 @@ export default function WebSocketModule({
           </Button>
         </Box>
       )}
+      </Box>
+      </InfoCard>
 
       <WebSocketSettingsModal
         open={openModal}

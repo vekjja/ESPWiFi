@@ -57,10 +57,20 @@ function MemoryBody({ deviceInfo }) {
   if (!ready) return <EmptyNote>No memory information available</EmptyNote>;
   const percent = (used / total) * 100;
   return (
-    <Box sx={{ width: "100%", display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box
+      sx={{
+        width: "100%",
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        gap: "calc(12px * var(--module-scale, 1))",
+      }}
+    >
+      <InfoRow label="Used Heap:" value={bytesToHumanReadable(used)} />
       <InfoRow label="Free Heap:" value={bytesToHumanReadable(free)} />
       <InfoRow label="Total Heap:" value={bytesToHumanReadable(total)} />
-      <InfoRow label="Used Heap:" value={bytesToHumanReadable(used)} />
       <UsageBar label="Memory Usage" percent={percent} />
     </Box>
   );
@@ -68,7 +78,17 @@ function MemoryBody({ deviceInfo }) {
 
 function NetworkBody({ deviceInfo, config }) {
   return (
-    <Box sx={{ width: "100%", display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box
+      sx={{
+        width: "100%",
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        gap: "calc(12px * var(--module-scale, 1))",
+      }}
+    >
       <InfoRow label="Device Name:" value={config?.deviceName || "ESPWiFi"} />
       <InfoRow label="Hostname:" value={deviceInfo?.hostname || "N/A"} />
       <InfoRow label="mDNS Hostname:" value={deviceInfo?.mdns || "N/A"} />
@@ -88,10 +108,12 @@ function Volume({ section, total, used }) {
         maxWidth: "100%",
         boxSizing: "border-box",
         minWidth: 0,
+        flex: "1 1 auto",
         display: "flex",
         flexDirection: "column",
-        gap: 1.5,
-        p: 1.5,
+        justifyContent: "space-between",
+        gap: "calc(12px * var(--module-scale, 1))",
+        p: "calc(12px * var(--module-scale, 1))",
         backgroundColor: "action.hover",
         borderRadius: 1,
       }}
@@ -126,9 +148,11 @@ function StorageBody({ deviceInfo }) {
         maxWidth: "100%",
         boxSizing: "border-box",
         minWidth: 0,
+        flex: "1 1 auto",
         display: "flex",
         flexDirection: "column",
-        gap: 1.5,
+        justifyContent: "space-between",
+        gap: "calc(12px * var(--module-scale, 1))",
       }}
     >
       {hasLfs && (
@@ -155,10 +179,12 @@ export default function SystemInfoModule({
   deviceInfo,
   deviceOnline = true,
   onDelete,
+  onUpdate,
 }) {
   const info = module?.info;
   const section = SECTIONS[info];
   const title = section?.title || "System Info";
+  const customSize = module?.size === "custom" && Number(module.width) > 0;
 
   let body = <EmptyNote>Unknown system info</EmptyNote>;
   if (!deviceInfo && deviceOnline) {
@@ -178,7 +204,19 @@ export default function SystemInfoModule({
       onDelete={() => onDelete(module.key)}
       deleteTooltip="Remove"
       deletePlacement="start"
+      onResize={({ width, height }) =>
+        onUpdate?.(module.key, { size: "custom", width, height })
+      }
+      onToggleWide={() => onUpdate?.(module.key, { wide: !module.wide })}
       sx={{
+        ...(customSize
+          ? null
+          : {
+              width: "calc(100% - 20px)",
+              maxWidth: "calc(100% - 20px)",
+              minWidth: 0,
+            }),
+        boxSizing: "border-box",
         "& > .MuiCardContent-root": {
           minHeight: "auto",
           paddingBottom: "8px !important",
@@ -187,6 +225,8 @@ export default function SystemInfoModule({
     >
       <InfoCard
         embedded
+        fluid
+        scale
         minHeight="auto"
         title={title}
         icon={section?.icon}

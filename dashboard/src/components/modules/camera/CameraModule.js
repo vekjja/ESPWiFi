@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Module from "../Module";
+import InfoCard from "../../common/InfoCard";
 import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -303,25 +304,29 @@ export default function CameraModule({
   return (
     <>
       <Module
-        title={config?.name || SECTIONS.camera.title}
-        icon={SECTIONS.camera.icon}
         moduleConfig={config}
         online={deviceOnline}
+        onResize={({ width, height }) =>
+          onUpdate?.(moduleKey, { size: "custom", width, height })
+        }
+        onToggleWide={() => onUpdate?.(moduleKey, { wide: !config?.wide })}
+        onDelete={handleDeleteModule}
         onSettings={handleOpenSettings}
         settingsDisabled={!deviceOnline}
         settingsTooltip={"Settings"}
-        sx={{
-          "& .MuiCardContent-root": {
-            minHeight: "auto",
-            paddingBottom: "0px !important",
-          },
-        }}
       >
+        <InfoCard
+          embedded
+          fluid
+          title={config?.name || SECTIONS.camera.title}
+          icon={SECTIONS.camera.icon}
+        >
         <Box
           ref={containerRef}
           sx={{
             width: "100%",
-            height: "280px",
+            flex: "1 1 auto",
+            minHeight: 140,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -450,6 +455,7 @@ export default function CameraModule({
             backgroundColor: "rgba(0, 0, 0, 0.1)",
             borderRadius: 1,
             marginTop: 0.5,
+            flex: "0 0 auto",
           }}
         >
           <Tooltip
@@ -513,6 +519,7 @@ export default function CameraModule({
             </span>
           </Tooltip>
         </Box>
+        </InfoCard>
       </Module>
 
       <CameraSettingsModal

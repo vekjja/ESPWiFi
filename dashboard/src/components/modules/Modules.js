@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Container } from "@mui/material";
 import {
   DndContext,
@@ -10,7 +10,6 @@ import {
 import {
   arrayMove,
   SortableContext,
-  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -19,180 +18,87 @@ import WebSocketModule from "./websocket/WebSocketModule";
 import CameraModule from "./camera/CameraModule";
 import MusicPlayerModule from "./music/MusicPlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
+import { wrapperWidth } from "./moduleConfig";
 
-// Sortable wrapper component for Pin modules
-function SortablePinModule({
-  module,
-  config,
-  onUpdate,
-  onDelete,
-  controlWs,
-  deviceOnline,
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `module-${module.key}` });
+// One column per this many pixels of board width. Two columns appear once the
+// board can hold two cards, which is what lets a short card sit in the gap
+// beside a taller one.
+const COLUMN_MIN = 380;
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-    maxWidth: "100%",
-    width: "auto",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <PinModule
-        pinNum={module.number}
-        initialProps={module}
-        config={config}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        controlWs={controlWs}
-        deviceOnline={deviceOnline}
-      />
-    </div>
-  );
+function estimateHeight(module) {
+  if (module.type === "systemInfo") {
+    return module.info === "storage" ? 760 : 460;
+  }
+  if (module.type === "camera") return 540;
+  if (module.type === "musicPlayer") return 460;
+  return 280;
 }
 
-// Sortable wrapper component for WebSocket modules
-function SortableWebSocketModule({ module, onUpdate, onDelete }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `module-${module.key}` });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-    maxWidth: "100%",
-    width: "auto",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <WebSocketModule
-        index={module.key}
-        initialProps={module}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-      />
-    </div>
-  );
+function isWide(module) {
+  return module?.wide === true;
 }
 
-// Sortable wrapper component for Camera modules
-function SortableCameraModule({
-  module,
-  config,
-  onUpdate,
-  onDelete,
-  deviceOnline,
-  saveConfigToDevice,
-  controlWs,
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `module-${module.key}` });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-    maxWidth: "100%",
-    width: "auto",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <CameraModule
-        config={module}
-        globalConfig={config}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        deviceOnline={deviceOnline}
-        saveConfigToDevice={saveConfigToDevice}
-        controlWs={controlWs}
-      />
-    </div>
-  );
+function columnBasis(column) {
+  const requested = column.map((module) => {
+    const width = Number(module.width);
+    return module.size === "custom" && width > 0 ? width : COLUMN_MIN;
+  });
+  return Math.max(COLUMN_MIN, ...requested);
 }
 
-// Sortable wrapper component for Music Player modules
-function SortableMusicPlayerModule({
-  module,
-  config,
-  onUpdate,
-  onDelete,
-  deviceOnline,
-  saveConfigToDevice,
-  controlWs,
-  onMusicPlaybackChange,
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: `module-${module.key}` });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-    maxWidth: "100%",
-    width: "auto", // Changed from 100% to auto for better centering
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <MusicPlayerModule
-        config={module}
-        globalConfig={config}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        deviceOnline={deviceOnline}
-        saveConfigToDevice={saveConfigToDevice}
-        controlWs={controlWs}
-        onMusicPlaybackChange={onMusicPlaybackChange}
-      />
-    </div>
-  );
+function packColumns(items, heights, columnCount) {
+  const columns = Array.from({ length: columnCount }, () => []);
+  const columnHeights = Array(columnCount).fill(0);
+  items.forEach((item) => {
+    let index = 0;
+    for (let i = 1; i < columnCount; i += 1) {
+      if (columnHeights[i] < columnHeights[index]) index = i;
+    }
+    columns[index].push(item);
+    columnHeights[index] += heights[String(item.key)] || estimateHeight(item);
+  });
+  return columns;
 }
 
-function SortableSystemInfoModule({
-  module,
-  config,
-  deviceInfo,
-  deviceOnline,
-  onDelete,
-}) {
+function masonrySortingStrategy({ rects, activeIndex, overIndex, index }) {
+  const newRects = arrayMove(rects, overIndex, activeIndex);
+  const oldRect = rects[index];
+  const newRect = newRects[index];
+  if (!newRect || !oldRect) return null;
+  return {
+    x: newRect.left - oldRect.left,
+    y: newRect.top - oldRect.top,
+    scaleX: 1,
+    scaleY: 1,
+  };
+}
+
+function buildRows(items, heights, boardWidth) {
+  const fitted = Math.max(1, Math.floor((boardWidth || COLUMN_MIN) / COLUMN_MIN));
+  const rows = [];
+  let batch = [];
+  const flush = () => {
+    if (!batch.length) return;
+    const columnCount = Math.max(1, Math.min(fitted, batch.length));
+    rows.push({
+      kind: "columns",
+      columns: packColumns(batch, heights, columnCount),
+    });
+    batch = [];
+  };
+  items.forEach((item) => {
+    if (isWide(item)) {
+      flush();
+      rows.push({ kind: "full", item });
+      return;
+    }
+    batch.push(item);
+  });
+  flush();
+  return rows;
+}
+
+function SortableModule({ module, children }) {
   const {
     attributes,
     listeners,
@@ -207,20 +113,20 @@ function SortableSystemInfoModule({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 1000 : 1,
+    width: wrapperWidth(module),
     maxWidth: "100%",
-    width: "auto",
     boxSizing: "border-box",
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <SystemInfoModule
-        module={module}
-        config={config}
-        deviceInfo={deviceInfo}
-        deviceOnline={deviceOnline}
-        onDelete={onDelete}
-      />
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-module-key={module.key}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
     </div>
   );
 }
@@ -235,6 +141,9 @@ export default function Modules({
   onMusicPlaybackChange,
 }) {
   const [modules, setModules] = useState([]);
+  const boardRef = useRef(null);
+  const [boardWidth, setBoardWidth] = useState(0);
+  const [heights, setHeights] = useState({});
 
   // Configure sensors for drag detection with activation constraints
   const sensors = useSensors(
@@ -373,7 +282,9 @@ export default function Modules({
   const handleDragEnd = (event) => {
     const { active, over } = event;
 
-    if (active.id !== over.id) {
+    if (!over || active.id === over.id) return;
+
+    {
       const oldIndex = moduleItems.findIndex(
         (module) => `module-${module.key}` === active.id.toString()
       );
@@ -427,6 +338,120 @@ export default function Modules({
     saveConfigToDevice(updatedConfig); // Save to device
   };
 
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (!board) return undefined;
+    const updateWidth = () => setBoardWidth(board.clientWidth);
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(board);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return undefined;
+    const ro = new ResizeObserver((entries) => {
+      setHeights((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        entries.forEach((entry) => {
+          const key = entry.target.getAttribute("data-module-key");
+          if (key == null) return;
+          const height = Math.round(entry.target.offsetHeight);
+          if (Math.abs((next[key] || 0) - height) > 4) {
+            next[key] = height;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    });
+    const watch = () => {
+      board.querySelectorAll("[data-module-key]").forEach((node) => ro.observe(node));
+    };
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(board, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [moduleItems]);
+
+  const rows = useMemo(
+    () => buildRows(moduleItems, heights, boardWidth),
+    [moduleItems, heights, boardWidth]
+  );
+
+  const renderModule = (module) => {
+    let child = null;
+    if (module.type === "pin") {
+      child = (
+        <PinModule
+          pinNum={module.number}
+          initialProps={module}
+          config={config}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+          controlWs={controlWs}
+          deviceOnline={deviceOnline}
+        />
+      );
+    } else if (module.type === "webSocket") {
+      child = (
+        <WebSocketModule
+          index={module.key}
+          initialProps={module}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+        />
+      );
+    } else if (module.type === "camera") {
+      child = (
+        <CameraModule
+          config={module}
+          globalConfig={config}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+          deviceOnline={deviceOnline}
+          saveConfigToDevice={saveConfigToDevice}
+          controlWs={controlWs}
+        />
+      );
+    } else if (module.type === "musicPlayer") {
+      child = (
+        <MusicPlayerModule
+          config={module}
+          globalConfig={config}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+          deviceOnline={deviceOnline}
+          saveConfigToDevice={saveConfigToDevice}
+          controlWs={controlWs}
+          onMusicPlaybackChange={onMusicPlaybackChange}
+        />
+      );
+    } else if (module.type === "systemInfo") {
+      child = (
+        <SystemInfoModule
+          module={module}
+          config={config}
+          deviceInfo={deviceInfo}
+          deviceOnline={deviceOnline}
+          onUpdate={updateModule}
+          onDelete={deleteModule}
+        />
+      );
+    }
+    if (!child) return null;
+    return (
+      <SortableModule key={`${module.type}-${module.key}`} module={module}>
+        {child}
+      </SortableModule>
+    );
+  };
+
   // Create IDs for module items
   const moduleIds = moduleItems.map((module) => `module-${module.key}`);
 
@@ -445,84 +470,40 @@ export default function Modules({
         }}
       >
         {/* Render all modules together */}
-        <SortableContext
-          items={moduleIds}
-          strategy={verticalListSortingStrategy}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: moduleItems.length === 1 ? "center" : "center",
-              alignItems: moduleItems.length === 1 ? "flex-start" : "stretch",
-              width: "100%",
-              minHeight: "100px",
-              gap: moduleItems.length === 1 ? 0 : "inherit",
-            }}
-          >
-            {moduleItems.map((module) => {
-              if (module.type === "pin") {
-                return (
-                  <SortablePinModule
-                    key={`pin-${module.key}`}
-                    module={module}
-                    config={config}
-                    onUpdate={updateModule}
-                    onDelete={deleteModule}
-                    controlWs={controlWs}
-                    deviceOnline={deviceOnline}
-                  />
-                );
-              } else if (module.type === "webSocket") {
-                return (
-                  <SortableWebSocketModule
-                    key={`websocket-${module.key}`}
-                    module={module}
-                    onUpdate={updateModule}
-                    onDelete={deleteModule}
-                  />
-                );
-              } else if (module.type === "camera") {
-                return (
-                  <SortableCameraModule
-                    key={`camera-${module.key}`}
-                    module={module}
-                    config={config}
-                    onUpdate={updateModule}
-                    onDelete={deleteModule}
-                    deviceOnline={deviceOnline}
-                    saveConfigToDevice={saveConfigToDevice}
-                    controlWs={controlWs}
-                  />
-                );
-              } else if (module.type === "musicPlayer") {
-                return (
-                  <SortableMusicPlayerModule
-                    key={`musicplayer-${module.key}`}
-                    module={module}
-                    config={config}
-                    onUpdate={updateModule}
-                    onDelete={deleteModule}
-                    deviceOnline={deviceOnline}
-                    saveConfigToDevice={saveConfigToDevice}
-                    controlWs={controlWs}
-                    onMusicPlaybackChange={onMusicPlaybackChange}
-                  />
-                );
-              } else if (module.type === "systemInfo") {
-                return (
-                  <SortableSystemInfoModule
-                    key={`systeminfo-${module.key}`}
-                    module={module}
-                    config={config}
-                    deviceInfo={deviceInfo}
-                    deviceOnline={deviceOnline}
-                    onDelete={deleteModule}
-                  />
-                );
-              }
-              return null;
-            })}
+        <SortableContext items={moduleIds} strategy={masonrySortingStrategy}>
+          <div ref={boardRef} style={{ width: "100%", minHeight: "100px" }}>
+            {rows.map((row, rowIndex) =>
+              row.kind === "full" ? (
+                <div key={`full-${row.item.key}`} style={{ width: "100%" }}>
+                  {renderModule(row.item)}
+                </div>
+              ) : (
+                <div
+                  key={`cols-${rowIndex}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    width: "100%",
+                  }}
+                >
+                  {row.columns.map((column, columnIndex) => (
+                    <div
+                      key={columnIndex}
+                      style={{
+                        flex: `${columnBasis(column)} 1 0`,
+                        minWidth: 0,
+                        maxWidth: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      {column.map((module) => renderModule(module))}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
           </div>
         </SortableContext>
       </Container>

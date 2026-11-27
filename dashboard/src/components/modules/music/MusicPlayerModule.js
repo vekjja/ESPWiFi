@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import Module from "../Module";
+import InfoCard from "../../common/InfoCard";
+import { SECTIONS } from "../../common/SectionTitle";
 import {
   Box,
   Typography,
@@ -20,7 +22,6 @@ import StopIcon from "@mui/icons-material/Stop";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
 import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
 import CastIcon from "@mui/icons-material/Cast";
-import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
@@ -70,6 +71,7 @@ export default function MusicPlayerModule({
   const isSeekingRef = useRef(false);
   const pendingSeekTimeRef = useRef(null);
   const userPausedRef = useRef(false);
+  const primingRef = useRef(false);
 
   // Supported audio file extensions
   const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"];
@@ -97,6 +99,10 @@ export default function MusicPlayerModule({
   useEffect(() => {
     const audio = new Audio();
     audio.volume = volume;
+    audio.preload = "auto";
+    audio.playsInline = true;
+    audio.setAttribute("playsinline", "true");
+    audio.setAttribute("webkit-playsinline", "true");
 
     // Event listeners for audio element
     audio.addEventListener("loadedmetadata", () => {
@@ -152,8 +158,9 @@ export default function MusicPlayerModule({
     });
 
     audio.addEventListener("pause", () => {
-      // Ignore pauses triggered by teardown/track switching
-      if (stopInProgressRef.current) {
+      // Ignore pauses triggered by teardown, track switching, or the
+      // silent clip used to unlock playback on a phone.
+      if (stopInProgressRef.current || primingRef.current) {
         return;
       }
       userPausedRef.current = true;
@@ -248,9 +255,47 @@ export default function MusicPlayerModule({
     }
   }, [deviceOnline, config?.musicDir, controlWs]);
 
+  // Phones only allow play() in the same tap that started it. A silent clip
+  // during that tap unlocks the element so the file can start once it arrives.
+  const primeAudio = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    primingRef.current = true;
+    if (!audio.src) {
+      audio.src =
+        "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+    }
+    const started = audio.play();
+    if (started && typeof started.then === "function") {
+      started
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          primingRef.current = false;
+        })
+        .catch(() => {
+          primingRef.current = false;
+        });
+    } else {
+      primingRef.current = false;
+    }
+  };
+
+  const prefersFullDownload = () => {
+    if (typeof window === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const ios =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    return (
+      ios || window.matchMedia("(hover: none), (pointer: coarse)").matches
+    );
+  };
+
   // Handle track selection
   const handleSelectTrack = async (file, index) => {
     if (!audioRef.current) return;
+    primeAudio();
 
     // Bump sequence so any in-flight WS/audio events from older streams are ignored.
     const mySeq = (streamSeqRef.current = streamSeqRef.current + 1);
@@ -297,6 +342,7 @@ export default function MusicPlayerModule({
     // - If MediaSource is available AND supports this mime, stream progressively.
     // - Otherwise, download full file over WS, then play from a Blob URL.
     const canMse =
+      !prefersFullDownload() &&
       typeof window !== "undefined" &&
       "MediaSource" in window &&
       typeof window.MediaSource?.isTypeSupported === "function" &&
@@ -558,6 +604,7 @@ export default function MusicPlayerModule({
   // Handle play/pause
   const handlePlayPause = async () => {
     if (!audioRef.current) return;
+    primeAudio();
 
     // If no track selected, play the first one
     if (!currentTrack && musicFiles.length > 0) {
@@ -883,26 +930,26 @@ export default function MusicPlayerModule({
   return (
     <>
       <Module
-        title={
-          <Box
-            component="span"
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 0.5,
-              maxWidth: "100%",
-            }}
-          >
-            <LibraryMusicIcon
-              sx={{
-                fontSize: { xs: 28, sm: 32 },
-                color: "primary.main",
-                flex: "0 0 auto",
-              }}
-            />
-
-            {/* Search: anchor stays fixed; field expands without reflow */}
+        onResize={({ width, height }) =>
+          onUpdate?.(moduleKey, { size: "custom", width, height })
+        }
+        onToggleWide={() => onUpdate?.(moduleKey, { wide: !config?.wide })}
+        moduleConfig={config}
+        online={deviceOnline}
+        playback={
+          isPlaying ? (isPaused ? "paused" : "playing") : undefined
+        }
+        onDelete={handleDeleteModule}
+        onSettings={handleOpenSettings}
+        settingsDisabled={!deviceOnline}
+        settingsTooltip="Settings"
+      >
+        <InfoCard
+          embedded
+          fluid
+          title={config?.name || SECTIONS.music.title}
+          icon={SECTIONS.music.icon}
+          headerActions={
             <Box
               component="span"
               sx={{
@@ -991,33 +1038,17 @@ export default function MusicPlayerModule({
                 />
               </Box>
             </Box>
-          </Box>
-        }
-        moduleConfig={config}
-        online={deviceOnline}
-        playback={
-          isPlaying ? (isPaused ? "paused" : "playing") : undefined
-        }
-        onSettings={handleOpenSettings}
-        settingsDisabled={!deviceOnline}
-        settingsTooltip="Settings"
-        sx={{
-          "& .MuiCardContent-root": {
-            minHeight: "auto",
-            paddingBottom: "0px !important",
-            padding: { xs: "8px !important", sm: 2 },
-          },
-        }}
-      >
+          }
+        >
         <Box
           sx={{
             width: "100%",
+            flex: "1 1 auto",
+            minHeight: 0,
             display: "flex",
             flexDirection: "column",
             gap: { xs: 0.5, sm: 1 },
-            overflow: { xs: "hidden", sm: "visible" },
-            // Let the list consume remaining space in taller layouts.
-            minHeight: { xs: "auto", sm: 560 },
+            overflow: "hidden",
           }}
         >
           {/* Current track display */}
@@ -1327,12 +1358,11 @@ export default function MusicPlayerModule({
             sx={{
               width: "100%",
               maxWidth: "100%",
-              maxHeight: { xs: "240px", sm: "420px" },
               overflow: "auto",
               backgroundColor: "rgba(0, 0, 0, 0.1)",
               borderRadius: 1,
-              flex: { xs: "0 0 auto", sm: "1 1 auto" },
-              minHeight: { xs: "200px", sm: "260px" },
+              flex: "1 1 auto",
+              minHeight: 0,
             }}
           >
             {loading ? (
@@ -1419,6 +1449,7 @@ export default function MusicPlayerModule({
             )}
           </Box>
         </Box>
+        </InfoCard>
       </Module>
 
       <MusicPlayerSettingsModal

@@ -19,7 +19,7 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import SectionTitle from "./SectionTitle";
 
-/** Card surface shared by settings sections and system-info modules. */
+/** Card surface shared by settings sections and dashboard modules. */
 export const infoCardSurfaceSx = {
   backgroundColor: "background.paper",
   backgroundImage:
@@ -27,6 +27,34 @@ export const infoCardSurfaceSx = {
   border: "none",
   borderRadius: "3px",
   boxShadow: 1,
+};
+
+/** Type, icons, and bars follow --module-scale from the module shell. */
+const scaleSx = {
+  "&& .MuiTypography-caption": {
+    fontSize: "calc(0.65rem * var(--module-scale, 1))",
+  },
+  "&& .MuiTypography-h6": {
+    fontSize: "calc(1.1rem * var(--module-scale, 1))",
+  },
+  "&& .MuiTypography-subtitle2": {
+    fontSize: "calc(0.9rem * var(--module-scale, 1))",
+  },
+  "&& .MuiTypography-body2": {
+    fontSize: "calc(0.875rem * var(--module-scale, 1))",
+  },
+  "&& .section-title .MuiTypography-root": {
+    fontSize: "calc(1.25rem * var(--module-scale, 1))",
+  },
+  "&& .section-title .MuiTypography-subtitle2": {
+    fontSize: "calc(0.9rem * var(--module-scale, 1))",
+  },
+  "&& .section-title .MuiSvgIcon-root": {
+    fontSize: "calc(24px * var(--module-scale, 1))",
+  },
+  "&& .MuiLinearProgress-root": {
+    height: "calc(8px * var(--module-scale, 1))",
+  },
 };
 
 /**
@@ -56,26 +84,47 @@ export default function InfoCard({
   gridSize = { xs: 12 },
   minHeight = 200,
   embedded = false,
+  fluid = false,
+  scale = false,
 }) {
   const card = (
       <Card
         sx={{
-          height: embedded ? "auto" : "100%",
+          height: fluid || !embedded ? "100%" : "auto",
           width: "100%",
           maxWidth: "100%",
           boxSizing: "border-box",
           minWidth: 0,
-          minHeight,
+          minHeight: fluid ? 0 : minHeight,
+          flex: fluid ? "1 1 auto" : undefined,
+          display: fluid ? "flex" : undefined,
+          flexDirection: fluid ? "column" : undefined,
           ...infoCardSurfaceSx,
+          ...(scale ? scaleSx : null),
         }}
       >
-        <CardContent>
+        <CardContent
+          sx={
+            fluid
+              ? {
+                  flex: "1 1 auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 0,
+                  width: "100%",
+                  boxSizing: "border-box",
+                }
+              : undefined
+          }
+        >
           <Box
             sx={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              mb: 2,
+              mb: fluid ? 1.5 : 2,
+              gap: 1,
+              minWidth: 0,
             }}
           >
             <SectionTitle icon={Icon} title={title} sx={{ width: "auto", flex: 1 }}>
@@ -91,6 +140,21 @@ export default function InfoCard({
           </Box>
 
           {/* View Mode */}
+          {fluid ? (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                flex: "1 1 auto",
+                minHeight: 0,
+                minWidth: 0,
+                maxWidth: "100%",
+                overflow: "auto",
+              }}
+            >
+              {children}
+            </Box>
+          ) : (
           <Collapse in={!isEditing}>
             <Box
               sx={{
@@ -104,6 +168,7 @@ export default function InfoCard({
               {children}
             </Box>
           </Collapse>
+          )}
 
           {/* Edit Mode */}
           {editContent && <Collapse in={isEditing}>{editContent}</Collapse>}

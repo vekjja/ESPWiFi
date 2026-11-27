@@ -18,7 +18,18 @@ const isPrivateIp = (hostname) => {
   return false;
 };
 
+// The dashboard dev server also listens on 3000. Opening it by this
+// computer's LAN address is not the device, so API and sockets stay pointed
+// at the device host.
+const isDevServerOrigin = () => {
+  if (typeof window === "undefined") return false;
+  return (
+    process.env.NODE_ENV === "development" && window.location.port === "3000"
+  );
+};
+
 const isDeviceHostedOrigin = () => {
+  if (isDevServerOrigin()) return false;
   const hostname = (window.location.hostname || "").toLowerCase();
   const isLocalhost =
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";

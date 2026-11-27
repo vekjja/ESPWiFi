@@ -15,28 +15,6 @@ export const MODULE_SIZE_OPTIONS = [
   { value: "custom", label: "Custom" },
 ];
 
-// Cards that are not a square preset. Keyed by module.type.
-const MODULE_TYPE_FRAMES = {
-  camera: {
-    minWidth: 400,
-    maxWidth: 500,
-    minHeight: "auto",
-    maxHeight: 500,
-  },
-  musicPlayer: {
-    width: { xs: "100%", sm: "auto" },
-    minWidth: { xs: "320px", sm: "520px" },
-    maxWidth: { xs: "100%", sm: "820px" },
-    minHeight: "auto",
-    maxHeight: { xs: "90vh", sm: "720px" },
-  },
-  systemInfo: {
-    minWidth: 320,
-    maxWidth: 460,
-    minHeight: "auto",
-  },
-};
-
 export const CONNECTION_CHROME = {
   connected: { label: "Connected" },
   connecting: { label: "Connecting…" },
@@ -46,6 +24,15 @@ export const CONNECTION_CHROME = {
   auth: { label: "Sign in required" },
   disconnected: { label: "Disconnected" },
 };
+
+export function wrapperWidth(module) {
+  if (module?.wide) return "100%";
+  const width = Number(module?.width);
+  if (module?.size === "custom" && width > 0) {
+    return `min(${Math.round(width)}px, 100%)`;
+  }
+  return "100%";
+}
 
 export function connectionLabel(status) {
   return (
@@ -62,17 +49,51 @@ function squareFrame(width, height) {
   };
 }
 
+function fluidFrame() {
+  return {
+    width: "calc(100% - 20px)",
+    maxWidth: "calc(100% - 20px)",
+    minWidth: 0,
+    minHeight: "auto",
+  };
+}
+
 /**
  * Frame for a module record from config.modules.
  * Custom width/height win, then a named size, then the type layout, then medium.
  */
 export function frameSxForModule(moduleConfig) {
-  if (!moduleConfig) return squareFrame(MODULE_SIZES.medium.width, MODULE_SIZES.medium.height);
+  if (!moduleConfig) return fluidFrame();
+
+  const customHeight =
+    moduleConfig.size === "custom" && Number(moduleConfig.height) > 0
+      ? Number(moduleConfig.height)
+      : null;
+
+  if (moduleConfig.wide) {
+    return {
+      ...fluidFrame(),
+      ...(customHeight
+        ? {
+            height: customHeight,
+            minHeight: customHeight,
+            maxHeight: customHeight,
+          }
+        : null),
+    };
+  }
 
   if (moduleConfig.size === "custom") {
     const width = Number(moduleConfig.width) || MODULE_SIZES.medium.width;
-    const height = Number(moduleConfig.height) || MODULE_SIZES.medium.height;
-    return squareFrame(width, height);
+    const height = customHeight || MODULE_SIZES.medium.height;
+    return {
+      width: `min(${width}px, calc(100% - 20px))`,
+      maxWidth: "calc(100% - 20px)",
+      minWidth: 0,
+      height,
+      minHeight: height,
+      maxHeight: height,
+    };
   }
 
   if (moduleConfig.size && MODULE_SIZES[moduleConfig.size]) {
@@ -80,11 +101,7 @@ export function frameSxForModule(moduleConfig) {
     return squareFrame(preset.width, preset.height);
   }
 
-  if (moduleConfig.type && MODULE_TYPE_FRAMES[moduleConfig.type]) {
-    return { ...MODULE_TYPE_FRAMES[moduleConfig.type] };
-  }
-
-  return squareFrame(MODULE_SIZES.medium.width, MODULE_SIZES.medium.height);
+  return fluidFrame();
 }
 
 /**

@@ -98,11 +98,6 @@ jobs:
             context: .
             dockerfile: ./dashboard/Dockerfile.prebuilt
             needs_dashboard: true
-          - name: cloud
-            repository: ghcr.io/vekjja/espwifi-cloud
-            context: ./cloud
-            dockerfile: ./cloud/Dockerfile
-            needs_dashboard: false
 
     steps:
       - name: Checkout code
@@ -219,8 +214,7 @@ jobs:
           TAG="${{ steps.vars.outputs.tag }}"
           helm upgrade --install espwifi-io ./espwifi.io -f ./espwifi.io/values.yaml \
             --namespace espwifi-io --create-namespace \
-            --set image.tag="${TAG}" \
-            --set cloud.image.tag="${TAG}"
+            --set image.tag="${TAG}"
 
       - name: Update values.yaml
         shell: bash
@@ -228,7 +222,6 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.vars.outputs.tag }}"
           perl -0777 -i -pe "s/(^image:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
-          perl -0777 -i -pe "s/(^cloud:\\n(?:.*\\n)*?\\s*tag:\\s*\")([^\"]+)(\")/\\1${TAG}\\3/m" espwifi.io/values.yaml
 
       - name: Commit updated values.yaml
         shell: bash
@@ -244,6 +237,7 @@ jobs:
     name: Build Firmware Binaries for ${{ matrix.environment.name }}
     needs: build-dashboard
     runs-on: ubuntu-latest
+    if: false
     
     strategy:
       matrix:

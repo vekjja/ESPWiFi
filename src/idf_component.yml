@@ -1,10 +1,10 @@
 dependencies:
   espressif/esp_jpeg: ">=1.0.0"
   espressif/mdns: ">=1.2.0"
-  # Pin to avoid newer versions that assume esp_transport WS redirect APIs that
+  # Pin to avoid newer versions that assume esp_transport WS redirect APIs
   espressif/esp_websocket_client: "1.5.0"
   # ILI9341 panel driver (works for many ST7789 displays too)
-  espressif/esp_lcd_ili9341: ">=1.0.0"
-  lvgl/lvgl:
-    version: "^9"
-    public: true
+  # espressif/esp_lcd_ili9341: ">=1.0.0"
+  # lvgl/lvgl:
+  #   version: "^9"
+  #   public: true

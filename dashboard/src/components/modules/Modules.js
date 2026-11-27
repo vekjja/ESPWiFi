@@ -15,7 +15,9 @@ import PinModule from "./pin/PinModule";
 import WebSocketModule from "./websocket/WebSocketModule";
 import CameraModule from "./camera/CameraModule";
 import MusicPlayerModule from "./music/MusicPlayerModule";
-import MoviePlayerModule from "./movie/MoviePlayerModule";
+// Movie player source stays in ./movie. It is not imported, so the player
+// and the Dolby decoder stay out of the build uploaded to the device.
+// import MoviePlayerModule from "./movie/MoviePlayerModule";
 import SystemInfoModule from "./systemInfo/SystemInfoModule";
 import LogsModule from "./logs/LogsModule";
 import { ModuleLayoutContext } from "./Module";
@@ -53,12 +55,10 @@ function estimateHeight(module) {
   let height = 280;
   if (module.type === "systemInfo") {
     height = module.info === "storage" ? 760 : 460;
-  } else if (module.type === "camera") {
-    height = 540;
-  } else if (module.type === "musicPlayer") {
+  } else if (module.type === "camera" || module.type === "musicPlayer") {
     height = viewableCardHeight();
-  } else if (module.type === "moviePlayer") {
-    height = 580;
+  // } else if (module.type === "moviePlayer") {
+  //   height = 580;
   } else if (module.type === "logs") {
     height = 520;
   }
@@ -569,17 +569,17 @@ export default function Modules({
           onMusicPlaybackChange={onMusicPlaybackChange}
         />
       );
-    } else if (module.type === "moviePlayer") {
-      child = (
-        <MoviePlayerModule
-          config={module}
-          globalConfig={config}
-          onUpdate={updateModule}
-          onDelete={deleteModule}
-          deviceOnline={deviceOnline}
-          controlWs={controlWs}
-        />
-      );
+    // } else if (module.type === "moviePlayer") {
+    //   child = (
+    //     <MoviePlayerModule
+    //       config={module}
+    //       globalConfig={config}
+    //       onUpdate={updateModule}
+    //       onDelete={deleteModule}
+    //       deviceOnline={deviceOnline}
+    //       controlWs={controlWs}
+    //     />
+    //   );
     } else if (module.type === "systemInfo") {
       child = (
         <SystemInfoModule

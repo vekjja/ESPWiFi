@@ -13,7 +13,7 @@ import SettingsModal from "../common/SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
 import WebSocketIcon from "@mui/icons-material/Wifi";
 import LibraryMusicIcon from "@mui/icons-material/LibraryMusic";
-import MovieIcon from "@mui/icons-material/Movie";
+// import MovieIcon from "@mui/icons-material/Movie";
 import { SECTIONS } from "../common/SectionTitle";
 import AddIcon from "@mui/icons-material/Add";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -21,7 +21,9 @@ import PinSettingsModal from "./pin/PinSettingsModal";
 import WebSocketSettingsModal from "./websocket/WebSocketSettingsModal";
 import CameraSettingsModal from "./camera/CameraSettingsModal";
 import MusicPlayerSettingsModal from "./music/MusicPlayerSettingsModal";
-import MoviePlayerSettingsModal from "./movie/MoviePlayerSettingsModal";
+// Movie player UI stays in ./movie and is not imported, so it is not built
+// into the dashboard uploaded to the device.
+// import MoviePlayerSettingsModal from "./movie/MoviePlayerSettingsModal";
 
 export default function AddModuleModal({
   config,
@@ -36,7 +38,7 @@ export default function AddModuleModal({
   const [webSocketModalOpen, setWebSocketModalOpen] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [musicPlayerModalOpen, setMusicPlayerModalOpen] = useState(false);
-  const [movieModalOpen, setMovieModalOpen] = useState(false);
+  // const [movieModalOpen, setMovieModalOpen] = useState(false);
 
   const [pinData, setPinData] = useState({
     name: "",
@@ -64,9 +66,9 @@ export default function AddModuleModal({
     musicDir: "/music",
   });
 
-  const [movieData, setMovieData] = useState({
-    movieDir: "/movies",
-  });
+  // const [movieData, setMovieData] = useState({
+  //   movieDir: "/movies",
+  // });
 
   const handleOpenPinModal = () => {
     setPinData({
@@ -123,21 +125,21 @@ export default function AddModuleModal({
     setMusicPlayerModalOpen(false);
   };
 
-  const handleOpenMovieModal = () => {
-    setMovieData({
-      name: "",
-      movieDir: "/movies",
-    });
-    setMovieModalOpen(true);
-  };
-
-  const handleCloseMovieModal = () => {
-    setMovieModalOpen(false);
-  };
-
-  const handleMovieDataChange = (changes) => {
-    setMovieData((prev) => ({ ...prev, ...changes }));
-  };
+  // const handleOpenMovieModal = () => {
+  //   setMovieData({
+  //     name: "",
+  //     movieDir: "/movies",
+  //   });
+  //   setMovieModalOpen(true);
+  // };
+  //
+  // const handleCloseMovieModal = () => {
+  //   setMovieModalOpen(false);
+  // };
+  //
+  // const handleMovieDataChange = (changes) => {
+  //   setMovieData((prev) => ({ ...prev, ...changes }));
+  // };
 
   // Helper function to generate unique key
   const generateUniqueKey = (existingModules) => {
@@ -270,30 +272,30 @@ export default function AddModuleModal({
     onClose();
   };
 
-  const handleSaveMovie = () => {
-    if (!movieData.movieDir || movieData.movieDir.trim() === "") {
-      alert("Please enter a movie directory path");
-      return;
-    }
-
-    const existingModules = config.modules || [];
-    if (existingModules.some((mod) => mod.type === "moviePlayer")) return;
-    const newMovie = {
-      type: "moviePlayer",
-      name: movieData.name || "Movies",
-      movieDir: movieData.movieDir.trim().startsWith("/")
-        ? movieData.movieDir.trim()
-        : "/" + movieData.movieDir.trim(),
-      key: generateUniqueKey(existingModules),
-    };
-
-    const updatedModules = [...existingModules, newMovie];
-    const configToSave = { modules: updatedModules };
-    saveConfig(configToSave);
-    saveConfigToDevice(configToSave);
-    handleCloseMovieModal();
-    onClose();
-  };
+  // const handleSaveMovie = () => {
+  //   if (!movieData.movieDir || movieData.movieDir.trim() === "") {
+  //     alert("Please enter a movie directory path");
+  //     return;
+  //   }
+  //
+  //   const existingModules = config.modules || [];
+  //   if (existingModules.some((mod) => mod.type === "moviePlayer")) return;
+  //   const newMovie = {
+  //     type: "moviePlayer",
+  //     name: movieData.name || "Movies",
+  //     movieDir: movieData.movieDir.trim().startsWith("/")
+  //       ? movieData.movieDir.trim()
+  //       : "/" + movieData.movieDir.trim(),
+  //     key: generateUniqueKey(existingModules),
+  //   };
+  //
+  //   const updatedModules = [...existingModules, newMovie];
+  //   const configToSave = { modules: updatedModules };
+  //   saveConfig(configToSave);
+  //   saveConfigToDevice(configToSave);
+  //   handleCloseMovieModal();
+  //   onClose();
+  // };
 
   const handleAddSystemInfo = (info) => {
     const existingModules = config?.modules || [];
@@ -402,6 +404,7 @@ export default function AddModuleModal({
             </ListItemButton>
           </ListItem>
 
+          {/* Movie player is kept in source and left out of the device build.
           <ListItem disablePadding>
             <ListItemButton
               onClick={handleOpenMovieModal}
@@ -416,6 +419,7 @@ export default function AddModuleModal({
               />
             </ListItemButton>
           </ListItem>
+          */}
 
         <Divider sx={{ my: 1 }} />
           <ListItem>
@@ -540,13 +544,13 @@ export default function AddModuleModal({
         onMusicPlayerDataChange={handleMusicPlayerDataChange}
       />
 
-      <MoviePlayerSettingsModal
+      {/* <MoviePlayerSettingsModal
         open={movieModalOpen}
         onClose={handleCloseMovieModal}
         onSave={handleSaveMovie}
         movieData={movieData}
         onMovieDataChange={handleMovieDataChange}
-      />
+      /> */}
     </>
   );
 }

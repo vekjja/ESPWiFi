@@ -14,7 +14,11 @@ import { getApiUrl, buildWebSocketUrl } from "./utils/api";
 import { getRSSIThemeColor } from "./utils/rssi";
 import { getAuthToken, clearAuthToken } from "./utils/auth";
 import { createSocketSession } from "./utils/socketSession";
-import { omitLayoutFromConfig } from "./components/modules/moduleLayout";
+import {
+  configForDevice,
+  rememberBrowserModules,
+  withBrowserModules,
+} from "./components/modules/moduleLayout";
 
 // espwifi.local resolves over mDNS. The IPv4 answer is immediate, but the
 // IPv6 query sits until it times out (~5s). Chrome's WebSocket uses that
@@ -361,7 +365,7 @@ function App() {
       }
 
       if (msg?.cmd === "get_config" && msg?.config) {
-        const nextConfig = omitLayoutFromConfig(msg.config);
+        const nextConfig = withBrowserModules(msg.config);
         setConfig(nextConfig);
         setLocalConfig(nextConfig);
         setCloudDeviceConfig(nextConfig);
@@ -590,11 +594,13 @@ function App() {
    * @param {Object} newConfig - The new configuration object (can be partial)
    */
   const updateLocalConfig = (newConfig) => {
-    const cleaned = omitLayoutFromConfig(newConfig);
-    setLocalConfig((prevConfig) => ({ ...prevConfig, ...cleaned, apiURL }));
+    if (Array.isArray(newConfig?.modules)) {
+      rememberBrowserModules(newConfig.modules);
+    }
+    setLocalConfig((prevConfig) => ({ ...prevConfig, ...newConfig, apiURL }));
     // If we're operating from a tunneled device config, keep it in sync for
     // immediate UI updates.
-    setCloudDeviceConfig((prev) => (prev ? { ...prev, ...cleaned } : prev));
+    setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
   };
 
   /**
@@ -606,14 +612,21 @@ function App() {
   const saveConfigFromButton = useCallback(
     (newConfig) => {
       // One mode: send config over control WS (no HTTP config endpoint).
-      // Placement and size stay in the browser, so they never go out in a save.
-      const cleaned = omitLayoutFromConfig(newConfig);
+      // Modules stay in this browser, so a modules-only save is not sent.
+      if (Array.isArray(newConfig?.modules)) {
+        rememberBrowserModules(newConfig.modules);
+      }
+      const forDevice = configForDevice(newConfig);
       setLocalConfig((prevConfig) => ({
         ...prevConfig,
-        ...cleaned,
+        ...newConfig,
         apiURL,
       }));
-      setCloudDeviceConfig((prev) => (prev ? { ...prev, ...cleaned } : prev));
+      setCloudDeviceConfig((prev) => (prev ? { ...prev, ...newConfig } : prev));
+
+      if (!forDevice || Object.keys(forDevice).length === 0) {
+        return Promise.resolve(true);
+      }
 
       const ws = controlWsRef.current;
       if (!ws || ws.readyState !== 1) {
@@ -621,7 +634,7 @@ function App() {
         return Promise.resolve(null);
       }
       try {
-        ws.send(JSON.stringify({ cmd: "set_config", config: cleaned }));
+        ws.send(JSON.stringify({ cmd: "set_config", config: forDevice }));
         setTimeout(() => {
           try {
             ws.send(JSON.stringify({ cmd: "get_config" }));

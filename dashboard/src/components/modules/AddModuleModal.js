@@ -7,6 +7,7 @@ import {
   ListItemIcon,
   ListItemText,
   ListItemButton,
+  Typography,
 } from "@mui/material";
 import SettingsModal from "../common/SettingsModal";
 import PinIcon from "@mui/icons-material/Input";
@@ -429,6 +430,10 @@ export default function AddModuleModal({
               </>
             )}
         </List>
+        <Typography variant="body2" color="text.secondary" sx={{ px: 2, pt: 1 }}>
+          Modules are saved in this browser for the current device. Clearing
+          the browser cache resets that layout.
+        </Typography>
       </SettingsModal>
 
       <PinSettingsModal

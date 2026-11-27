@@ -19,11 +19,6 @@ import SystemInfoModule from "./systemInfo/SystemInfoModule";
 import LogsModule from "./logs/LogsModule";
 import { ModuleLayoutContext } from "./Module";
 import { MODULE_GUTTER, MODULE_SIZES, moduleSlotWidth } from "./moduleConfig";
-import {
-  applyModuleLayout,
-  isLayoutPatch,
-  rememberModuleLayout,
-} from "./moduleLayout";
 
 function estimateHeight(module) {
   let height = 280;
@@ -285,12 +280,10 @@ export default function Modules({
 
       // Handle new unified modules format
       if (config.modules && Array.isArray(config.modules)) {
-        modulesArray = applyModuleLayout(
-          config.modules.map((mod, idx) => ({
-            ...mod,
-            key: typeof mod.key === "number" ? mod.key : idx,
-          }))
-        );
+        modulesArray = config.modules.map((mod, idx) => ({
+          ...mod,
+          key: typeof mod.key === "number" ? mod.key : idx,
+        }));
       } else {
         // Convert old separate format to new unified format
         const pins = config.pins || [];
@@ -361,11 +354,8 @@ export default function Modules({
     });
     seenModuleKeysRef.current = new Set(keys);
     setModules(next);
-    rememberModuleLayout(next);
-    const partial = { modules: next };
-    saveConfig(partial);
-    saveConfigToDevice(partial);
-  }, [modules, boardWidth, heights, saveConfig, saveConfigToDevice]);
+    saveConfig({ modules: next });
+  }, [modules, boardWidth, heights, saveConfig]);
 
   // Use useMemo to ensure stable references
   const moduleItems = useMemo(() => modules, [modules]);
@@ -481,9 +471,6 @@ export default function Modules({
       item.key === key ? { ...item, x: slot.x, y: slot.y } : item
     );
     setModules(next);
-    rememberModuleLayout(next);
-    // Position is kept in the browser. Writing it to the device runs the
-    // camera config handler and restarts the camera.
     saveConfig({ modules: next });
   };
 
@@ -498,14 +485,7 @@ export default function Modules({
 
     setModules(updatedModules);
 
-    const updatedConfig = { modules: updatedModules };
-    if (isLayoutPatch(moduleState)) {
-      rememberModuleLayout(updatedModules);
-      saveConfig(updatedConfig);
-      return;
-    }
-    saveConfig(updatedConfig);
-    saveConfigToDevice(updatedConfig);
+    saveConfig({ modules: updatedModules });
   };
 
   const deleteModule = (moduleKey) => {
@@ -515,11 +495,7 @@ export default function Modules({
     console.log("🗑️ Updated modules after filter:", updatedModules);
 
     setModules(updatedModules);
-    rememberModuleLayout(updatedModules);
-
-    const updatedConfig = { modules: updatedModules };
-    saveConfig(updatedConfig);
-    saveConfigToDevice(updatedConfig);
+    saveConfig({ modules: updatedModules });
   };
 
   useLayoutEffect(() => {

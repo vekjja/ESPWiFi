@@ -1,225 +1,212 @@
 # ESPWiFi
 
-**ESPWiFi** is a modern, extensible library and dashboard for easily connecting ESP32 boards to WiFi networks, managing device settings, and controlling hardware modules via a web interface.
+**ESPWiFi** is a firmware library and web dashboard for ESP32 boards. It connects the device to WiFi, stores settings as JSON on LittleFS, and exposes a live dashboard for pins, camera, music, files, and device info.
 
-It supports both Station (STA) and Access Point (AP) modes, JSON-based configuration stored on LittleFS, a built-in web server, and a drag-and-drop dashboard for live device management.
+The device speaks over two WebSockets. `/ws/control` carries settings, logs, GPIO, and file listings. `/ws/media` carries file bytes, music, and camera frames. HTTP serves the dashboard and a few small routes.
 
 ---
 
 ## ✨ Features
 
-- 📶 Easy WiFi connection (STA/AP modes)
-- 📡 Auto or manual AP mode fallback
-- 💾 JSON-based configuration stored on LittleFS
-- 🖥️ Web dashboard for live device/module management
-- 📡 mDNS support for easy device discovery
-- 🔌 GPIO, PWM, and remote pin control
-- 🔧 Web server API for settings, logs, and file management
-- 🔁 WebSocket endpoints for live data (RSSI, camera, custom)
-- 📷 Camera and spectral analyzer support (ESP32)
-- 🎛️ BMI160 accelerometer/gyroscope sensor support
-- 🧩 Modular: add pins, WebSockets, and more via dashboard
-- 🔐 Configurable authentication (username/password)
-- 🔄 Over-the-air (OTA) firmware and filesystem updates
-- 🛠️ ESP-IDF / PlatformIO (ESP-IDF) compatible
+- 📶 Station and access point WiFi, with mDNS
+- 💾 JSON config on LittleFS. WiFi connection changes are saved and applied on the next restart
+- 💿 Optional SD card (SPI) for files, logs, and music
+- 🖥️ React dashboard with a drag-and-drop board
+- 🧩 Pin, PWM, camera, music, logs, and system info modules
+- 📁 File browser for LittleFS and the SD card
+- 🔐 Optional username and password authentication
+- 🛠️ ESP-IDF firmware, built with PlatformIO
+
+---
+
+## 📟 Boards
+
+The default PlatformIO environment is `esp32-s3`.
+
+| Environment | Board | Notes |
+| --- | --- | --- |
+| `esp32-s3` | Seeed XIAO ESP32-S3 | Camera and SD card |
+| `esp32-c3` | Seeed XIAO ESP32-C3 | |
+| `cyd` | ESP32-2432S028R | TFT |
+| `esp32u` | ESP32 | DAC build flag |
 
 ---
 
 ## 🛠 Installation
 
 ### PlatformIO
-Add to `platformio.ini`:
+
 ```ini
-lib_deps = 
+lib_deps =
   https://github.com/vekjja/ESPWiFi.git
 ```
 
 ---
 
-## 📂 File Structure
+## 📂 File structure
 
 ```
 ESPWiFi/
-├── src/                 # Core library source files
-│   ├── ESPWiFi.h        # Main library header
-│   ├── Device.cpp       # Device initialization
-│   ├── WiFi.cpp         # WiFi connection management
-│   ├── WebServer.cpp    # HTTP server and API endpoints
-│   └── ...              # Other core modules
-├── include/             # Hardware libraries and headers
-│   ├── WebSocket.h      # WebSocket implementation
-│   ├── DFRobot_BMI160.h # BMI160 sensor library
-│   ├── SpectralAnalyzer.h
-│   ├── LED/             # LED matrix support
-│   └── 2D/              # 2D physics engine
-├── dashboard/           # React web dashboard
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   └── utils/       # Utility functions
-│   ├── public/
-│   │   └── config.json  # Dashboard config
-│   └── package.json
+├── src/                     # Firmware
+│   ├── ESPWiFi.cpp          # start() and runSystem()
+│   ├── ControlSocket.cpp    # /ws/control
+│   ├── MediaSocket.cpp      # /ws/media
+│   ├── Camera.cpp
+│   ├── Audio.cpp
+│   ├── net/                 # WiFi, HTTP server, mDNS
+│   └── routes/              # Auth, root, and static files
+├── include/                 # Public headers and board pin maps
+├── dashboard/               # React dashboard
+├── data/                    # Built dashboard, uploaded to LittleFS
 ├── examples/
-│   └── config.json      # Example device configuration
-├── data/                # Built dashboard files (for upload)
-├── release/             # Pre-built firmware binaries
-├── platformio.ini       # PlatformIO configuration
-├── library.json         # Library metadata
-└── README.md
+├── partitions/
+└── platformio.ini
 ```
 
 ---
 
-## 🔧 Firmware Usage (ESP-IDF)
+## 🔧 Firmware
 
-### Quick Start (Default Configuration)
+`start()` loads the default config, mounts LittleFS, reads `config.json`, mounts the SD card when the board has one, and starts logging. Boards with a TFT or Bluetooth audio start those as well.
 
-The simplest way to run ESPWiFi is using the default `start()` and `runSystem()` methods from your ESP-IDF entrypoint.
+`toggleWiFi()` brings the radio up or down. When WiFi starts it also starts mDNS, the HTTP server, `/ws/control`, and `/ws/media`.
 
-###### ESPWiFi will generate a default `config.json` file if not present.
+`runSystem()` is the main loop. It feeds the watchdog, flushes logs, applies queued config updates, checks the SD card, and streams the camera when one is installed.
+
 ```cpp
 #include "ESPWiFi.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "nvs_flash.h"
 
 ESPWiFi espwifi;
 
 extern "C" void app_main(void) {
   espwifi.start();
-  while (1) {
-    espwifi.runSystem();
-    espwifi.feedWatchDog();
-  }
+  espwifi.toggleWiFi();
+  espwifi.runSystem();
 }
 ```
 
-The `start()` method automatically:
-- Initializes serial communication
-- Starts logging
-- Reads configuration from LittleFS
-- Connects to WiFi (or starts AP mode)
-- Starts mDNS
-- Starts the web server
-- Handles configuration-based services (GPIO, camera, etc.)
+If `config.json` is missing, the firmware writes a default one. Access point mode is the default. The access point name comes from the device hostname.
 
-The `runSystem()` method handles:
-- RSSI streaming
-- Camera streaming (if enabled in config)
+### 📋 Example config
 
-### Manual Configuration
-
-For more control, you can use `config.json` to configure the device and start services individually:
-
-### Example `config.json`
 ```json
 {
+  "deviceName": "ESPWiFi",
+  "wifi": {
+    "enabled": true,
     "mode": "client",
-    "mdns": "ESPWiFi",
+    "mdns": true,
     "client": {
-        "ssid": "YOUR_SSID",
-        "password": "YOUR_PASSWORD"
+      "ssid": "YOUR_SSID",
+      "password": "YOUR_PASSWORD"
     },
-    "ap": {
-        "ssid": "ESPWiFi",
-        "password": "espwifi123"
+    "accessPoint": {
+      "ssid": "ESPWiFi",
+      "password": "YOUR_AP_PASSWORD"
     },
-    "auth": {
-        "token": "",
-        "enabled": true,
-        "username": "admin",
-        "password": "admin"
-    },
-    "log": {
-        "enabled": true,
-        "level": "info"
+    "power": {
+      "txPower": 19.5,
+      "powerSave": "none"
     }
-}
-```
-
-### Example Custom Firmware Usage
-```cpp
-#include "ESPWiFi.h"
-
-ESPWiFi espwifi;
-
-extern "C" void app_main(void) {
-  espwifi.readConfig();      // Load config from LittleFS (Can be omitted, but will be called by other services if needed) 
-  espwifi.startAP();         // Explicitly Start Access Point Only
-  espwifi.srvGPIO();         // Register Only GPIO endpoints 
-
-  while (1) {
-    espwifi.feedWatchDog();       // Allow other tasks to run
-    // Custom main loop logic here
+  },
+  "auth": {
+    "enabled": false,
+    "username": "admin",
+    "password": "YOUR_PASSWORD"
+  },
+  "log": {
+    "enabled": true,
+    "level": "info",
+    "useSD": true
   }
 }
 ```
 
----
-
-## 🖥️ Dashboard (Web UI)
-
-The dashboard (in `dashboard/`) is a React app for live device management:
-- Add/remove/reorder Pin and WebSocket modules
-- Drag-and-drop UI, Material UI theme
-- **File Browser**: Browse, upload, download, rename, and delete files on LittleFS and SD card with storage information and folder navigation
-- Comprehensive device settings modal with tabbed interface:
-  - **Info Tab**: View device information including network status, storage usage (LittleFS and SD card), memory statistics, chip details, and system uptime
-  - **Network Tab**: Configure WiFi client/AP mode, SSID/password settings, and mDNS hostname
-  - **Auth Tab**: Enable/disable authentication and configure username/password
-  - **JSON Tab**: Direct JSON configuration editing with validation
-  - **Updates Tab**: Over-the-air firmware and filesystem updates (when OTA is enabled)
-- Real-time device monitoring and status updates
+`wifi.mode` is `client` or `accessPoint`. Saving a new SSID or password stores it. The radio keeps the current session until the device restarts.
 
 ---
 
-## 🧩 Hardware & Sensors
-- **GPIO/PWM**: Control pins, set modes, invert, remote control
-- **WebSocket**: Live RSSI, camera, or custom data
-- **Camera**: ESP32-CAM/ESP32-S3 support (see `include/Camera.h`)
-- **Spectral Analyzer**: Audio FFT (see `include/SpectralAnalyzer.h`)
-- **BMI160**: Accelerometer/gyroscope (see `include/BMI160/`)
-- **LED Matrix**: FastLED support (see `include/LEDMatrix.h`)
+## 🖥️ Dashboard
+
+The app in `dashboard/` is a React dashboard. From that directory:
+
+| Command | What it does |
+| --- | --- |
+| `pnpm start` | Dev server |
+| `pnpm run build` | Production build into `../data` |
+| `pnpm upload` | Flash firmware, then open the serial monitor |
+| `pnpm uploadfs` | Flash the LittleFS image, then open the serial monitor |
+| `pnpm run update` | Flash the filesystem, then the firmware, then open the monitor |
+| `pnpm run deploy` | Clean, rebuild the dashboard, then run `update` |
+
+`pnpm update` and `pnpm deploy` are pnpm commands, so the scripts above need `pnpm run`.
+
+The board is stored in the browser. Card layout and module settings stay in `localStorage` and are not sent to the device. Camera sensor settings are the exception: those are saved on the device.
+
+Modules you can add:
+
+- 🔌 **Pin** for GPIO and PWM
+- 📡 **WebSocket** for a custom stream
+- 📷 **Camera** on boards that have one. A new camera opens at the height of the visible dashboard
+- 🎵 **Music Player**, one at a time. It lists audio on the SD card, default directory `/music`, and plays `.mp3`, `.wav`, `.ogg`, `.m4a`, `.aac`, and `.flac` over `/ws/media`
+- 📊 **System info** cards for memory, network, and storage, one of each
+- 📜 **Logs**
+
+The movie player source is in `dashboard/src/components/modules/movie` and is not imported by the app, so it is left out of the LittleFS image.
+
+Device settings cover network status, WiFi client and access point, transmit power, authentication, memory, storage, chip details, and a JSON editor.
+
+The file browser lists, creates, renames, and deletes files through `/ws/control`. Uploads and downloads go through `/ws/media`.
 
 ---
 
-## 📚 API Endpoints
+## 🔁 WebSockets
 
-### Configuration & Device Management
-- `/config` — GET/PUT device config (JSON)
-- `/info` — GET device information (network, storage, memory, chip details)
-- `/restart` — GET reboot device
+Connect to `ws://<device>/ws/control` or `ws://<device>/ws/media`. With mDNS that host is the device hostname, for example `ws://espwifi.local/ws/control`.
 
-### Authentication
-- `/api/auth/login` — POST login with username/password (returns Bearer token)
-- `/api/auth/logout` — POST logout and invalidate token
+Send a JSON text frame `{"cmd":"..."}`. Replies include `ok` and the same `cmd`.
 
-### GPIO Control
-- `/gpio` — POST pin control
+### 🎛️ `/ws/control`
 
-### WebSocket Streams
-- `/rssi` — WebSocket for live RSSI
-- `/camera` — WebSocket for camera stream (ESP32)
-- `/camera/snapshot` — GET capture and download camera snapshot (ESP32)
+| Command | Purpose |
+| --- | --- |
+| `ping` | Heartbeat |
+| `get_status` | IP, hostname, and WiFi mode |
+| `get_config` / `set_config` | Read or merge device config |
+| `get_info` | Network, storage, memory, and chip details |
+| `get_rssi` | Current station signal |
+| `get_logs` | A chunk of the log file |
+| `set_gpio` / `get_gpio` / `set_pwm` | Pin control |
+| `list_files` | List a LittleFS (`lfs`) or SD (`sd`) directory |
+| `get_storage` | Total, used, and free space |
+| `mkdir` / `rename_file` / `delete_file` | Change files |
+| `take_snapshot` | Capture a camera frame |
 
-### Over-the-Air Updates
-- `/api/ota/status` — GET OTA status and device information
-- `/api/ota/progress` — GET current OTA update progress
-- `/api/ota/start` — POST start OTA update (firmware or filesystem)
-- `/api/ota/upload` — POST upload firmware binary
-- `/api/ota/filesystem` — POST upload filesystem files (supports multiple files with folder structure)
+### 📱 `/ws/media`
 
-### File Management
-- `/api/files` — GET list files and directories (supports `fs=sd|lfs` and `path` parameters)
-- `/api/storage` — GET storage information (total, used, free) for filesystem (supports `fs=sd|lfs`)
-- `/api/files/mkdir` — POST create directory
-- `/api/files/rename` — POST rename file or directory
-- `/api/files/delete` — POST delete file or directory
-- `/api/files/upload` — POST upload file to filesystem
-- `/sd/*` — GET serve files from SD card
-- `/lfs/*` — GET serve files from LittleFS
-- `/log` — GET device logs
+| Command | Purpose |
+| --- | --- |
+| `file_up_start` | Begin an upload. Binary frames follow, then the upload completes |
+| `file_up_abort` | Cancel an upload |
+| `file_down_start` / `file_down_next` / `file_down_stop` | Download a file in chunks |
+| `media_start` / `media_next` / `media_seek` / `media_stop` | Stream an audio file |
+| `media_read` | Read a byte range from an open file |
+| `camera_start` / `camera_frame` / `camera_stop` | Camera frames |
+
+Each media command is acknowledged with a JSON frame. File and stream bytes follow as a binary frame.
+
+---
+
+## 🌐 HTTP
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` | Dashboard `index.html` from LittleFS |
+| `POST /api/auth/login` | Username and password login |
+| `POST /api/auth/logout` | End the session |
+| `POST /api/restart` | Reboot the device |
+
+Other paths serve static dashboard files from LittleFS. Authentication is off unless `auth.enabled` is true.
 
 ---
 
